@@ -1,12 +1,15 @@
 """The download pipeline against a real local HTTP server: staging, hashes, formats, resumption,
 redirects, limits, scanning and the quarantine of whatever fails."""
 
+import gzip
 import hashlib
 import io
 import struct
 import tarfile
+import threading
 import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -332,6 +335,86 @@ def test_a_trickling_server_is_given_up_on_and_said_plainly(tmp_path, site, pipe
         pull(pipe, site, "/slow.gguf", tmp_path / "s.gguf", net.Want(**SLOW))
     assert len(route.seen) == 2 and time.monotonic() - started < 4.0
     assert not (tmp_path / "s.gguf").exists()
+
+
+CHUNKED = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+GZIPPED = b"HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\n\r\n"
+NEVER_ARRIVING = {
+    "interim-answers": (b"", b"HTTP/1.1 100 Continue\r\n\r\n" * 4),
+    "trailers": (CHUNKED + b"4\r\nabcd\r\n0\r\n", b"X-T: y\r\n" * 10),
+    "empty-deflate-blocks": (GZIPPED + b"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\xff", b"\x00\x00\x00\xff\xff" * 400),
+    "long-chunk-extensions": (CHUNKED, b"1;" + b"e" * 400 + b"\r\nA\r\n"),
+    "one-long-header": (b"HTTP/1.1 200 OK\r\nX-A: ", b"y" * 100),
+}
+
+
+def ending(call, within=3.0):
+    """What ``call`` raised, failing the test when it has not ended ``within`` seconds."""
+    pool = ThreadPoolExecutor(1)
+    future = pool.submit(call)
+    pool.shutdown(wait=False)
+    assert wait([future], within).done, "the download did not end"
+    return future.exception()
+
+
+@pytest.mark.parametrize("answer", NEVER_ARRIVING.values(), ids=NEVER_ARRIVING)
+def test_bytes_that_never_become_the_file_can_be_cancelled_and_end_by_themselves(tmp_path, site, pipe, answer):
+    route = site.add("/m.gguf", raw=answer)
+    pipe.sleep = lambda _: None
+    cancel = Cancel()
+    timer = threading.Timer(0.3, setattr, (cancel, "cancelled", True))
+    timer.start()
+    stopped = ending(lambda: pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", cancel=cancel))
+    assert isinstance(stopped, net.Truncated) and "cancelled" in str(stopped)
+    del route.seen[:]
+    slow = net.Want(min_rate=1000, rate_window_s=0.3, tries=1)
+    ended = ending(lambda: pull(pipe, site, "/m.gguf", tmp_path / "n.gguf", slow))
+    assert isinstance(ended, net.Truncated) and "stalled" in str(ended), ended
+    assert len(route.seen) == 1
+
+
+def test_bytes_after_the_end_of_a_compressed_body_are_refused(tmp_path, site, pipe):
+    route = site.add("/m.gguf", raw=(GZIPPED + gzip.compress(b"hi"), b"z" * 4096))
+    ended = ending(lambda: pull(pipe, site, "/m.gguf", tmp_path / "m.gguf"))
+    assert isinstance(ended, Refused) and "after its compressed body ends" in str(ended), ended
+    assert len(route.seen) == 1
+
+
+@pytest.mark.parametrize("restart", [{}, {"status": 416}, {"shift": 7}],
+                         ids=["changed-file", "range-refused", "wrong-offset"])
+def test_a_file_started_over_counts_progress_from_the_beginning(tmp_path, site, pipe, restart):
+    body = gguf_bytes(extra=900_000)
+    route = site.add("/m.gguf", body, headers={"ETag": '"v1"'}, ranges=True, cut_at=800_000)
+    pipe.sleep = lambda _: None
+    cancel = Cancel()
+    with pytest.raises(net.Truncated, match="cancelled"):
+        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", cancel=cancel,
+             phase=lambda _: setattr(cancel, "cancelled", True))
+    route.cut_at = 70_000
+    for name, value in restart.items():
+        setattr(route, name, value)
+    if not restart:
+        route.headers["ETag"] = '"v2"'
+
+    def waiting(name):
+        if name == "waiting":
+            route.status, route.shift = 200, 0
+
+    pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(sha256=SHA(body)), phase=waiting)
+    assert (tmp_path / "m.gguf").read_bytes() == body
+
+
+def test_a_server_that_keeps_starting_the_file_over_is_given_up_on(tmp_path, site, pipe):
+    route = site.add("/m.gguf", gguf_bytes(extra=900_000), headers={"ETag": '"v1"'}, cut_at=70_000)
+    pipe.sleep = lambda _: None
+
+    def waiting(name):
+        if name == "waiting":
+            route.cut_at += 70_000
+
+    with pytest.raises(net.Truncated, match="started over 4 times"):
+        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", phase=waiting)
+    assert len(route.seen) == 5 and not (tmp_path / "m.gguf").exists()
 
 
 def test_a_download_that_keeps_arriving_has_no_total_time_limit(tmp_path, site, pipe, monkeypatch):

@@ -30,6 +30,8 @@ class Route:
     drip_head_s: float = 0.0
     hang_at: int | None = None
     hang_s: float = 0.0
+    raw: tuple[bytes, bytes] | None = None
+    """An answer written as is: its start, then the second part over and over for five seconds."""
     endless: bool = False
     seen: list[dict[str, str]] = field(default_factory=list)
 
@@ -75,7 +77,22 @@ class Site:
     def redirect(self, path: str, to: str, status: int = 302) -> Route:
         return self.add(path, b"", status=status, headers={"Location": to})
 
+    def repeat(self, h: BaseHTTPRequestHandler, start: bytes, again: bytes) -> None:
+        h.close_connection = True
+        try:
+            h.wfile.write(start)
+            until = time.monotonic() + 5
+            while time.monotonic() < until:
+                h.wfile.write(again)
+                h.wfile.flush()
+                time.sleep(0.02)
+        except OSError:
+            return
+
     def answer(self, h: BaseHTTPRequestHandler, route: Route) -> None:
+        if route.raw:
+            self.repeat(h, *route.raw)
+            return
         if route.drip_head_s:
             try:
                 for byte in b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nX-Slow: " + b"x" * 60 + b"\r\n\r\n":

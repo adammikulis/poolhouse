@@ -50,6 +50,8 @@ PROGRESS_BYTES = 64 * 1024
 """New bytes that count as getting somewhere, which starts the count of attempts again."""
 FIRST_WAIT_S, MOST_WAIT_S, WAIT_STEP_S = 1.0, 30.0, 0.2
 BUSY_STATUS = frozenset({408, 429, 500, 502, 503, 504})
+MOST_RESTARTS = 3
+"""Times held bytes may be replaced from the beginning before a failed attempt ends the download."""
 RANGE = re.compile(r"bytes (\d+)-(\d+)/(\d+|\*)")
 
 
@@ -83,8 +85,8 @@ class Want:
     the reputation ledger, whose only remedy is a person (a Hub download says no: its own retry and refusal protect the file).
     ``pin_notes`` (``publisher``, ``commit``,
     ``source_ref``, ``host``, ``note``) are recorded in the pin of a model that is kept.
-    A connection averaging under ``min_rate`` bytes a second over ``rate_window_s`` is closed, and
-    ``tries`` attempts in a row without new data end the download."""
+    A connection delivering under ``min_rate`` bytes of the file a second over ``rate_window_s``
+    is closed, and ``tries`` attempts in a row without new data end the download."""
 
     kind: str = ""
     sha256: str = ""
@@ -161,14 +163,31 @@ def _resume_headers(part: Path, want: Want) -> tuple[dict[str, str], int]:
     return ({"Range": f"bytes={offset}-"}, offset) if want.sha256 else ({}, 0)
 
 
-def _stream_to(pipe: Pipeline, url: str, part: Path, want: Want,
+@dataclass(slots=True)
+class _Partial:
+    """The staged file of a download under way: the bytes the next attempt must pass to count as
+    progress, and how often bytes already held were thrown away."""
+
+    path: Path
+    mark: int = 0
+    restarts: int = 0
+
+    def start_over(self) -> None:
+        """The held bytes, if any, are about to be replaced from the beginning."""
+        if _held(self.path):
+            self.mark, self.restarts = 0, self.restarts + 1
+
+
+def _stream_to(pipe: Pipeline, url: str, partial: _Partial, want: Want,
                hooks: Hooks) -> httpguard.Streaming:
-    """Append the body to ``part``; the shown answer (without its chunks) is returned."""
+    """Append the body to the partial file; the shown answer (without its chunks) is returned."""
+    part = partial.path
     sent, offset = _resume_headers(part, want)
     sent = bearer(url, {**want.headers, **sent}, want.token, pipe.plain())
     limits = pipe.limited(want.purpose, admit=want.admit, max_bytes=want.max_bytes,
                           deadline_s=httpguard.DOWNLOAD.deadline_s, min_rate=want.min_rate,
-                          rate_window_s=want.rate_window_s)
+                          rate_window_s=want.rate_window_s,
+                          check=functools.partial(_check_cancel, hooks.cancel))
     host_vet = limits.vet
 
     def vet(target: str) -> None:
@@ -179,6 +198,7 @@ def _stream_to(pipe: Pipeline, url: str, part: Path, want: Want,
 
     with httpguard.stream(url, headers=sent, limits=replace(limits, vet=vet)) as shown:
         if shown.status == 416:
+            partial.start_over()
             part.unlink(missing_ok=True)
             raise Truncated("the partial file did not fit the server's; it was discarded")
         if shown.status >= 400:
@@ -189,6 +209,7 @@ def _stream_to(pipe: Pipeline, url: str, part: Path, want: Want,
         resumed = shown.status == 206
         total = _total(shown, offset if resumed else 0)
         if resumed and not _starts_at(shown, offset):
+            partial.start_over()
             part.unlink(missing_ok=True)
             raise Truncated("the server resumed at another offset; the partial file was discarded")
         if total > want.max_bytes:
@@ -198,6 +219,8 @@ def _stream_to(pipe: Pipeline, url: str, part: Path, want: Want,
         _meta(part).write_text(json.dumps(
             {k: shown.headers[k] for k in ("etag", "last-modified") if k in shown.headers}),
             encoding="utf-8")
+        if not resumed:
+            partial.start_over()
         with part.open("ab" if resumed else "wb") as out:
             part.chmod(0o600)
             for block in _arriving(shown.chunks):
@@ -235,26 +258,33 @@ def _bring(pipe: Pipeline, url: str, part: Path, want: Want,
     """`_stream_to` until the file is whole, taking it up again after a connection that failed.
 
     Each attempt is checked like the first. A refusal, a cancel and a full disk end it at once; so
-    does an HTTP error status, unless it says the server is busy and bytes have already come."""
-    mark = _held(part)
-    begun, idle = mark > 0, 0
+    does an HTTP error status, unless it says the server is busy and bytes have already come.
+    Progress is counted from the beginning again when the file is started over, which may happen
+    `MOST_RESTARTS` times."""
+    partial = _Partial(part, _held(part))
+    begun, idle = partial.mark > 0, 0
     while True:
         try:
-            return _stream_to(pipe, url, part, want, hooks)
+            return _stream_to(pipe, url, partial, want, hooks)
         except (Truncated, httpguard.Interrupted, HTTPException, http.ServerError) as exc:
             _check_cancel(hooks.cancel)
             held = _held(part)
             begun = begun or held > 0
             if isinstance(exc, http.ServerError) and not (begun and exc.status in BUSY_STATUS):
                 raise
-            if held >= mark + PROGRESS_BYTES:
-                mark, idle = held, 0
+            if held >= partial.mark + PROGRESS_BYTES:
+                partial.mark, idle = held, 0
             else:
                 idle += 1
-            if idle >= (want.tries if begun else min(want.tries, FIRST_TRIES)):
+            why = ""
+            if partial.restarts > MOST_RESTARTS:
+                why = f"the file had to be started over {partial.restarts} times"
+            elif idle >= (want.tries if begun else min(want.tries, FIRST_TRIES)):
+                why = f"{idle} attempt(s) in a row brought no real progress"
+            if why:
                 kept = f"the {held} bytes that arrived are kept" if held else "nothing was kept"
-                raise Truncated(f"the download gave up: {idle} attempt(s) in a row brought no real "
-                                f"progress, the last because {exc}; {kept}") from exc
+                raise Truncated(f"the download gave up: {why}, the last because {exc}; "
+                                f"{kept}") from exc
             wait = min(FIRST_WAIT_S * 2 ** max(0, idle - 1), MOST_WAIT_S)
             logger.warning("%s: %s; %d bytes are here, trying again in %.0f s",
                            http.shown(url), exc, held, wait)
