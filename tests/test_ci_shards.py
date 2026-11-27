@@ -176,6 +176,13 @@ def test_the_test_extra_and_the_install_lines_carry_the_timeout_plugin():
     assert "pytest-timeout" in next(s["run"] for s in macos if s.get("name") == "install test dependencies").split()
 
 
+@pytest.mark.parametrize("job", ["shards", "macos", "affected"])
+def test_a_job_that_runs_the_native_tests_fetches_what_their_offline_builds_need(job):
+    scripts = [step.get("run", "") for step in workflows.CI["jobs"][job]["steps"]]
+    fetched = next(i for i, script in enumerate(scripts) if "cargo fetch --locked --manifest-path app/Cargo.toml" in script)
+    assert fetched < max(i for i, script in enumerate(scripts) if "pytest" in script or "affected_push.py" in script)
+
+
 def timeout_marks(source: str) -> list[ast.Call]:
     """Every ``pytest.mark.timeout(...)`` the code of ``source`` calls, on a test or in ``pytestmark``."""
     return [node for node in ast.walk(ast.parse(source))
