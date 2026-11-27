@@ -27,12 +27,12 @@ from typing import Any
 
 from poolhouse import activity, gate
 from poolhouse.client import is_healthy, reported_models, serving_params
-from poolhouse.files import read_json, write_json
 from poolhouse.serve import (
     admission,
     canaries,
     grant,
     guarded,
+    inuse,
     lease_history,
     node_memory,
     provenance,
@@ -43,6 +43,7 @@ from poolhouse.serve import (
 from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.broker_holds import MODEL_START, POLL_S, BrokerHolds
 from poolhouse.serve.broker_lifecycle import admitted
+from poolhouse.serve.broker_stops import BrokerStops
 from poolhouse.serve.decision_residents import DecisionResidents
 from poolhouse.serve.events import Caller, Growth
 from poolhouse.serve.leases import orphaned, recorded_servers
@@ -249,7 +250,7 @@ class Grant:
         return dataclasses.asdict(self)
 
 
-class Broker(BrokerHolds):
+class Broker(BrokerStops, BrokerHolds):
     """Every model server on this machine, who holds each one, and who is waiting."""
 
     def __init__(self, manager: ServerManager | None = None, *, idle_s: float = IDLE_S,
@@ -267,6 +268,8 @@ class Broker(BrokerHolds):
         self.held_file = self.manager.state_file.with_name("broker-leases.json")
         self.history_file = self.manager.state_file.with_name("lease-history.ladybug")
         self._ended: list[tuple[str, str, dict[str, Any]]] = []
+        #: the leases this broker saw end, never taken back from the file of holders
+        self._gone: set[str] = set()
         self.idle_s = idle_s
         #: the bytes of the memory budget no lease holds, or None when there is no budget
         self.room = room or (lambda: node_memory.free_bytes(self.table))
@@ -370,28 +373,35 @@ class Broker(BrokerHolds):
             held.records[lease] = dict(record)
             self._write_held()
             self._cond.notify_all()
+        self._hand_to(pid, info.pid)
         return replace(info, lease=lease)
 
     def drop(self, info: ServerInfo, *, grace_s: float = 5.0) -> None:
         """Let go of the lease ``info`` was granted under. The server is stopped when
-        nobody else holds it."""
-        keep = False
+        nobody else holds it and no request is on it."""
         with self._cond:
             held = self.servers.get(info.port)
             if held is not None:
                 self._end(held, info.lease)
-                keep = bool(held.holders or held.loading or not held.ours)
-                if not keep:
-                    self.servers.pop(info.port, None)
+                held.idle_since = time.monotonic()
                 self._write_held()
                 self._cond.notify_all()
         self._flush_ended()
-        if keep:
+        if held is None:
+            if not info.adopted and info.pid:
+                self.manager._stop_server(info, grace_s=grace_s)
             return
-        if held is not None:
-            self._stop(held)
-        elif not info.adopted and info.pid:
-            self.manager._stop_server(info, grace_s=grace_s)
+        if held.holders or held.loading or not held.ours:
+            return
+        if why := self._in_use(held):
+            self._keep(held, why)
+            return
+        with self._cond:
+            if self.servers.get(held.port) is not held or held.holders:
+                return
+            del self.servers[held.port]
+            self._write_held()
+        self._stop(held, "its last lease was let go and no request is on it")
 
     @admitted
     def escalate(self, spec: ServerSpec, growth: Growth, caller: Caller | None = None, *,
@@ -463,9 +473,12 @@ class Broker(BrokerHolds):
                 return turn
             placeholder, evicted = turn
             for held in evicted:
-                self.say(f"stopping port {held.port} ({held.model}) to make room for "
-                         f"{ask.models[0]} ({ask.purpose})")
-                self._stop(held)
+                if why := self._in_use(held, asker=ask.pid):
+                    self._keep(held, why)
+                    continue
+                said = f"to make room for {ask.models[0]} ({ask.purpose})"
+                self.say(f"stopping port {held.port} ({held.model}) {said}")
+                self._stop(held, f"nothing else uses it; stopped {said}", asker=caller)
             try:
                 return self._start(waiting, placeholder)
             except Measuring as why:
@@ -493,6 +506,7 @@ class Broker(BrokerHolds):
     def _end(self, held: Held, lease: str, *, keep_record: bool = False) -> None:
         """Take ``lease`` off ``held`` and queue its history row. Called with the lock held."""
         held.holders.pop(lease, None)
+        self._gone.add(lease)
         record = held.records.pop(lease, None)
         if record is not None and not keep_record:
             self._ended.append((held.model, lease, record))
@@ -506,24 +520,6 @@ class Broker(BrokerHolds):
                 lease_history.append(self.history_file, lease_history.ended_row(model, lease, record))
             except (OSError, RuntimeError, ValueError, KeyError) as why:
                 self.say(f"lease {lease[:8]} ended; its history row was not written: {why}")
-
-    def _write_held(self) -> None:
-        """Record who holds what, so a broker that restarts does not unload a server its
-        holder is still using. Called with the lock held."""
-        write_json(self.held_file, {
-            str(held.port): {"purpose": held.purpose, "model": held.model,
-                             "holders": {lease: list(who) for lease, who in held.holders.items()},
-                             "why": held.records}
-            for held in self.servers.values() if held.holders and not held.loading})
-
-    def _read_held(self) -> dict[int, dict[str, Any]]:
-        """What the last broker recorded, by port; whatever cannot be read is nothing."""
-        kept = read_json(self.held_file, {})
-        out: dict[int, dict[str, Any]] = {}
-        for port, entry in (kept.items() if isinstance(kept, dict) else ()):
-            if str(port).isdigit() and isinstance(entry, dict):
-                out[int(port)] = entry
-        return out
 
     def _wait_for_turn(self, waiting: Waiting, deadline: float) -> Grant | tuple[Held, list[Held]]:
         ask = waiting.ask
@@ -653,6 +649,7 @@ class Broker(BrokerHolds):
                 self._cond.notify_all()
             raise BrokerError(f"{spec.model} did not start on port {spec.port}: {exc}") from exc
         params = serving_params(info.base_url)
+        self._hand_to(waiting.ask.pid, info.pid)
         with self._cond:
             placeholder.info, placeholder.pid, placeholder.loading = info, info.pid, False
             placeholder.names = (str(spec.model), *reported_models(info.base_url))
@@ -664,29 +661,13 @@ class Broker(BrokerHolds):
                      port=placeholder.port, base_url=info.base_url, shared=False,
                      device=placeholder.shape["device"])
 
-    def _stop(self, held: Held) -> None:
+    def _stop(self, held: Held, why: str, *, asker: str = "") -> None:
+        if held.pid:
+            inuse.stopped(held.port, held.pid, why, asker=asker)
         if held.info is not None and not held.info.adopted:
-            self.manager._stop_server(held.info)
+            self.manager._stop_server(held.info, why="")
         elif held.pid and self.alive(held.pid):
             kill_process_tree(held.pid)
-
-    def stop(self, port: int, *, force: bool = False) -> dict[str, Any]:
-        """Stop the server on ``port``. Refused while anyone holds it, unless ``force``."""
-        with self._cond:
-            held = self.servers.get(port)
-            if held is None:
-                return {"stopped": False, "why": f"nothing the broker knows is on port {port}"}
-            if not held.ours:
-                return {"stopped": False, "why": f"port {port} was not started through poolhouse"}
-            if (held.holders or held.loading) and not force:
-                return {"stopped": False, "why": self._held_said(held)}
-            self.servers.pop(port)
-            for lease in list(held.holders):
-                self._end(held, lease)
-            self._cond.notify_all()
-        self._flush_ended()
-        self._stop(held)
-        return {"stopped": True, "port": port, "model": held.model}
 
     # ------------------------------------------------------------------ upkeep
     @admitted
@@ -714,7 +695,8 @@ class Broker(BrokerHolds):
             self.cores = {k: v for k, v in self.cores.items() if self.alive(v[0])}
             idle = [h for h in self.servers.values() if h.ours and not h.holders
                     and not h.loading and now - h.idle_since > self.idle_s]
-        answering = [h for h in idle if self.busy(h.base_url)]
+        # stopped only on proof: its slots say idle, no record names a holder and no request is on it
+        answering = [h for h in idle if self.busy(h.base_url) is not False or self._in_use(h)]
         with self._cond:
             for held in answering:
                 held.idle_since = time.monotonic()
@@ -726,9 +708,9 @@ class Broker(BrokerHolds):
             self._cond.notify_all()
         self._flush_ended()
         for held in idle:
-            self.say(f"stopping port {held.port} ({held.model}): nobody has held it for "
-                     f"{now - held.idle_since:.0f}s and it is answering nothing")
-            self._stop(held)
+            said = f"nobody has held it for {now - held.idle_since:.0f}s and it is answering nothing"
+            self.say(f"stopping port {held.port} ({held.model}): {said}")
+            self._stop(held, said, asker="the broker's idle upkeep")
         return idle
 
     @admitted
@@ -762,9 +744,12 @@ class Broker(BrokerHolds):
                               info=ServerInfo(base_url=f"http://{DEFAULT_HOST}:{port}",
                                               port=port, pid=pid, backend="", adopted=True)))
         known = {h.port for h in found} | set(self.servers)
+        foreign: set[int] = set()   # keyed by another install: counted and listed, never asked anything
         for proc in self.scan():
             if proc["port"] not in known and not proc["defunct"]:
-                taken = self._take_in(proc)
+                if inuse.keyed_elsewhere(proc):
+                    foreign.add(proc["port"])
+                taken = proc["port"] not in foreign and self._take_in(proc)
                 if not taken:
                     self._counted(proc)
                 if not taken and proc["port"] not in self._unmanaged_told:
@@ -776,11 +761,13 @@ class Broker(BrokerHolds):
                                   idle_since=now))
         with self._cond:
             for held in found:
-                if held.port in self.servers or not is_healthy(held.base_url, timeout=2.0):
+                asked = held.port not in foreign
+                if held.port in self.servers or (asked and not is_healthy(held.base_url, timeout=2.0)):
                     continue
-                held.names = (held.model, *reported_models(held.base_url))
-                params = serving_params(held.base_url)
-                held.loaded_file = params.model if params else None
+                if asked:
+                    held.names = (held.model, *reported_models(held.base_url))
+                    params = serving_params(held.base_url)
+                    held.loaded_file = params.model if params else None
                 self.servers[held.port] = held
             self._write_held()
             self._cond.notify_all()
