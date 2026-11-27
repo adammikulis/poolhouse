@@ -423,6 +423,23 @@ jobs:
           cp -R trusted/scripts/hooks scripts/
           cp trusted/scripts/gates/*.py scripts/gates/
           cp trusted/scripts/budgets scripts/budgets
+          # a file of this name the base commit lacks is left as the pull request has it, and runs
+          cp trusted/scripts/sealed_git*.py scripts/
+
+      # Both read the objects of the commits, so a commit named by anything but its full id is not one.
+      - name: the changed Python parses
+        if: github.event_name == 'pull_request'
+        run: python scripts/sealed_git_parse.py "$BASE" "$(git rev-parse HEAD)"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+
+      - name: no data or weight file
+        if: github.event_name == 'pull_request'
+        run: |
+          git cat-file -e "$BASE^{commit}"
+          python scripts/hooks/no-data-files --range "$BASE" "$(git rev-parse HEAD)"
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
 
       - name: budgets
         run: python scripts/budgets
@@ -461,6 +478,29 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.13"
+
+      # The app crate links Swift runtime directories only from system inputs: root's, writable by no other account and named by no
+      # link (app/src-tauri/native_service_build.rs). A hosted image's Xcode belongs to the runner's account and is also reached
+      # through a link, so the throwaway runner's toolchain is made what the build asks for.
+      - name: the Swift runtime as a system toolchain input
+        if: runner.environment == 'github-hosted'
+        run: |
+          unset DEVELOPER_DIR SDKROOT
+          selected=$(xcode-select --print-path)
+          resolved=$(cd "$selected" && pwd -P)
+          sudo xcode-select --switch "$resolved"
+          swiftc -print-target-info > "$RUNNER_TEMP/swift-target.json"
+          python -c 'import json, sys; print(*json.load(open(sys.argv[1]))["paths"]["runtimeLibraryPaths"], sep="\n")' \
+            "$RUNNER_TEMP/swift-target.json" > "$RUNNER_TEMP/swift-runtime.txt"
+          while IFS= read -r directory; do
+            # /usr/lib is the sealed system volume's and root's already
+            case "$directory" in /usr/lib/*) continue ;; esac
+            resolved=$(cd "$directory" && pwd -P)
+            echo "$directory: $(stat -f 'owner %u, mode %Sp' "$resolved"), at $resolved"
+            sudo chown -R root:wheel "$resolved"
+            sudo chmod -R go-w "$resolved"
+            echo "$directory: now $(stat -f 'owner %u, mode %Sp' "$resolved")"
+          done < "$RUNNER_TEMP/swift-runtime.txt"
 
       - name: install test dependencies
         run: |

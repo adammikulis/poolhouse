@@ -6,8 +6,10 @@
 
 SHA is the commit that was read; a pull request whose head has moved since is refused, since a new commit needs a new review.
 The agents the pull request names in `Author-agent: NAME` lines do not accept it, nor does an agent such a subagent started;
-a subagent's pull request is accepted by an agent above it or by a main session. All agents use one GitHub sign-in, so the
-status records the process and is not a security boundary. After an accept, the one merge command is printed.
+a subagent's pull request is accepted by an agent above it or by a main session. An accept is refused, and the status set to
+failed, while another reviewer's reject of any commit the pull request would merge stands on the board; a board or a commit
+that cannot be read refuses it too. All agents use one GitHub sign-in, so the status records the process and is not a security
+boundary. After an accept, the one merge command is printed.
 """
 from __future__ import annotations
 
@@ -20,6 +22,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.append(str(ROOT / "scripts"))
+
+import sealed_git  # noqa: E402
 
 from poolhouse import board, devbranch  # noqa: E402
 from poolhouse.workspace import landing, release_check  # noqa: E402
@@ -77,6 +82,32 @@ def independent(reviewer: str, parents: dict[str, str], authors: list[str]) -> N
                           "or by a main session")
 
 
+def merged_commits(number: str, base: str, head: str) -> list[str]:
+    """The commits pull request ``number`` would put into ``base``: ``head`` first, then every other commit of it that origin's ``base``,
+    fetched now, does not hold."""
+    root = Path.cwd()
+    sealed_git.git(root, "fetch", "--quiet", "--no-tags", "origin", f"refs/heads/{base}")
+    held = sealed_git.out(root, "rev-parse", "FETCH_HEAD")
+    if not sealed_git.commit_id(root, head):
+        sealed_git.git(root, "fetch", "--quiet", "--no-tags", "origin", f"refs/pull/{number}/head")
+    if not sealed_git.commit_id(root, head):
+        raise Refused(f"the commits of pull request {number} cannot be read: {head} is not in this repository")
+    found = sealed_git.sealed(root, "rev-list", head, f"^{held}").stdout.split()
+    return [head, *(sha for sha in found if sha != head)]
+
+
+def standing_rejects(session: board.session.Session, commits: list[str]) -> dict[str, list[str]]:
+    """The commits of ``commits`` that carry a standing reject of a reviewer other than ``session``, each with who rejected it."""
+    found = {sha: landing.rejecters(session, landing.accepts(session, sha)) for sha in commits}
+    return {sha: who for sha, who in found.items() if who}
+
+
+def set_status(head: str, state: str, description: str) -> None:
+    """Set the `lead-review` status of the commit ``head``."""
+    status = {"state": state, "context": release_check.REVIEW_STATUS, "description": description[:140]}
+    gh("api", "-X", "POST", "repos/{owner}/{repo}/statuses/" + head, "--input", "-", given=json.dumps(status))
+
+
 def review(args: argparse.Namespace) -> str:
     """Record the review and return what to print."""
     note = args.note.strip()
@@ -91,12 +122,17 @@ def review(args: argparse.Namespace) -> str:
         if not authors and not (found.get("author") or {}).get("is_bot"):
             raise Refused("the pull request names no author: its description needs an `Author-agent: NAME` line")
         independent(me.name, {a.name: a.parent for a in session.agents(retired=True)}, authors)
+        if rejects := standing_rejects(session, merged_commits(args.number, str(found.get("baseRefName")), head)):
+            said = "; ".join(f"{sha[:12]} by {', '.join(who)}" for sha, who in rejects.items())
+            # over any earlier success on this commit, so that the merge fails
+            set_status(head, WORDS["reject"][0], f"standing reject of {said}")
+            raise Refused(f"a reject stands on {said}: the merge is held until that reviewer accepts the commit with "
+                          "`poolhouse-workspace land-review BRANCH SHA --verdict accept`")
     landing.review(session, str(found.get("headRefName")), head, args.verdict)
     state, word = WORDS[args.verdict]
     gh("pr", "comment", args.number, "--body-file", "-",
        given=f"{release_check.REVIEW_STATUS} {word} for {head}, by {me.name} ({me.model}).\n\n{note}")
-    status = {"state": state, "context": release_check.REVIEW_STATUS, "description": f"{word} by {me.name}"[:140]}
-    gh("api", "-X", "POST", "repos/{owner}/{repo}/statuses/" + head, "--input", "-", given=json.dumps(status))
+    set_status(head, state, f"{word} by {me.name}")
     # "recorded" first: a bare "failed" reads as the command failing, when it is the review that was recorded
     said = f"review recorded for pull request {args.number} at {head[:12]}: {word}"
     if args.verdict == "reject":
@@ -115,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("a pull request is named by its number")
     try:
         print(review(args))
-    except (Refused, OSError, ValueError, subprocess.SubprocessError, board.client.NodeError) as exc:
+    except (Refused, OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError, board.client.NodeError) as exc:
         print(f"lead-review: {exc}", file=sys.stderr)
         return 1
     return 0
