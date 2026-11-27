@@ -1,32 +1,71 @@
 # Landing
 
-A worker puts its branch on the development branch itself, with git. The development branch is the one the primary
-checkout is on (`POOLHOUSE_DEV_BRANCH` overrides it) and never `main`. A push takes no accept, no claim and no lock.
+Work lands on the development branch by GitHub pull request; there is no landing script. The development branch is the
+one the primary checkout is on (`POOLHOUSE_DEV_BRANCH` overrides it) and never `main`.
 
 1. **Prepare.** In the branch's own worktree beside the primary checkout: `git fetch origin`, merge `origin/<dev>`, run the
    change's focused tests with explicit `scripts/test` selectors, and commit by named files. Avoid repeated unaffected checks.
-2. **Push.** `git fetch origin`, merge `origin/<dev>` again if it moved, then `git push origin HEAD:refs/heads/<dev>` (plain,
-   never forced). A push refused because the remote moved is merged and pushed again.
-3. **Watch GitHub.** The `ci` workflow runs on the pushed commit ("The CI run" below).
-4. **Clean up.** `scripts/worktrees sweep` removes the landed worktree and branch (docs/worktrees.md).
+2. **Open a pull request.** `git push origin HEAD` (plain, never forced), then `gh pr create --base <dev>`. The
+   description holds one `Author-agent: <name>` line for each agent that wrote the change. The author never merges it.
+3. **Review.** "Review of a pull request" below. A new commit needs a new review.
+4. **Merge.** The reviewer waits for the required checks and runs the printed command.
+5. **Clean up.** `git fetch origin`, then `scripts/worktrees sweep`, which removes the landed worktree and branch and
+   fast-forwards the primary checkout (docs/worktrees.md).
+
+## Review of a pull request
+
+The agent that spawned the author reviews the change; a main agent's own pull request is reviewed by an agent that did
+not write it. The owner is never required. One command records the verdict on the exact commit that was read, and it is the only way an agent posts the
+`lead-review` status:
+
+```sh
+scripts/lead-review <PR> <SHA> --verdict accept|reject --note "what was read and why"
+```
+
+It refuses a pull request that is not open into the development branch, or whose head is no longer `<SHA>`. It accepts
+nothing for an author the description names, for an agent that a subagent author started, or from a subagent that is not
+above a subagent author (a main session may review any subagent's work); a pull request that names no author is accepted
+only when a bot opened it. It then records the `land-review` verdict on the board, posts the note as a comment on the pull
+request (the repository is public) and sets the `lead-review` commit status on that commit. After an accept it prints:
+
+```sh
+gh pr merge <PR> --merge --delete-branch --match-head-commit <SHA>
+```
+
+The guard (`poolhouse.workspace.release_check`) allows an agent that exact command, alone on its line, when the pull
+request targets the development branch, its head is `<SHA>` and the `lead-review` status there passed. No agent skips a
+required check: `gh pr merge --admin` and a write to the merge API are refused. Any other
+`gh pr merge`, a pull request into another branch and one `gh` cannot read keep the rule for `main`: a standing
+independent `land-review` accept of the checkout's commit and a clean checkout. If `gh` reports that it could not delete
+the local branch because a worktree holds it, the merge is done: run `scripts/worktrees sweep`, then the same command again.
+
+**What the status is not.** Every agent uses the owner's GitHub sign-in, so GitHub cannot take a formal approval and
+nothing there stops an agent from setting a status by hand, which the process forbids; the authors are the names the
+description gives. `lead-review` records the process. It is
+not a security boundary. The attack pass (docs/agent-policy.md, "Attack first") stays advice, and an author still runs its
+own checks.
 
 ## The push hook
 
-`scripts/hooks/pre-push` is a fast ref guard. An agent can push the development branch or a nonempty `promote/*`
-snapshot. Main, tags, deletions, unrelated branches, unknown commit objects and non-fast-forward updates refuse.
-Every input record is checked, including a forbidden ref accompanying an otherwise valid development push.
+`scripts/hooks/pre-push` is a fast ref guard. An agent can push a branch forward. A push to `main` passes only with a
+standing review (docs/agent-policy.md, "The owner's `main`"); tags, other refs, deletions, unknown commit objects and
+non-fast-forward updates refuse. Every input record is checked, including a forbidden ref accompanying an otherwise valid
+push. That the development branch takes work only by pull request is for a rule GitHub holds on that branch to enforce,
+not for the hook.
 
-The hook does not run tests, builds, Python/data scans, board review queries, worktree scans or CI watchers.
-Development commits should sync promptly between devices. Run focused tests for the change separately; CI runs
-its gates on development pushes and broader suites on pull requests, main and nightly schedules.
+The hook does not run tests, builds, Python/data scans, board review queries, worktree scans or CI watchers. Run focused
+tests for the change separately; CI runs the quick checks on pull requests into development and broader suites on pull
+requests into main, main and nightly schedules.
 
 `python scripts/hooks/affected_push.py` remains an explicit affected-test check when useful. It is not invoked by
-Git's push hook. Existing pre-commit checks and the plan's native proof requirements remain separate.
+Git's push hook; the CI job `affected` runs it on a pull request into development. Existing pre-commit checks and the
+plan's native proof requirements remain separate.
 
 ## Reviews
 
 `land-review` is the `poolhouse-workspace` command for the board's `landing` entries (docs/node.md, "Landing reviews");
-`device-trust` names the devices whose `task` and `grant` entries this device counts. A review is advice: an accept is needed by nothing that pushes the development branch. The
+`device-trust` names the devices whose `task` and `grant` entries this device counts. A merge into `main` asks for a
+standing accept on the board; a merge into development asks for the pull request's `lead-review` status. The
 runtime deployment of a commit that is not yet on the development branch (`runtime_unmerged.py`) asks for a standing accept of
 that exact commit from a reviewer other than the lead that deploys it.
 
@@ -51,9 +90,18 @@ after each sync that waited for a pushed commit (`--sha`) to reach `origin`.
 
 ## The CI run
 
-The whole suite runs on GitHub, in the `ci` workflow, for pull requests, `main` and the nightly schedule. A push of the
-development branch that changes more than documentation (`paths-ignore` skips `**.md` and `docs/**`) runs only the `gates` job. A push never waits for it. An agent never
-runs the whole suite locally; a person's terminal may.
+The whole suite runs on GitHub, in the `ci` workflow, for pull requests into `main`, pushes of `main`, the nightly
+schedule and manual runs. It is not a condition of development:
+
+| Event | Jobs |
+| --- | --- |
+| Pull request into development | `gates`, `privacy`, `licenses` (required by the branch's rule, with `lead-review`), `windows` and `affected` (informational); `shards` and `test` report as skipped |
+| Push of development (a merged pull request) | `gates`, `privacy`, `licenses`; a change of only `**.md` and `docs/**` starts none |
+| Pull request into `main`, push of `main` | the whole suite |
+
+The `redteam`, `pool-check` and `release-dry-run` workflows run on pull requests into `main` and their schedules.
+`affected` runs the tests the pull request's changes reach on macOS (`scripts/hooks/affected_push.py`). No rule requires
+it. An agent never runs the whole suite locally; a person's terminal may.
 
 When explicitly run, `scripts/hooks/pushed` starts `scripts/ci_watch.py SHA` detached for the proposed development commit, on the
 person's machine only (`lan.on_the_persons_machine`), when `gh` is installed. The watcher asks `gh run list --commit SHA

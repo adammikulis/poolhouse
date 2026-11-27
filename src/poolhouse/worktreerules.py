@@ -154,17 +154,31 @@ def protected():
 
 RELEASE_CHECK = (
     "import sys; from poolhouse.workspace import release_check; "
-    "why = release_check.refusal('.', {'CLAUDECODE': '1'}); sys.stdout.write(why); sys.exit(1 if why else 0)")
+    "why = release_check.refusal('.', {'CLAUDECODE': '1'}, merge=tuple(sys.argv[1:])); sys.stdout.write(why); sys.exit(1 if why else 0)")
 """What a child Python runs to ask `poolhouse.workspace.release_check` about the checkout it starts in, as an agent."""
+REVIEWED_MERGE = re.compile(r"[ \t]*gh pr merge ([0-9]{1,9})((?: (?:--merge|--delete-branch|--match-head-commit [0-9a-f]{40}))+)[ \t]*\n?")
+"""A whole command line that merges one pull request by number at one named head commit, the only form that can be a merge into
+the development branch: with nothing before or after it, no other repository, variable or folder can change what the check reads."""
 
 
-def release_refusal(cwd: str) -> str:
-    """Why an agent may not merge into a protected branch from `cwd`, empty when it may: the commit has a standing independent
-    land-review accept and the checkout is clean (`poolhouse.workspace.release_check`). Asked at once, never waited on."""
+def reviewed_merge(command: str) -> tuple[str, ...]:
+    """The pull request number and head commit of a command line that is exactly one `gh pr merge N --merge --match-head-commit SHA`
+    (`--delete-branch` may stand beside them), else nothing."""
+    found = REVIEWED_MERGE.fullmatch(command)
+    flags = found.group(2).split() if found else []
+    shas = [flags[i + 1] for i, flag in enumerate(flags[:-1]) if flag == "--match-head-commit"]
+    return (found.group(1), shas[0]) if found and "--merge" in flags and len(shas) == 1 else ()
+
+
+def release_refusal(cwd: str, merge: tuple[str, ...] = ()) -> str:
+    """Why an agent may not merge into a protected branch from `cwd`, empty when it may (`poolhouse.workspace.release_check`):
+    the commit has a standing independent land-review accept and the checkout is clean, or, for ``merge`` (a pull request and
+    its head commit, `reviewed_merge`) into the development branch, that commit's `lead-review` status passed. Asked at once,
+    never waited on."""
     source = str(Path(__file__).resolve().parents[1])
     try:
-        done = subprocess.run([sys.executable, "-c", RELEASE_CHECK], cwd=cwd or None, capture_output=True, text=True,
-                              timeout=30, check=False, env={**os.environ, "PYTHONPATH": source})
+        done = subprocess.run([sys.executable, "-c", RELEASE_CHECK, *merge], cwd=cwd or None, capture_output=True, text=True,
+                              timeout=45, check=False, env={**os.environ, "PYTHONPATH": source})
     except (OSError, subprocess.TimeoutExpired):
         return "the release check could not run"
     if not done.returncode:
@@ -339,7 +353,7 @@ def _worktree_target(segment: str) -> str | None:
 def hard_bash_refusal(command: str, cwd: str, owns: Callable[[str], bool] | None = None) -> str:
     """Why `command` may not run whatever POOLHOUSE_GUARD says: it writes a guard or the authority registry, touches the
     person folder or the session tokens, or changes what protects the repository."""
-    return protected().refusal(command, cwd or str(Path.cwd()), release_refusal, owns=owns)
+    return protected().refusal(command, cwd or str(Path.cwd()), lambda here: release_refusal(here, reviewed_merge(command)), owns=owns)
 
 
 def bash_refusal(command: str, cwd: str, owns: Callable[[str], bool] | None = None) -> str:

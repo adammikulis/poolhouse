@@ -26,11 +26,11 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import coding_policy, harnesshook, isolation, sandbox
+from poolhouse import coding_policy, harnesshook, isolation, opencode, sandbox
 from poolhouse.isolation.notices import Notice
 from poolhouse.isolation.reports import Reporter
 from tests.isolation_kit import MODEL, Canned
-from tests.isolation_world import Sink, make_project
+from tests.isolation_world import Sink, git, linked_worktree, make_project
 from tests.sandbox_kit import running
 
 pytest_plugins = ["tests.confined_kit", "tests.sandbox_kit"]
@@ -60,7 +60,8 @@ def box(tmp_path):
         server.server_close()
 
 
-def shelled(box: Box, script: str, *, look: Callable[[isolation.Confinement], object] = lambda _: None, conversation: str = ""):
+def shelled(box: Box, script: str, *, look: Callable[[isolation.Confinement], object] = lambda _: None, conversation: str = "",
+            brief: str = ""):
     """``script`` run by a real shell as the program of a real launch: what it printed, what ``look`` saw before and after it ran, and the
     closed confinement."""
     program = box.root / "shell-NOT-A-HARNESS.sh"
@@ -77,7 +78,13 @@ def shelled(box: Box, script: str, *, look: Callable[[isolation.Confinement], ob
         return answer
 
     def render(context: isolation.Context) -> isolation.Rendering:
-        return isolation.Rendering((str(program),), {f"session/{event}": context.hook(event) + "\n" for event in ("pre", "stop")})
+        files = {f"session/{event}": context.hook(event) + "\n" for event in ("pre", "stop")}
+        if not brief:
+            return isolation.Rendering((str(program),), files)
+        # OpenCode's own config of a delegate, around the shell script that stands in for the harness
+        setup = opencode.Setup((context.base_url, MODEL, 4096), "", "", (), agent={"mode": "primary", "system": brief})
+        made = opencode.rendering(context, setup, (str(program),), {}, files)
+        return isolation.Rendering((str(program),), made.files, noted=made.noted)
 
     plan = isolation.Plan("claude", str(program), str(box.project), coding_policy.Policy(coding_policy.GUARDED), f"http://127.0.0.1:{box.port}",
                           isolation.Lease(MODEL, 4096, 1), "", "helper-sh", decide, lambda verb, arguments: {}, render,
@@ -185,6 +192,131 @@ def test_the_projects_environments_are_read_run_and_on_the_path_never_written_an
     assert "venv (holds a credential file" in confinement.session.first_line(), confinement.session.first_line()
 
 
+def test_a_worktree_runs_the_main_checkouts_environment_read_only_and_imports_its_own_source(box):
+    venv = with_environments(box)
+    main = box.project
+    (main / "src" / "pkg").mkdir()
+    (main / "src" / "pkg" / "__init__.py").write_text("WHERE = 'the main checkout'\n")
+    git(main, "add", "src/pkg")
+    site = next((venv / "lib").glob("python*")) / "site-packages"
+    (site / "pkg").mkdir()
+    (site / "pkg" / "__init__.py").write_text("WHERE = 'a stale installed copy'\n")
+    (site / "editable.pth").write_text(f"{main / 'src'}\n")
+    box.project = linked_worktree(main, box.root / "worktree")
+    (box.project / "src" / "pkg" / "__init__.py").write_text("WHERE = 'the worktree'\n")
+    assert not os.path.lexists(box.project / ".venv")
+    before = tree_digest(venv), tree_digest(main / "node_modules")
+    script = f"""\
+        echo "python=$(command -v python)"
+        python -c 'import pkg; print("imports " + pkg.WHERE + " at " + pkg.__file__)'
+        .venv/bin/python -c 'import pkg; print("link imports " + pkg.WHERE)'
+        (cd tests && python -c 'import pkg; print("elsewhere imports " + pkg.WHERE)')
+        python -m pytest tests/test_app.py 2>&1 | tail -n 3
+        module-tool
+        tried venv-write 'echo x > .venv/planted'
+        tried venv-write-real 'echo x > {shlex.quote(str(venv))}/planted'
+        tried venv-remove 'rm {shlex.quote(str(venv))}/pyvenv.cfg'
+        tried module-write 'echo x >> node_modules/index.js'
+        tried credential 'cat {shlex.quote(str(main))}/venv/credentials.json'
+        tried main-readme 'cat {shlex.quote(str(main))}/README.md'
+        tried main-source 'cat {shlex.quote(str(main))}/src/pkg/__init__.py'
+        tried main-git 'cat {shlex.quote(str(main))}/.git/config'
+        tried main-list 'ls {shlex.quote(str(main))}'
+        tried worktree 'cat {shlex.quote(str(box.project))}/README.md'
+        """
+    out, (stage, _), confinement = shelled(box, script, look=lambda confinement: str(confinement.session.stage.physical))
+    assert f"python={venv}/bin/python" in out, out
+    assert f"imports the worktree at {stage}/src/pkg/__init__.py" in out, out
+    assert "link imports the worktree" in out and "elsewhere imports the worktree" in out and "1 passed" in out and "module-tool ran" in out, out
+    assert "OPEN " not in out and out.count("shut ") == 10, out
+    assert (tree_digest(venv), tree_digest(main / "node_modules")) == before
+    assert confinement.turn.refused == () and confinement.turn.applied == () and not box.sink.posts, confinement.turn
+    assert not os.path.lexists(box.project / ".venv") and not os.path.lexists(box.project / "node_modules"), "the links are never published"
+
+
+def fresh_worktree(box: Box) -> Path:
+    """This kind of project as a delegate finds it: the main checkout has the environment, and a worktree just made from it holds committed
+    files and nothing else. Nothing in it is prepared. Returns the main checkout's environment."""
+    venv = with_environments(box)
+    main = box.project
+    (main / "pyproject.toml").write_text('[project]\nname = "pkg"\nversion = "0"\n[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
+    (main / "src" / "pkg").mkdir()
+    (main / "src" / "pkg" / "__init__.py").write_text("WHERE = 'committed'\n")
+    (main / "tests" / "test_where.py").write_text("import pkg\n\n\ndef test_where():\n    assert pkg.WHERE == 'the worktree'\n")
+    (main / "docs" / "credentials").mkdir(parents=True)   # an ordinary folder of a name no file is given under
+    (main / "docs" / "credentials" / "README.md").write_text("# how credentials are kept\n")
+    (main / ".env").write_text("NOT-A-REAL-CREDENTIAL=canary-in-history\n")
+    git(main, "add", "-f", ".env")
+    git(main, "commit", "-qm", "an older commit that holds a credential file")
+    git(main, "add", "pyproject.toml", "src/pkg", "tests/test_where.py", ".gitignore", "docs/credentials")
+    git(main, "commit", "-qm", "base")
+    box.project = linked_worktree(main, box.root / "worktree")
+    (box.project / "src" / "pkg" / "__init__.py").write_text("WHERE = 'the worktree'\n")
+    return venv
+
+
+def test_a_fresh_worktree_with_nothing_in_it_has_its_environment_its_own_source_git_and_its_tests(box):
+    """The one test of the whole automatic setup, in the real box: any part of it that regresses fails here."""
+    venv = fresh_worktree(box)
+    assert sorted(each.name for each in box.project.iterdir() if each.name.startswith((".venv", "venv", "node_modules"))) == []
+    script = """\
+        python -c 'import pkg; print("imports " + pkg.WHERE)'
+        python -m pytest -q -p no:cacheprovider tests/test_where.py 2>&1 | tail -n 3
+        git status --short | grep -q 'src/pkg/__init__.py' && echo "status shows the change"
+        git diff HEAD | grep -q "+WHERE = 'the worktree'" && echo "diff shows the change"
+        git log --format=%s -1 | grep -qx base && echo "log works"
+        git show --stat HEAD | grep -q 'src/pkg/__init__.py' && echo "show works"
+        git status --short | grep -q '^ D\\|^D ' || echo "nothing looks deleted"
+        grep -q "+WHERE = 'the worktree'" .git/poolhouse-review/changes.diff && echo "the review files show it"
+        tried commit 'git -c user.name=a -c user.email=a@example.invalid commit -qm x'
+        tried git-write 'echo x >> .git/config'
+        tried history-credential 'git cat-file -p HEAD:.env'
+        """
+    out, _, confinement = shelled(box, script)
+    assert "canary-in-history" not in out, out
+    for expected in ("imports the worktree", "1 passed", "status shows the change", "diff shows the change", "log works", "show works",
+                     "nothing looks deleted", "the review files show it", "shut commit", "shut git-write", "shut history-credential"):
+        assert expected in out, (expected, out)
+    assert confinement.said() == [] and confinement.untested == "", ("the preflight found nothing lacking", confinement.said())
+    assert confinement.turn.refused == () and confinement.turn.applied == () and not box.sink.posts, confinement.turn
+    assert venv.is_dir() and not os.path.lexists(box.project / ".venv")
+
+
+def test_the_preflight_reports_at_once_in_the_brief_and_in_the_result_what_the_box_cannot_do(box):
+    venv = fresh_worktree(box)
+    shutil.rmtree(next((venv / "lib").glob("python*")) / "site-packages" / "_pytest")
+    config: list[str] = []
+
+    def look(confinement):
+        found = list(confinement.home.rglob(opencode.CONFIG))
+        config.extend(each.read_text() for each in found)
+        return list(box.sink.posts)
+
+    out, (posted, _), confinement = shelled(box, "true\n", look=look, brief="THE BRIEF\n")
+    said = "The preflight could not start this project's tests in the sandbox, so work here is untested"
+    assert said in confinement.untested + " ".join(confinement.said()) and "python -m pytest --collect-only" in confinement.untested, (out, confinement.said())
+    assert posted and said in posted[0][3], "the launching session is told before the harness starts"
+    assert said in config[0] and "THE BRIEF" in config[0], config
+
+
+def test_a_project_with_no_usable_environment_is_told_so_in_the_brief_and_in_the_result(box):
+    (box.project / "pyproject.toml").write_text('[project]\nname = "pkg"\nversion = "0"\n')
+    shutil.rmtree(box.project / "tests")
+    config: list[str] = []
+
+    def look(confinement):
+        config.extend(each.read_text() for each in confinement.home.rglob(opencode.CONFIG))
+
+    _, _, confinement = shelled(box, "true\n", look=look, brief="THE BRIEF\n")
+    [note] = confinement.said()
+    assert note.startswith("This working copy has no Python environment (.venv or venv) the sandbox can use") and note.count(". ") == 0, note
+    assert note in confinement.said(), confinement.said()
+    assert f"THE BRIEF\\n{note}" in config[0], config
+    with_environments(box)
+    _, _, confinement = shelled(box, "true\n")
+    assert not confinement.said(), confinement.said()
+
+
 def test_a_kept_stage_that_is_launched_again_still_reads_the_environment(box):
     venv = with_environments(box)
     out, _, first = shelled(box, "echo '{}' > opencode.json\n", conversation="again")
@@ -231,11 +363,15 @@ def test_a_shell_in_the_box_reaches_nothing_it_was_not_given(box):
             tried kill-other-box 'kill -9 {boxed.pid}'
             tried signal-parent 'kill -0 {os.getpid()}'
             tried kill-sibling 'kill -9 "$(cat sibling.pid)"'
-            cp /bin/ls ./a-binary && chmod +x ./a-binary; tried stage-binary './a-binary'
-            printf '#!/bin/sh\\necho ran\\n' > a-script && chmod +x a-script; tried stage-script './a-script'
-            sh ./a-script
+            cp {python} ./a-binary && chmod +x ./a-binary; ./a-binary -V >/dev/null && echo "binary ran"
+            printf '#!/bin/sh\\ncat "$1"\\n' > a-script && chmod +x a-script; ./a-script README.md >/dev/null && echo "script ran"
+            cp a-script "$HOME/a-script" && "$HOME/a-script" README.md >/dev/null && echo "home script ran"
+            tried binary-reads-outside 'PYTHONHOME={sys.base_prefix} ./a-binary -c "open(\\"{house / "id_ed25519"}\\").read()"'
+            tried script-reads-outside './a-script {shlex.quote(str(house / "id_ed25519"))}'
+            tried script-writes-outside 'printf "#!/bin/sh\\necho x > %s\\n" {shlex.quote(str(house / "planted"))} > w && chmod +x w && ./w'
             """)
-        assert "OPEN " not in out and out.count("shut ") == 12 and "NOT-A-REAL-KEY" not in out and "ran" in out, out
+        assert "OPEN " not in out and out.count("shut ") == 13 and "NOT-A-REAL-KEY" not in out, out
+        assert "binary ran" in out and "script ran" in out and "home script ran" in out and not (house / "planted").exists(), out
         assert outsider.poll() is None and boxed.poll() is None and siblings[0].process.poll() is None
         later = {path for path, _ in confinement.turn.runs_later}
         assert {"a-binary", "a-script"} <= set(confinement.turn.applied) & later, "applied, and named as of the kind that runs later"
@@ -290,6 +426,22 @@ def test_a_hook_and_a_tool_result_from_the_box_start_nothing_outside_it(box):
     assert "armed" in out and "permissionDecision" in out, out
     assert [event for event, _ in box.asked] == ["pre", "stop"], box.asked
     assert not marker.exists(), "nothing the box wrote was run by the launcher"
+
+
+def test_the_box_looks_up_its_user_and_groups_and_reaches_no_other_directory_service_or_resolver(box):
+    """What a test suite asks the system (`getpwuid`, `getgrnam`) answers in the box; the administrative directory service, the keychain and name
+    resolution stay refused."""
+    python = shlex.quote(os.path.realpath(sys.executable))
+    out, _, _ = shelled(box, f"""\
+        {python} -I -c 'import grp, os, pwd; print("user", pwd.getpwuid(os.getuid()).pw_uid, "group", grp.getgrnam("staff").gr_name)'
+        tried directory '/usr/bin/dscl . -list /Users'
+        tried keychain '/usr/bin/security list-keychains'
+        tried keychain-item '/usr/bin/security find-generic-password -s poolhouse-proof'
+        tried resolver '{python} -I -c "import socket; socket.getaddrinfo(\\"localhost.localdomain.invalid\\", 80)"'
+        tried mdns '{python} -I -c "import socket; s = socket.socket(socket.AF_UNIX); s.connect(\\"/private/var/run/mDNSResponder\\")"'
+        """)
+    assert f"user {os.getuid()} group staff" in out, out
+    assert "OPEN " not in out and out.count("shut ") == 5, out
 
 
 def test_what_the_box_has_of_the_systems_programs(box):

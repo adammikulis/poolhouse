@@ -163,7 +163,7 @@ def test_the_check_the_repository_requires_is_the_job_that_waits_for_every_shard
     job = workflows.CI["jobs"]["test"]
     assert required == [job["name"]]
     assert job["needs"] == "shards"
-    assert job["if"] == "always() && (github.event_name != 'push' || github.ref == 'refs/heads/main')"
+    assert job["if"] == f"always() && ({shards_job()['if']})", "it reports wherever the shards run, and is skipped with them"
     assert 'needs.shards.result }}" = "success"' in job["steps"][0]["run"]
 
 

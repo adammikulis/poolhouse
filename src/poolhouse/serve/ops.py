@@ -17,16 +17,18 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, hub, limits as limits_mod
+from poolhouse import caller, home, hub, limits as limits_mod
 from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.counters import Speculative, read_speculative
 from poolhouse.client.health import serving_params
 from poolhouse.fleet.serving import Serving
 from poolhouse.log import warn
+from poolhouse.ownership import lease_file, recorded_servers
 from poolhouse.serve import (
     broker_wire,
     chat_template as chat_template_mod,
     fit as fit_mod,
+    inuse,
     kvcache,
     measuring as measuring_mod,
     preflight as preflight_mod,
@@ -42,7 +44,7 @@ from poolhouse.serve.backend import (
 )
 from poolhouse.serve.binary import BinaryNotFound
 from poolhouse.serve.fitted import fitted
-from poolhouse.serve.leases import lease_file, orphaned, recorded_servers
+from poolhouse.serve.leases import orphaned
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.mlx_tree import report_for
 from poolhouse.serve.mlxref import is_mlx
@@ -717,6 +719,9 @@ def down(port: int, *, root: str | Path | None = None) -> tuple[Stopped, str]:
                       "stop it.", "  stop it the way it was started.")
     owner = _int_or_none(entry.get("owner_pid"))
     pid = _int_or_none(entry.get("pid"))
+    # a person's `down` stops the server; an agent's never takes one from under whoever holds it
+    if caller.marked() and (used := inuse.held_by(port, entry, lease_file())):
+        raise Refused(f"{url} is left running: {used}.", "  it stops once they let go.")
     if owner is not None and owner == broker_wire.running():
         broker_wire.stop(port, force=True)
         return Stopped(port, url, pid, pid_exists(pid), owner), withdraw(root, port)
@@ -734,7 +739,8 @@ def down(port: int, *, root: str | Path | None = None) -> tuple[Stopped, str]:
 def orphans(*, root: str | Path | None = None) -> list[tuple[Stopped, str]]:
     """Stop every recorded server whose leasing process has gone; leave every other."""
     records = recorded_servers(lease_file())
-    found = [(port, entry) for port, entry in sorted(records.items()) if orphaned(entry)]
+    found = [(port, entry) for port, entry in sorted(records.items())
+             if orphaned(entry) and not inuse.why_in_use(port, entry, lease_file())]
     manager = ServerManager(state_file=lease_file())
     out = []
     for port, entry in found:

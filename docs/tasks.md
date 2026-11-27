@@ -102,6 +102,10 @@ full patch that the independent review accepted. It merges unchanged source into
 candidate worktree, runs the maintained quick, structural and serving-security gates,
 then fast-forwards the checked-out development branch. Local integration is the default;
 publication requires an explicitly authorized `publish=True` request.
+Where GitHub's rules on the development branch take work only by pull request, publishing does not push it or move the
+checkout: it pushes the candidate branch, opens the pull request with an `Author-agent` line for the worker and reports the
+integration `blocked` with its address. Once the pull request is merged, the same request fast-forwards the checkout to
+origin's development branch and cleans up.
 Before preparing a candidate and before landing, it fetches and refuses a stale or divergent
 remote baseline. A repository lock serializes integration. Clean-tree checks reject unfinished
 merges and uncommitted changes. It removes the landed task and candidate worktrees and their

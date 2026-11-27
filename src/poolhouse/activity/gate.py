@@ -45,17 +45,32 @@ def _seed_index(root: Path, index: Path) -> None:
 
 def tree_hash(root: Path) -> str:
     """The git tree hash of everything in ``root`` that is not ignored, working tree
-    included, computed in a throwaway copy of the index; empty when ``root`` is not a git checkout."""
+    included, computed in a throwaway copy of the index; empty when ``root`` is not a git checkout. A checkout whose object store this
+    process cannot write (a coding box reads `.git` and writes nothing in it) is hashed into a throwaway store beside the copy."""
     with tempfile.TemporaryDirectory() as scratch:
         index = Path(scratch) / "index"
         _seed_index(root, index)
         env = {**os.environ, "GIT_INDEX_FILE": str(index)}
-        for step in (["add", "-A"], ["write-tree"]):
-            done = subprocess.run(["git", "-C", str(root), *step], env=env, capture_output=True,
-                                  text=True, check=False)
-            if done.returncode:
-                return ""
-        return done.stdout.strip()
+        return _written(root, env) or _written(root, {**env, **_own_store(root, Path(scratch) / "objects")})
+
+
+def _own_store(root: Path, store: Path) -> dict[str, str]:
+    """The environment that has git write new objects into ``store`` and read the checkout's own; empty when ``root`` has none."""
+    done = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-path", "objects"],
+                          capture_output=True, text=True, check=False)
+    if done.returncode:
+        return {}
+    store.mkdir(exist_ok=True)
+    return {"GIT_OBJECT_DIRECTORY": str(store), "GIT_ALTERNATE_OBJECT_DIRECTORIES": done.stdout.strip()}
+
+
+def _written(root: Path, env: dict[str, str]) -> str:
+    """The tree of the working copy as git writes it under ``env``; empty when it cannot."""
+    for step in (["add", "-A"], ["write-tree"]):
+        done = subprocess.run(["git", "-C", str(root), *step], env=env, capture_output=True, text=True, check=False)
+        if done.returncode:
+            return ""
+    return done.stdout.strip()
 
 
 def read_counts(junit: Path) -> dict[str, int]:

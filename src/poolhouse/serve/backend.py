@@ -19,16 +19,15 @@ from typing import Any
 
 from poolhouse import errors, home, serverkeys
 from poolhouse.client import families, wait_for_health
+from poolhouse.ownership import listens_on, recorded_servers
 from poolhouse.platform import end_child, process_group_kwargs
 from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, startup
 from poolhouse.serve.binary import child_env, require_binary, vetted
 from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
-from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.logs import prune, tail
 from poolhouse.serve.policy import Policy, default as default_policy
 from poolhouse.serve.ports import DEFAULT_HOST, port_is_free, reclaim_port
-from poolhouse.serve.process import listens_on
 
 logger = logging.getLogger(__name__)
 
@@ -795,12 +794,11 @@ class LlamaServerBackend(ServerBackend):
             if not model.is_file():
                 raise ServerFailed(f"no model file at {model}")
 
+        claim_port(spec, lease)   # before a key is issued: a start on a port a keyed server holds must leave that server's key
         spec = replace(spec, api_key=serverkeys.issue(spec.port))
         argv = self.command(spec)
         if starting.get("check_flags", True):
             argv = self.checked(argv)
-
-        claim_port(spec, lease)
 
         if starting.get("preflight", True):
             from poolhouse.hub import room

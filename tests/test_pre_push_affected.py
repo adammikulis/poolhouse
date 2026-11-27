@@ -182,7 +182,7 @@ def test_a_push_of_a_commit_that_is_not_checked_out_is_refused_with_the_command_
     commit(repo, "src/poolhouse/mod.py", "VALUE = 1\nMORE = 8\n")
     done = landing(repo, tmp_path / "log", tip=older)
     assert done.returncode != 0
-    assert "git push origin HEAD:refs/heads/0.9dev" in done.stderr
+    assert "git push origin HEAD\n" in done.stderr and "refs/heads/0.9dev" not in done.stderr
 
 
 def test_a_path_no_rule_can_place_runs_the_guards_and_says_so(repo, tmp_path):

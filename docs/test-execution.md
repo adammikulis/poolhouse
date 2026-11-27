@@ -22,7 +22,7 @@ Every checkout shares the same admission broker.
 
 Agents run affected tests for their own changes: explicit file selectors, any number of them. The main agent
 coordinates shared structural and security gates once per consolidated integration batch before publication.
-The full suite is GitHub's job: the `ci` workflow runs it on pull requests, on `main` and nightly (a development push runs only the `gates` job), and an agent never runs one.
+The full suite is GitHub's job: the `ci` workflow runs it on pull requests into `main`, on `main` and nightly (docs/landing.md, "The CI run"), and an agent never runs one.
 For an agent (`CLAUDECODE`, `POOLHOUSE_AGENT`, `POOLHOUSE_NONINTERACTIVE` or a Codex session set) `scripts/test`
 refuses, before anything is queued, the `fast`, `full`, `slow` and `all` tiers that name no test file, and any run that names
 every test file (directories count as the test files under them); the broker (`scripts/testslots_runner.py`) admits no agent

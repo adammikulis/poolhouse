@@ -43,6 +43,7 @@ KINDS: dict[str, str] = {
     "security.*": "every sentinel event: keystore operations, quarantines, releases",
     "reputation.*": "a source's standing changed",
     "model.lease": "a model server was started for someone (model, quant, flags, GPU share)",
+    "model.stop": "a model server was stopped or replaced: who asked and why",
     "net.download": "a download or pull (host, size, hash, outcome)",
     "runtime.deploy": "a runtime ensure or rollback and its result (commit, command, agent, whether a person ran it)",
     "bench.run": "a bench, jevbench or decide run (command, model, build, result summary, path)",

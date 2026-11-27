@@ -350,6 +350,18 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
 - **The stage's `.git` is read-only** (`profile.GIT_DIRECTORY`, a frozen name like the control names, with every ancestor): the
   launcher reads its index after the run, so the box cannot write, remove, rename, link or redirect it. `git status` and
   `git diff` work; a commit fails.
+- **The session's own programs** (macOS): an editing session executes what lies in its writable stage and agent home, so a project's
+  `scripts/test`, a script it wrote and a program it built run. It already ran them through a shell or an interpreter in the same box, so
+  no file, network or process becomes reachable; a `read-only` or plan stage is executed from neither.
+- **User and group lookups** (macOS): the profile allows one lookup service (`com.apple.system.opendirectoryd.libinfo`), so `getpwuid`
+  and `getgrnam` answer as they do for any program of this account: names, ids and home folders, no password and no other directory
+  service, keychain or name resolver.
+- **A window of loopback ports** (macOS, writable stage). VERIFIED on 25G70: Seatbelt's `localhost` matches the wildcard and the machine's
+  network address, so a rule that lets a box bind a port lets it listen to the network (OpenCode's own `Rendering.listen` port is such a rule:
+  an open item). The window therefore grants no bind. The launcher picks 128 ports of 41000 to 48999 that no socket holds, claims the block
+  with a file lock, allows TCP to them and serving on them (`Net.accept`), refuses every bind of them, and serves a Unix socket on which it binds
+  `127.0.0.1` or `::1` and passes the socket back (`isolation/ports.py`; `loopback_window.py`, the box's `sitecustomize.py`). UDP stays refused.
+  What remains: a process outside that starts to listen on a port of a live window can be reached by that box over loopback.
 - **The project's environments** (`.venv`, `venv`, `node_modules`) are linked into the stage and granted read and exec by their
   real paths (`Spec.environments`), never write, and their programs are on `PATH`. The link is not a change of the session; a link
   the session replaced is reported as any other file. Each folder passes the credential walk of a read grant
@@ -1241,6 +1253,7 @@ sentences are the host facts of the exception recorded in "Zero friction":
 | Interactive mode before L6 | "Interactive mode is not available yet; run it with its print option, for example `poolhouse-claude -- -p 'your request'`." |
 | A service did not start | "The coding agent's helper (`name`) could not start, so the agent was not started." |
 | The proof failed | "Poolhouse could not confirm that the safety box holds on this computer (it allowed `attempt`), so the coding agent was not started." |
+| The proof was not answered | "Poolhouse could not confirm that the safety box holds on this computer (its check `attempt` did not answer in time: the computer may be very busy), so the coding agent was not started." |
 
 ## 10. The proof: the launcher shows the confinement holds, every launch
 
@@ -1279,14 +1292,15 @@ and a marker variable in its own environment set before the probe starts.
 | P19 | read its own environment | exactly the allow-list; no marker | G8 |
 | P20 | write and read back a file in the stage and in the agent home; run `--version` of each granted toolchain; `GET /health` through the model bridge; `GET /props` through it; a request with another model | succeed, succeed, succeed, 200, 404, refused | controls |
 | P21 | connect to the session bridge and send an unknown frame | well-formed refusal | controls |
-| P22 | the parent reads the serial number, hardware UUID, provisioning UDID, machine id and network hardware addresses itself; the probe runs `system_profiler SPHardwareDataType` and `ioreg -rd1 -c IOPlatformExpertDevice`, reads `/sys/class/dmi/id/*`, `/etc/machine-id`, `/var/lib/dbus/machine-id` and `/sys/class/net/*/address` (on Windows the machine GUID and the SMBIOS table) and returns what it obtained; the parent searches that for the values | none found; the record says "absent" and never holds a value | G13 |
+| P22 | the parent reads the serial number, hardware UUID, provisioning UDID, machine id and network hardware addresses itself; the probe runs `system_profiler SPHardwareDataType` and `ioreg -rd1 -c IOPlatformExpertDevice`, reads `/sys/class/dmi/id/*`, `/etc/machine-id`, `/var/lib/dbus/machine-id` and `/sys/class/net/*/address` (on Windows the machine GUID and the SMBIOS table) and returns what it obtained; the parent searches that for the values. Inside the box `system_profiler` waits over five seconds for services it is refused and then prints nothing, so it is given 2 s and what it has printed by then is searched; every other command is waited for | none found; the record says "absent" and never holds a value | G13 |
 | P23 | try every sysctl name the machine has (macOS) and every candidate file of the platform's exposure list; report what could be read | the readable set lies inside the declared exposures (5.7) and the controls of P20 | exposures |
 | P24 | call `caller.refuse_agent` and the launcher's grant control with the marker environment empty and a terminal on both ends forced true, then feed the terminal the text `yes` | `AgentRefused` at once with the reason; the grant is refused and the text changes no decision | I17 (3.5) |
 
 A control that fails is a deviation too, so a profile that refuses everything cannot pass. An attempt the platform cannot make
 (no scheduler to submit to) is not skipped: the probe reports "cannot attempt", and a guarantee whose attempts cannot be made is
-`unenforceable` in the report, so the launch refuses. The probe finishes inside the launch budget (17), which its 24 attempts share; an attempt that has not
-answered when the budget is spent is a deviation, not a retry.
+`unenforceable` in the report, so the launch refuses. The probe is expected to finish inside the launch budget (17), which its 24 attempts share, and is
+waited for up to 180 s, so a busy computer still starts its agent. An attempt not answered by then shows nothing either way: the launch stops
+saying it did not answer in time. An attempt that answered and showed more than the profile allows is reported as allowed.
 
 ### 10.2 What a deviation does
 
@@ -1509,7 +1523,7 @@ claims in it are code reads, marked NOT RUN. Findings are fixed or named as acce
 | A23 | reach any loopback service other than the bridge: the node socket, the broker, the approval UI | only the bridge port is in the profile (VERIFIED); the model server's port is in none | `no_loopback_port_but_the_bridges_is_reachable` |
 | A24 | LAN, internet, IPv6, UDP, DNS, raw sockets | refused (VERIFIED) | the same |
 | A25 | `docker.sock`, `ssh-agent`, D-Bus, X11, `tmux`, abstract sockets | refused (VERIFIED on macOS; host paths absent on Linux) | `no_unix_or_abstract_socket_but_the_session_bridge_connects` |
-| A26 | bind a listener to expose the stage or take a reverse shell | bind refused (VERIFIED) | `no_loopback_port_but_the_bridges_is_reachable` |
+| A26 | bind a listener to expose the stage or take a reverse shell | bind refused (VERIFIED); a macOS window port is bound by the launcher on loopback alone | `no_loopback_port_but_the_bridges_is_reachable` |
 | A27 | bridge abuse: unknown routes, request smuggling, absolute-form targets, pipelining, slow bodies, oversize bodies, a different model, header injection | 6.1 | `the_model_bridge_serves_only_its_routes_and_pins_the_model` |
 | A28 | egress proxy abuse after a grant: SSRF to private ranges, DNS rebinding, CONNECT to other ports, wildcards, IP literals, redirects | 6.3 | `the_egress_proxy_refuses_private_ranges_rebinding_ports_wildcards_and_literals` |
 | A29 | use the model server as a deputy: tool routes, slot save, adapters, the server's key | the server's port is unreachable; the bridge allows five routes and strips two fields; the key stays in the parent | `the_model_bridge_serves_only_its_routes_and_pins_the_model` |

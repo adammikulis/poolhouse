@@ -184,7 +184,7 @@ python scripts/test all tests/<affected-file>.py -n 1
 Agents test their own changes through `scripts/test`, which defaults to one worker and uses
 shared broker admission. Explicit `-n 0` requests an automatic pool; explicit worker ceilings
 remain effective. The main agent runs shared structural/security gates once per consolidated
-integration batch before publication. The full suite runs on GitHub for pull requests, `main` and nightly (a development push runs only the `gates` job); an agent never runs it.
+integration batch before publication. The full suite runs on GitHub for pull requests into `main`, `main` and nightly (docs/landing.md, "The CI run"); an agent never runs it.
 
 | tier | what it runs | about |
 |---|---|---|
@@ -278,10 +278,3 @@ A test that needs a model's HTTP server and tests no model behaviour (ports, que
 must parse); the header, the model id and the metadata stay. The `model-replies` gate refuses a model-shaped reply
 built anywhere else under `tests/`, and `scripts/gates/model_replies.txt` lists the files that still build them and
 only shrinks.
-
-## Commit history by type
-
-`python3 scripts/commit_types_chart.py [--branch 0.2dev] [--bucket day|week|month] [--out commit-types.png]`
-draws the share of each commit type (feat, fix, chore, and the rest) over time as a 100% stacked
-area chart from `git log`, with no network. It writes the PNG to the current directory by default.
-Needs the `plot` extra (matplotlib).

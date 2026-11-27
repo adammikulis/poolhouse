@@ -37,6 +37,11 @@ class Spec:
     environments: tuple[str, ...] = ()
     """The real paths of the project's environment folders the stage links (`workspace.environment_links`): read, run and on ``PATH``, never
     written."""
+    window: tuple[int, ...] = ()
+    """Loopback ports a program of the session may serve on and reach, each bound for it by the launcher (`isolation.ports`); never one the box
+    binds itself."""
+    window_socket: str = ""
+    """The Unix socket on which the launcher hands those ports over."""
 
     @property
     def read_only_stage(self) -> bool:

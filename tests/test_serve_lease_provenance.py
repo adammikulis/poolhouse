@@ -16,10 +16,10 @@ from pathlib import Path
 import pytest
 
 from poolhouse import hub
+from poolhouse.ownership import lease_file
 from poolhouse.serve import cli, holding, lease_cli, lease_history, ops, provenance
 from poolhouse.serve.backend import LlamaServerBackend
 from poolhouse.serve.broker import Ask, Broker
-from poolhouse.serve.leases import lease_file
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.testing.canned import canned_binary

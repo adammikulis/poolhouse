@@ -23,10 +23,11 @@ from poolhouse import leasetable
 from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.health import refuses_key, serving_params
 from poolhouse.node_health import Refused
-from poolhouse.serve import admission, ledger, node_memory, unmanaged
+from poolhouse.ownership import recorded_servers
+from poolhouse.serve import admission, inuse, ledger, node_memory, unmanaged
 from poolhouse.serve.backend import Lease, ServerBackend, ServerInfo, ServerSpec
 from poolhouse.serve.events import Event, emit
-from poolhouse.serve.leases import merge_state, orphaned, recorded_servers
+from poolhouse.serve.leases import merge_state, orphaned
 from poolhouse.serve.matching import model_matches, serving_mismatch
 from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.process import kill_process_tree
@@ -144,9 +145,10 @@ class Admitting:
         """Stop every server whose leasing process has gone; whether any was."""
         stopped = False
         for port, entry in records.items():
-            if orphaned(entry):
+            if orphaned(entry) and not inuse.why_in_use(port, entry, self.state_file):
                 told(f"port {port}: stopping the server (pid {entry['pid']}) left running "
                      f"by pid {entry['owner_pid']}, which has exited")
+                inuse.stopped(port, entry["pid"], f"nothing uses it, pid {entry['owner_pid']} that leased it has exited and its memory is wanted")
                 kill_process_tree(int(entry["pid"]))
                 stopped = True
         if stopped:

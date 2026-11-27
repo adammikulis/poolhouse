@@ -73,7 +73,7 @@ remembered. The commands below are the surface of that.
 From a shell:
 
 ```
-poolhouse-serve up Qwen3.8-27B-UD-Q4_K_XL.gguf --context 256k --kv q8_0
+poolhouse-serve up Qwen3.8-27B-UD-Q3_K_XL.gguf --context 256k --kv q8_0
 poolhouse-serve up hf:unsloth/gemma-4-E4B-it-qat-GGUF/gemma-4-E4B-it-qat-Q4_K_M.gguf
 poolhouse-serve status
 poolhouse-serve down Qwen3.8-27B
@@ -134,7 +134,11 @@ servers, `--json` gives a script the same, and it exits non-zero when nothing is
 `down [LEASE|PORT|MODEL]` releases the lease; the server is stopped only when no other
 lease uses it, and says when one still does. `--idle 10m` (default: `poolhouse-serve limits
 --idle`, else held until `down`) releases the lease once the server has been unused that
-long. `poolhouse-claude`, `poolhouse-agent` and `agent start` take their servers through the
+long. A server is stopped or replaced only when nothing is shown to use it: no record names a
+live holder, no request is on it, and what cannot be read counts as use. `down PORT` run by a
+person stops it; run by an agent, a server others hold is left running. Every stop is written
+to the activity log with who asked and why: `poolhouse-log tail --kind model.stop`.
+`poolhouse-claude`, `poolhouse-agent` and `agent start` take their servers through the
 same broker. The low-level start (`ServerManager`, `LlamaServerBackend.start`) needs a
 `Lease`, and a `Lease` cannot be made outside the broker's grant (`poolhouse.serve.grant`):
 calling it by hand raises `NoGrant`. `tests/test_serve_no_bypass.py`, the hard

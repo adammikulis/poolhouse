@@ -27,6 +27,11 @@ class Route:
     ranges: bool = False
     shift: int = 0
     drip_s: float = 0.0
+    drip_head_s: float = 0.0
+    hang_at: int | None = None
+    hang_s: float = 0.0
+    raw: tuple[bytes, bytes] | None = None
+    """An answer written as is: its start, then the second part over and over for five seconds."""
     endless: bool = False
     seen: list[dict[str, str]] = field(default_factory=list)
 
@@ -72,7 +77,32 @@ class Site:
     def redirect(self, path: str, to: str, status: int = 302) -> Route:
         return self.add(path, b"", status=status, headers={"Location": to})
 
+    def repeat(self, h: BaseHTTPRequestHandler, start: bytes, again: bytes) -> None:
+        h.close_connection = True
+        try:
+            h.wfile.write(start)
+            until = time.monotonic() + 5
+            while time.monotonic() < until:
+                h.wfile.write(again)
+                h.wfile.flush()
+                time.sleep(0.02)
+        except OSError:
+            return
+
     def answer(self, h: BaseHTTPRequestHandler, route: Route) -> None:
+        if route.raw:
+            self.repeat(h, *route.raw)
+            return
+        if route.drip_head_s:
+            try:
+                for byte in b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nX-Slow: " + b"x" * 60 + b"\r\n\r\n":
+                    h.wfile.write(bytes([byte]))
+                    h.wfile.flush()
+                    time.sleep(route.drip_head_s)
+            except OSError:
+                pass
+            h.close_connection = True
+            return
         body, status = route.body, route.status
         headers = dict(route.headers)
         start = 0
@@ -100,7 +130,12 @@ class Site:
         h.end_headers()
         sent = body if route.cut_at is None else body[:route.cut_at]
         try:
-            if route.drip_s:
+            if route.hang_at is not None and len(route.seen) == 1:
+                h.wfile.write(sent[:route.hang_at])
+                h.wfile.flush()
+                time.sleep(route.hang_s)
+                h.close_connection = True
+            elif route.drip_s:
                 for byte in range(len(sent)):
                     h.wfile.write(sent[byte:byte + 1])
                     h.wfile.flush()

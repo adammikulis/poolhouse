@@ -9,7 +9,7 @@ import time
 
 import psutil
 
-from poolhouse import procscan
+from poolhouse import loopback_window, procscan
 from poolhouse.serve.process import kill_pid, pid_exists
 
 logger = logging.getLogger(__name__)
@@ -35,9 +35,9 @@ def port_is_free(port: int, host: str = DEFAULT_HOST) -> bool:
 
 
 def free_port(host: str = DEFAULT_HOST) -> int:
-    """Ask the OS for an unused port. For tests and ephemeral servers."""
+    """Ask the OS for an unused port, or in a box the launcher for one of its window (`loopback_window`). For tests and ephemeral servers."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind((host, 0))
+        loopback_window.bind(sock, (host, 0), type(sock).bind)
         return int(sock.getsockname()[1])
 
 

@@ -75,6 +75,20 @@ if [ -n "$GH_NOAUTH" ]; then
     echo "gh: To get started with GitHub CLI, please run:  gh auth login" >&2; exit 4
 fi
 if [ "$1" = repo ]; then echo "$GH_REPO"; exit 0; fi
+if [ "$1" = pr ]; then
+    if [ "$2" = view ]; then
+        printf 'GET pr/%s\\n' "$3" >> "$GH_LOG"
+        [ -f "$GH_REPLIES/pr_$3.json" ] && { cat "$GH_REPLIES/pr_$3.json"; exit 0; }
+    elif [ "$2" = create ]; then
+        printf 'CREATE pr %s\\n' "$(printf '%s ' "$@" | tr '\\n' ' ')" >> "$GH_LOG"
+        echo "https://github.com/$GH_REPO/pull/7"; exit 0
+    else
+        printf 'COMMENT pr/%s %s\\n' "$3" "$(tr '\\n' ' ')" >> "$GH_LOG"
+        case " $GH_FAIL " in *" pr/$3 "*) echo "gh: HTTP 422" >&2; exit 1;; esac
+        exit 0
+    fi
+    echo "gh: Not Found (HTTP 404)" >&2; exit 1
+fi
 printf 'GET %s\\n' "$2" >> "$GH_LOG"
 name=$(printf '%s' "$2" | tr '/' '_')
 if [ -f "$GH_REPLIES/$name.json" ]; then
@@ -113,6 +127,23 @@ def serve(tmp_path, monkeypatch, replies, fail="", headers=None):
     monkeypatch.setenv("GH_NOAUTH", "")
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
     return log
+
+
+def pull(tmp_path, number, head, base, **found):
+    """After `serve`: what `gh pr view NUMBER` answers (canned). ``found`` may hold ``review``, the state of the `lead-review`
+    commit status on ``head``; ``check_run``, the conclusion of a workflow job of the same name, which is not that status;
+    ``author_agent``, ``state`` and ``bot``."""
+    review, check_run, author_agent = (found.get(key, "") for key in ("review", "check_run", "author_agent"))
+    rollup = [{"__typename": "CheckRun", "name": "gates", "conclusion": "SUCCESS"}]
+    if review:
+        rollup.append({"__typename": "StatusContext", "context": "lead-review", "state": review})
+    if check_run:
+        rollup.append({"__typename": "CheckRun", "name": "lead-review", "conclusion": check_run})
+    body = "A change.\n" + (f"\nAuthor-agent: {author_agent}\n" if author_agent else "")
+    reply = {"number": number, "state": found.get("state", "OPEN"), "baseRefName": base, "headRefName": "work/change",
+             "headRefOid": head, "body": body, "author": {"login": "someone", "is_bot": found.get("bot", False)},
+             "statusCheckRollup": rollup}
+    (tmp_path / "replies" / f"pr_{number}.json").write_text(json.dumps(reply))
 
 
 def sign_out(monkeypatch):

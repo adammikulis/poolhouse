@@ -15,6 +15,7 @@ from pathlib import Path
 
 import srcpath  # noqa: F401
 
+from poolhouse import sandbox
 from poolhouse.lock import release, take
 
 ALPHA = 0.3
@@ -90,20 +91,25 @@ def _locked(path: Path):
 
 def merge(path: Path, root: Path, samples: dict[str, tuple[float, float]],
           collected: dict[str, set[str]] | None = None) -> None:
-    """Merge (cpu, wall) samples into the store atomically; drop tests whose file is gone or no longer defines them."""
-    with _locked(path):
-        tests = load(path)
-        for node, (cpu, wall) in samples.items():
-            tests[node] = update(tests.get(node), cpu, wall)
-        gone = {node for node in tests if not (root / node.split("::", 1)[0]).exists()}
-        for file, ids in (collected or {}).items():
-            gone |= {node for node in tests if node.split("::", 1)[0] == file and node not in ids}
-        for node in gone:
-            del tests[node]
-        descriptor, name = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-        with os.fdopen(descriptor, "w") as stream:
-            json.dump({"version": 1, "updated": time.time(), "tests": tests}, stream)
-        Path(name).replace(path)
+    """Merge (cpu, wall) samples into the store atomically; drop tests whose file is gone or no longer defines them. Nothing is recorded where
+    the store cannot be written (a coding box reads `.git`): durations only order and estimate runs, and a run is not failed for them."""
+    try:
+        with _locked(path):
+            tests = load(path)
+            for node, (cpu, wall) in samples.items():
+                tests[node] = update(tests.get(node), cpu, wall)
+            gone = {node for node in tests if not (root / node.split("::", 1)[0]).exists()}
+            for file, ids in (collected or {}).items():
+                gone |= {node for node in tests if node.split("::", 1)[0] == file and node not in ids}
+            for node in gone:
+                del tests[node]
+            descriptor, name = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+            with os.fdopen(descriptor, "w") as stream:
+                json.dump({"version": 1, "updated": time.time(), "tests": tests}, stream)
+            Path(name).replace(path)
+    except PermissionError:
+        if not sandbox.confined():
+            raise
 
 
 @dataclass

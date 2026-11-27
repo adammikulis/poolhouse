@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from poolhouse import bench, home, hub, ingest, jobs, limits
-from poolhouse.serve import binary, build, leases, reclaim
+from poolhouse import bench, home, hub, ingest, jobs, limits, ownership
+from poolhouse.serve import binary, build, reclaim
 
 
 class TestTheStateRoot:
@@ -95,7 +95,7 @@ class TestOneVariableMovesEveryPathTheProjectWrites:
             "hub cache": hub.hub_cache(),
             "limits": limits.where(),
             "idle": reclaim.state_path(),
-            "lease": leases.lease_file(),
+            "lease": ownership.lease_file(),
             "jobs": jobs.home_dir(),
             "bench": bench.home_dir(),
             "ingest": ingest.home_dir(),

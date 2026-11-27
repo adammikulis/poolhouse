@@ -1,6 +1,7 @@
 """Bounded argv-only Git operations for reviewed development integration."""
 
 import hashlib
+import json
 import os
 import re
 import subprocess
@@ -117,6 +118,40 @@ def remote_baseline(root: Path, branch: str, baseline: str) -> None:
     remote = git(root, 'rev-parse', 'FETCH_HEAD')
     if not ancestor(root, remote, baseline):
         raise Denied('development moved remotely; reconcile the latest remote before integration')
+
+
+def _gh(root: Path, *arguments: str) -> str:
+    result = subprocess.run(['gh', *arguments], cwd=root, capture_output=True, text=True, check=False, timeout=60)
+    if result.returncode:
+        raise RuntimeError(f'gh {arguments[0]} failed (exit {result.returncode}): {redact(result.stderr)[-2000:]}')
+    return result.stdout.strip()
+
+
+def requires_pull_request(root: Path, branch: str) -> bool:
+    """Whether GitHub's rules on ``branch`` of origin take work only by pull request. False when origin is not on GitHub or its
+    rules cannot be read: a push the server then refuses blocks the integration with the server's reason."""
+    if 'origin' not in git(root, 'remote').splitlines() or 'github.com' not in git(root, 'config', '--get', 'remote.origin.url'):
+        return False
+    try:
+        rules = json.loads(_gh(root, 'api', 'repos/{owner}/{repo}/rules/branches/' + branch))
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
+        return False
+    return isinstance(rules, list) and any(isinstance(rule, dict) and rule.get('type') == 'pull_request' for rule in rules)
+
+
+def open_pull_request(root: Path, tip: str, head: str, base: str, body: str) -> str:
+    """Push ``tip`` to origin as the branch ``head`` and open its pull request into ``base``; the pull request's address."""
+    git(root, 'push', 'origin', f'{tip}:refs/heads/{head}')
+    title = git(root, 'log', '-1', '--no-merges', '--format=%s', tip)
+    return _gh(root, 'pr', 'create', '--base', base, '--head', head, '--title', title, '--body', body).splitlines()[-1]
+
+
+def published(root: Path, branch: str, commit: str) -> bool:
+    """Whether origin's ``branch``, freshly fetched, contains ``commit``; the fetched tip is left in FETCH_HEAD."""
+    if 'origin' not in git(root, 'remote').splitlines():
+        return False
+    git(root, 'fetch', 'origin', branch)
+    return ancestor(root, commit, 'FETCH_HEAD')
 
 
 def remove_merged(primary: Path, path: Path, branch: str, landed: str, *, lock_reason: str = '') -> None:

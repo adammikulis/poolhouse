@@ -82,12 +82,10 @@ def test_dropping_the_marker_variable_does_not_make_an_agent_a_terminal_of_your_
     _, state, repo = world
     assert push(repo, state, release(repo)).returncode == 0, "nothing recorded: nothing above this process is a harness"
     assert bind(state).returncode == 0
-    for text in (release(repo), tag(repo), line(tip(repo), ZERO, "work")):
+    for text in (release(repo), tag(repo)):
         done = push(repo, state, text)
         assert done.returncode != 0 and "pre-push: refused:" in done.stderr, text
-    held = tip(repo, "HEAD")
-    commit(repo, "README.md")
-    assert push(repo, state, line(tip(repo, "HEAD"), held, "0.9dev")).returncode == 0, "the development branch stays open"
+    assert push(repo, state, line(tip(repo), ZERO, "work")).returncode == 0, "a work branch is pushed to open its pull request"
 
 
 def test_the_pre_push_hook_asks_the_ancestry_check_and_nothing_else_about_who_pushes():

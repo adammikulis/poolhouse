@@ -17,6 +17,7 @@ from pathlib import Path
 
 import psutil
 import pytest
+from machine_guard import stop_started
 
 from poolhouse.serve import LlamaServerBackend, ServerManager
 from poolhouse.serve.broker import Ask, Broker, BrokerError
@@ -274,7 +275,8 @@ def test_a_broker_that_took_over_from_one_that_handed_over_owns_the_server_its_h
         broker, models, holders, llama_binary, tmp_path):
     """The broker that leased a server may be gone (it handed over to newer code); a server with a live holder is the
     successor's, not an orphan the next start would stop."""
-    from poolhouse.serve.leases import orphaned, recorded_servers
+    from poolhouse.ownership import recorded_servers
+    from poolhouse.serve.leases import orphaned
 
     a = holders()
     first = broker.lease(ask(models[0], a.pid), timeout=30)
@@ -441,9 +443,7 @@ def test_processes_lease_through_the_broker_they_start(tmp_path, llama_binary, m
             proc.kill()
             proc.wait(timeout=10)
         record = json.loads(broker_wire.record_path().read_text())
-        for server in broker_wire.status()["servers"]:
-            if server["pid"]:
-                kill_process_tree(server["pid"])
+        stop_started(broker_wire.status()["servers"])
         kill_process_tree(record["pid"])
 
 
@@ -640,7 +640,5 @@ def test_paused_vision_child_releases_its_broker_model_lease(tmp_path, llama_bin
         path = broker_wire.record_path()
         if path.exists():
             record = json.loads(path.read_text())
-            for server in broker_wire.status()['servers']:
-                if server['pid']:
-                    kill_process_tree(server['pid'])
+            stop_started(broker_wire.status()['servers'])
             kill_process_tree(record['pid'])

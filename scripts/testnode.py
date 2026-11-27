@@ -32,6 +32,8 @@ from poolhouse.lock import only_one
 from poolhouse.redact.secrets import env_secrets, redact
 
 ENV = "DEV_TEST_NODE_BINARY"
+UNBUILT = "DEV_TEST_NODE_UNBUILT"
+"""Why a run inside a coding box has no node binary: the tests that start one skip with these words."""
 """Output of the runner, input of the node fixture: the binary this run's tests start."""
 FOLDER = "test-node"
 CARGO_FOLDER = "test-cargo"

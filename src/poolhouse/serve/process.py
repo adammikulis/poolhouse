@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import logging
 import math
@@ -153,21 +152,6 @@ def owns_connection(pid: int, local: tuple, remote: tuple) -> bool:
         return False
 
 
-def listens_on(pid: int | None, port: int) -> bool:
-    """Whether the process ``pid`` (or one of its children, for a sandbox wrapper) is alive and listens on ``port``.
-
-    The check made before a key is sent to whatever answers on a port a server was started for."""
-    if not pid:
-        return False
-    try:
-        parent = psutil.Process(pid)
-        found = [parent, *parent.children(recursive=True)]
-        return any(c.status == psutil.CONN_LISTEN and c.laddr and c.laddr.port == port
-                   for one in found for c in one.net_connections(kind="inet"))
-    except (psutil.Error, TypeError):
-        return False
-
-
 def request_on(pid: int, port: int, *, samples: int = 5, apart_s: float = 0.2) -> bool | None:
     """Whether a connection to ``port`` of the server ``pid`` (or of one of its children) stays open over ``samples`` looks, which a request
     in progress does and a probe just answered does not; None when its sockets cannot be read."""
@@ -183,17 +167,6 @@ def request_on(pid: int, port: int, *, samples: int = 5, apart_s: float = 0.2) -
         except (psutil.Error, OSError):
             return None
     return True
-
-
-def cmdline_digest(pid: int | None) -> str | None:
-    """A digest of ``pid``'s command line, or None when it is not running or will not say."""
-    if not pid_exists(pid):
-        return None
-    try:
-        argv = psutil.Process(pid).cmdline()
-    except psutil.Error:
-        return None
-    return hashlib.sha256("\0".join(argv).encode("utf-8", "replace")).hexdigest() if argv else None
 
 
 def self_or_ancestor(pid: int | None) -> bool:
@@ -312,6 +285,7 @@ def every_server() -> list[dict]:
                     "draft": after("--spec-draft-model", "-md") or after("--model-draft")
                              or after("-hfd"),
                     "spec_type": after("--spec-type"),
+                    "key_file": after("--api-key-file"),
                     "n_gpu_layers": offloaded_layers(argv),
                     "draft_max": int(ahead) if ahead.isdigit() else None,
                     "rss": rss})

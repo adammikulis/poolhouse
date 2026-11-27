@@ -6,20 +6,31 @@ names and sends them where that config says, and a project cannot name a file it
 
 from __future__ import annotations
 
+import contextlib
 import os
 import secrets
 import time
 import urllib.parse
 from pathlib import Path
 
+import psutil
+
 from poolhouse import home
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import only_one, pid_alive
+from poolhouse.ownership import START_TOLERANCE_S, listens_on, recorded_servers, same_process
 
-__all__ = ["LOOPBACK", "bind", "for_url", "forget", "issue", "key_file", "write_key_file"]
+__all__ = ["LOOPBACK", "bind", "bound", "for_url", "forget", "held", "issue", "key_file", "unproved", "unproxied", "write_key_file"]
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 STARTING_S = 600
+
+
+def _born(pid: int) -> float | None:
+    try:
+        return float(psutil.Process(pid).create_time())
+    except (psutil.Error, OSError, ValueError):
+        return None
 
 
 def _file() -> Path:
@@ -121,23 +132,103 @@ def forget(port: int) -> None:
 
 
 def bind(port: int, pid: int) -> None:
-    """Tie the key issued for ``port`` to the server process ``pid``."""
+    """Tie the key issued for ``port`` to the server process ``pid``, known by its number and when it started."""
     with _locked():
         entries = _entries()
         if str(int(port)) in entries:
-            entries[str(int(port))]["pid"] = int(pid)
+            entries[str(int(port))].update(pid=int(pid), started=_born(int(pid)))
             _save(entries)
 
 
-def for_url(url: str) -> str:
-    """The key of the leased server at a loopback ``url``, or ``""`` when none is running there."""
-    parts = urllib.parse.urlsplit(url)
-    if parts.hostname not in LOOPBACK:
-        return ""
+def held(port: int) -> bool:
+    """Whether this computer holds a key bound to a running process for ``port``, whether or not it can be shown now to be that process's. A
+    process that only took the number (it started at another time than the key's record, or the lease record, says, or before the key was issued)
+    holds nothing."""
+    entry = _entries().get(str(int(port)))
+    if not (isinstance(entry, dict) and entry.get("pid") and _live(entry) and _read(key_file(port))):
+        return False
+    born, then, issued = _born(int(entry["pid"])), entry.get("started"), entry.get("at")
+    if then is None:   # the previous build wrote none: the lease record tells when that server started, when it names the process
+        record = recorded_servers().get(int(port))
+        then = record.get("started") if record and record.get("pid") == entry["pid"] else None
+        if born is not None and isinstance(issued, (int, float)) and born < issued - START_TOLERANCE_S:
+            return False
+    return born is not None and (not isinstance(then, (int, float)) or abs(born - then) <= START_TOLERANCE_S)
+
+
+def bound(port: int) -> int:
+    """The process the key of ``port`` is bound to, while this computer holds that key and that very process runs (its number and when it started:
+    a number is used again); 0 otherwise (`unproved` says why)."""
+    return _judged(port)[0]
+
+
+def unproved(port: int) -> str:
+    """Why the key bound for ``port`` cannot be shown to be its process's; empty when it can."""
+    return _judged(port)[1]
+
+
+def _judged(port: int) -> tuple[int, str]:
+    entry = _entries().get(str(int(port)))
+    if not (isinstance(entry, dict) and entry.get("pid") and _live(entry)):
+        return 0, "no key is bound to a running process on that port"
+    if not _read(key_file(port)):
+        return 0, "this build holds no key file for it (a build before this one's naming kept the key elsewhere)"
+    pid, then = int(entry["pid"]), entry.get("started")
+    if then is None:
+        why = _adopted(int(port), pid, entry.get("at"))
+        return (0, why) if why else (pid, "")
+    now = _born(pid)
+    if isinstance(then, (int, float)) and now is not None and abs(now - then) <= START_TOLERANCE_S:
+        return pid, ""
+    return 0, "the process now running under that number is not the one the key was bound to"
+
+
+def _adopted(port: int, pid: int, issued: object) -> str:
+    """For a key the previous build bound, which wrote no start time: empty, with the start time recorded now, when ``pid`` is shown to be that
+    server's process, else why it is not. It must be the process of the lease record (start time and command line), have started after the key was
+    issued and before the index was last written (so before the key was bound), and listen on the port on this computer's loopback."""
+    record = recorded_servers().get(port)
+    if record is None or record.get("pid") != pid:
+        return "no lease record names the process the key is bound to"
+    if record.get("unmanaged") or record.get("pending") or not same_process(record, strict=True):
+        return "the lease record does not match the process running now (its start time and command line)"
+    born = _born(pid)
     try:
+        written = _file().stat().st_mtime
+    except OSError:
+        written = 0.0
+    if born is None or not isinstance(issued, (int, float)) or not issued - START_TOLERANCE_S <= born <= written + START_TOLERANCE_S:
+        return "the process did not start between the issue of the key and its binding"
+    if not any(listens_on(pid, port, each) for each in ("127.0.0.1", "::1")):
+        return "that process does not listen on the port on this computer's loopback"
+    # the proof holds without the record of it: a reader that may not write the index proves it again next time
+    with contextlib.suppress(OSError, RuntimeError), _locked():
+        entries = _entries()
+        if isinstance(entries.get(str(port)), dict) and entries[str(port)].get("pid") == pid:
+            entries[str(port)]["started"] = born
+            _save(entries)
+    return ""
+
+
+def for_url(url: str) -> str:
+    """The key of the leased server at a loopback ``url``, or ``""``: it is given only while the process it is bound to listens at the very address
+    the URL names (``localhost`` names both, so both)."""
+    try:
+        parts = urllib.parse.urlsplit(url)
         port = parts.port or (443 if parts.scheme == "https" else 80)
     except ValueError:
         return ""
-    entry = _entries().get(str(port))
+    if parts.hostname not in LOOPBACK:
+        return ""
     # Only a key bound to its server's process is sent: no health probe made before the listener is checked carries one.
-    return _read(key_file(port)) if isinstance(entry, dict) and entry.get("pid") and _live(entry) else ""
+    pid = bound(port)
+    addresses = ("127.0.0.1", "::1") if parts.hostname == "localhost" else (parts.hostname,)
+    return _read(key_file(port)) if pid and all(listens_on(pid, port, each) for each in addresses) else ""
+
+
+def unproxied(*named: str) -> dict[str, str]:
+    """``NO_PROXY`` for a program that is to reach a server of this computer: the entries of each of ``named`` (a ``NO_PROXY`` it already had) and
+    this computer's own names, so that no proxy is handed a request with the server's key."""
+    entries = [entry.strip() for each in (*named, *LOOPBACK) for entry in each.split(",")]
+    direct = ",".join(dict.fromkeys(entry for entry in entries if entry))
+    return {"NO_PROXY": direct, "no_proxy": direct}

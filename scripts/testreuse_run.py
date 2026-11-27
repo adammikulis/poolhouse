@@ -266,7 +266,8 @@ class Session:
         self.closures.save()
         self.report.outcomes = [self.outcome(f) for f in (self.files or sorted(self.outcomes))]
         failed = any(not o.passed and not o.not_run for o in self.report.outcomes)
-        if self.files and self.report.outcomes and all(o.not_run for o in self.report.outcomes):
+        collecting = "--collect-only" in self.command   # a collection runs no test by design
+        if not collecting and self.files and self.report.outcomes and all(o.not_run for o in self.report.outcomes):
             self.report.note = f"no test ran: none of the tests in {', '.join(o.file for o in self.report.outcomes)} was selected"
             self.report.status = self.report.status or 4
         self.report.status = self.report.status or (1 if failed else 0)

@@ -31,6 +31,7 @@ from poolhouse import (
     lead_bridge,
     opencode_install,
     runtime,
+    safetext,
     serverkeys,
 )
 from poolhouse.activity.source_snapshot import protected_roots, validate_storage
@@ -38,12 +39,16 @@ from poolhouse.board.client import NodeError
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.client import is_healthy, refuses_key
 from poolhouse.errors import Denied
+from poolhouse.http import shown
+from poolhouse.hub.naming import DENSE_27B
 from poolhouse.hub.probe import MachineMemory
 from poolhouse.isolation import places
 from poolhouse.isolation.refusals import sentence
+from poolhouse.ownership import recorded_servers
 from poolhouse.sandbox import run as sandbox_run
 from poolhouse.serve import admission, chat_template, leases, profile, suggest, wired
 from poolhouse.serve.matching import model_matches
+from poolhouse.serve.named import named as named_server
 from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.recent import note
 from poolhouse.serve.serving import Config, Serving, drafted, said_cache, served, serving_params
@@ -80,7 +85,7 @@ __all__ = [
 ]
 
 DEFAULT_CTX = 0
-DEFAULT_MODEL = "Qwen3.8-27B-UD-Q4_K_XL.gguf"
+DEFAULT_MODEL = DENSE_27B[0]
 """The model a session gets when the preferred one is not installed or does not fit: the dense 27B."""
 PREFERRED_MODEL = "Qwen3.8-Flash-Next-UD-IQ2_XS"
 """The owner's coding model: used when it is installed and this machine holds it at `PREFERRED_WINDOW` (the larger Flash-Next quants are not named, so they are never the default)."""
@@ -93,7 +98,8 @@ REPORT_CAP = 2**31 - 1
 
 def default_model(machine: MachineMemory | None = None) -> str:
     """The model a coding session or delegate takes when none is named: `PREFERRED_MODEL` when it is installed and
-    ``suggest.largest_fit`` rates it green at its full `PREFERRED_WINDOW` on ``machine`` (this one by default), else `DEFAULT_MODEL`."""
+    ``suggest.largest_fit`` rates it green at its full `PREFERRED_WINDOW` on ``machine`` (this one by default), else the first of
+    `hub.naming.DENSE_27B` that is installed, else `DEFAULT_MODEL`."""
     for one in hub.installed_find(PREFERRED_MODEL, hub.discover(formats=("gguf",))):
         try:
             fit = suggest.largest_fit(one.path, machine)
@@ -101,7 +107,7 @@ def default_model(machine: MachineMemory | None = None) -> str:
             continue
         if fit.verdict == "green" and fit.context >= PREFERRED_WINDOW:
             return one.filename
-    return DEFAULT_MODEL
+    return next((name for name in DENSE_27B if hub.located(name)), DEFAULT_MODEL)
 
 
 def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentParser:
@@ -216,7 +222,7 @@ MIN_WINDOW = 65_536
 
 def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], None]) -> Config | None:
     """The `Config` that asks for exactly what the server already up on ``found`` serves, or None with one sentence said why that one cannot carry the session."""
-    records = leases.recorded_servers()
+    records = recorded_servers()
     declined: list[str] = []
     asked = want.ctx // max(1, want.slots) if want.ctx else 0
     for port in sorted(records, key=lambda p: (p != want.port, p)):
@@ -523,10 +529,21 @@ def serve_and_run(args: argparse.Namespace, name: str, say: Callable[[str], None
     """The model half of a launch: the server already up at ``--on``, else a lease for the model asked for (or the default), held for the run.
     ``run((base_url, alias, window))`` starts the harness."""
     if args.on:
-        base_url = args.on.rstrip("/")
+        target = named_server(args.on)
+        base_url = target.url
+        if target.unreadable:
+            say(f"error: --on {args.on[:120]!a}: {target.why}")
+            return 2
+        if target.keyed:   # this computer's server holds a key for that port, and this address is not shown to be that server
+            say(f"error: no key is sent to {shown(base_url)}, and nothing was asked of it: {target.why}")
+            return 2
         alias = alias_of(base_url, "")
         if not alias:
-            say(f"error: {base_url} did not say what model it serves")
+            if refuses_key(base_url):
+                why = "it refuses the key this computer holds for it" if target.ours else target.why
+                say(f"error: {shown(base_url)} refuses a request without its key: {why}")
+            else:
+                say(f"error: {shown(base_url)} did not say what model it serves")
             return 2
         say(f"{name} on {base_url} as {alias!r}; this server was already up and is left up")
         return run((base_url, alias, window_of(base_url)))
@@ -582,6 +599,7 @@ def confined(args: argparse.Namespace, run: Session, how: Harness,
         rail = rail_of(args, helper.name, stage)   # a call is the box's own words, judged as text; after it the box is given what its lead sent
 
         def answered(event: str, payload: dict) -> dict:
+            payload = safetext.utf8(payload)
             if event == "pre":
                 said = harnesshook.confined_pre(payload, rail)
             elif event == "stop":

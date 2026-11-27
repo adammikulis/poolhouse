@@ -21,13 +21,13 @@ from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.remote import Member, MemberError
 from poolhouse.http import Server
+from poolhouse.ownership import recorded_servers
 from poolhouse.sentinel import State, permit, watch
 from poolhouse.sentinel.cli import status as security_status
 from poolhouse.sentinel.store import Holding
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec
 from poolhouse.serve.broker import Ask, Broker, BrokerError
 from poolhouse.serve.guarded import SentinelRefused
-from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import kill_process_tree, pid_exists
 from poolhouse.testing.canned import canned_binary

@@ -37,7 +37,7 @@ from poolhouse import (
     opencode,
     opencode_install,
 )
-from poolhouse.serve.leases import lease_file
+from poolhouse.ownership import lease_file
 from poolhouse.testing.canned import Canned, CannedServer
 from poolhouse.testing.registry import record_server
 

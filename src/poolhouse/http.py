@@ -198,6 +198,17 @@ class _Request(urllib.request.Request):
     sealed = Sealed()
 
 
+def _at_the_server(url: str) -> str:
+    """``url`` written to ``localhost`` as the address a keyed server of this computer holds, when one does, so that its key goes there and to no
+    other listener the name could lead to."""
+    parts = urllib.parse.urlsplit(url)
+    host, _, port = parts.netloc.partition(":")
+    if host.lower() != "localhost" or not port.isdigit():
+        return url
+    there = urllib.parse.urlunsplit(parts._replace(netloc=f"127.0.0.1:{port}"))
+    return there if serverkeys.for_url(there) else url
+
+
 def build_request(url: str, *, data: bytes | None = None, method: str | None = None,
                   headers: dict[str, str] | None = None,
                   token: str = "") -> urllib.request.Request:
@@ -211,6 +222,8 @@ def build_request(url: str, *, data: bytes | None = None, method: str | None = N
         raise ServerError(f"only http(s) is fetched, not {shown(url)}")
     sent = {"User-Agent": USER_AGENT}
     sent.update(headers or {})
+    if not token and "Authorization" not in sent:
+        url = _at_the_server(url)
     opens = Sealed()
     verb = method or ("POST" if data is not None else "GET")
     secret = token if token.startswith(macauth.PREFIX) else macauth.unwrap(
@@ -247,10 +260,42 @@ class _Guarded(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, *rest)
 
 
+def _this_computer(url: str) -> bool:
+    """Whether ``url`` names this computer, in any spelling the system's resolver takes."""
+    host = urllib.parse.urlsplit(url).hostname or ""
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        try:
+            address = ipaddress.ip_address(socket.inet_aton(host))   # the short and numeric spellings of an IPv4 address
+        except (OSError, ValueError):
+            return False
+    address = getattr(address, "ipv4_mapped", None) or address
+    return address.is_loopback or address.is_unspecified
+
+
+class _Proxies(urllib.request.ProxyHandler):
+    """The environment's proxies for every address but this computer's own: a request to this computer may carry a server's key and goes
+    straight there, whatever the environment says, a redirected one too."""
+
+    def proxy_open(self, req: Any, proxy: str, type: str) -> Any:
+        return None if _this_computer(req.full_url) else super().proxy_open(req, proxy, type)
+
+
+def _proxies_for(url: str) -> list[Any]:
+    """The proxy handlers of an opener for ``url``: none used for this computer; elsewhere the environment's, which still pass this computer by on
+    a redirect."""
+    if _this_computer(url):
+        return [urllib.request.ProxyHandler({})]
+    return [_Proxies()] if urllib.request.getproxies() else []
+
+
 def _open(request: urllib.request.Request, timeout: float | None, guard: Callable[[str], str] | None,
           context: ssl.SSLContext | None = None, follow_redirects: bool = True) -> Any:
     context = context if context is not None else _https_context(request.full_url)
-    proxies = []
+    proxies = _proxies_for(request.full_url)
     if guard is not None:
         try:
             loopback = ipaddress.ip_address(urllib.parse.urlsplit(request.full_url).hostname or '').is_loopback
@@ -258,13 +303,12 @@ def _open(request: urllib.request.Request, timeout: float | None, guard: Callabl
             loopback = False
         if loopback:
             guard(request.full_url)
-            proxies.append(urllib.request.ProxyHandler({}))
     redirects = ([_NoRedirect()] if not follow_redirects else [_Guarded(guard)] if guard is not None else [])
     if control := active_cancellation():
         handlers = [*proxies, *cancel_handlers(control, context)]
         handlers.extend(redirects)
         return urllib.request.build_opener(*handlers).open(request, timeout=timeout)
-    if guard is None and follow_redirects:
+    if guard is None and follow_redirects and not urllib.request.getproxies():
         return urllib.request.urlopen(request, timeout=timeout, context=context)  # noqa: S310
     opener = urllib.request.build_opener(*proxies, *redirects, urllib.request.HTTPSHandler(
         context=context))
@@ -344,7 +388,7 @@ def head_once(url: str, *, headers: dict[str, str] | None = None, token: str = "
     host without the token.
     """
     request = build_request(url, method="HEAD", headers=headers, token=token)
-    opener = urllib.request.build_opener(_NoRedirect)
+    opener = urllib.request.build_opener(_NoRedirect, *_proxies_for(request.full_url))
     try:
         with opener.open(request, timeout=timeout) as response:
             return Reply(int(response.status), b"", response.headers)
