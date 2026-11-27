@@ -35,7 +35,7 @@ NAMES = frozenset({
 })
 """File names that hold credentials wherever they are."""
 SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".keystore", ".jks", ".kdbx", ".tfvars")
-STATE_NAMES = ("node", "keystore", "pool.key", "server-keys.json", "credentials.toml", "person", "authority.json", "harness", "harness-fetched")
+STATE_NAMES = ("node", "keystore", "pool.key", "server-keys.json", "server-keys.d", "credentials.toml", "person", "authority.json", "harness", "harness-fetched")
 """What the state root holds that is a key, a credential or a launcher's session."""
 ABSOLUTE = ("/etc/shadow", "/etc/gshadow", "/etc/sudoers", "/etc/sudoers.d", "/etc/master.passwd", "/etc/ssh", "/etc/kubernetes",
             "/private/etc/sudoers", "/private/etc/ssh", "/private/var/db/dslocal", "/var/run/secrets", "/run/secrets")

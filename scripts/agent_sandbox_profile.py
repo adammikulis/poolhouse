@@ -27,7 +27,7 @@ SCRUBBED_ENV = (
 )
 
 STATE_DENY_READ = (
-    "node/client", "node/person", "node/hook-credentials", "hooks", "workspace/local-agents", "keystore", "server-keys.json", "pool.key.old", "pool.json",
+    "node/client", "node/person", "node/hook-credentials", "hooks", "workspace/local-agents", "keystore", "server-keys.json", "server-keys.d", "pool.key.old", "pool.json",
     "credentials.endpoint", "credentials.toml.bak", "onboard",
 )
 """`node/client` holds a token file and a `.parent` file for each session and its read cursors; `node/person` is the person key's custody."""

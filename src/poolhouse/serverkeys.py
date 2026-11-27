@@ -1,4 +1,8 @@
-"""The API key each leased model server was started with, and the lookup that finds it by URL."""
+"""The API key each leased model server was started with, and the lookup that finds it by URL.
+
+A key is only in a file of mode 0600 whose name is made when the key is, in a folder of mode 0700: a coding tool reads files a project's own config
+names and sends them where that config says, and a project cannot name a file it cannot know. What lists the servers holds no key.
+"""
 
 from __future__ import annotations
 
@@ -28,7 +32,7 @@ def _entries() -> dict[str, dict]:
 
 
 def _live(entry: object) -> bool:
-    if not isinstance(entry, dict) or not isinstance(entry.get("key"), str):
+    if not isinstance(entry, dict):
         return False
     if entry.get("pid") == 0:
         return time.time() - float(entry.get("at", 0)) < STARTING_S
@@ -48,18 +52,31 @@ def _locked():
     return only_one(_file().with_suffix(".lock"), wait=True, timeout=30.0, announce=lambda _line: None)
 
 
+def _files(port: int) -> list[Path]:
+    return list(home.state("server-keys.d").glob(f"{int(port)}-*.key"))
+
+
+def _read(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def key_file(port: int) -> Path:
-    """Where the key of the server on ``port`` is handed to it, for `--api-key-file`: a command line is public to every
-    process of the machine, a file of mode 0600 in a directory of mode 0700 is not."""
-    return home.state("server-keys.d", f"{int(port)}.key")
+    """Where the key of the server on ``port`` is, for `--api-key-file`: a command line is public to every process of the machine, a file of mode
+    0600 in a folder of mode 0700 is not. A path that does not exist where the port has no key."""
+    return next(iter(_files(port)), home.state("server-keys.d", f"{int(port)}.none"))
 
 
-def write_key_file(port: int, key: str) -> Path:
-    """`key_file` of ``port`` holding ``key``, created private."""
-    path = key_file(port)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path.parent.chmod(0o700)
-    path.unlink(missing_ok=True)   # never write through a link or into a file somebody else made
+def _write(port: int, key: str) -> Path:
+    """A new private file of ``port`` holding ``key``, in place of any it had."""
+    folder = home.state("server-keys.d")
+    folder.mkdir(parents=True, exist_ok=True, mode=0o700)
+    folder.chmod(0o700)
+    for old in _files(port):
+        old.unlink(missing_ok=True)
+    path = folder / f"{int(port)}-{secrets.token_hex(16)}.key"
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(key + "\n")
@@ -67,22 +84,31 @@ def write_key_file(port: int, key: str) -> Path:
     return path
 
 
+def write_key_file(port: int, key: str) -> Path:
+    """The `key_file` of ``port`` holding ``key``: the one that already does, else a new one."""
+    with _locked():
+        held = key_file(port)
+        return held if _read(held) == key else _write(port, key)
+
+
 def issue(port: int) -> str:
-    """A new key for the server about to start on ``port``, recorded for `for_url`."""
+    """A new key for the server about to start on ``port``, kept for `for_url`."""
     key = secrets.token_hex(32)
     with _locked():
         found = _entries()
         entries = {p: e for p, e in found.items() if _live(e)}
         for gone in (p for p in set(found) - set(entries) if p.isdigit()):   # servers that ended without being stopped by us
-            key_file(int(gone)).unlink(missing_ok=True)
-        entries[str(int(port))] = {"key": key, "pid": 0, "at": time.time()}
+            for old in _files(int(gone)):
+                old.unlink(missing_ok=True)
+        _write(port, key)
+        entries[str(int(port))] = {"pid": 0, "at": time.time()}
         _save(entries)
     return key
 
 
 def forget(port: int) -> None:
-    """Drop the key of the server on ``port`` and the file it was handed over in, once that server has ended or never came up.
-    The key of a live process bound to the port stays: a start that failed because another server holds the port is not the end of it."""
+    """Drop the key of the server on ``port`` and its file, once that server has ended or never came up. The key of a live process bound to the
+    port stays: a start that failed because another server holds the port is not the end of it."""
     with _locked():
         entries = _entries()
         entry = entries.get(str(int(port)))
@@ -90,7 +116,8 @@ def forget(port: int) -> None:
             return
         if entries.pop(str(int(port)), None) is not None:
             _save(entries)
-        key_file(port).unlink(missing_ok=True)
+        for old in _files(port):
+            old.unlink(missing_ok=True)
 
 
 def bind(port: int, pid: int) -> None:
@@ -113,4 +140,4 @@ def for_url(url: str) -> str:
         return ""
     entry = _entries().get(str(port))
     # Only a key bound to its server's process is sent: no health probe made before the listener is checked carries one.
-    return entry["key"] if isinstance(entry, dict) and entry.get("pid") and _live(entry) else ""
+    return _read(key_file(port)) if isinstance(entry, dict) and entry.get("pid") and _live(entry) else ""

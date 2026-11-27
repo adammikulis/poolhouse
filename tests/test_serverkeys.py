@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import serverkeys
+from poolhouse import home, secretpaths, serverkeys
 from poolhouse.http import build_request
 from poolhouse.serve import backend as be
 from poolhouse.serve.grant import broker_grant
@@ -70,6 +70,18 @@ def test_forgetting_a_port_drops_the_key_of_an_ended_server_and_never_that_of_a_
 def test_the_keys_file_is_private():
     serverkeys.issue(8123)
     assert serverkeys._file().stat().st_mode & 0o077 == 0
+
+
+@pytest.mark.redteam
+def test_no_file_whose_name_can_be_known_in_advance_holds_a_key():
+    key = serverkeys.issue(8123)
+    serverkeys.bind(8123, os.getpid())
+    held = serverkeys.write_key_file(8123, key)
+    assert held.read_text().strip() == key and held.name != "8123.key" and held.stat().st_mode & 0o077 == 0
+    assert [path for path in home.home().rglob("*") if path.is_file() and key in path.read_text(errors="ignore")] == [held]
+    assert secretpaths.path_hit(str(held.parent)), "the folder that would tell the name is a secret path"
+    serverkeys.issue(8123)
+    assert serverkeys.key_file(8123).name != held.name and not held.exists()
 
 
 def test_a_request_to_a_leased_server_carries_its_key():
