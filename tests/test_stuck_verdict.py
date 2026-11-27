@@ -83,6 +83,7 @@ def test_the_hook_text_starts_with_the_verdict(tmp_path, monkeypatch):
     monkeypatch.setenv("POOLHOUSE_STATUS_COMMAND", json.dumps(fake))
     monkeypatch.setenv("POOLHOUSE_HOOK_STATE", str(tmp_path / "hookstate"))
     monkeypatch.setenv("POOLHOUSE_ATTENTION_EVERY_S", "0")
+    monkeypatch.setenv("POOLHOUSE_ATTENTION_WAIT_S", "80")  # the answer, not the wait: the check ends within this call
     done = subprocess.run([sys.executable, str(HOOKS / "claude-lead-attention")],
                           input=json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "s1", "prompt": "hi"}),
                           text=True, capture_output=True, timeout=90, check=False)
@@ -95,6 +96,7 @@ def test_the_hook_is_silent_when_the_verdict_is_ok_and_nothing_is_owed(tmp_path,
     monkeypatch.setenv("POOLHOUSE_STATUS_COMMAND", json.dumps(command(tmp_path, "print('ok')")))
     monkeypatch.setenv("POOLHOUSE_HOOK_STATE", str(tmp_path / "hookstate"))
     monkeypatch.setenv("POOLHOUSE_ATTENTION_EVERY_S", "0")
+    monkeypatch.setenv("POOLHOUSE_ATTENTION_WAIT_S", "80")
     done = subprocess.run([sys.executable, str(HOOKS / "claude-lead-attention")],
                           input=json.dumps({"hook_event_name": "PostToolUse", "session_id": "s2"}),
                           text=True, capture_output=True, timeout=90, check=False)

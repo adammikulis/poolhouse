@@ -29,8 +29,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
+from poolhouse.bench.intervals import T95  # noqa: E402 - after the checkout's src is on the path
+
 CONFIG = ROOT / "docs/experiments/iq-vs-kquant-metal.json"
-T95 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262}
 QUIET = r"llama-server|decide_cli train"
 
 

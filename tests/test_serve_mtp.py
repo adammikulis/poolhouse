@@ -13,10 +13,11 @@ from pathlib import Path
 import gguf
 import numpy as np
 import pytest
+from machine_guard import machine_servers
 
 from poolhouse import sentinel
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port, mtp
-from poolhouse.serve.process import every_server, pid_exists
+from poolhouse.serve.process import pid_exists
 from poolhouse.testing.canned import canned_binary
 from poolhouse.testing.fakes import LLAMA_SERVER_FLAGS
 
@@ -293,7 +294,7 @@ def test_a_real_server_drafts_by_default_and_keeps_greedy_output(cache, tmp_path
               and 0 < p.stat().st_size < 4 * 1024 ** 3] if hub.is_dir() else []
     if not builds or not models:
         pytest.skip("no managed llama-server or small model with a prediction layer")
-    if every_server():
+    if machine_servers():
         pytest.skip("another llama-server is running; a test does not load a model beside it")
     model, binary = min(models, key=lambda p: p.stat().st_size), builds[-1]
     if not mtp.supported(binary):

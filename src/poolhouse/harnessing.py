@@ -485,9 +485,10 @@ def admit(args: argparse.Namespace, harness: str, asked_project: str, *, interac
 
 
 def checked(args: argparse.Namespace, name: str, say: Callable[[str], None], *, interactive: bool) -> bool:
-    """What every launcher decides before it leases anything: ``--on`` and a model are not both named, the permissions are known and the project is
-    a folder; for ``--sandbox``, also that the launch may use it and this computer can confine. False, after one sentence said, when any does not
-    hold; ``args.project``, ``args.asked`` (the permissions the caller named, or empty) and, in a sandbox, ``args.launch`` are set."""
+    """What every launcher decides before it leases anything: ``--on`` and a model are not both named, the permissions are known, the project is
+    a folder and no unattended agent's runner started this launch; for ``--sandbox``, also that the launch may use it and this computer can
+    confine. False, after one sentence said, when any does not hold; ``args.project``, ``args.asked`` (the permissions the caller named, or empty)
+    and, in a sandbox, ``args.launch`` are set."""
     if args.on and args.model:
         say("error: --on names a server already running; do not name a model as well")
         return False
@@ -497,8 +498,10 @@ def checked(args: argparse.Namespace, name: str, say: Callable[[str], None], *, 
         asked, args.project = args.project, str(check_project(args.project, sandbox=args.sandbox))
         if args.sandbox:
             admit(args, name, asked, interactive=interactive)
-        elif reach := [f"--{each}" for each in ("read", "toolchain", "protect") if getattr(args, each)]:
-            say(f"{', '.join(reach)}: only a sandboxed run has a reach to set, so this run in place does not use it")
+        else:
+            isolation.require_attended("launching a coding agent")   # the one check a run in place has; `admit` makes it for a sandbox
+            if reach := [f"--{each}" for each in ("read", "toolchain", "protect") if getattr(args, each)]:
+                say(f"{', '.join(reach)}: only a sandboxed run has a reach to set, so this run in place does not use it")
     except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")
         return False

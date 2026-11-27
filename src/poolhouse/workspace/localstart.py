@@ -150,7 +150,8 @@ def _chosen(ask: Ask, folder_: str, pick: localmodel.Pick | None) -> tuple[lp.Pr
 def start(s: Session, ask: Ask, **options: Unpack[StartOptions]) -> Started:
     """Join a local model to the board of ``s`` as a subagent of that session and run its loop detached; the same name
     again reports the agent already running. Raises `Unavailable` when no suitable model is downloaded or it would
-    not fit, ValueError for a bad name, role or project."""
+    not fit, ValueError for a bad name, role or project, and `AgentRefused` to what an unattended agent started."""
+    isolation.require_attended("starting a local agent")   # the command, a task's launch and the web page all start one here
     if ask.profile == "coding":
         isolation.require_capable()
     base, reuse = options.get("base") or limits.root(), options.get("reuse", False)

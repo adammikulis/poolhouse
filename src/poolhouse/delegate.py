@@ -33,6 +33,7 @@ from poolhouse import (
     delegate_unboxed,
     harnessid,
     harnessing,
+    isolation,
     jobs,
     node_launch,
 )
@@ -115,6 +116,7 @@ def _folder(source: str, edit: bool) -> str:
          help="what it may do (default: read-only; --edit is guarded). A platform with no sandbox runs a higher tier on the folder itself, with a warning")])
 def start(args: argparse.Namespace) -> int:
     """Register the agent as a subagent of the calling session, then run it detached; prints its name."""
+    isolation.require_attended("starting a delegate")   # a delegate, and whatever it starts, hands no task on
     authority.require("workspace.agents", "start a delegate")
     if not args.task.strip():
         raise ValueError("give the task as text: --task TEXT")

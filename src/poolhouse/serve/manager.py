@@ -28,6 +28,7 @@ from poolhouse.serve import (
     admission,
     exit_guard,
     guarded,
+    inuse,
     kvcache,
     ledger,
     llamacpp_provider,
@@ -269,6 +270,9 @@ class ServerManager(Admitting):
             try:
                 adopted = self.adopt(spec)
             except ServerFailed as why:
+                if stray is not None and (used := inuse.why_in_use(spec.port, stray, self.state_file)):
+                    told(f"port {spec.port}: the server there is left running: {used}")
+                    stray = None
                 if escalate:
                     running = self._slots_shortfall(spec)
                     if running is not None:
@@ -480,9 +484,13 @@ class ServerManager(Admitting):
 
     def _stop_orphan(self, port: int, entry: dict, *, say: Callable[[str], None],
                      why: str) -> None:
-        """Stop the orphaned server recorded on ``port`` and drop its record."""
+        """Stop the orphaned server recorded on ``port`` and drop its record; one still in use is left running."""
+        if used := inuse.why_in_use(port, entry, self.state_file):
+            say(f"port {port}: the server (pid {entry['pid']}) whose leasing process has gone is left running: {used}")
+            return
         say(f"port {port}: stopping the orphaned server (pid {entry['pid']}) the process "
             f"that leased it (pid {entry['owner_pid']}) left behind -- {why}")
+        inuse.stopped(port, entry["pid"], f"nothing uses it and pid {entry['owner_pid']}, which leased it, has gone: {why}")
         kill_process_tree(int(entry["pid"]))
         self._save()
 
@@ -601,6 +609,7 @@ class ServerManager(Admitting):
 
         pid = self._recorded_pid(spec.port)
         emit(on_event, "stopping", port=spec.port, pid=pid)
+        inuse.stopped(spec.port, pid, f"relaunched with {new_slots} slot(s), its live conversations saved first", asker=caller.label)
         stopping.stop_server(self.children, spec.port, pid)
         self._forget(spec.port)
 
@@ -633,11 +642,13 @@ class ServerManager(Admitting):
             return
         self._stop_server(info, grace_s=grace_s)
 
-    def _stop_server(self, info: ServerInfo, *, grace_s: float = 5.0) -> None:
-        """Stop a server this process started. Adopted servers are left running."""
+    def _stop_server(self, info: ServerInfo, *, grace_s: float = 5.0, why: str = "its owner let it go") -> None:
+        """Stop a server this process started. Adopted servers are left running. ``why`` empty: the caller has recorded the stop."""
         if info.adopted:
             logger.debug("not stopping %s: we adopted it", info.base_url)
             return
+        if why:
+            inuse.stopped(info.port, info.pid, why)
         stopping.stop_server(self.children, info.port, info.pid, proc=info.process, grace_s=grace_s)
         self._forget(info.port)
 
@@ -668,6 +679,7 @@ class ServerManager(Admitting):
         for entry in list(self._mine.values()):
             pid = entry.get("pid")
             if isinstance(pid, int) and pid_exists(pid):
+                inuse.stopped(int(entry.get("port") or 0), pid, "the manager that started it is closing")
                 stopped += [one.pid for one in stopping.stop_server(self.children, int(entry.get("port") or 0), pid,
                                                                  grace_s=grace_s)]
             self._given_back(entry)
@@ -779,6 +791,8 @@ class ServerManager(Admitting):
     def reclaim(self, port: int) -> bool:
         """Free ``port`` if one of our servers is holding it."""
         recorded = self._recorded_pid(port)
+        if recorded and pid_exists(recorded):
+            inuse.stopped(port, recorded, "sentinel holds what it serves, or its port was reclaimed")
         return reclaim_port(port, recorded_pids=[recorded] if recorded else None)
 
 
@@ -855,6 +869,7 @@ def stop_all_servers() -> list[int]:
             continue
         pid = entry.get("pid")
         if isinstance(pid, int) and same_process(entry):
+            inuse.stopped(int(entry.get("port") or key), pid, "every recorded server was asked to stop")
             stopped += kill_process_tree(pid)
 
     if kept:

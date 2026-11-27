@@ -23,7 +23,7 @@ from typing import Any
 from poolhouse import home
 from poolhouse.sandbox.confinement import confined
 
-__all__ = ["AGENT_MARKERS", "AgentRefused", "audit_rows", "is_terminal", "marked", "named", "record", "refuse_agent", "subagent_marked", "who"]
+__all__ = ["AGENT_MARKERS", "AgentRefused", "audit_rows", "is_terminal", "marked", "record", "refuse_agent", "who"]
 
 _MSVCRT = importlib.import_module("msvcrt") if sys.platform == "win32" else None
 
@@ -32,8 +32,6 @@ AGENT_MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "C
 """Environment variables whose presence means an agent started this process."""
 SESSION_VARS = ("POOLHOUSE_SESSION_ID", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "POOLHOUSE_WORKSPACE_AGENT")
 """Where the session an agent runs in names itself, first found wins."""
-SUBAGENT = "POOLHOUSE_SUBAGENT"
-NAMED = "POOLHOUSE_WORKSPACE_AGENT"
 OUTSIDE = "run it from a terminal outside the agent (no CLAUDECODE or POOLHOUSE_AGENT in its environment)"
 
 
@@ -45,18 +43,6 @@ def marked(env: Mapping[str, str] | None = None) -> str:
     """The first agent marker in the process or supplied context; supplied data cannot hide the process."""
     found = os.environ if env is None else env
     return next((name for name in AGENT_MARKERS if found.get(name) or os.environ.get(name)), "")
-
-
-def subagent_marked(env: Mapping[str, str] | None = None) -> bool:
-    """Whether the command carries the marker a harness's hook puts in a subagent's command: it can only say helper, never lead."""
-    found = os.environ if env is None else env
-    return bool(found.get(SUBAGENT) or os.environ.get(SUBAGENT))
-
-
-def named(env: Mapping[str, str] | None = None) -> str:
-    """The workspace agent the environment names as the caller (`POOLHOUSE_WORKSPACE_AGENT`); a name is a claim, which only narrows."""
-    found = os.environ if env is None else env
-    return found.get(NAMED) or os.environ.get(NAMED, "")
 
 
 def who(env: Mapping[str, str] | None = None) -> str:
