@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import json
 import subprocess
+import sys
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
@@ -149,3 +150,11 @@ def test_it_runs_isolated_and_imports_only_the_standard_library():
     text = SCRIPT.read_text(encoding="utf-8")
     assert text.startswith("#!/usr/bin/env -S python3 -I\n")
     assert "from poolhouse" not in text and "import poolhouse" not in text and "sys.path" not in text
+
+
+def test_started_without_isolation_it_ends_before_importing_anything_beside_it(tmp_path):
+    (tmp_path / "copy.py").write_text("raise SystemExit('a file beside the script ran')\n", encoding="utf-8")
+    beside = tmp_path / "dev-branch-rule"
+    beside.write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+    done = subprocess.run([sys.executable, str(beside)], capture_output=True, text=True, check=False, timeout=30)
+    assert done.returncode == 1 and "runs it isolated" in done.stderr and "beside the script ran" not in done.stderr
