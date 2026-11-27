@@ -323,9 +323,14 @@ def working_directories() -> list[str | None]:
 
 
 def command_lines() -> list[tuple[int, float, tuple[str, ...]]]:
-    """Every readable process as (pid, start time in epoch seconds, command line), this one excluded."""
+    """Every readable process as (pid, start time in epoch seconds, command line), this one excluded; none where the computer will not
+    list them (inside a sandbox)."""
     found = []
-    for _proc, info in readable(["pid", "create_time", "cmdline"]):
+    try:
+        listed = readable(["pid", "create_time", "cmdline"])
+    except PermissionError:
+        return found
+    for _proc, info in listed:
         try:
             argv = tuple(info.get("cmdline") or ())
             if argv and info["pid"] != os.getpid():
