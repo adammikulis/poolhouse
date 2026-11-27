@@ -229,7 +229,7 @@ def _command(words: list[str], ground: Ground, here: str | None, depth: int) -> 
     name, rest, fed = _program(words[0]), words[1:], False
     while name in LAUNCHERS:
         fed = fed or name == "xargs"
-        while rest and (rest[0].startswith("-") or re.match(r"(\w+=|\d+(\.\d+)?[smhd]?$)", rest[0])):
+        while rest and (not rest[0] or rest[0].startswith("-") or re.match(r"(\w+=|\d+(\.\d+)?[smhd]?$)", rest[0])):
             rest = rest[1:]
         if not rest:
             return
@@ -353,7 +353,10 @@ def _targets(name: str, rest: list[str], plain: list[str]) -> list[str]:
     if name == "dd":
         return [w[3:] for w in rest if w.startswith("of=")]
     if name in ("sed", "perl") and any(w.startswith(("-i", "-pi", "--in-place")) for w in rest):
-        return plain[1:] if not any(w in ("-e", "-f") for w in rest) else plain
+        # macOS writes `-i ''`: an empty backup suffix, which is no script and no file, and what `-e` is given beside it is a script
+        scripts = {rest[i + 1] for i, w in enumerate(rest[:-1]) if w == "-e"} if "" in rest else set()
+        files = [w for w in plain if w and w not in scripts]
+        return files if any(w in ("-e", "-f") for w in rest) else files[1:]
     if name in ("curl", "wget"):
         return _saved(name, rest)
     if name == "tar":

@@ -86,6 +86,7 @@ OUTSIDE_WRITES = [
     ("Bash", {"command": "touch /usr/local/bin/x"}),
     ("Bash", {"command": "mkdir -p ~/new"}),
     ("Bash", {"command": "sed -i s/a/b/ {home}/notes/a"}),
+    ("Bash", {"command": "sed -i '' '/^#/d' {home}/notes/a"}),
     ("Bash", {"command": "chmod 777 {home}/notes"}),
     ("Bash", {"command": "dd if=src/a of={home}/notes/a"}),
     ("Bash", {"command": "curl -o {home}/notes/a https://example.test"}),
@@ -129,7 +130,7 @@ GLOBAL_CONFIG = [
 RECURSIVE_DELETION = [
     "rm -rf {home}", "rm -rf ~", "rm -rf /", "rm -r ../person", "rm -fR {home}/notes", "rm --recursive {home}/notes",
     "rm -rf .", "rm -rf {root}", "rm -rf \"$DIR\"", "rm -rf link-out/", "find {home}/notes -delete", "find .. -name x -exec rm {{}} ;",
-    "nice rm -rf ~/notes", "eval 'rm -rf ~/notes'", "git clean -fdx {home}/notes",
+    "nice rm -rf ~/notes", "eval 'rm -rf ~/notes'", "git clean -fdx {home}/notes", "xargs -E '' rm -rf /etc/x",
 ]
 
 
@@ -177,6 +178,7 @@ def test_a_tool_a_delegate_is_not_given_is_refused(ground, name):
     ("Bash", {"command": "grep -rn credentials src"}), ("Bash", {"command": "git commit -m 'a change' && git push origin HEAD"}),
     ("Bash", {"command": "git log --oneline -n 5"}), ("Bash", {"command": "git config user.name"}), ("Bash", {"command": "npm install"}),
     ("Bash", {"command": ".venv/bin/pip install requests"}), ("Bash", {"command": "echo $(date)"}),
+    ("Bash", {"command": "sed -i '' '/^#/d' notes.txt"}), ("Bash", {"command": "sed -i '' -e '/^#/d' notes.txt"}),
     ("mcp__lead__ask", {"question": "which module?"}), ("mcp__lead__note", {"text": "done"}),
 ])
 def test_ordinary_work_inside_the_project_is_not_refused(ground, name, args):
