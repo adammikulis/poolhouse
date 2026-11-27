@@ -185,7 +185,8 @@ names its end to the agent. The owner's orders: "I should never silently have th
 | `MOST_PER_ADDRESS` | 6 | `app/poolhouse-node/src/phone/http.rs:28` | connections one address holds on the phone endpoint | the owner, in source; a security floor no agent loosens |
 | `MOST_PENDING` | 64 | `app/poolhouse-node/src/approvals/mod.rs:54` | approval requests waiting on a node: memory. Every one is on the person's phone and in `pool_status.waiting`; a request past it is told to have the person answer some | the owner, in source; a security floor no agent loosens |
 | `MAX_TTL_MS` | 24 * 3600 * 1000 | `app/poolhouse-node/src/approvals/mod.rs:56` | the longest a request lives | the owner, in source; a security floor no agent loosens |
-| `ASK_FOR_MS` | 120_000 | `app/poolhouse-node/src/presence/os.rs:15` | how long a question to the person stays open; running out counts against nothing and the question is raised again by asking again | the owner, in source; a security floor no agent loosens |
+| `OPEN_ASKS_PER_ASKER` | 1 | `app/poolhouse-node/src/presence/firsts.rs:26` | prompts one asker has open for the person at once: it is told what is open; another asker is never blocked | the owner, in source |
+| `ASK_FOR_MS` | 120_000 | `app/poolhouse-node/src/presence/mode.rs:8` | how long a question to the person stays open; running out counts against nothing and the question is raised again by asking again | the owner, in source; a security floor no agent loosens |
 | `OPEN_PER_HOUR` | 5 | `app/poolhouse-node/src/gov/mod.rs:62` | open joins one member signs in an hour | the owner, in source; a security floor no agent loosens |
 | `OPEN_POOL_PER_HOUR` | 10 | `app/poolhouse-node/src/gov/mod.rs:65` | open joins a pool takes in an hour | the owner, in source; a security floor no agent loosens |
 | `DELEGATE_PER_HOUR` | 3 | `app/poolhouse-node/src/gov/mod.rs:60` | devices a delegate admits in an hour | the owner, in source; a security floor no agent loosens |
