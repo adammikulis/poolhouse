@@ -1,51 +1,153 @@
 #!/usr/bin/env python3
-"""A UserPromptSubmit and PostToolUse hook: at most once per interval, tells the lead what is unanswered for it and how many announcements are new."""
+"""A UserPromptSubmit and PostToolUse hook: at most once per interval, tells the lead what is unanswered for it and how many announcements are new.
+
+The check (the status line and `poolhouse-workspace attention`) can take longer than a harness gives a hook, so it runs in a
+process of its own (`--check`). The hook that starts it waits a few seconds; a check not finished by then goes on, and its text
+is shown at the next prompt or tool call. A check that is ended before it finishes records nothing, so it runs again.
+"""
 
 from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import time
+from pathlib import Path
 
 import hook_state
-import stuck_verdict
-import tree_watch
 import workspace_hook
 
 EVERY_S = 600.0
+WAIT_S = 4.0
+"""How long the event that starts a check waits for it."""
+RETRY_S = 60.0
+"""How soon a check runs again when the board did not answer it and it has nothing to show."""
+LONGEST_S = 120.0
+"""A check marked as running for longer than this was ended; another may start."""
+CHECK = "--check"
+
+
+def interval() -> float:
+    return float(os.environ.get("POOLHOUSE_ATTENTION_EVERY_S") or EVERY_S)
+
+
+def record(session: str, kind: str = "") -> Path:
+    """A file kept for ``session``: when it was last checked, or by ``kind`` `running`, `text` (not yet shown) or `log`."""
+    name = session if session.replace("-", "").isalnum() else "none"
+    return hook_state.state_dir() / "attention" / (f"{name}.{kind}" if kind else name)
 
 
 def due(session: str, now: float) -> bool:
-    """Whether the interval since this session was last checked has passed; records the check."""
-    every = float(os.environ.get("POOLHOUSE_ATTENTION_EVERY_S") or EVERY_S)
-    stamp = hook_state.state_dir() / "attention" / (session if session.replace("-", "").isalnum() else "none")
+    """Whether the interval since the last finished check of this session has passed."""
     try:
-        if now - float(stamp.read_text()) < every:
-            return False
+        return now - float(record(session).read_text()) >= interval()
     except (OSError, ValueError):
+        return True
+
+
+def claim(session: str) -> bool:
+    """Mark a check of ``session`` as running; False when one already is."""
+    marker = record(session, "running")
+    marker.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        if time.time() - marker.stat().st_mtime > LONGEST_S:
+            marker.unlink()
+    except FileNotFoundError:
         pass
     try:
-        stamp.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        stamp.write_text(str(now))
-    except OSError as error:
-        workspace_hook.warning("Attention", error)
+        os.close(os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+    except FileExistsError:
+        return False
     return True
 
 
-def main() -> int:
+def start(event: dict, session: str) -> subprocess.Popen | None:
+    """Start the check of ``session`` in a process that holds none of this hook's pipes; None when none was started."""
+    from poolhouse.platform import process_group_kwargs
+    if not claim(session):
+        return None
+    asked = {key: event[key] for key in ("session_id", "cwd") if event.get(key) is not None}
+    try:
+        with record(session, "log").open("wb") as log:
+            child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), CHECK], stdin=subprocess.PIPE,
+                                     stdout=subprocess.DEVNULL, stderr=log, **process_group_kwargs())
+        with child.stdin as pipe:
+            pipe.write(json.dumps(asked).encode())
+    except OSError:
+        record(session, "running").unlink(missing_ok=True)
+        raise
+    return child
+
+
+def keep(session: str, text: str) -> None:
+    """Hold ``text`` until an event shows it; an empty text drops what was held, which no longer applies."""
+    held = record(session, "text")
+    if not text:
+        held.unlink(missing_ok=True)
+        return
+    partial = record(session, "part")
+    partial.write_text(text, encoding="utf-8")
+    os.replace(partial, held)
+
+
+def take(session: str) -> str:
+    """The held text of ``session``, or an empty string; only one of two events running at once gets it."""
+    held = record(session, "text")
+    mine = record(session, f"shown-{os.getpid()}")
+    try:
+        os.replace(held, mine)
+        text = mine.read_text(encoding="utf-8")
+        mine.unlink()
+    except (OSError, ValueError):
+        return ""
+    return text
+
+
+def check(event: dict, session: str) -> None:
+    """Ask, hold the answer for the next event to show, and only then record when this session was checked."""
+    import stuck_verdict
+    import tree_watch
+    try:
+        stuck = stuck_verdict.check(hook_state.state_dir())
+        environment = workspace_hook.session_environment(event, "Attention")
+        done = None
+        orphans = ""
+        if environment is not None:
+            done = workspace_hook.run(["poolhouse-workspace", "attention"], "Attention", environment=environment)
+            orphans = tree_watch.check("Attention", str(event.get("cwd") or ""), environment)
+        owed = done.stdout.strip() if done else ""
+        text = "\n\n".join(part for part in (stuck, owed, orphans) if part)
+        # Without an answer from the board, a text held from an earlier check is still the best there is.
+        if done is not None or not record(session, "text").exists():
+            keep(session, text)
+        unanswered = environment is not None and done is None and not text
+        checked = time.time() - (max(0.0, interval() - RETRY_S) if unanswered else 0.0)
+        record(session).write_text(str(checked))
+    finally:
+        record(session, "running").unlink(missing_ok=True)
+
+
+def main(argv: list[str]) -> int:
     event = workspace_hook.event("Attention")
     if event is None or event.get("agent_id"):
         return 0
-    if not due(str(event.get("session_id") or "none"), time.time()):
+    session = str(event.get("session_id") or "none")
+    if argv == [CHECK]:
+        check(event, session)
         return 0
-    stuck = stuck_verdict.check(hook_state.state_dir())
-    environment = workspace_hook.session_environment(event, "Attention")
-    owed = orphans = ""
-    if environment is not None:
-        done = workspace_hook.run(["poolhouse-workspace", "attention"], "Attention", environment=environment)
-        owed = done.stdout.strip() if done else ""
-        orphans = tree_watch.check("Attention", str(event.get("cwd") or ""), environment)
-    text = "\n\n".join(part for part in (stuck, owed, orphans) if part)
+    try:
+        if due(session, time.time()):
+            child = start(event, session)
+            if child is not None:
+                try:
+                    child.wait(timeout=float(os.environ.get("POOLHOUSE_ATTENTION_WAIT_S") or WAIT_S))
+                except subprocess.TimeoutExpired:
+                    pass
+        text = take(session)
+    except OSError as error:
+        workspace_hook.warning("Attention", error)
+        return 0
     if text:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": event.get("hook_event_name") or "UserPromptSubmit",
                                                  "additionalContext": text[:4000]}}))
@@ -53,4 +155,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

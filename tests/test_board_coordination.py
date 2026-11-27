@@ -29,6 +29,9 @@ def board(workspace_node, monkeypatch, tmp_path):
     node = workspace_node
     node.lead = node.member('sess1')
     node.alice, node.bob, node.carol = (node.member(n) for n in ('alice', 'bob', 'carol'))
+    owner = node.member('notification-project-owner')  # a notification hook says nothing outside a registered project
+    node.allow(owner, 'source_add')
+    node.client.call('project_add', '', owner.token, id=node.board, kind='folder', path=str(tmp_path))
     binary = tmp_path / 'bin'
     binary.mkdir()
     wrapper = binary / 'poolhouse-workspace'
@@ -39,6 +42,7 @@ def board(workspace_node, monkeypatch, tmp_path):
     monkeypatch.setenv('PATH', f'{binary}{os.pathsep}{os.environ["PATH"]}')
     monkeypatch.setenv('PYTHONPATH', SRC)
     monkeypatch.setenv('POOLHOUSE_HOOK_STATE', str(tmp_path / 'hookstate'))
+    monkeypatch.setenv('POOLHOUSE_ATTENTION_WAIT_S', '80')  # the attention check ends within the hook call that starts it
     monkeypatch.setenv('POOLHOUSE_NONINTERACTIVE', '1')
     monkeypatch.setenv('POOLHOUSE_RUNTIME_ENSURE', 'off')
     return node
@@ -443,3 +447,66 @@ def test_lead_attention_hook_is_silent_when_nothing_is_owed_or_the_node_cannot_s
     monkeypatch.setenv('POOLHOUSE_ATTENTION_EVERY_S', '0')
     failed = hook('claude-lead-attention', event)
     assert failed.returncode == 0 and failed.stdout == ''
+
+
+def stand_in(board, tmp_path, monkeypatch, body):
+    """Replace `poolhouse-workspace` with a script that gives a CANNED reply: it notes each call, then runs ``body``."""
+    notes = tmp_path / 'standin'
+    notes.mkdir()
+    (tmp_path / 'bin' / 'poolhouse-workspace').write_text(
+        f'#!{sys.executable}\n# CANNED reply: a stand-in for `poolhouse-workspace attention`.\n'
+        'import os, sys, time\nfrom pathlib import Path\n'
+        f'notes = Path({str(notes)!r})\n'
+        "checked = Path(os.environ['POOLHOUSE_HOOK_STATE'], 'attention', 'sess1').exists()\n"
+        "with (notes / 'asked').open('a') as log:\n    log.write(f'checked={checked}\\n')\n"
+        f'{body}\n')
+    return notes
+
+
+WAITS_FOR_GO = """end = time.monotonic() + 25
+while not (notes / 'go').exists() and time.monotonic() < end:
+    time.sleep(0.05)
+print('CANNED attention reply')"""
+
+
+def test_a_slow_attention_check_never_holds_the_prompt_and_is_shown_at_the_next_event(board, tmp_path, monkeypatch):
+    notes = stand_in(board, tmp_path, monkeypatch, WAITS_FOR_GO)
+    settings = json.loads((HOOKS.parents[1] / '.claude/settings.json').read_text())
+    limit = next(h['timeout'] for h in settings['hooks']['UserPromptSubmit'][0]['hooks']
+                 if h['command'].endswith('claude-lead-attention'))
+    monkeypatch.setenv('POOLHOUSE_ATTENTION_WAIT_S', '0.2')
+    event = {'hook_event_name': 'UserPromptSubmit', 'session_id': 'sess1', 'prompt': 'hi'}
+    began = time.monotonic()
+    first = hook('claude-lead-attention', event)
+    assert first.returncode == 0 and first.stdout == '' and first.stderr == '', first.stdout + first.stderr
+    assert time.monotonic() - began < limit
+    assert hook('claude-lead-attention', event).stdout == '', 'the check is still running'
+    (notes / 'go').touch()
+    held = tmp_path / 'hookstate' / 'attention' / 'sess1.text'
+    end = time.monotonic() + 60
+    while not held.exists() and time.monotonic() < end:
+        time.sleep(0.05)
+    shown = json.loads(hook('claude-lead-attention', {**event, 'hook_event_name': 'PostToolUse'}).stdout)
+    assert shown['hookSpecificOutput'] == {'hookEventName': 'PostToolUse', 'additionalContext': 'CANNED attention reply'}
+    assert hook('claude-lead-attention', event).stdout == '', 'shown once'
+    assert (notes / 'asked').read_text() == 'checked=False\n', 'one check, recorded only once it has finished'
+
+
+def test_an_attention_check_that_was_ended_runs_again_once_its_mark_is_old(board, tmp_path, monkeypatch):
+    notes = stand_in(board, tmp_path, monkeypatch, "print('CANNED attention reply')")
+    event = {'hook_event_name': 'UserPromptSubmit', 'session_id': 'sess1', 'prompt': 'hi'}
+    mark = tmp_path / 'hookstate' / 'attention' / 'sess1.running'
+    mark.parent.mkdir(parents=True)
+    mark.touch()
+    assert hook('claude-lead-attention', event).stdout == '' and not (notes / 'asked').exists(), 'one is running'
+    os.utime(mark, (time.time() - HOUR, time.time() - HOUR))
+    assert 'CANNED attention reply' in hook('claude-lead-attention', event).stdout
+
+
+def test_an_attention_check_the_board_did_not_answer_runs_again_soon(board, tmp_path, monkeypatch):
+    stand_in(board, tmp_path, monkeypatch, 'raise SystemExit(1)')
+    event = {'hook_event_name': 'UserPromptSubmit', 'session_id': 'sess1', 'prompt': 'hi'}
+    done = hook('claude-lead-attention', event)
+    assert done.returncode == 0 and done.stdout == ''
+    checked = float((tmp_path / 'hookstate' / 'attention' / 'sess1').read_text())
+    assert time.time() - checked > 500, 'due again after a minute, not after the whole ten-minute interval'
