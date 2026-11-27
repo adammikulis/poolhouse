@@ -45,8 +45,7 @@ now does what a person does, through the node's real paths and nothing else (`te
   there is no switch in the node or in any production path for it, and nothing in the node knows a rig is running.
 * For each device the rig's person asks the node for the one-time secret of the first key: the node started as shipped (`--presence auto`, which asks
   nobody) makes it at once for the device's own session (`wire.py presence`, run on the device, `answer_presence`), the secret comes back to the session
-  that asked, and the rig enrols the key through the node's `person_enroll` with it. Nothing is typed and no terminal is needed, on any device; only a node
-  somebody starts by hand with `--presence os` or `terminal` asks a user first, and the launcher never starts one.
+  that asked, and the rig enrols the key through the node's `person_enroll` with it. Nothing is typed and no terminal is needed, on any device.
 * It signs each grant through `grant_issue`, for the rig's named sessions on that device only (the device's own fingerprint), for six hours:
   `add_device`, `join_pool`, `member_remove`, `sync_now` and `pool_create` to the session on the `pool` board that the steps join and
   remove through, and `shard_call` and `shard_consent` to the session of the `demo` board that sends and receives test runs. Nothing else is

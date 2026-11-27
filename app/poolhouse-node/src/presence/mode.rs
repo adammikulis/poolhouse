@@ -1,8 +1,7 @@
-//! How a node asks: nobody (`Auto`, the default) or the person's terminal device (`terminal::Terminal`), chosen when it starts.
-//!
-//! The node raises no dialog of the operating system: nothing in Poolhouse waits for a person at a prompt the node puts up.
+//! How a node asks: nobody (`Auto`). The node raises no dialog of the operating system and reads no terminal: nothing in Poolhouse waits for a
+//! person at a prompt the node puts up. A test of this crate puts its own `Presence` on `Node::firsts`, a library field no binary sets.
 
-use super::{terminal, Asking, Presence};
+use super::{Asking, Presence};
 use crate::error::Result;
 
 /// How long a prompt waits for the person.
@@ -67,33 +66,6 @@ impl Presence for Auto {
 
     fn begin(&mut self, _what: &str, _terminal: &str) -> Result<Box<dyn Asking>> {
         Ok(Box::new(Answered))
-    }
-}
-
-/// How a node asks, chosen when it starts (`--presence auto|terminal`; `auto` unless another is named).
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Mode {
-    /// Nobody is asked (`Auto`).
-    Auto,
-    /// The person's terminal device, named by the asker and read by the node.
-    Terminal,
-}
-
-impl Mode {
-    pub fn parse(name: &str) -> Option<Mode> {
-        match name {
-            "auto" => Some(Mode::Auto),
-            "terminal" => Some(Mode::Terminal),
-            _ => None,
-        }
-    }
-
-    /// The presence of a node on ``state``.
-    pub fn presence(self, state: &std::path::Path) -> Box<dyn Presence> {
-        match self {
-            Mode::Auto => Box::new(Auto),
-            Mode::Terminal => Box::new(terminal::Terminal::new(state)),
-        }
     }
 }
 

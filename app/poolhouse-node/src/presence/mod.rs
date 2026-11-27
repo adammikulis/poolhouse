@@ -3,8 +3,7 @@
 //! A node started with no `--presence` asks nobody (`Auto`): the user of this computer runs it, nothing waits for a person, and what a yes
 //! makes (the one-time secret that adds the first key or the first phone, or the ticket for a change the node drafted) is made at once. What
 //! a yes makes lives in the node's memory, never in a file, so a program that can write the state directory cannot leave one. The node
-//! raises no dialog of the operating system. `--presence terminal` asks on the person's terminal device that the node itself reads
-//! (`terminal::Terminal`); it is for a rig that plays the person at a pseudo-terminal and is never the launcher's.
+//! raises no dialog of the operating system and reads no terminal.
 //!
 //! Who may ask is proven, not claimed: the person's own session (`register_person` with the secret the node keeps for the person,
 //! `identity::person_secret`) drafts a change and asks for it, and a live main session does too while nobody is asked (`may_ask`). Tests of
@@ -13,7 +12,6 @@
 pub mod card;
 mod firsts;
 mod mode;
-pub mod terminal;
 
 use serde_json::{json, Map, Value};
 
@@ -21,7 +19,7 @@ use crate::error::{Error, Result};
 use crate::node::Node;
 
 pub use firsts::Firsts;
-pub use mode::{default_presence, Auto, Mode};
+pub use mode::{default_presence, Auto};
 pub(crate) use mode::{on_real_home, plain};
 
 pub const METHODS: [&str; 3] = ["presence_ask", "presence_status", "ticket_spend"];
@@ -103,7 +101,7 @@ pub trait Asking: Send {
 
 /// Where the question is put to the person.
 pub trait Presence: Send {
-    /// `auto` when nobody is asked, `terminal` for the person's terminal device.
+    /// `auto` when nobody is asked, the only kind a binary makes; a test of this crate names its own.
     fn kind(&self) -> &'static str;
     /// Open a prompt that says ``what``; ``terminal`` is the terminal device the asker named, which only a terminal prompt uses.
     fn begin(&mut self, what: &str, terminal: &str) -> Result<Box<dyn Asking>>;
@@ -130,11 +128,10 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
     if method == "presence_ask" {
         let purpose = Purpose::named(text(p, "purpose")?)?;
         // The first key and the first phone are the person's own session's to ask. A change (a pool's card, a window, a join) is asked by the
-        // person's own session too, and also by a live main session when the prompt is the system's own dialog, which no process can answer; where
-        // the only prompt is a typed yes on a terminal, a session an agent started could open a terminal of its own and answer it, so it is refused.
+        // person's own session too, and also by a live main session while nobody is asked (`may_ask`).
         let person = person_session(node, &holder);
         if !person && !(matches!(purpose, Purpose::PoolKey | Purpose::Card) && may_ask(node, &holder)) {
-            return Err(Error::Denied("Only the person's own session asks the person at this computer's prompt for that. An agent asks for a pool's change only where the computer shows the system's own dialog for the person's password or fingerprint; here the person runs the command in a terminal of their own.".into()));
+            return Err(Error::Denied("Only the person's own session asks the person at this computer's prompt for that. A live main session also asks for a pool's change while the node asks nobody; a subagent never does.".into()));
         }
         let terminal = text(p, "terminal")?.to_string();
         if matches!(purpose, Purpose::PoolKey | Purpose::Card) {
@@ -163,7 +160,7 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
 }
 
 /// Whether the node puts a change to the person for ``holder``: the person's own session, or a live main session (not a subagent, not retired)
-/// while nobody is asked (`auto`). A typed yes can be given by whoever owns a terminal, so it is never an agent's to ask.
+/// while nobody is asked (`auto`).
 pub(crate) fn may_ask(node: &mut Node, holder: &crate::identity::Holder) -> bool {
     if person_session(node, holder) {
         return true;

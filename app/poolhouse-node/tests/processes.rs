@@ -27,7 +27,7 @@ impl Proc {
         let dir = short_dir();
         let log = std::fs::File::create(dir.path().join("out.log")).unwrap();
         kit::govnode::plant_phone_person(&dir.path().join("s"));
-        let child = Command::new(BIN).arg("run").arg("--state").arg(dir.path().join("s")).args(["--presence", "terminal"]).args(args)
+        let child = Command::new(BIN).arg("run").arg("--state").arg(dir.path().join("s")).args(args)
             .stdin(Stdio::null()).stdout(log.try_clone().unwrap()).stderr(log).spawn().unwrap();
         let mut p = Proc { child, dir, token: String::new() };
         eventually("the node to answer", 15, || Client::connect(&p.state()).is_ok());

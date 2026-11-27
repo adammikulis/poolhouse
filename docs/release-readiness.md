@@ -169,7 +169,7 @@ item numbers are used below.
 
 | ID | The release must | Verified by | State | Depends on |
 | --- | --- | --- | --- | --- |
-| PH-1 | Add the first phone: the computer asks the person once with its own prompt, one scan, one fingerprint; the app and the terminal name the same key words | `scripts/pool-check --only phone-approval`; `tests/test_board_approval.py`; `tests/test_api_approval.py`; `tests/test_presence.py`; `app/poolhouse-node/tests/presence_terminal.rs`; drive: items 1, 2, 11 | built untested; never run on a phone | HANDOFF "Phone approval": nothing of the app has run on a phone |
+| PH-1 | Add the first phone: the computer asks the person once with its own prompt, one scan, one fingerprint; the app and the terminal name the same key words | `scripts/pool-check --only phone-approval`; `tests/test_board_approval.py`; `tests/test_api_approval.py`; `tests/test_presence.py`; drive: items 1, 2, 11 | built untested; never run on a phone | HANDOFF "Phone approval": nothing of the app has run on a phone |
 | PH-2 | A routine approval is 2 steps and a sensitive one is 4 (3 and 5 from a locked phone) | `tests/test_phone_friction.py`; `app/android` `gradle protocolChecks` (`PhoneApprovalTest`); drive: items 3 to 5 | built untested; `tests/test_phone_friction.py` passes | none |
 | PH-3 | The request text is complete and signed as shown; a signature over other text is refused; a second decision is refused | `app/poolhouse-node/tests/approvals.rs`; `scripts/pool-check --only phone-approval`; drive: items 3, 5 | built untested | none |
 | PH-4 | Lock screen shows only who is asking; an offline phone catches up; a request expires | drive: items 4, 6 | built untested; not driven | none |

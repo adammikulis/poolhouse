@@ -480,10 +480,10 @@ counts on any board.
 **Who may sign on a device in no pool.** `person_enroll` takes `public`, `about`, `at_ms` and `proof` (the key's own
 signature over the enrolment). The first key of this computer also takes `secret` (it is the first until a key made on this computer is enrolled: a phone's key enrolled earlier does not count, so this computer's own key is still enrolled by its own prompt and no phone has to tap): `poolhouse-workspace approval request ...`, `grants-setup` or any command a refusal sends to the grant
 policy (`poolhouse.board.autoapprove`) makes this device's own key on first use and asks the node (`presence_ask`) to allow the session to add it. **Nobody is
-asked**: a node runs as the user of the computer, and `--presence auto` (the default, and what the launcher starts) confirms at once. On a yes the node makes the random secret in its memory (never a file), hands it
+asked**: a node runs as the user of the computer, and the node confirms at once. On a yes the node makes the random secret in its memory (never a file), hands it
 once to the session that asked (`presence_status`), accepts it once and for ten minutes, and spends it on any guess, so a wrong secret ends the
-attempt; a node that holds a key never makes another this way. `--presence terminal` (a typed `yes` on a terminal the node reads itself)
-remains as an option for a rig that plays the person; the launcher never passes it, and the node raises no dialog of the operating system. **A change the node drafted is confirmed the same way**, and so is every operation the device's own session does without a grant. Who may ask is
+attempt; a node that holds a key never makes another this way. The node has no option that makes it ask: it raises no
+dialog of the operating system and reads no terminal. **A change the node drafted is confirmed the same way**, and so is every operation the device's own session does without a grant. Who may ask is
 proven, and the node tells the sessions apart for each request: the device's own session (`register_person` with the secret the node keeps for the local user) asks for every purpose; a live main session of an agent (not a subagent, not retired)
 asks for a pool's card (`pool_key`, `card`: founding, a window, a join, a change) while the presence is `auto`; the first key and the first phone stay the device's own session's. A card is asked for with `presence_ask` (`purpose: pool_key` for a card that made a key for this computer, `card` for any other, and the `card` that `pool_draft_found`,
 `pool_draft` or `op_draft` returned; it never takes a key from the request). **A request the person has not answered is never held back.** There is no quiet after a no, no count of prompts per

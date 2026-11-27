@@ -261,10 +261,6 @@ fn a_node_started_with_no_presence_asks_nobody_and_makes_the_yes_at_once() {
     assert_eq!(firsts.kind(), "auto");
     assert!(matches!(firsts.status("demo/a", 1)["state"].as_str(), Some("confirmed")), "the yes is there at the next look, with no person");
     assert!(firsts.can_hold_counting_key(), "a key made here counts: the computer's own keystore holds it");
-    for name in ["off", "none", "unattended", "yes", "test", ""] {
-        assert!(Mode::parse(name).is_none(), "{name:?} is not a way to ask");
-    }
-    assert!(Mode::parse("auto").is_some() && Mode::parse("os").is_none() && Mode::parse("terminal").is_some());
 }
 
 #[test]

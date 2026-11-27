@@ -6,9 +6,8 @@
 //! group in production, a peer in tests), `--advertise IP` the address it carries,
 //! `--allow-loopback` lets a test advertise loopback, `--sync-ms N` sets the sync interval.
 //!
-//! `--presence terminal` says how the first person key and the first phone are asked of the person (with neither the node refuses
-//! them: `terminal` is the terminal device the
-//! asker names, which the node itself reads).
+//! Nobody is asked for the first person key or the first phone (`poolhouse_node::presence`): there is no option that makes the node
+//! put a question to a person.
 //!
 //! With the beacon on, the device finds a pool without a key or a code: it takes the project of
 //! the repository it runs in (`--project-dir DIR`, else the working directory; `--project NAME`
@@ -180,10 +179,6 @@ fn run(state: &Path, args: &[String]) -> Result<(), String> {
     let mut server = Server::bind_with(state, supplied_key(args)?.as_ref()).map_err(|e| e.to_string())?;
     let shared = server.node();
     set_build(&mut *shared.lock().map_err(|e| e.to_string())?, args)?;
-    if let Some(name) = flag(args, "--presence") {
-        let mode = poolhouse_node::presence::Mode::parse(name).ok_or("--presence is auto (nobody is asked, the default), terminal (the person's terminal device)")?;
-        shared.lock().map_err(|e| e.to_string())?.firsts = poolhouse_node::presence::Firsts::new(mode.presence(state));
-    }
     if let Some(listen) = phone {
         shared.lock().map_err(|e| e.to_string())?.pusher = Box::new(poolhouse_node::phone::push::Web::start(state));
         poolhouse_node::phone::http::start(shared.clone(), listen).map_err(|e| e.to_string())?;

@@ -71,10 +71,8 @@ of exactly those terms (`poolhouse/pool-accept/v2`) with the proof of its own ad
 
 **The first phone.** A person runs `poolhouse-workspace phone add` once on the computer (a person's command: it refuses a
 process an agent started, like `grants-setup`). The command asks the node (`presence_ask`) to allow the session to add the first phone,
-and the node asks the person itself with **one prompt that no agent can answer**: the operating system's own dialog (macOS and Linux:
-a password or fingerprint, shown by the installed software on the real home, and the only way to ask there: a computer with no such prompt
-refuses), or, on a node of another state directory started with `--presence terminal` (the pool check, a server), a question the node writes
-on the terminal and reads the typed `yes` from itself. For the first key the prompt shows the key's own words and the yes is for that key only. Only then does the node make the one-time secret, in
+and the node confirms at once: it raises no dialog of the operating system and reads no terminal, so nobody is asked. For the first key
+the confirmation is for that key only. The node makes the one-time secret in
 its memory and in no file, so a program that can write the state directory (an agent) can neither make a code nor plant one. The command
 draws the QR code in the terminal; it writes no image file for the first phone, because a file could be read by any program that runs as
 the person. The person scans it. The phone's key is enrolled directly: the secret is the proof that the person at the computer said yes to
@@ -320,7 +318,6 @@ Each refusal is one sentence the agent can pass to its person.
 | An agent's `expect_policy` that is not the node's | "The pool is secure, not open as you wrote; ask again with what is true." |
 | Text with other than printable ASCII | "That text must be plain English letters, digits and punctuation." |
 | A code a session made, used to add the first phone | "A code made through the node cannot add the first phone: a person at the computer adds it with `poolhouse-workspace phone add`." |
-| The first key or phone asked of a node that has no way to ask the person (started with no `--presence`) | "This node was started with no way to ask the person, so the first key or phone cannot be added through it." |
 | The first key or phone on Windows | "The first key and phone cannot be added on Windows yet: it has no prompt the node can ask with." |
 | The person says no, or nobody answers in two minutes | "You said no, so nothing was added." / "Nobody said yes in time, so nothing was added." The node asks again only after a few minutes |
 | An agent asking for a code while one waits to be scanned | "A code for a phone is already waiting to be scanned; use it or wait for it to run out." |

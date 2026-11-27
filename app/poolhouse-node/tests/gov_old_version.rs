@@ -99,7 +99,7 @@ fn refusal_of(state: &Path) -> Error {
 /// The real `poolhouse-node run` on ``state``: how it ended, and what it said.
 fn run_node(state: &Path) -> (std::process::ExitStatus, String) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_poolhouse-node"))
-        .args(["run", "--state"]).arg(state).args(["--presence", "terminal"])
+        .args(["run", "--state"]).arg(state)
         .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
     let deadline = Instant::now() + Duration::from_secs(60);
     let status = loop {
