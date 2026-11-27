@@ -88,7 +88,7 @@ def _digest(policy: Policy, grants: Sequence[Grant], spec: Spec) -> str:
             "net": [policy.net.mode.value, policy.net.ports, policy.net.listen, policy.net.accept], "env": sorted(policy.env), "strict": policy.strict,
             "preferences": policy.preferences, "user_records": policy.user_records,
             "deny_write": policy.deny_write, "unix_sockets": policy.unix_sockets, "signal_children": policy.signal_children,
-            "read_metadata": policy.read_metadata,
+            "read_metadata": policy.read_metadata, "read_files": policy.read_files,
             "limits": [policy.limits.processes, policy.limits.wall_seconds, policy.limits.cpu_seconds, policy.limits.file_bytes,
                        policy.limits.open_files], "gpu": policy.gpu,
             "grants": sorted(f"{grant.kind}:{grant.subject}:{grant.fingerprint}" for grant in grants)}
@@ -99,6 +99,7 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
     """The profile of ``spec`` with ``grants`` in force and ``env`` the whole environment the harness gets (`isolation.environment`)."""
     reads = [each for grant in grants if grant.kind in ("read", "toolchain") for each in (toolchain.reach(grant.subject) if grant.kind == "toolchain" else (grant.subject,))]
     runs = [each for grant in grants if grant.kind == "toolchain" for each in toolchain.reach(grant.subject)]
+    settings, linked = toolchain.system_settings()
     writable = [spec.home] if spec.read_only_stage else [spec.stage, spec.home]
     own = () if spec.read_only_stage else (spec.stage, spec.home)
     """What an editing session runs of its own: the programs it wrote, a project's `scripts/test` among them. It already runs them through a shell
@@ -111,7 +112,7 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
                                               *_git_directory(), *spec.environments, *own])),
                     net=Net.only(*ports, listen=spec.listen, accept=spec.window), env=dict(env or {}), strict=True, signal_children=True, preferences=PREFERENCES.get(spec.harness, ()), user_records=True,
                     unix_sockets=tuple(each for each in (spec.session_socket, spec.window_socket) if each),
-                    read_metadata=toolchain.developer_selection(),
+                    read_files=settings, read_metadata=(*toolchain.developer_selection(), *linked),
                     deny_write=(*(str(Path(spec.stage) / name) for name in (*CONTROL_PREFIXES, GIT_DIRECTORY)), *spec.frozen),
                     limits=limits or Limits(wall_seconds=None, output_bytes=None, processes=fair_share()))
     return Profile(policy, spec.stage, spec.home, search_path(spec, grants), tuple(grants), _digest(policy, grants, spec), spec.harness,

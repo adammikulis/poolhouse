@@ -231,7 +231,8 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
   `log.txt` in `.git/poolhouse-review` (`isolation.history`).
 - **Programs.** The system's, Homebrew's and `/usr/local`'s `bin` and Apple's command-line tools are on `PATH`. Apple's `/usr/bin/git` and
   `/usr/bin/python3` run the command-line tools' own, so a program that names one, or starts `git` with no environment, finds it
-  (`isolation.toolchain.developer_selection`). git does not read the system configuration. A program file the session wrote
+  (`isolation.toolchain.developer_selection`). Of Homebrew's and `/usr/local`'s `etc` the box reads only OpenSSL's `openssl.cnf` and public
+  `cert.pem`, without which node and `openssl` do not start (`toolchain.system_settings`). git does not read the system configuration. A program file the session wrote
   into the stage cannot be run (`sh script.sh` and `python file.py` can).
 - **git.** `.git` is read-only: `git status` and `git diff` work; `git add` and `git commit` fail.
 - **Time and output.** A command ends at its timeout (180 s unless it asks for another, at most 600 s) with everything it left running: the

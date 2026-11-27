@@ -478,6 +478,27 @@ def test_the_preflight_finds_a_git_that_a_program_with_no_environment_cannot_run
     assert "git does not show the project" in said and "env -i" in said and "xcode-select" in said, said
 
 
+def test_openssl_and_node_start_in_the_box_and_of_the_systems_settings_it_reads_only_openssls_public_files(box):
+    """Both end at once when they may not open OpenSSL's configuration, so no certificate was made and no node program ran."""
+    files, _ = toolchain.system_settings()
+    script = """\
+        command -v openssl >/dev/null && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout "$TMPDIR/k.pem" \\
+            -out "$TMPDIR/c.pem" -days 1 -subj /CN=box 2>/dev/null && grep -q CERTIFICATE "$TMPDIR/c.pem" && echo "a certificate is made"
+        command -v node >/dev/null && node -e 'console.log("node runs")'
+        """
+    for each in ("/opt/homebrew/etc", "/usr/local/etc"):
+        script += f"""
+        tried listing-{each.split('/')[1]} 'ls {each}'
+        for folder in {each}/openssl*; do [ -d "$folder/private" ] && tried keys "ls $folder/private"; done
+        tried write "echo x >> {files[0] if files else each + '/x'}"
+        """
+    out, _, confinement = shelled(box, script)
+    for program, expected in (("openssl", "a certificate is made"), ("node", "node runs")):
+        assert expected in out or not shutil.which(program), out
+    assert "OPEN " not in out, out
+    assert confinement.said() == [], confinement.said()
+
+
 def test_what_the_box_has_of_the_systems_programs(box):
     out, _, _ = shelled(box, """\
         tried system-python '/usr/bin/python3 -c pass'
