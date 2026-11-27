@@ -21,7 +21,7 @@ class LocalUIBridge(NetworkBridge):
     """A Windows loopback listener with owned per-connection WSL helpers."""
 
     def __init__(self, argv: Sequence[str], port: int) -> None:
-        super().__init__("127.0.0.1", ("127.0.0.1", port), "", 0, socket.socket)
+        super().__init__("127.0.0.1", ("127.0.0.1", port))
         self.argv = list(argv)
         self.processes: set[subprocess.Popen] = set()
 
