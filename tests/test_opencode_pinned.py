@@ -27,6 +27,7 @@ from delegate_kit import agent_names, started
 
 from poolhouse import (
     delegate_confined,
+    delegate_resume,
     delegate_run,
     delegate_store as store,
     harnessid,
@@ -113,13 +114,13 @@ def delegated(lead_node, release, served, monkeypatch, request):
     monkeypatch.setattr(lead_bridge, "POLL_S", 0.05)
     before = signal.getsignal(signal.SIGTERM)
 
-    def run(asked, *words):
+    def run(asked, *words, resumes=0):
         served.turns = turns(asked)
-        assert started("--task", "PLUMBING: call the tools", "--project", str(project), *words) == 0
+        assert started("--task", "PLUMBING: call the tools", "--project", str(project), *words, resumes=resumes) == 0
         [name] = agent_names(node, lead)
         node.session(lead).post(name, "status", "PLUMBING word from the lead")
         status = delegate_run.run(name)
-        return SimpleNamespace(status=status, row=store.result(name), log=store.log_file(name).read_text(errors="replace"), heard=heard)
+        return SimpleNamespace(name=name, status=status, row=store.result(name), log=store.log_file(name).read_text(errors="replace"), heard=heard)
 
     yield SimpleNamespace(project=project, run=run)
     signal.signal(signal.SIGTERM, before)
@@ -196,6 +197,37 @@ def test_the_writes_the_box_refuses_the_pinned_release_leave_the_delegate_partia
     assert [(each["path"], each["tool"], each["by"]) for each in ran.row["refused_writes"]] == [
         (".claude/settings.local.json", "write", "sandbox"), (".claude", "bash", "sandbox")], (ran.row, offered(served)[1])
     assert '2 writes refused by the sandbox: ".claude/settings.local.json", ".claude"' in ran.row["detail"], ran.row
+
+
+@pytest.mark.parametrize("words", [(), ("--edit",)], ids=["reading", "editing"])
+def test_a_delegate_broken_off_on_the_pinned_release_takes_its_conversation_up_in_the_next_box(delegated, served, monkeypatch, words):
+    """The server refuses one request after the first tool call (PLUMBING, not a model), so the harness ends with an error; the next attempt runs in a
+    box of its own, whose stage is another folder, and continues the same conversation there."""
+    heard, original = delegate_confined.Hooks.heard, delegate_resume.waited
+
+    def broken(self, event, payload, said):
+        if event == "post" and "tool_use_id" in payload and not served.refused_once:
+            served.refuse[canned.CHAT] = 400
+        heard(self, event, payload, said)
+
+    def mended(model, say):
+        served.refused_once, served.refuse = True, {}
+        served.turns = turns([("write", {"path": "made.py", "content": "x = 1\n"})] if words else [])
+        return original(model, say)
+
+    served.refused_once = False
+    monkeypatch.setattr(delegate_confined.Hooks, "heard", broken)
+    monkeypatch.setattr(delegate_resume, "waited", mended)
+    ran = delegated.run([("glob", {"pattern": "**/*"})], *words, resumes=1)
+    phases = store.graded(ran.name)["run"]["phases"]
+    assert [(each["attempt"], bool(each["interrupted"])) for each in phases] == [(0, True), (1, False)], (phases, ran.log[-4000:])
+    assert ran.status == 0 and ran.row["state"] == "done" and SAID in ran.row["text"], (ran.row, ran.log[-4000:])
+    assert "DirectoryAccessDenied" not in ran.log, ran.log[-4000:]
+    last = offered(served)[0][-1]["messages"]
+    assert [each["role"] for each in last].count("tool") == 1 + len(words), "the first attempt's tool call and its result are in the conversation taken up"
+    if words:
+        assert (delegated.project / "made.py").read_text() == "x = 1\n", "a file the continued conversation wrote by its relative path is published"
+    assert any("interrupted from outside the task" in str(each["content"]) for each in last), last[-3:]
 
 
 def test_a_plugin_the_pinned_release_cannot_load_is_named_in_the_delegates_log_and_the_run_fails(delegated, monkeypatch):

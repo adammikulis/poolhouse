@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -49,6 +50,7 @@ PROVIDER = "poolhouse"
 AGENT = "poolhouse"
 """The agent of a run that brings its own (`Setup.agent`)."""
 CONFIG = "opencode.json"
+SESSION_ID = re.compile(r"[A-Za-z0-9_-]+")
 PLUGIN = "bin/poolhouse-plugin"
 """The plugin's folder in the agent home: OpenCode loads a configured plugin only from a folder (a path to a file is dropped with a warning), and
 reads its `ENTRY`. It lies under ``bin``, which the box holds read-only as a whole, so a run cannot put a second entry beside ours."""
@@ -176,8 +178,19 @@ until [ "$(printf 'user = "opencode:%s"\\n' "$OPENCODE_PASSWORD" |
   if [ "$tries" -gt 300 ]; then echo "poolhouse: the OpenCode server did not start" >&2; kill "$server" 2>/dev/null; exit 1; fi
   sleep 0.1
 done
-binary=$1 port=$2
-shift 2
+binary=$1 port=$2 session=$3 body=$4
+shift 4
+if [ -n "$session" ]; then
+  # A conversation names the folder of the box it was held in, which this box may not read: it is moved to this one before `run` takes it up.
+  # One this server does not hold (404) is one `run` makes.
+  code=$(printf 'user = "opencode:%s"\\n' "$OPENCODE_PASSWORD" |
+    /usr/bin/curl -q -s -o /dev/null -w '%{http_code}' --noproxy '*' --max-time 180 -K - -H 'content-type: application/json' --data "$body" \\
+      "http://127.0.0.1:$port/api/session/$session/move")
+  case $code in
+    2??|404) ;;
+    *) echo "poolhouse: the conversation could not be moved to this copy of the project (HTTP $code)" >&2 ;;
+  esac
+fi
 "$binary" run --server "http://127.0.0.1:$port" "$@"
 status=$?
 kill "$server" 2>/dev/null
@@ -185,12 +198,25 @@ exit "$status"
 """
 
 
-def argv_of(binary: str, port: int, alias: str, extra: Sequence[str]) -> tuple[str, ...]:
+def taken_up(extra: Sequence[str]) -> str:
+    """The id of the conversation the words of ``run`` take up, empty when they name none, or one that is no id (it goes into the server's path)."""
+    words = iter(extra)
+    for word in words:
+        flag, joined, value = word.partition("=")
+        if flag in ("--session", "-s"):
+            value = value if joined else next(words, "")
+            return value if SESSION_ID.fullmatch(value) else ""
+    return ""
+
+
+def argv_of(binary: str, port: int, alias: str, extra: Sequence[str], directory: str) -> tuple[str, ...]:
     """The command line of one run. ``opencode run`` has no mode without a server, and its own private one (`--standalone`) listens on a port the
     operating system picks, which the box (that names the ports it opens) cannot know. So the confined process starts ``opencode serve`` on ``port``,
     the one the launcher chose and opened, and runs ``opencode run --server`` against it, behind the password the bridge token gives both. The
-    binary's own folder leads ``PATH``: the ripgrep kept beside it is the one the search tools run."""
-    return ("/bin/sh", "-c", SERVE, "opencode", binary, str(port), "--format", "json", "--model", f"{PROVIDER}/{alias}", *extra)
+    binary's own folder leads ``PATH``: the ripgrep kept beside it is the one the search tools run. A conversation ``extra`` takes up (`taken_up`) is
+    first moved to ``directory``, this box's copy of the project: it was held in another box's, which this one may not read."""
+    return ("/bin/sh", "-c", SERVE, "opencode", binary, str(port), taken_up(extra), json.dumps({"directory": directory}), "--format", "json",
+            "--model", f"{PROVIDER}/{alias}", *extra)
 
 
 def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], settings: Mapping[str, Any],
@@ -209,7 +235,7 @@ def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], 
         agent = {**made.agent, "system": f"{made.agent['system']}{lacks}\n"}
         return {f".opencode-config/{CONFIG}": config(replace(made, agent=agent))}
 
-    return isolation.Rendering(argv_of(binary, port, alias, extra), written, listen=(port,), noted=noted if made.agent else None)
+    return isolation.Rendering(argv_of(binary, port, alias, extra, context.stage), written, listen=(port,), noted=noted if made.agent else None)
 
 
 OWN = ("$schema", "model", "small_model", "provider", "tool_output", "instructions")

@@ -95,8 +95,9 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     said = []
     assert opencode.launch(["--sandbox", "--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append,
                            run_opencode=run_opencode) == 0, said
-    sh, flag, script, name, program, port, *rest = seen["argv"]
+    sh, flag, script, name, program, port, session, body, *rest = seen["argv"]
     assert (sh, flag, name, program) == ("/bin/sh", "-c", "opencode", str(binary.resolve()))
+    assert session == "" and Path(json.loads(body)["directory"]).name.startswith("tool-"), "no conversation is moved to the stage"
     assert rest == ["--format", "json", "--model", "poolhouse/local-model", "fix it"]
     assert '"$1" serve --print-logs --log-level warn --hostname 127.0.0.1 --port "$2" >&2 &' in script
     assert 'run --server "http://127.0.0.1:$port"' in script and "--standalone" not in script
@@ -186,6 +187,15 @@ def test_the_server_is_heard_on_the_error_output_and_the_box_lets_a_run_neither_
 def test_run_starts_only_once_the_server_says_it_is_ready(monkeypatch, tmp_path):
     _status, said, out, err = stood_in(monkeypatch, tmp_path, EAGER)
     assert out == "ready\n", (said, out, err)
+
+
+@pytest.mark.parametrize("words,found", [
+    (("--session", "ses_21e9b8ea"), "ses_21e9b8ea"), (("-s", "ses-1", "go on"), "ses-1"), (("--session=ses_2",), "ses_2"), (("go on",), ""),
+    (("--session", "../../global"), ""), (("--session", "ses_1/move?x=1"), ""), (("--session", "ses 1"), ""), (("--session",), "")])
+def test_only_a_plain_id_of_a_conversation_taken_up_reaches_the_servers_path(words, found):
+    assert opencode.taken_up(words) == found
+    argv = opencode.argv_of("/bin/opencode", 1, "m", words, "/stage")
+    assert argv[6:8] == (found, json.dumps({"directory": "/stage"})) and argv[-len(words):] == words
 
 
 def provider_key(seen):
