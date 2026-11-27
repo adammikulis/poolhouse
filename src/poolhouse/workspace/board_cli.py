@@ -16,6 +16,7 @@ from poolhouse.board.client import Client, Conflict, NodeError
 from poolhouse.board.session import Entry, Native, Session
 from poolhouse.command import flag
 from poolhouse.errors import Denied
+from poolhouse.isolation.refusals import IsolationRefused
 from poolhouse.log import say, warn
 from poolhouse.workspace import (
     agent_display,
@@ -50,10 +51,10 @@ def exit_code(err: Exception) -> int:
         return {"invalid": 2, "quota": 4}.get(err.code, 3)
     if isinstance(err, (Refused, Denied)):
         return 3
-    return 2 if isinstance(err, (ValueError, EOFError)) else 3
+    return 2 if isinstance(err, (ValueError, EOFError, IsolationRefused)) else 3
 
 
-FAILURES = (NodeError, OSError, Denied, Refused, ValueError, EOFError)
+FAILURES = (NodeError, OSError, Denied, Refused, ValueError, EOFError, IsolationRefused)
 GENERIC = frozenset({"claude", "chatgpt", "qwen", "claude-code", "codex"})
 """The names `--agent` once carried for every session; each is refused in favour of the session's own."""
 
