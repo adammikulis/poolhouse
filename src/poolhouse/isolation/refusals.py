@@ -15,11 +15,12 @@ class IsolationRefused(RuntimeError):
 
 
 class IsolationFailed(RuntimeError):
-    """The proof found the confinement open: the first attempt that got through, the guarantee it belongs to and the profile it ran under."""
+    """The proof did not show that the confinement holds: the first attempt that got through, or with ``unanswered`` the first the probe did not
+    answer in time, the guarantee it belongs to and the profile it ran under."""
 
-    def __init__(self, attempt: str, guarantee: str, digest: str, detail: str = "") -> None:
-        self.attempt, self.guarantee, self.digest, self.detail = attempt, guarantee, digest, detail
-        super().__init__(sentence("proof_failed", attempt=attempt))
+    def __init__(self, attempt: str, guarantee: str, digest: str, detail: str = "", *, unanswered: bool = False) -> None:
+        self.attempt, self.guarantee, self.digest, self.detail, self.unanswered = attempt, guarantee, digest, detail, unanswered
+        super().__init__(sentence("proof_unanswered" if unanswered else "proof_failed", attempt=attempt))
 
 
 SENTENCES: dict[str, str] = {
@@ -49,11 +50,16 @@ SENTENCES: dict[str, str] = {
     "service_failed": "The coding agent's helper ({name}) could not start, so the agent was not started.",
     "proof_failed": ("Poolhouse could not confirm that the safety box holds on this computer (it allowed {attempt}), so the coding "
                      "agent was not started."),
+    "proof_unanswered": ("Poolhouse could not confirm that the safety box holds on this computer (its check {attempt} did not answer in time: the "
+                         "computer may be very busy), so the coding agent was not started."),
     "confined_caller": "Refused: a coding session cannot change what another coding session may reach; this process runs inside one.",
-    "not_the_lead": "Refused: only the session that launches coding agents for the person can widen what one may reach.",
+    "not_placed": ("Refused: this process is marked as an agent's and the node finds no session above it, so it widens no coding session "
+                   "and removes no project."),
+    "unattended_caller": ("Refused: an agent that runs with nobody at it (a delegate, or a local agent of a board), and whatever it starts, "
+                          "starts no agent, widens nothing and changes no project's record."),
     "held_back": "Refused: widening a coding session is held back from agents on this computer.",
-    "project_unregistered": ("Refused: this folder is not a registered project of this computer, and only the session that launches coding "
-                             "agents for the person registers one."),
+    "project_unregistered": ("Refused: this folder is not a registered project of this computer, and a process marked as an agent's that the "
+                             "node finds no session above it registers none."),
     "project_home": "Refused: a coding session cannot work in your home folder or a folder around it.",
     "project_state": "Refused: a coding session cannot work in the folder where Poolhouse keeps its own state or around it.",
     "project_system": "Refused: a coding session cannot work in a folder of the operating system.",

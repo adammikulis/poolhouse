@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import logging
 import math
@@ -170,17 +169,6 @@ def request_on(pid: int, port: int, *, samples: int = 5, apart_s: float = 0.2) -
     return True
 
 
-def cmdline_digest(pid: int | None) -> str | None:
-    """A digest of ``pid``'s command line, or None when it is not running or will not say."""
-    if not pid_exists(pid):
-        return None
-    try:
-        argv = psutil.Process(pid).cmdline()
-    except psutil.Error:
-        return None
-    return hashlib.sha256("\0".join(argv).encode("utf-8", "replace")).hexdigest() if argv else None
-
-
 def self_or_ancestor(pid: int | None) -> bool:
     """Whether ``pid`` is this process or one of the processes that started it."""
     if not isinstance(pid, int) or pid <= 0:
@@ -297,6 +285,7 @@ def every_server() -> list[dict]:
                     "draft": after("--spec-draft-model", "-md") or after("--model-draft")
                              or after("-hfd"),
                     "spec_type": after("--spec-type"),
+                    "key_file": after("--api-key-file"),
                     "n_gpu_layers": offloaded_layers(argv),
                     "draft_max": int(ahead) if ahead.isdigit() else None,
                     "rss": rss})

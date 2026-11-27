@@ -58,8 +58,8 @@ def test_empty_root_overrides_route_to_custom_runtime(tmp_path, monkeypatch):
 def test_daemon_routes_roots_before_startup_services(tmp_path, monkeypatch):
     from poolhouse import keystore, sentinel
     from poolhouse.fleet import daemon
+    from poolhouse.ownership import lease_file
     from poolhouse.sentinel.honey import Honey
-    from poolhouse.serve.leases import lease_file
 
     monkeypatch.delenv(home.ROOT_ENV, raising=False)
     monkeypatch.delenv(home.CACHE_ENV, raising=False)

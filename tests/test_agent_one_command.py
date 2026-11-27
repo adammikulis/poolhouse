@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 
 from poolhouse import harness, harnessing
+from poolhouse.ownership import lease_file
 from poolhouse.serve import binary as binary_module
-from poolhouse.serve.leases import lease_file
 from poolhouse.serve.profile import record
 from poolhouse.testing.canned import Canned, CannedServer
 from poolhouse.testing.registry import record_server
@@ -68,8 +68,8 @@ def test_a_named_build_of_another_repository_is_a_fork(tmp_path):
 def test_the_record_of_a_server_that_started_without_its_head_names_no_head(tmp_path):
     """Driven 2026-11-24: the server fell back to no head and the lease record still named the head it
     had refused, so a later ask for that head was told a server without one was compatible."""
+    from poolhouse.ownership import recorded_servers
     from poolhouse.serve.backend import LlamaServerBackend, ServerInfo, ServerSpec
-    from poolhouse.serve.leases import recorded_servers
     from poolhouse.serve.manager import ServerManager
     from poolhouse.testing.fakes import fake_binary
 
@@ -155,7 +155,7 @@ def test_the_standing_server_of_2026_11_24_is_asked_for_as_it_runs(standing, tmp
 
 
 def lease_entry(port):
-    from poolhouse.serve.leases import recorded_servers
+    from poolhouse.ownership import recorded_servers
 
     return recorded_servers()[port]
 

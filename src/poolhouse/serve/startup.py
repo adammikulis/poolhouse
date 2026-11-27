@@ -18,8 +18,9 @@ import psutil
 from poolhouse import home
 from poolhouse.client import chat, families, settings
 from poolhouse.hub.modelfile import scan_gguf
+from poolhouse.ownership import cmdline_digest
 from poolhouse.serve.build_platform import verify_libraries
-from poolhouse.serve.process import cmdline_digest, started_at
+from poolhouse.serve.process import started_at
 from poolhouse.serve.tensors import shard_names
 
 

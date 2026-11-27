@@ -1,6 +1,6 @@
 # Harness comparison
 
-Rows are appended by `scripts/compare-harnesses`. No scored run is recorded yet.
+No scored run is recorded.
 
 ## 2026-10-03: smoke, Codex only, not scored
 

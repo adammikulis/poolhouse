@@ -9,6 +9,7 @@ from poolhouse import lazy
 # Names resolve on first use: importing one submodule of this package (`poolhouse.serve.backend`,
 # `poolhouse.serve.grant`) must not load the manager, the broker's clients and everything they import.
 if TYPE_CHECKING:  # what the names below resolve to, for readers and type checkers; `_HOME` is what runs
+    from poolhouse.ownership import recorded_servers
     from poolhouse.serve.backend import (
         LlamaServerBackend,
         ServerBackend,
@@ -21,7 +22,7 @@ if TYPE_CHECKING:  # what the names below resolve to, for readers and type check
     )
     from poolhouse.serve.binary import BinaryNotFound, child_env, find_binary, require_binary
     from poolhouse.serve.escalation import EscalationRefused
-    from poolhouse.serve.leases import merge_state, recorded_servers
+    from poolhouse.serve.leases import merge_state
     from poolhouse.serve.manager import Measuring, ServerManager, serve, stop_all_servers
     from poolhouse.serve.matching import model_matches, serving_mismatch
     from poolhouse.serve.ports import (
@@ -79,7 +80,7 @@ _HOME = {
     "profiles": ("poolhouse.serve.profile", "profiles"),
     "projector_for": ("poolhouse.serve.serving", "projector_for"),
     "reclaim_port": ("poolhouse.serve.ports", "reclaim_port"),
-    "recorded_servers": ("poolhouse.serve.leases", "recorded_servers"),
+    "recorded_servers": ("poolhouse.ownership", "recorded_servers"),
     "require_binary": ("poolhouse.serve.binary", "require_binary"),
     "restore_all": ("poolhouse.serve.slotdump", "restore_all"),
     "restore_slot": ("poolhouse.serve.slotdump", "restore_slot"),

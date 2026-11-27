@@ -223,6 +223,31 @@ def test_fit_unknown_is_not_recommended_as_ready(tmp_path, monkeypatch):
     assert next(row for row in rows if row['recommended'])['model_id'] == 'curated.gguf'
 
 
+@pytest.mark.parametrize('held', [['Qwen3.8-27B-Q4_K_M.gguf'],
+                                  ['Qwen3.8-27B-Q4_K_M.gguf', 'Qwen3.8-27B-UD-Q4_K_XL.gguf']])
+def test_upgrade_recommends_the_installed_27b_not_a_download_of_the_new_default(tmp_path, monkeypatch, held):
+    ui, add, _ = fixture_ui(tmp_path, monkeypatch)
+    new = 'Qwen3.8-27B-UD-Q3_K_XL.gguf'
+    monkeypatch.setattr(preparation.startup_models, 'choices', lambda **kwargs: {'models': [
+        {'name': 'Qwen3.8 27B', 'file': new, 'gb': 12.24, 'memory_gb': 16, 'fits_now': True}]})
+    sizes = {'Qwen3.8-27B-Q4_K_M.gguf': 22.0, 'Qwen3.8-27B-UD-Q4_K_XL.gguf': 21.0, new: 16.0}
+    fits = [False]
+    monkeypatch.setattr(preparation, '_estimate', lambda row, context, free: {
+        'memory_gb': sizes[row['name']], 'fits_now': fits[0]})
+    for name in held:
+        add(name)
+
+    def recommended():
+        rows = preparation.choices_for(ui)['models']
+        return [(row['file'], row['installed']) for row in rows if row['recommended']]
+
+    assert recommended() == [(held[-1], True)]
+    fits[0] = True
+    assert recommended() == [(held[-1], True)]
+    add(new)
+    assert recommended() == [(new, True)]
+
+
 def test_installed_replacement_during_inventory_resolution_denies(tmp_path, monkeypatch):
     ui, add, _ = fixture_ui(tmp_path, monkeypatch)
     path = add('chosen.gguf')

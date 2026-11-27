@@ -18,12 +18,12 @@ from poolhouse.agent import Agent, Budget, Done, FunctionTools
 from poolhouse.agent.watched import Watch
 from poolhouse.client import Client
 from poolhouse.interventions import Call as GuardCall, Deny, Proceed, Run
+from poolhouse.ownership import recorded_servers
 from poolhouse.sandbox import Limits
 from poolhouse.sentinel import State, permit
 from poolhouse.sentinel.score import QUARANTINE_AT, WATCH_AT
 from poolhouse.serve import LlamaServerBackend, ServerManager
 from poolhouse.serve.broker import Ask, Broker, BrokerError
-from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.testing.canned import CannedServer, Turn, canned_binary
 from tests.model_pins import pinned

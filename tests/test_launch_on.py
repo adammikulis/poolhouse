@@ -22,13 +22,13 @@ from test_serve_refused_key import started
 from poolhouse import claude, codex, harnessid, harnessing, home, opencode, pi, serverkeys
 from poolhouse.client.health import reported_models
 from poolhouse.files import read_json, write_json
-from poolhouse.http import Cancellation, build_request, cancel_scope
+from poolhouse.http import Cancellation, build_request, cancel_scope, head_once
+from poolhouse.ownership import cmdline_digest, lease_file
 from poolhouse.serve import backend as be
 from poolhouse.serve.grant import broker_grant
-from poolhouse.serve.leases import lease_file
 from poolhouse.serve.policy import LocalPolicy
 from poolhouse.serve.ports import free_port
-from poolhouse.serve.process import cmdline_digest, started_at
+from poolhouse.serve.process import started_at
 from poolhouse.testing.registry import record_server
 
 CANNED = "canned-model"
@@ -53,6 +53,11 @@ class _Listener(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_HEAD(self):
+        self.server.heard.append(self.headers.get("Authorization"))
+        self.send_response(200)
+        self.end_headers()
 
     def log_message(self, *_args):
         return
@@ -267,3 +272,27 @@ def test_a_start_on_a_port_a_keyed_server_holds_leaves_that_servers_key(processe
             be.ServerSpec(model=weights, port=port), lease=be.Lease(port=port, owner_pid=os.getpid(), state_file=str(lease_file())),
             check_flags=False, preflight=False)
     assert serverkeys.for_url(f"http://127.0.0.1:{port}") == key
+
+
+@pytest.mark.redteam
+def test_a_head_request_to_this_computer_goes_through_no_proxy(listeners, proxy):
+    server = listeners()
+    key = keyed(server.server_port, os.getpid())
+    assert head_once(f"http://127.0.0.1:{server.server_port}/v1/models").status == 200
+    assert (proxy.heard, server.heard) == ([], [f"Bearer {key}"])
+
+
+@pytest.mark.parametrize("known_by", ["the-key-record", "the-lease-record"])
+def test_a_key_whose_number_another_process_took_does_not_hold_the_port(listeners, known_by):
+    """A number used again: nothing of this computer's server is there, so a server that asks for no key is used."""
+    listener = listeners()
+    port = listener.server_port
+    keyed(port, os.getpid(), started=1.0)
+    entries = read_json(home.state("server-keys.json"), {})
+    if known_by == "the-key-record":
+        entries[str(port)]["started"] = 1.0
+    else:   # as the previous build wrote it: only the lease record tells when that server started
+        del entries[str(port)]["started"]
+    write_json(home.state("server-keys.json"), entries)
+    status, said, ran = launched(f"http://127.0.0.1:{port}")
+    assert status == 0 and ran[0][1] == CANNED and set(listener.heard) == {None}, said

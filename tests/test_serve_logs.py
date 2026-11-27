@@ -57,7 +57,7 @@ def test_a_log_past_the_age_limit_goes(monkeypatch):
 
 def test_a_log_a_recorded_server_is_still_writing_to_is_kept_whatever_its_age(monkeypatch):
     from poolhouse.files import write_json
-    from poolhouse.serve.leases import lease_file
+    from poolhouse.ownership import lease_file
 
     monkeypatch.setenv(logs.FILES_ENV, "3")
     made = _logs(10)

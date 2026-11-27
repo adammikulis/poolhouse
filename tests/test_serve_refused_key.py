@@ -22,13 +22,13 @@ from test_serve_admission import GIB, ServedBackend, weights
 from poolhouse import chat, do, harnessing, home, limits, serverkeys
 from poolhouse.client import serving_params
 from poolhouse.files import write_json
+from poolhouse.ownership import cmdline_digest, lease_file, recorded_servers
 from poolhouse.serve import admission, refused_keys
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.broker import Ask, Broker
-from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.ports import free_port
-from poolhouse.serve.process import cmdline_digest, started_at
+from poolhouse.serve.process import started_at
 from poolhouse.testing.registry import record_server
 
 pytest_plugins = ["serve_node"]

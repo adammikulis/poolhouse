@@ -874,8 +874,9 @@ Owner's standing choices; do not ask again.
   Qwen3.8-Flash-Next-UD-IQ2_XS` solved a read-only review task correctly in 104 s, 49 s of it on the model, where the
   27B took 91 s and was also correct). It is the default of `poolhouse-delegate`, `poolhouse-codex`, `poolhouse-claude`
   and the pi harness whenever it is installed and `suggest.largest_fit` rates it green at 262,144 tokens on the
-  machine (`harnessing.default_model()`); otherwise the default is the dense Qwen3.8-27B (`Qwen3.8-27B-UD-Q4_K_XL.gguf`,
-  16.7 GB, not Q4_K_M). The larger Flash-Next quants (IQ4_XS, Q4_K_XL) still hold too much memory on this machine and
+  machine (`harnessing.default_model()`); otherwise the default is the dense Qwen3.8-27B (`Qwen3.8-27B-UD-Q3_K_XL.gguf`
+  from `unsloth/Qwen3.8-27B-GGUF`, 13.1 GB; owner order 2026-11-27: on Unsloth's V3.1 benchmarks, as the order quotes
+  them, it is the knee of size against quality, about 96.8 coding recovery at 13.1 GB against 99.5 at 17.7 GB). The larger Flash-Next quants (IQ4_XS, Q4_K_XL) still hold too much memory on this machine and
   are never the default. Small and day-to-day tests prefer a smaller Qwen3.8 model. Do not use gpt-oss:
   it is too old. Old results stay as history, not as a matrix row.
 - MTP (multi-token prediction) draft heads are on by default when the model has a matching trusted head and the managed

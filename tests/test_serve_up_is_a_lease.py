@@ -10,10 +10,10 @@ import time
 import pytest
 
 from poolhouse import hub
+from poolhouse.ownership import lease_file
 from poolhouse.serve import cli, holding, ops
 from poolhouse.serve.backend import LlamaServerBackend
 from poolhouse.serve.broker import Ask, Broker
-from poolhouse.serve.leases import lease_file
 from poolhouse.serve.manager import ServerManager
 from poolhouse.testing.canned import canned_binary
 

@@ -10,6 +10,7 @@ reproduce any of them.
 from __future__ import annotations
 
 import contextlib
+import errno
 import inspect
 import json
 import math
@@ -95,6 +96,7 @@ from environ_guard import (  # noqa: E402,F401  (autouse fixtures)
     environment_is_restored,
     nodes_stop_with_this_process,
 )
+from machine_guard import installed_ports, signals_refused  # noqa: E402,F401  (an autouse fixture)
 from network_guard import nothing_beyond_loopback  # noqa: E402,F401  (an autouse fixture)
 from signal_guard import signal_handlers_are_restored  # noqa: E402,F401  (an autouse fixture)
 from system_guard import no_system_probes  # noqa: E402,F401  (an autouse fixture)
@@ -753,43 +755,53 @@ def _call_site() -> str:
 
 @pytest.fixture(autouse=True)
 def _no_real_ports(request):
-    """No test binds a privileged or 8080-8099 port, or connects to one on loopback.
+    """No test binds a privileged or 8080-8099 port, or connects on loopback to 8080-8099 or to a port the machine's model servers and installed
+    Poolhouse services listen on: the call is refused, and the test fails.
 
     2026-09-03: a test started a fake server on the default port through the real
     backend and killed the real Flash-Next that had been reading textbooks for
-    twelve hours. Port 0 (ephemeral) stays allowed -- ``threaded_server`` and the
-    ``server`` fixture above both bind it. A test with a genuine reason to touch a real
-    port opts out with ``@pytest.mark.real_port``.
+    twelve hours. 2026-11-27: connections that were only listed here reached the
+    real server on 8080. Port 0 (ephemeral) stays allowed -- ``threaded_server``
+    and the ``server`` fixture above both bind it. A test with a genuine reason to
+    touch a real port opts out with ``@pytest.mark.real_port``.
     """
     if request.node.get_closest_marker("real_port"):
-        yield
+        yield []
         return
 
+    installed_ports()   # read before the test can replace what lists the processes
     violations: list[str] = []
     real_bind = socket.socket.bind
     real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+
+    def refuse(what: str) -> None:
+        violations.append(f"{what} at {_call_site()}")
+        raise PermissionError(errno.EACCES, f"a test may not {what}")
 
     def guarded_bind(self, address):
         if isinstance(address, tuple) and len(address) >= 2:
             port = address[1]
             if port and (port < 1024 or port in _GUARDED_PORTS):
-                violations.append(f"bind to port {port} at {_call_site()}")
+                refuse(f"bind to port {port}")
         return real_bind(self, address)
 
-    def guarded_connect(self, address):
-        if isinstance(address, tuple) and len(address) >= 2:
-            host, port = address[0], address[1]
-            if host in ("127.0.0.1", "localhost", "::1", "") and port in _GUARDED_PORTS:
-                violations.append(f"connect to {host}:{port} at {_call_site()}")
-        return real_connect(self, address)
+    def reach(real):
+        def go(self, address):
+            if isinstance(address, tuple) and len(address) >= 2:
+                host, port = address[0], address[1]
+                if host in ("127.0.0.1", "localhost", "::1", "") and (port in _GUARDED_PORTS or port in installed_ports()):
+                    refuse(f"connect to {host}:{port}")
+            return real(self, address)
+        return go
 
     socket.socket.bind = guarded_bind
-    socket.socket.connect = guarded_connect
+    socket.socket.connect, socket.socket.connect_ex = reach(real_connect), reach(real_connect_ex)
     try:
-        yield
+        yield violations
     finally:
         socket.socket.bind = real_bind
-        socket.socket.connect = real_connect
+        socket.socket.connect, socket.socket.connect_ex = real_connect, real_connect_ex
 
     if violations:
         pytest.fail("a real port was touched:\n" + "\n".join(violations), pytrace=False)

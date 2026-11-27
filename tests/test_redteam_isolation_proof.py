@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse.isolation import IsolationFailed, attest, capability, proof
+from poolhouse.isolation import IsolationFailed, attest, capability, probe, proof
 from poolhouse.isolation.capability import drop_cache
 from poolhouse.platform import start_process
 from poolhouse.sandbox import run
@@ -124,6 +124,69 @@ def test_a_proof_whose_environment_holds_a_name_beyond_the_allow_list_stops_the_
         with pytest.raises(IsolationFailed) as stopped:
             proof.run(wider, w.services, lan=False, budget=20.0)
     assert stopped.value.attempt == "P19" and "GH_TOKEN" not in str(stopped.value)
+
+
+def slowed(tmp_path, monkeypatch, attempt: str, first: str) -> None:
+    """The real probe with ``attempt`` running the statement ``first`` before it tries anything."""
+    source = Path(probe.__file__).read_text(encoding="utf-8")
+    before = f"def {attempt.lower()}():\n"
+    assert source.count(before) == 1
+    held = tmp_path / "slow_probe.py"
+    held.write_text(source.replace(before, f"{before}    import time\n\n    {first}\n"), encoding="utf-8")
+    monkeypatch.setattr(probe, "__file__", str(held))
+
+
+def test_a_proof_waits_for_a_probe_that_takes_longer_than_its_fixed_cost(tmp_path, monkeypatch):
+    slowed(tmp_path, monkeypatch, "P22", "time.sleep(6)")
+    with world(tmp_path) as w:
+        done = proof.run(w.profile, w.services, lan=False)
+    assert [each.id for each in done.lines] == list(proof.ATTEMPTS) and all(each.ok for each in done.lines)
+    assert proof.WAIT_SECONDS == 180.0
+
+
+def test_a_probe_that_takes_over_a_minute_still_finds_the_bystander_running(tmp_path, monkeypatch):
+    """The other process the box must not signal or read: ended, it could be signalled by a correct box, and would hold no arguments to read."""
+    slowed(tmp_path, monkeypatch, "P11", "time.sleep(61)")
+    with world(tmp_path) as w:
+        done = proof.run(w.profile, w.services, lan=False)
+    assert [each.id for each in done.lines] == list(proof.ATTEMPTS) and all(each.ok for each in done.lines)
+
+
+def test_an_attempt_never_answered_stops_the_launch_and_says_it_did_not_answer_in_time(tmp_path, monkeypatch):
+    slowed(tmp_path, monkeypatch, "P22", "time.sleep(60)")
+    with world(tmp_path) as w, pytest.raises(IsolationFailed) as stopped:
+        proof.run(w.profile, w.services, lan=False, budget=8.0)
+    assert stopped.value.attempt == "P22"
+    assert "P22 did not answer in time" in str(stopped.value) and "allowed" not in str(stopped.value), str(stopped.value)
+    assert "so the coding agent was not started" in str(stopped.value)
+
+
+def test_an_attempt_that_got_through_is_reported_as_allowed_though_a_later_one_never_answers(tmp_path, monkeypatch):
+    slowed(tmp_path, monkeypatch, "P22", "time.sleep(60)")
+    with world(tmp_path) as w, pytest.raises(IsolationFailed) as stopped:
+        proof.run(w.profile, w.services, lan=False, via=Weakened(add("(allow network-outbound)")), budget=8.0)
+    assert stopped.value.attempt == "P07" and "it allowed P07" in str(stopped.value), str(stopped.value)
+
+
+def test_a_probe_that_ends_without_answering_is_not_called_slow(tmp_path, monkeypatch):
+    slowed(tmp_path, monkeypatch, "P22", "os._exit(0)")
+    with world(tmp_path) as w, pytest.raises(IsolationFailed) as stopped:
+        proof.run(w.profile, w.services, lan=False)
+    assert stopped.value.attempt == "P22" and "in time" not in str(stopped.value), str(stopped.value)
+
+
+@pytest.mark.parametrize(("call", "expected"), [("said_by", "late\n"), ("tool", True)])
+def test_a_command_of_the_probe_that_is_slow_is_waited_for_and_not_taken_for_a_refusal(call, expected):
+    """A command cut off after a short time of its own would read as nothing obtained, or as a program the box refused."""
+    assert getattr(probe, call)(["/bin/sh", "-c", "sleep 3; echo late"]) == expected
+
+
+def test_what_a_command_cut_off_by_its_wait_had_printed_is_searched():
+    assert probe.said_by(["/bin/sh", "-c", "echo early; exec sleep 30"], 1.0) == "early\n"
+
+
+def test_the_parent_waits_for_the_identifiers_it_searches_the_probes_answer_for():
+    assert proof._said(["/bin/sh", "-c", "sleep 6; echo late"]) == "late\n"
 
 
 def test_a_probe_that_is_not_answered_inside_the_budget_is_a_deviation_and_the_proof_waits_no_longer(tmp_path):

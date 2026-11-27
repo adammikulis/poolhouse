@@ -86,19 +86,25 @@ def test_an_id_that_is_not_downloaded_is_refused():
 
 def test_automatic_and_coding_agents_choose_the_best_qwen_and_never_flash_next():
     have = [info("Qwen3.8-Flash-Next-UD-Q4_K_XL.gguf", 118), info("Qwen3.6-35B-A3B-Q4_K_M.gguf", 22),
-            info("Qwen3.8-27B (Q4_K_XL)", 18, "qwen35"), info("Qwen3.8-27B (Q4_K_M)", 17, "qwen35")]
+            info("Qwen3.8-27B (Q2_K_XL)", 9, "qwen35"), info("Qwen3.8-27B (Q3_K_XL)", 13, "qwen35")]
     pick = localmodel.choose(localmodel.AUTO, installed=have,
                              selection=localmodel.Selection(machine=BIG, coding=True))
-    assert pick.ok and pick.name == "Qwen3.8-27B (Q4_K_XL)"
+    assert pick.ok and pick.name == "Qwen3.8-27B (Q3_K_XL)"
     plain = localmodel.choose(localmodel.AUTO, installed=have,
                               selection=localmodel.Selection(machine=BIG))
-    assert plain.name == "Qwen3.8-27B (Q4_K_M)"
+    assert plain.name == "Qwen3.8-27B (Q2_K_XL)"
     only_flash = localmodel.choose(localmodel.AUTO, installed=have[:1],
                                    selection=localmodel.Selection(machine=BIG, coding=True))
     assert not only_flash.ok and "27B" in only_flash.problem
     named = localmodel.choose("Qwen3.8-Flash-Next-UD-Q4_K_XL.gguf", installed=have,
                               selection=localmodel.Selection(machine=BIG))
     assert named.name.startswith("Qwen3.8-Flash-Next")
+
+def test_an_upgraded_coding_agent_keeps_the_27b_that_served_before():
+    have = [info("Qwen3.8-27B (Q4_K_M)", 17, "qwen35"), info("Qwen3.8-27B (Q4_K_XL)", 18, "qwen35")]
+    pick = localmodel.choose(localmodel.AUTO, installed=have,
+                             selection=localmodel.Selection(machine=BIG, coding=True))
+    assert pick.ok and pick.name == "Qwen3.8-27B (Q4_K_XL)"
 
 def test_exact_downloaded_model_path_resolves_cache_symlinks_without_basename_fallback(tmp_path):
     snapshot=tmp_path/'snapshot'

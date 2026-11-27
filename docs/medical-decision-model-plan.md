@@ -16,9 +16,9 @@ not patient records. Do not use the resulting model to make care decisions.
 | Clef-flash comparison | [Cloudflare/clef-flash](https://huggingface.co/Cloudflare/clef-flash/tree/17f0b0ad64efb65d273590632833508766b2aae6) | `17f0b0ad64efb65d273590632833508766b2aae6` | Cached; not supported by this training recipe |
 | Laya comparison | [convaiinnovations/laya-typed-decisions](https://huggingface.co/convaiinnovations/laya-typed-decisions/tree/e929ae5cf69bc34259cd2f95c9e91145b818b1f0) | `e929ae5cf69bc34259cd2f95c9e91145b818b1f0` | Cached; not supported by this training recipe |
 
-The MedMCQA card describes 182,822 training rows and a 4,183-row validation split. This
-preparation keeps labelled single-answer rows, uses the four answer choices as options A–D, and
-uses the validation split only for evaluation. Explanations and the unlabeled test split are not
+The MedMCQA card describes 182,822 training rows and a 4,183-row validation split. The
+prepared case files keep labelled single-answer rows, use the four answer choices as options A–D,
+and use the validation split only for evaluation. Explanations and the unlabeled test split are not
 included. The original dataset card describes this as medical entrance-exam question answering;
 it is not a patient-triage dataset.
 
@@ -35,18 +35,11 @@ poolhouse-models snapshot Cloudflare/clef-flash --revision 17f0b0ad64efb65d27359
 poolhouse-models snapshot convaiinnovations/laya-typed-decisions --revision e929ae5cf69bc34259cd2f95c9e91145b818b1f0
 ```
 
-Install the `decide-data` extra in the data-preparation environment, then convert the cached dataset
-snapshot. The generated files must remain outside the Git checkout. Windows-prepared files are
+The converted case files stay outside the Git checkout. Windows-prepared files are
 available in the owner's cache under `poolhouse/medical/medmcqa-91c6572c`; WSL can read that cache
 through its mounted Windows filesystem.
 
-```bash
-snapshot="$HOME/.cache/huggingface/hub/datasets--openlifescienceai--medmcqa/snapshots/91c6572c454088bf71b679ad90aa8dffcd0d5868"
-cases="$HOME/.cache/poolhouse/medical/medmcqa-91c6572c"
-python scripts/prepare_medmcqa.py "$snapshot" "$cases"
-```
-
-The Windows preparation on 2026-10-05 using `scripts/prepare_medmcqa.py` against the pinned
+The Windows preparation on 2026-10-05 against the pinned
 snapshot produced 120,765 training cases (SHA-256
 `2d9c71b2acc6735afe79d97a5ebf7d763a8c5ff51839161359f5512d6d687976`) and 2,816 validation
 cases (SHA-256 `ef86aab609aa02a8a42362ccb45743c0fd8a847b2eb6c21ba86aec2f42a07c18`). Recheck

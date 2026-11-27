@@ -86,6 +86,7 @@ OUTSIDE_WRITES = [
     ("Bash", {"command": "touch /usr/local/bin/x"}),
     ("Bash", {"command": "mkdir -p ~/new"}),
     ("Bash", {"command": "sed -i s/a/b/ {home}/notes/a"}),
+    ("Bash", {"command": "sed -i '' '/^#/d' {home}/notes/a"}),
     ("Bash", {"command": "chmod 777 {home}/notes"}),
     ("Bash", {"command": "dd if=src/a of={home}/notes/a"}),
     ("Bash", {"command": "curl -o {home}/notes/a https://example.test"}),
@@ -129,7 +130,7 @@ GLOBAL_CONFIG = [
 RECURSIVE_DELETION = [
     "rm -rf {home}", "rm -rf ~", "rm -rf /", "rm -r ../person", "rm -fR {home}/notes", "rm --recursive {home}/notes",
     "rm -rf .", "rm -rf {root}", "rm -rf \"$DIR\"", "rm -rf link-out/", "find {home}/notes -delete", "find .. -name x -exec rm {{}} ;",
-    "nice rm -rf ~/notes", "eval 'rm -rf ~/notes'", "git clean -fdx {home}/notes",
+    "nice rm -rf ~/notes", "eval 'rm -rf ~/notes'", "git clean -fdx {home}/notes", "xargs -E '' rm -rf /etc/x",
 ]
 
 
@@ -177,6 +178,7 @@ def test_a_tool_a_delegate_is_not_given_is_refused(ground, name):
     ("Bash", {"command": "grep -rn credentials src"}), ("Bash", {"command": "git commit -m 'a change' && git push origin HEAD"}),
     ("Bash", {"command": "git log --oneline -n 5"}), ("Bash", {"command": "git config user.name"}), ("Bash", {"command": "npm install"}),
     ("Bash", {"command": ".venv/bin/pip install requests"}), ("Bash", {"command": "echo $(date)"}),
+    ("Bash", {"command": "sed -i '' '/^#/d' notes.txt"}), ("Bash", {"command": "sed -i '' -e '/^#/d' notes.txt"}),
     ("mcp__lead__ask", {"question": "which module?"}), ("mcp__lead__note", {"text": "done"}),
 ])
 def test_ordinary_work_inside_the_project_is_not_refused(ground, name, args):
@@ -185,3 +187,31 @@ def test_ordinary_work_inside_the_project_is_not_refused(ground, name, args):
 
 def test_a_write_in_the_delegates_own_scratch_folder_is_not_refused(ground):
     assert unboxed.refusal("Bash", {"command": f"echo x > {ground.scratch}/a"}, ground) == ""
+
+
+GIT_CONFIG_CHANGES = [
+    "git config --global --comment get core.sshCommand x", "git config --global --comment get credential.helper x",
+    "git config --global --comment list core.hooksPath x", "git config --global --comment --list core.pager x",
+    "git config --global --default --get alias.x y", "git config --system --comment get core.pager x",
+    "git config --comment get -f {home}/notes/gitconfig core.pager x", "git config --comment=get --file={home}/notes/gitconfig core.pager x",
+    "git config -f{home}/notes/gitconfig core.pager x", "git config --global --remove-section user", "git config --global --rename-section user x",
+    "git config --global --edit", "git config --global -e", "git config --global --unset user.name", "git config --glob user.name x",
+    "git config --global --remove-sec user", "git config set --global user.name x", "git config unset --global user.name",
+    "git config remove-section --global user", "git config edit --global",
+    "git config --global -tbool http.sslVerify false", "git config --global core.hooksPath --file", "git config --global core.pager ''",
+    'git config --global core.pager ""', "git config -f {home}/notes/gitconfig core.pager ''", "git config --global --type bool core.bare true",
+    "git --config-env core.x=HOME config --global core.pager x", "git --attr-source HEAD config --global core.pager x",
+    "git --git-dir={home}/notes/.git config core.pager x", "git config --sys core.pager x"]
+
+
+@pytest.mark.parametrize("command", GIT_CONFIG_CHANGES)
+def test_a_change_of_gits_global_configuration_is_refused_however_its_options_are_written(ground, command):
+    assert judged(ground, "Bash", command=command)
+
+
+@pytest.mark.parametrize("command", [
+    "git config --global user.name", "git config --global --get user.name", "git config get --global user.name", "git config list --global",
+    "git config --global --list", "git config --global -l", "git config --global --show-origin --get-regexp user",
+    "git config --global --show-origin --get user.name", "git config --system --get-all core.pager", "git config core.pager ''"])
+def test_a_read_of_gits_global_configuration_is_not_refused(ground, command):
+    assert not judged(ground, "Bash", command=command)

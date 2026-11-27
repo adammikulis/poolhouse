@@ -84,15 +84,12 @@ def test_a_repository_alone_takes_the_q4_k_m_build(server, tmp_path):
     assert hub.pull("hf:maker/thing-GGUF", tmp_path).name == "thing-Q4_K_M.gguf"
 
 
-def test_a_cut_connection_resumes_from_the_bytes_on_disk(server, tmp_path):
+def test_a_cut_connection_resumes_from_the_bytes_on_disk_within_one_pull(server, tmp_path):
     server.cut_after = MIB + 12345
-    with pytest.raises(OSError):
-        hub.pull("hf:maker/thing-GGUF/thing-Q8_0.gguf", tmp_path)
-    (part,) = tmp_path.rglob("*.part")
-    assert 0 < part.stat().st_size < 5 * MIB
-    server.hub_seen.clear()
-    server.cdn_seen.clear()
-    got = hub.pull("hf:maker/thing-GGUF/thing-Q8_0.gguf", tmp_path)
+    seen: list[pulling.Progress] = []
+    got = hub.pull("hf:maker/thing-GGUF/thing-Q8_0.gguf", tmp_path, seen.append)
+    (held,) = [p.done_bytes for p in seen if p.phase == "waiting"]
+    assert 0 < held <= MIB + 12345
     assert got.read_bytes() == REPOS["maker/thing-GGUF"]["thing-Q8_0.gguf"]
     ranges = [r for _m, _p, r, _a in server.cdn_seen if r]
     assert ranges and ranges[0].startswith("bytes=") and int(ranges[0][6:-1]) > 0
@@ -100,8 +97,6 @@ def test_a_cut_connection_resumes_from_the_bytes_on_disk(server, tmp_path):
 
 def test_a_server_that_ignores_the_range_request_restarts_the_file(server, tmp_path):
     server.cut_after = MIB + 5
-    with pytest.raises(OSError):
-        hub.pull("hf:maker/thing-GGUF/thing-Q8_0.gguf", tmp_path)
     server.ignore_range = True
     got = hub.pull("hf:maker/thing-GGUF/thing-Q8_0.gguf", tmp_path)
     assert got.read_bytes() == REPOS["maker/thing-GGUF"]["thing-Q8_0.gguf"]

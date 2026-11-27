@@ -19,9 +19,9 @@ from model_pins import pinned
 
 from poolhouse import leasetable, limits, sentinel
 from poolhouse.client import reported_models, serving_params
+from poolhouse.ownership import recorded_servers
 from poolhouse.serve import admission
 from poolhouse.serve.backend import LlamaServerBackend, ServerBackend, ServerInfo, ServerSpec
-from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import pid_exists

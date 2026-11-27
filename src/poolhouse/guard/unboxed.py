@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePath
 from typing import Any
 
@@ -46,6 +46,16 @@ WRITES = ("Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch", "patch")
 SHELL = ("Bash", "PowerShell")
 UNDONE = frozenset({"patch", "ruby", "unzip"})
 """Programs that change files in the folder they run in, which no block reads the targets of."""
+VALUED = "ughpCrtUDRT"
+"""The letters of the options of `sudo` and its like that take a value, attached or the next word."""
+VALUED_LONG = frozenset({"--user", "--group", "--host", "--prompt", "--chdir", "--role", "--type", "--other-user", "--chroot", "--command-timeout"})
+CONFIG_PLAIN = frozenset({"--get", "--get-all", "--get-regexp", "--list", "-l", "--global", "--system", "--local", "--worktree", "--show-origin",
+                          "--show-scope", "--name-only", "--null", "-z", "--includes", "--no-includes"})
+"""The options of `git config` that take no value and change nothing: the only ones a call recognised as a read may have."""
+GIT_VALUED = ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--attr-source", "--super-prefix")
+"""The options before git's subcommand that take the next word."""
+LOOKS = ("-get", "-list", "-show", "-print", "-version", "-help")
+"""How the options of `networksetup` and `systemsetup` that only read begin."""
 LEAD = ("mcp__lead__ask", "mcp__lead__note")
 NOWHERE = frozenset({"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty", "nul"})
 OUTSIDE = "writes outside the project folder"
@@ -219,17 +229,74 @@ def _command(words: list[str], ground: Ground, here: str | None, depth: int) -> 
     name, rest, fed = _program(words[0]), words[1:], False
     while name in LAUNCHERS:
         fed = fed or name == "xargs"
-        while rest and (rest[0].startswith("-") or re.match(r"(\w+=|\d+(\.\d+)?[smhd]?$)", rest[0])):
+        while rest and (not rest[0] or rest[0].startswith("-") or re.match(r"(\w+=|\d+(\.\d+)?[smhd]?$)", rest[0])):
             rest = rest[1:]
         if not rest:
             return
         words, name, rest = rest, _program(rest[0]), rest[1:]
+    found = _acted((words[0], *rest), name, ground, here, (depth, fed))
+    # a command that only looks is judged as any other and writes nothing
+    yield from (replace(each, wrote="") for each in found) if _only_looks(name, rest) else found
+
+
+def _takes_next(word: str) -> bool:
+    """Whether the option ``word`` of `sudo` and its like takes the word after it: the first letter of a bundle that takes a value takes the rest
+    of the bundle, or the next word when it ends it."""
+    if word.startswith("--") or not word.startswith("-"):
+        return word in VALUED_LONG
+    at = next((index for index, letter in enumerate(word[1:], 1) if letter in VALUED), 0)
+    return bool(at) and at == len(word) - 1
+
+
+def _letters(rest: list[str], valued: str) -> Iterator[str]:
+    """The option letters of ``rest``, skipping the values: a letter of ``valued`` takes what follows it in its word, else the next word."""
+    skip = False
+    for word in rest:
+        if skip or not word.startswith("-") or word.startswith("--"):
+            skip = False
+            continue
+        for index, letter in enumerate(word[1:], 1):
+            yield letter
+            if letter in valued:
+                skip = index == len(word) - 1
+                break
+
+
+def _only_looks(name: str, rest: list[str]) -> bool:
+    """Whether the program ``name`` with ``rest`` only reads: a listing or a test of an archive, a patch only tried, a setting only asked for."""
+    if name == "unzip":
+        return any(letter in "ltvpzZ" for letter in _letters(rest, "Pd"))
+    if name == "patch":
+        return bool({"--dry-run", "--check", "-C"} & set(rest))
+    if name == "scutil":
+        return "--get" in rest and "--set" not in rest
+    if name in ("networksetup", "systemsetup"):
+        options = [w.lower() for w in rest if w.startswith("-")]
+        return bool(options) and all(w.startswith(LOOKS) for w in options)
+    return False
+
+
+def _as_another(name: str, rest: list[str], ground: Ground, here: str | None, depth: int) -> Iterator[Effect]:
+    """The effects of a command run as another account: refused whatever it is, and writing what the command under it writes."""
+    inline = next((rest[i + 1] for i, w in enumerate(rest[:-1]) if w in ("-c", "--command")), "") if name == "su" else ""
+    if name == "runas":   # its command is one quoted word after the `/user:` options
+        inline = next((w for w in reversed(rest) if not w.startswith("/")), "")
+    inner = list(rest)
+    while inner and (inner[0].startswith("-") or re.match(r"\w+=", inner[0])):
+        inner = inner[2 if _takes_next(inner[0]) else 1:]
+    found: Iterator[Effect] = iter(())
+    if depth < DEPTH:
+        found = _line(inline, ground, here, depth + 1) if inline else _command(inner, ground, here, depth + 1) if inner else found
+    theirs = [each.wrote for each in found if each.wrote]
+    yield from (Effect(f"{name} {GLOBAL}", each) for each in theirs or [""])
+
+
+def _acted(words: tuple[str, ...], name: str, ground: Ground, here: str | None, run: tuple[int, bool]) -> Iterator[Effect]:
+    """The effects of the program ``name`` run as ``words``; ``run`` is how deeply the line is nested and whether another command feeds it. A
+    credential it names is refused first, and what it writes is still read after."""
+    (depth, fed), rest = run, list(words[1:])
     if name in AS_ANOTHER:
-        inner = list(rest)
-        while inner and inner[0].startswith("-"):
-            inner = inner[1:]
-        theirs = [each.wrote for each in _command(inner, ground, here, depth) if each.wrote] if inner and depth < DEPTH else []
-        yield from (Effect(f"{name} {GLOBAL}", each) for each in theirs or [name])
+        yield from _as_another(name, rest, ground, here, depth)
         return
     if name in SHELLS or name == "eval":
         inline = " ".join(rest) if name == "eval" else next((rest[i + 1] for i, w in enumerate(rest[:-1]) if re.fullmatch(r"-[a-z]*c", w)), "")
@@ -238,14 +305,12 @@ def _command(words: list[str], ground: Ground, here: str | None, depth: int) -> 
         return
     plain = [w for w in rest if not w.startswith("-")]
     lowered = [w.lower() for w in plain]
-    for path in (part for w in words for part in (w, w.split("=", 1)[-1], w.lstrip("@")) if part):
-        if ("/" in path or path.startswith((".", "~", "$HOME"))) and _secret(path, here, ground):
-            yield Effect(f"{path} {CREDENTIAL}")
-            return
+    named = (part for w in words for part in (w, w.split("=", 1)[-1], w.lstrip("@")) if part)
+    if secret := next((each for each in named if ("/" in each or each.startswith((".", "~", "$HOME"))) and _secret(each, here, ground)), ""):
+        yield Effect(f"{secret} {CREDENTIAL}")
     if any(all(each in [w.lower() for w in rest] for each in form) for form in CREDENTIAL_COMMANDS.get(name, ())):
         yield Effect(f"{name} {CREDENTIAL}")
-        return
-    if why := _global((words[0], *rest), lowered, here, ground):
+    if why := _global(words, lowered, here, ground):
         yield Effect(why, name)
         return
     if name == "git":
@@ -254,6 +319,9 @@ def _command(words: list[str], ground: Ground, here: str | None, depth: int) -> 
     if name == "find":
         yield from _find(rest, ground, here)
         return
+    if name == "gh" and (plain[1:2] == ["delete"] or (plain[:1] == ["api"] and "DELETE" in (word.rpartition("=")[2].removeprefix("-X").upper()
+                                                                                          for word in rest))):
+        yield Effect(wrote="gh-delete")
     targets = _targets(name, rest, plain)
     if fed and (targets or name in EVERY | OWNED | COPIES):
         yield Effect(f"{name} takes its targets from another command: it {UNREAD}", targets[0] if targets else name)
@@ -285,17 +353,37 @@ def _targets(name: str, rest: list[str], plain: list[str]) -> list[str]:
     if name == "dd":
         return [w[3:] for w in rest if w.startswith("of=")]
     if name in ("sed", "perl") and any(w.startswith(("-i", "-pi", "--in-place")) for w in rest):
-        return plain[1:] if not any(w in ("-e", "-f") for w in rest) else plain
+        # macOS writes `-i ''`: an empty backup suffix, which is no script and no file, and what `-e` is given beside it is a script
+        scripts = {rest[i + 1] for i, w in enumerate(rest[:-1]) if w == "-e"} if "" in rest else set()
+        files = [w for w in plain if w and w not in scripts]
+        return files if any(w in ("-e", "-f") for w in rest) else files[1:]
     if name in ("curl", "wget"):
-        flags = ("-o", "--output") if name == "curl" else ("-O", "--output-document", "-P", "--directory-prefix")
-        return [rest[i + 1] for i, w in enumerate(rest[:-1]) if w in flags and rest[i + 1] != "-"]
+        return _saved(name, rest)
     if name == "tar":
         named = [rest[i + 1] for i, w in enumerate(rest[:-1]) if w in ("-C", "--directory")]
         packs = any("c" in w for w in rest[:1]) or any(re.fullmatch(r"-[a-z]*c[a-z]*", w) for w in rest)
         return named + ([rest[i + 1] for i, w in enumerate(rest[:-1]) if re.fullmatch(r"-?[a-z]*f", w)] if packs else [])
     if name in ("unzip", "7z"):
-        return [rest[i + 1] for i, w in enumerate(rest[:-1]) if w == "-d"] + [w[2:] for w in rest if w.startswith("-o") and name == "7z"]
+        attached = "-o" if name == "7z" else "-d"
+        return [rest[i + 1] for i, w in enumerate(rest[:-1]) if w == "-d"] + [w[2:] for w in rest if w.startswith(attached) and len(w) > 2]
     return []
+
+
+def _saved(name: str, rest: list[str]) -> list[str]:
+    """The files a download is saved to: the output option alone, at the end of options written together, or with its file attached."""
+    letter, long = ("o", ("--output",)) if name == "curl" else ("O", ("--output-document", "--directory-prefix"))
+    # only options that take no value may stand before the letter in one word, or the letter is another option's value
+    together = re.compile(rf"-[sSfLkvIiqgnN#46]*{letter}(.*)" if name == "curl" else rf"-[qnvcNrSbd]*{letter}(.*)")
+    found = []
+    for at, word in enumerate(rest):
+        option, equals, value = word.partition("=")
+        if equals and option in long:
+            found.append(value)
+        elif word in long or (name == "wget" and word == "-P"):
+            found += rest[at + 1:at + 2]
+        elif match := together.fullmatch(word):
+            found += [match[1]] if match[1] else rest[at + 1:at + 2]
+    return [each for each in found if each and each != "-"]
 
 
 def _global(words: tuple[str, ...], plain: list[str], here: str | None, ground: Ground) -> str:
@@ -333,13 +421,48 @@ def _global(words: tuple[str, ...], plain: list[str], here: str | None, ground: 
     return ""
 
 
+def _config_reads(after: list[str]) -> bool:
+    """Whether the words after `git config` are one of the forms known to read: the subcommand `get` or `list`, or options that take no value and
+    then at most the key (none for a listing). Anything else counts as a change; nothing is guessed from what an option might mean."""
+    if after[:1] in (["get"], ["list"]):
+        return True
+    at = next((index for index, word in enumerate(after) if word not in CONFIG_PLAIN), len(after))
+    keys = after[at:]
+    return len(keys) <= (0 if {"--list", "-l"} & set(after[:at]) else 1) and not any(word.startswith("-") for word in keys)
+
+
+def _config_files(after: list[str]) -> list[str]:
+    """Every word after `git config` that may be the file it is given: the value of `--file` by any beginning of its name, and what follows an `f`
+    in a word of short options."""
+    found = []
+    for at, word in enumerate(after):
+        option, equals, value = word.partition("=")
+        if len(option) > 2 and "--file".startswith(option):
+            found += [value] if equals else after[at + 1:at + 2]
+        elif re.match(r"-[^-]", word) and "f" in word:
+            attached = word.partition("f")[2]
+            found += [attached] if attached else after[at + 1:at + 2]
+    return found
+
+
+def _config_changes(after: list[str], ground: Ground, here: str | None, tree: str) -> Effect:
+    """The effect of a `git config` not known to read, in the repository at ``tree``: refused when it names the user's or the computer's
+    configuration, or a file outside the project."""
+    if any(len(word) > 2 and ("--global".startswith(word) or "--system".startswith(word)) for word in after):
+        return Effect(f"git config {GLOBAL}", "git-config")
+    named = [_written(each, _place(tree, here, ground), ground) for each in _config_files(after)]
+    return next((each for each in named if each.why), named[0] if named else Effect(wrote=str(PurePath(tree) / ".git")))
+
+
 def _git(rest: list[str], ground: Ground, here: str | None) -> Iterator[Effect]:
     sub, after, moved = "", [], ""
     at = 0
     while at < len(rest):
-        if rest[at] in ("-C", "-c", "--git-dir", "--work-tree", "--namespace"):
+        if rest[at] in GIT_VALUED:
             moved = rest[at + 1] if rest[at] in ("-C", "--git-dir", "--work-tree") and at + 1 < len(rest) else moved
             at += 2
+        elif rest[at].startswith(("--git-dir=", "--work-tree=")):
+            moved, at = rest[at].partition("=")[2], at + 1
         elif rest[at].startswith("-"):
             at += 1
         else:
@@ -349,31 +472,32 @@ def _git(rest: list[str], ground: Ground, here: str | None) -> Iterator[Effect]:
     short = {c for w in flags if re.fullmatch(r"-[A-Za-z]+", w) for c in w[1:]}
     plain = [w for w in after if not w.startswith("-")]
     tree = _place(moved or ".", here, ground) or moved or ground.root
+    reading = sub == "config" and _config_reads(after)
+    # `-e` of `git clean` takes the next word, so an `-n` there is a pattern and nothing is only tried
+    looks = reading or (sub == "clean" and ("n" in _letters(after, "e") or "--dry-run" in flags))
     if sub == "push" and (flags & {"--force", "--force-with-lease", "--force-if-includes", "--mirror", "--delete", "--prune"} or short & {"f", "d"}
                           or any(w.startswith(("+", ":")) for w in plain)):
-        yield Effect(f"git push {FORCE}")
+        yield Effect(f"git push {FORCE}", "git-push")
         return
-    if sub == "config":
-        reading = flags & {"--get", "--get-all", "--get-regexp", "--list", "-l", "--show-origin"} or (len(plain) < 2 and not flags & {"--unset", "--unset-all"})
-        if not reading and flags & {"--global", "--system"}:
-            yield Effect(f"git config {GLOBAL}", "git config")
+    if sub == "push":   # whatever else refuses it, a push changes the remote
+        yield Effect(wrote="git-push")
+        return
+    if sub == "config" and not reading:
+        changed = _config_changes(after, ground, here, tree)
+        yield changed
+        if changed.why:
             return
-        named = next((after[i + 1] for i, w in enumerate(after[:-1]) if w in ("-f", "--file")), "")
-        if not reading and named:
-            yield _written(named, here, ground)
-            return
-        if not reading:
-            yield Effect(wrote=str(PurePath(tree) / ".git"))
     if moved and sub in GIT_WRITES and (effect := _written(moved, here, ground)).why:
-        yield effect
+        yield replace(effect, wrote="") if looks else effect
         return
     if sub in ("clone", "init") and len(plain) > (1 if sub == "clone" else 0):
         yield _written(plain[-1], here, ground)
     elif sub == "worktree" and plain[:1] == ["add"] and len(plain) > 1:
         yield _written(plain[1], here, ground)
     elif sub == "clean":
-        yield from (_written(w, _place(moved or ".", here, ground), ground, DELETES) for w in plain)
-        yield Effect(wrote=tree)
+        removed = (_written(w, _place(moved or ".", here, ground), ground, DELETES) for w in plain)
+        yield from (replace(each, wrote="") for each in removed) if looks else removed
+        yield Effect(wrote="" if looks else tree)
     elif sub in worktreerules.CHANGES_THE_TREE and not (sub == "stash" and plain[:1] in (["list"], ["show"])):
         # `apply` changes files of the tree; every other of these writes the repository too
         yield Effect(wrote=tree if sub == "apply" else str(PurePath(tree) / ".git"))

@@ -20,10 +20,10 @@ import pytest
 
 from poolhouse import gate, limits
 from poolhouse.http import Server
+from poolhouse.ownership import lease_file, recorded_servers
 from poolhouse.serve import admission, unmanaged
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.broker import Broker
-from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.manager import ServerManager, stop_all_servers
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import pid_exists

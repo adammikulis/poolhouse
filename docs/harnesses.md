@@ -8,7 +8,7 @@ project inside an operating-system sandbox with no network but the model. Codex 
 lighter system prompt and tool list).
 
 ```
-poolhouse-codex                                  # Qwen3.8-Flash-Next-UD-IQ2_XS if installed and it fits, else Qwen3.8-27B-UD-Q4_K_XL; this directory, your own settings
+poolhouse-codex                                  # Qwen3.8-Flash-Next-UD-IQ2_XS if installed and it fits, else Qwen3.8-27B-UD-Q3_K_XL; this directory, your own settings
 poolhouse-codex Qwen3.5-2B --permissions yolo --project ~/work/repo -- exec "fix the failing test"
 poolhouse-claude --on http://127.0.0.1:8080 --permissions read-only -- -p "explain this repo"
 poolhouse-claude --sandbox -- -p "fix the failing test"
@@ -27,8 +27,11 @@ files set none of this.
 
 Every key sent anywhere (`serverkeys.for_url`) has the same two conditions: the process the key was bound to, by its number and start time, still
 runs, and it listens on exactly the address the URL names (a listener on every address does not count, and `localhost` needs both loopback
-addresses; Poolhouse's own client sends a `localhost` request to `127.0.0.1` when a keyed server holds it). A key bound with no start time, as an
-earlier build bound it, is sent nowhere. No request of `poolhouse.http` to this computer goes through a proxy, whatever the environment says, and
+addresses; Poolhouse's own client sends a `localhost` request to `127.0.0.1` when a keyed server holds it). A key the previous build bound has no
+start time: it is sent only when this computer can show now that the process is that server's (the lease record's process, start time and command
+line; started after the key was issued and before the key index was last written; listening on this computer's loopback), and the start time is
+recorded then, so an update leaves a running server in use with nothing to do. Where that cannot be shown, nothing is sent and the launch or the
+broker says which part failed. No request of `poolhouse.http` to this computer goes through a proxy, whatever the environment says, and
 a harness run in place has this computer's names added to `NO_PROXY`.
 
 ## In place
@@ -73,11 +76,12 @@ needs no install step; a missing SDK is reported as a defective install, never a
    one slot, q8_0 KV cache, the model's own multi-token-prediction head where it has one, the
    model's measured settings when there are some. The model is asked for before it is loaded: when
    the wired-memory limit cannot hold it at that window, the launcher says what is needed and stops; Poolhouse does not
-   change the limit. `poolhouse-serve memory --for Qwen3.8-27B-UD-Q4_K_XL.gguf --ctx
-   262144 --kv q8_0` says what the 27B needs (29.2 GiB on the measured machine, 2026-10-03). The default model is
+   change the limit. `poolhouse-serve memory --for Qwen3.8-27B-UD-Q3_K_XL.gguf --ctx
+   262144 --kv q8_0` says what the 27B needs (its weights are 13.1 GB). The default model is
    `Qwen3.8-Flash-Next-UD-IQ2_XS` when it is installed and `suggest.largest_fit` rates it green at 262,144 tokens
    (`harnessing.default_model()`; measured 2026-11-25 on the 128 GB machine: 56.8 GiB wired, 48 GiB resident, n-gram
-   table on SSD), else the 27B. The larger Flash-Next quants still do not fit this machine and are never the default.
+   table on SSD), else the 27B. An install that has the 27B default of an earlier version (`hub.naming.DENSE_27B`)
+   and not this one goes on using it: an upgrade starts no download. The larger Flash-Next quants still do not fit this machine and are never the default.
    `--ctx N` is the total across `--slots` (default 1); `--on URL` uses a server already up.
    A server already up on the same weights is taken as it serves them, whatever its port, window,
    draft head or cache settings (`harnessing.adopted`), when it holds at least 65,536 tokens a slot,
@@ -232,7 +236,8 @@ the lead's notice say how many and the first paths. It is decided from the harne
   its output carries the system's refusal (`Operation not permitted`, `Permission denied`, `Read-only file system`) and names that path. `edit` or
   `write`: the same, or the release's own first line for a failed write (`Unable to write PATH`, `Unable to edit PATH`);
 - by Poolhouse's tool rules: a call that writes which the hook denied, unless an `edit` or `write` later completed on the same path (how a shell
-  line ended is not told, so none takes a refusal back). A denied call that writes no file (a credential read, a force push) is none. With no
+  line ended is not told, so none takes a refusal back). A denied push (a force push among them) and a denied `gh ... delete` or `gh api -X DELETE`
+  count: they change a remote. A denied call that only reads (a credential read) is none. With no
   sandbox the run is `unapplied` when no writing call went through at all.
 
 A command or an edit that merely fails (tests, a search with no match, an `oldString` that is not there) is no refused write. Not seen: a write a
@@ -326,9 +331,11 @@ elsewhere) against a marked plumbing server.
 
 ## A delegate
 
-`poolhouse-delegate` is how a lead session (a Claude Code or Codex session, or any registered session) hands a task to a
-local coding agent and gets the answer, with no setup step. Every delegate is OpenCode, through the isolated launcher, on the model this
-machine serves, so a server already up is taken as it stands and nothing else is loaded.
+`poolhouse-delegate` is how a session (a Claude Code or Codex session or a helper of one, or any registered session) hands a task to a
+local coding agent and gets the answer, with no setup step; the session that starts it is its lead. Every delegate is OpenCode, through the
+isolated launcher, on the model this machine serves, so a server already up is taken as it stands and nothing else is loaded. A delegate,
+and whatever the process table shows below it, starts no agent, widens nothing and changes no project's record. With no sandbox a command
+whose parent has already ended is not recognised as the delegate's (docs/design-isolated-launcher.md, 8.3).
 
 ```
 poolhouse-delegate start --task "list the python files here and say what each does" [--project DIR] [--name LABEL] [--edit] [--max-turns N] [--model ID] [--as AGENT]
@@ -539,16 +546,6 @@ and one list of entries in one shape: every self-check round (`kind` `self-check
   serves `/v1/responses` and `/v1/messages` in the managed build. Claude Code needs `/v1/messages`.
 - The thinking-off default of the model's profile applies; the Claude Code settings also turn
   always-on thinking off.
-
-## Comparing the harnesses
-
-`scripts/compare-harnesses --model NAME` serves the model once and runs the fixture in
-`tests/fixtures/toy_bugfix` (a one-line bug, scored by its own test, in a temporary git repository)
-through `poolhouse-claude` and `poolhouse-codex`, recording wall time, tool calls, the tokens the server
-processed (llama-server `/metrics`), the tokens each harness says it sent and how many came from
-the cache, the last request's prompt and cached tokens from `/slots`, the first-turn cost of each harness measured with a one-line prompt, and whether the test
-passes. Rows are appended to `docs/experiments/harness-comparison.md`. Poolhouse's own agent loop is
-skipped where `poolhouse-workspace agent` does not exist. It refuses Flash-Next.
 
 ## Sources
 

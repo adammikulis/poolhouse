@@ -19,9 +19,9 @@ from poolhouse import caller, http, hub, sentinel
 from poolhouse.api import models as api_models
 from poolhouse.hub import admission, hf_cache, listing, publishers, transfer
 from poolhouse.hub.admission import Trust
+from poolhouse.ownership import recorded_servers
 from poolhouse.serve import guarded, models_cli
 from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
-from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import kill_process_tree

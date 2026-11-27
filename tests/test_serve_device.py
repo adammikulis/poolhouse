@@ -10,10 +10,10 @@ import sys
 
 import pytest
 
+from poolhouse.ownership import recorded_servers
 from poolhouse.serve import admission, broker_cli, lease_cli, ops, status_cli, unmanaged
 from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
 from poolhouse.serve.broker import Ask, Broker, BrokerError, Held
-from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.process import kill_process_tree, offloaded_layers
 from poolhouse.testing.canned import Canned, CannedServer, canned_binary

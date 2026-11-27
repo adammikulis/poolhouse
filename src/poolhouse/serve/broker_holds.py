@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING, Any
 
 from poolhouse import leasetable
 from poolhouse.node_health import Refused
+from poolhouse.ownership import recorded_servers
 from poolhouse.serve import admission, node_memory
 from poolhouse.serve.broker_lifecycle import admitted
-from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.process import started_at
 
 __all__ = ["MODEL_START", "POLL_S", "BrokerHolds"]

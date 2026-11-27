@@ -90,7 +90,8 @@ def segments(command: str) -> tuple[list[Segment], list[Finding]]:
     cur = Segment()
     it = iter(tokens)
     for tok in it:
-        if set(tok) <= CONTROL and not tok.startswith("&>") and tok != "|&":
+        # an empty word (`''`) is a word of its command, not a separator
+        if tok and set(tok) <= CONTROL and not tok.startswith("&>") and tok != "|&":
             if cur.argv or cur.redirects:
                 cur.background = tok == "&"
                 out.append(cur)
@@ -99,7 +100,7 @@ def segments(command: str) -> tuple[list[Segment], list[Finding]]:
             if cur.argv or cur.redirects:
                 out.append(cur)
             cur = Segment(piped=True)
-        elif tok[0] in "<>&" and set(tok) <= REDIRECT:
+        elif tok and tok[0] in "<>&" and set(tok) <= REDIRECT:
             target = next(it, "")
             if cur.argv and cur.argv[-1].isdigit() and not tok.startswith("&"):
                 cur.argv.pop()

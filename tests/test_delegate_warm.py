@@ -17,10 +17,10 @@ from poolhouse import (
     harness,
     hub,
 )
+from poolhouse.ownership import lease_file, recorded_servers
 from poolhouse.serve import cli, holding, ops
 from poolhouse.serve.backend import LlamaServerBackend
 from poolhouse.serve.broker import Broker
-from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.manager import ServerManager, serve
 from poolhouse.testing.canned import canned_binary
 

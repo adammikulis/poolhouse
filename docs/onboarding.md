@@ -5,7 +5,7 @@ Choose a model, tick its download box, and select **Install and continue** to ac
 **Not now** leaves downloads for the Models screen. Downloads run in the background;
 the model is loaded only when requested through the serving broker.
 
-The default on a nominal 24 GiB or larger GPU is Qwen3.8 27B in UD-Q4_K_XL,
+The default on a nominal 24 GiB or larger GPU is Qwen3.8 27B in UD-Q3_K_XL (13.1 GB),
 with its matching Q4_0 MTP head. The tier uses the rounded capacity of the largest
 individual card, including cards reporting slightly below their advertised capacity.
 It does not add memory from separate cards or use host RAM as VRAM. Shared GPU memory

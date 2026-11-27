@@ -13,10 +13,10 @@ from pathlib import Path
 import pytest
 
 from poolhouse import home, sentinel
+from poolhouse.ownership import recorded_servers
 from poolhouse.sentinel import State, canary, permit, watch
 from poolhouse.serve import LlamaServerBackend, ServerManager, canaries, guarded
 from poolhouse.serve.broker import Ask, Broker
-from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.testing.fakes import fake_llama_binary
 

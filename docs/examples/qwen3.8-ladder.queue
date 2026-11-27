@@ -37,8 +37,7 @@ set TC_MLX=hf:bottlecapai/ThinkingCap-Qwen3.8-27B-MLX-4bit-DWQ
 set TC_RCO=hf:bottlecapai/ThinkingCap-Qwen3.8-27B-GGUF-RCO-4.2bpw/ThinkingCap-Qwen3.8-27B-RCO-4.2bpw.gguf
 set M27_MLX=hf:lmstudio-community/Qwen3.8-27B-MLX-4bit
 set TC_KM=hf:bottlecapai/ThinkingCap-Qwen3.8-27B-GGUF/ThinkingCap-Qwen3.8-27B-Q4_K_M.gguf
-set M27_KM=hf:unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-Q4_K_M.gguf
-set M27_KXL=hf:unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q4_K_XL.gguf
+set M27_Q3=hf:unsloth/Qwen3.8-27B-GGUF/Qwen3.8-27B-UD-Q3_K_XL.gguf
 set FN_IQ1M=hf:ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF/IQ1_M/Qwen3.8-Flash-Next-GSQ-RCO-IQ1_M-00001-of-00002.gguf
 set FN_IQ3S=hf:ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF/IQ3_S/Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf
 set FN_IQ4XS=hf:unsloth/Qwen3.8-Flash-Next-GGUF/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
@@ -69,6 +68,11 @@ smoke: sweep --serve ${TC_MLX} --label-suffix=-tc-mlx4 ${SERVING} --smoke
 then:  sweep --serve ${TC_MLX} --label-suffix=-tc-mlx4 ${SERVING} --thinking-levels ${LEVELS}
 speed --serve ${TC_MLX} --label-suffix=-tc-mlx4-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
+# Qwen3.8-27B UD-Q3_K_XL (stock, the default 27B), 13.1 GB
+smoke: sweep --serve ${M27_Q3} --label-suffix=-q3kxl ${SERVING} --smoke
+then:  sweep --serve ${M27_Q3} --label-suffix=-q3kxl ${SERVING} --thinking-levels ${LEVELS}
+speed --serve ${M27_Q3} --label-suffix=-q3kxl-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
+
 # ThinkingCap-Qwen3.8-27B RCO 4.2bpw, 13.3 GB
 smoke: sweep --serve ${TC_RCO} --label-suffix=-tc-rco ${SERVING} --smoke
 then:  sweep --serve ${TC_RCO} --label-suffix=-tc-rco ${SERVING} --thinking-levels ${LEVELS}
@@ -83,16 +87,6 @@ speed --serve ${M27_MLX} --label-suffix=-mlx4-speed --no-draft --context ${CTX} 
 smoke: sweep --serve ${TC_KM} --label-suffix=-tc-q4km ${SERVING} --smoke
 then:  sweep --serve ${TC_KM} --label-suffix=-tc-q4km ${SERVING} --thinking-levels ${LEVELS}
 speed --serve ${TC_KM} --label-suffix=-tc-q4km-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
-
-# Qwen3.8-27B Q4_K_M, 17.1 GB
-smoke: sweep --serve ${M27_KM} --label-suffix=-q4km ${SERVING} --smoke
-then:  sweep --serve ${M27_KM} --label-suffix=-q4km ${SERVING} --thinking-levels ${LEVELS}
-speed --serve ${M27_KM} --label-suffix=-q4km-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
-
-# Qwen3.8-27B UD-Q4_K_XL (stock Q4), 17.9 GB
-smoke: sweep --serve ${M27_KXL} --label-suffix=-q4kxl ${SERVING} --smoke
-then:  sweep --serve ${M27_KXL} --label-suffix=-q4kxl ${SERVING} --thinking-levels ${LEVELS}
-speed --serve ${M27_KXL} --label-suffix=-q4kxl-speed --no-draft --context ${CTX} --serve-kv q8_0 ${GRID}
 
 # Qwen3.8-Flash-Next GSQ-RCO IQ1_M coder, 58.4 GB
 smoke: sweep --serve ${FN_IQ1M} --label-suffix=-iq1m ${SERVING} --smoke

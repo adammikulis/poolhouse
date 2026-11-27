@@ -180,12 +180,12 @@ def test_a_delegate_on_a_computer_that_cannot_sandbox_starts_read_only_on_the_fo
 def test_an_edit_delegate_with_no_sandbox_warns_edits_the_folder_is_blocked_outside_it_and_reaches_its_lead(unsandboxed, capsys):
     node, lead, project, outside = unsandboxed
     name, row = ran(node, lead, "--task", "add a module", "--project", str(project), "--edit", state="partial")
-    assert [(each["path"], each["by"]) for each in row["refused_writes"]] == [(str(outside), "rules")], row
+    assert [(each["path"], each["by"]) for each in row["refused_writes"]] == [(str(outside), "rules"), ("git-push", "rules")], row
     notice = "\n".join(e.text for e in node.session(lead).read(limit=100).entries if e.sender == name)
-    assert "not every change was made in the folder" in row["detail"] and "1 write refused by Poolhouse's tool rules" in row["detail"], row
+    assert "not every change was made in the folder" in row["detail"] and "2 writes refused by Poolhouse's tool rules" in row["detail"], row
     [ended] = [e.text.split("\n", 1)[1] for e in node.session(lead).read(limit=100).entries
                if e.sender == name and e.fields.get("subject", "").startswith("delegate ")]
-    assert ended.startswith("partial: ") and "1 write refused by Poolhouse's tool rules" in ended, notice
+    assert ended.startswith("partial: ") and "2 writes refused by Poolhouse's tool rules" in ended, notice
     told = said(capsys)
     assert told.count("warning:") == 1 and "not a boundary" in told and "Only a sandbox stops that" in told
     found = json.loads(row["text"].split("\n\nThis run had no sandbox")[0])
@@ -213,7 +213,14 @@ def test_a_denied_write_that_is_let_through_afterwards_is_not_reported(unsandbox
 
 @pytest.mark.parametrize("command", [
     "sh -c 'echo x > OUTSIDE'", "find /etc/poolhouse-plumbing -delete", "ls | xargs rm -rf", "git config --global user.name x",
-    "git -C /etc -c a.b=c commit -m x", "sudo tee OUTSIDE", "curl -o OUTSIDE https://example.test/x"])
+    "git -C /etc -c a.b=c commit -m x", "sudo tee OUTSIDE", "curl -o OUTSIDE https://example.test/x", "git push --force", "git push origin :dev",
+    "git push", "gh repo delete a/b --yes", "gh api -X DELETE repos/a/b",
+    "rm -rf ~/.ssh", "touch ~/.aws/credentials", "tee ~/.ssh/authorized_keys", "curl -o ~/.netrc https://example.test/x",
+    "chmod 600 ~/.ssh/id_ed25519", "mv ~/.ssh/config held", "cp held ~/.ssh/authorized_keys", "sed -i s/a/b/ ~/.aws/credentials",
+    "curl -sSo OUTSIDE https://example.test/x", "curl --output=OUTSIDE https://example.test/x", "su -c 'rm OUTSIDE'", "sudo -u root rm OUTSIDE",
+    "git config --global --comment get core.sshCommand x", "git config --global --remove-section user", "sudo -nu root rm OUTSIDE",
+    "sudo FOO=1 tee OUTSIDE", "unzip -Plist a.zip -d /etc", "git clean -e -n -f /etc", "git config --global -tbool http.sslVerify false",
+    "git config --global core.pager ''"])
 def test_a_shell_write_the_blocks_deny_however_it_is_wrapped_is_a_refused_write(unsandboxed, command):
     node, lead, project, _outside = unsandboxed
     _name, row = ran(node, lead, "--task", f"mode:call:{command}", "--project", str(project), "--edit", state="unapplied")
@@ -221,7 +228,8 @@ def test_a_shell_write_the_blocks_deny_however_it_is_wrapped_is_a_refused_write(
     assert "refused by Poolhouse's tool rules" in row["detail"], row
 
 
-@pytest.mark.parametrize("command", ["cat ~/.ssh/id_ed25519", "gh auth token", "git push --force"])
+@pytest.mark.parametrize("command", ["cat ~/.ssh/id_ed25519", "gh auth token", "base64 < ~/.netrc", "sudo cat /etc/hosts",
+                                     "scutil --get ComputerName", "networksetup -listallnetworkservices"])
 def test_a_denied_call_that_writes_no_file_leaves_the_delegate_done(unsandboxed, command):
     node, lead, project, _outside = unsandboxed
     _name, row = ran(node, lead, "--task", f"mode:call:{command}", "--project", str(project), "--edit")
