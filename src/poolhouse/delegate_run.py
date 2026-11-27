@@ -7,14 +7,17 @@ lead on the board.
 
 from __future__ import annotations
 
+import dataclasses
 import shutil
 import signal
 import sys
 import time
+from collections.abc import Sequence
 from typing import Any
 
 from poolhouse import (
     delegate_confined,
+    delegate_refusals,
     delegate_store as store,
     delegate_unboxed,
     harness,
@@ -37,33 +40,41 @@ def converse(rec: store.Delegate, bridge: lead_bridge.Bridge, mine: HarnessSessi
 
 
 def ended(answer: harness.Answer) -> str:
-    """The state a run that gave ``answer`` ended in. A run that publishes is `done` only when all it changed was applied: `unapplied` when it tried
-    to change files and nothing was applied, `partial` when some changes were applied and others were not."""
+    """The state a run that gave ``answer`` ended in. A run that edits is `done` only when all it changed was applied and no write of it was
+    refused: `unapplied` when it tried to change files and nothing was applied (with no sandbox, no writing call went through), `partial` when some
+    changes were made and others were not."""
     if answer.is_error:
         return "failed"
-    found = answer.published
+    found, refused = answer.published, bool(answer.refused_writes)
     if found is None:
-        return "done"
-    kept_back = bool(found.refused or found.conflicts or found.deferred)
+        return ("partial" if answer.wrote else "unapplied") if refused else "done"
+    kept_back = bool(found.refused or found.conflicts or found.deferred or refused)
     if not found.applied and (kept_back or answer.tried):
         return "unapplied"
     return "partial" if kept_back else "done"
 
 
-def changes(state: str, found: Any) -> str:
-    """What became of a run's changes, in this process's words and from the publications' counts; empty when there is nothing to warn of."""
-    if found is None or state == "done":
+def changes(state: str, found: Any, refused: Sequence[delegate_refusals.Refused] = ()) -> str:
+    """What became of a run's changes, in this process's words, from the publications' counts and the writes it was refused; empty when there is
+    nothing to warn of."""
+    writes = delegate_refusals.said(refused)
+    if state == "done" or (found is None and not writes):
         return ""
-    head = {"unapplied": "nothing was applied to the project", "partial": "not every change was applied to the project"}.get(state, "")
+    where = "applied to the project" if found is not None else "made in the folder"
+    nothing = "nothing was applied to the project" if found is not None else "nothing was changed in the folder"
+    head = {"unapplied": nothing, "partial": f"not every change was {where}"}.get(state, "")
+    if found is None:
+        return "; ".join(each for each in (head, writes) if each)
     counts = f"{len(found.applied)} applied, {len(found.refused)} refused, {len(found.conflicts)} in conflict, {len(found.withheld)} withheld"
     kept = f"; kept patches: {', '.join(found.patches)}" if found.patches else ""
-    return "; ".join(each for each in (head, counts, found.deferred) if each) + kept
+    return "; ".join(each for each in (head, counts, writes, found.deferred) if each) + kept
 
 
 def _outcome(answer: harness.Answer | None, why: str, began: float) -> dict[str, Any]:
     spent = answer.spent if answer else harness.Usage()
     found = answer.published if answer else None
     published = {name: list(getattr(found, name, ())) for name in ("applied", "refused", "conflicts", "withheld", "patches", "runs_later")}
+    published["refused_writes"] = [dataclasses.asdict(each) for each in (answer.refused_writes if answer else ())]
     return {**published, "text": answer.text if answer else "", "error": why, "turns": spent.turns, "input_tokens": spent.input_tokens,
             "output_tokens": spent.output_tokens, "cache_read_tokens": spent.cache_read_tokens,
             "cache_creation_tokens": spent.cache_creation_tokens, "model_seconds": spent.seconds,
@@ -107,7 +118,8 @@ def run(name: str) -> int:
     except (Denied, NodeError, OSError, RuntimeError, ValueError, ImportError) as error:
         why = f"{type(error).__name__}: {error}"
         say(why)
-    row = {**_outcome(answer, why, began), "detail": changes(state, answer.published if answer else None)}
+    found, refused = (answer.published, answer.refused_writes) if answer else (None, ())
+    row = {**_outcome(answer, why, began), "detail": changes(state, found, refused)}
     store.save_result(name, {**row, "state": state})
     store.set_status(name, state, why or row["detail"])
     say(f"{state}: {row['turns']} turn(s), {row['seconds']}s")

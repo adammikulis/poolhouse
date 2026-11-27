@@ -62,6 +62,14 @@ def asked(name, **given):
 
 
 line("step_start")
+if "mode:retries" in task or "mode:only-refused" in task:
+    hook("post", {{"loaded": True}})
+    asked("Write", file_path={outside!r})
+    if "mode:retries" in task:   # denied, then let through under the same name: the write was not refused in the end
+        assert asked("Bash", command="rm -rf held") == "deny"
+        assert asked("Write", file_path="held") == "allow"
+    line("step_finish", reason="stop", tokens={{"input": 1, "output": 1}})
+    sys.exit(0)
 if "mode:linger" in task:
     hook("post", {{"loaded": True}})
     line("step_finish", reason="tool-calls", tokens={{"input": 10, "output": 1}})
@@ -159,7 +167,11 @@ def test_a_delegate_on_a_computer_that_cannot_sandbox_starts_read_only_on_the_fo
 
 def test_an_edit_delegate_with_no_sandbox_warns_edits_the_folder_is_blocked_outside_it_and_reaches_its_lead(unsandboxed, capsys):
     node, lead, project, outside = unsandboxed
-    _name, row = ran(node, lead, "--task", "add a module", "--project", str(project), "--edit")
+    name, row = ran(node, lead, "--task", "add a module", "--project", str(project), "--edit", state="partial")
+    assert [(each["path"], each["by"]) for each in row["refused_writes"]] == [(str(outside), "rules")], row
+    notice = "\n".join(e.text for e in node.session(lead).read(limit=100).entries if e.sender == name)
+    assert "not every change was made in the folder" in row["detail"] and "1 write refused by Poolhouse's tool rules" in row["detail"], row
+    assert "delegate partial" not in notice.split("\n")[0] and "1 write refused by Poolhouse's tool rules" in notice, notice
     told = said(capsys)
     assert told.count("warning:") == 1 and "not a boundary" in told and "Only a sandbox stops that" in told
     found = json.loads(row["text"].split("\n\nThis run had no sandbox")[0])
@@ -171,6 +183,18 @@ def test_an_edit_delegate_with_no_sandbox_warns_edits_the_folder_is_blocked_outs
     assert found["keys"] == [], "no key or login of the starting process"
     assert found["base"].startswith("http://127.0.0.1:") and not found["base"].startswith("http://127.0.0.1:9/") and len(found["token"]) >= 32
     assert "--standalone" in found["argv"] and "no sandbox" in found["system"]
+
+
+def test_a_delegate_with_no_sandbox_whose_only_write_was_refused_ends_unapplied(unsandboxed):
+    node, lead, project, outside = unsandboxed
+    _name, row = ran(node, lead, "--task", "mode:only-refused", "--project", str(project), "--edit", state="unapplied")
+    assert [each["path"] for each in row["refused_writes"]] == [str(outside)] and "nothing was changed in the folder" in row["detail"], row
+
+
+def test_a_denied_write_that_is_let_through_afterwards_is_not_reported(unsandboxed):
+    node, lead, project, outside = unsandboxed
+    _name, row = ran(node, lead, "--task", "mode:retries", "--project", str(project), "--edit", state="partial")
+    assert [each["path"] for each in row["refused_writes"]] == [str(outside)], "`held` was let through on the second try"
 
 
 def test_a_delegate_whose_plugin_never_asked_the_hook_is_ended_as_failed(unsandboxed):

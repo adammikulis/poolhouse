@@ -141,7 +141,57 @@ if "mode:reads" in task:
     shown = open("source.py").read() if os.path.exists("source.py") else "nothing"
     ended(f"{{CANNED}} write={{written}} | shell-refused={{shelled and not os.path.exists('shelled.txt')}} | edit={{edit}}| heard={{heard}} | rg={{found}} | file={{shown}} | shell={{'shell' in cfg}} | "
           f"tools={{','.join(cfg['tools'])}} | permissions={{json.dumps(config['agents'][config['default_agent']]['permissions'])}}")
+def reported(tool, call, status, inputs, **more):
+    hook("post", {{"tool_use_id": call}})
+    event("tool_use", part={{"id": call, "tool": tool, "state": {{"status": status, "input": inputs, **more}}}})
+
+
+def really_writes(path, content):
+    call = asked("write", file_path=path)[0]
+    inputs = {{"path": path, "content": content}}
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as handle:
+            handle.write(content)
+    except OSError as why:
+        return reported("write", call, "error", inputs, error=str(why))
+    return reported("write", call, "completed", inputs, output="written")
+
+
+def really_shells(command):
+    call, decision = asked("shell", command=command)
+    if decision != "deny":
+        done = subprocess.run([*cfg["shell"]["argv"], "30", cfg["shell"]["program"], command], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True)
+        reported("shell", call, "completed", {{"command": command}}, output=done.stdout)
+
+
 os.makedirs("src", exist_ok=True)
+if "mode:refused" in task:
+    step()
+    if "mode:refused-beside" in task:
+        really_writes(cfg["root"] + "/src/feature.py", "x = 1\\n")
+    if "tool:write" in task:
+        really_writes(cfg["root"] + "/.claude/settings.local.json", "{{}}\\n")
+    if "tool:shell" in task:
+        really_shells("mkdir .claude")
+    if "tool:redirect" in task:
+        really_shells("cd src && echo x > ../.git/planted")
+    if "tool:outside" in task:
+        really_writes({project!r} + "/direct.py", "x = 1\\n")
+    finish()
+    ended(CANNED + " done and landed")
+if "mode:ordinary-failures" in task:
+    step()
+    really_writes(cfg["root"] + "/src/feature.py", "x = 1\\n")
+    call = asked("edit", file_path=cfg["root"] + "/src/feature.py")[0]
+    reported("edit", call, "error", {{"path": "src/feature.py"}}, error="Could not find oldString in the file")
+    really_shells("grep nothing-there src/feature.py")
+    really_shells("echo 'Operation not permitted' > src/said.txt; cat src/said.txt; exit 1")
+    really_shells("python3 -c 'import sys; print(\\"PermissionError: Operation not permitted .claude\\"); sys.exit(1)'")
+    really_shells("test -d .claude || echo no settings here; mkdir -p src/deep; false")
+    finish()
+    ended(CANNED + " the tests fail")
 if "mode:shell-writes-nothing" in task:
     step()
     shell("echo x > .venv/planted")
@@ -650,6 +700,32 @@ def test_a_shell_command_is_ended_at_its_timeout_with_what_it_left_running_and_t
 def test_a_shell_call_that_writes_counts_as_trying_to_change_files_and_one_that_reads_does_not(editing, mode, state):
     run = ran(editing, mode)
     assert run.row["state"] == state and run.row["applied"] == [], run.row
+
+
+@pytest.mark.parametrize(("tool", "refused"), [("tool:write", ".claude/settings.local.json"), ("tool:shell", ".claude"),
+                                               ("tool:redirect", ".git/planted"), ("tool:outside", "direct.py")])
+def test_a_write_the_box_refuses_beside_an_applied_one_ends_partial_and_the_result_and_the_notice_say_it(editing, tool, refused):
+    """Decided from the harness's tool events and the box's own limits: the stand-in's last words claim all of it was done."""
+    run = ran(editing, f"refused-beside {tool}")
+    assert run.row["applied"] == ["src/feature.py"] and run.row["refused"] == [], run.row
+    assert run.status == 1 and run.row["state"] == "partial" == store.status(run.name)["state"], run.row
+    assert [(each["path"], each["by"]) for each in run.row["refused_writes"]] == [(refused, "sandbox")], run.row
+    said = f'1 write refused by the sandbox: "{refused}"'
+    assert said in run.row["detail"] and said in run.told and "partial: " in run.told, (run.row["detail"], run.told)
+    assert not (run.project / ".claude").exists() and not (run.project / ".git" / "planted").exists() and not (run.project / "direct.py").exists()
+
+
+def test_a_run_whose_only_write_the_box_refused_ends_unapplied(editing):
+    run = ran(editing, "refused tool:write tool:shell")
+    assert run.status == 1 and run.row["state"] == "unapplied", run.row
+    assert [each["path"] for each in run.row["refused_writes"]] == [".claude/settings.local.json", ".claude"], run.row
+    assert "2 writes refused by the sandbox" in run.told and "nothing was applied to the project" in run.told, run.told
+
+
+def test_commands_and_edits_that_merely_fail_are_no_refused_write(editing):
+    """A search with no match, a command that exits nonzero, one that prints the system's refusal words and an edit that finds nothing to replace."""
+    run = ran(editing, "ordinary-failures")
+    assert run.row["state"] == "done" and run.row["refused_writes"] == [] and "refused by" not in run.told, run.row
 
 
 def test_a_harness_that_ends_while_its_child_holds_the_pipe_ends_the_run_and_the_child(editing):

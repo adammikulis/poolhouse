@@ -203,8 +203,22 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
 - **Processes.** A command signals the processes of its own box (grandchildren and ones that left their group among them) and no other, and
   every one of them ends with the session.
 
-A run that called an editing tool, or a shell line that asks to change files (`delegate_confined.writes`: a redirect, a program that changes
+A run that called an editing tool, or a shell line that asks to change files (`delegate_refusals.writes`: a redirect, a program that changes
 files, an edit in place, a git command that changes the tree), and applied nothing ends `unapplied`.
+
+**A refused write** (`poolhouse.delegate_refusals`) of a delegate that edits ends the run `partial`, or `unapplied` when nothing was applied,
+whatever the model says of it. The result lists each under `refused_writes` (path, tool, `sandbox` or `rules`), and `detail`, `status`, `result` and
+the lead's notice say how many and the first paths. It is decided from the harness's tool events and the hook's answers:
+
+- by the sandbox: `edit` or `write` ending in an error on a path the box lets nothing write (`Profile.refuses_write`), or a shell line that asks
+  to change such a path where a line of its output carries the system's refusal (`Operation not permitted`, `Permission denied`, `Read-only file
+  system`) and names that path;
+- by Poolhouse's tool rules: a writing call the hook denied, unless a later call that went through writes the same path. With no sandbox the run is
+  `unapplied` when no writing call went through at all.
+
+A command or an edit that merely fails (tests, a search with no match, an `oldString` that is not there) is no refused write. Not seen: a write a
+program makes without the shell line naming it (`python3 -c`), a refusal whose message the command hid (`2>/dev/null`), and a path held in a
+variable or under `~`.
 
 ### The workspace
 

@@ -27,6 +27,7 @@ from typing import Any
 
 from poolhouse import (
     claude,
+    delegate_refusals,
     delegate_store as store,
     harness,
     harnessing,
@@ -37,14 +38,12 @@ from poolhouse import (
 )
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.errors import Denied
-from poolhouse.guard.shellscan import segments
 from poolhouse.isolation.environment import SHELL, SHELL_DEFAULT_S, SHELL_MAX_S
 from poolhouse.isolation.serving import IDLE_SECONDS
 from poolhouse.log import say as log
 from poolhouse.workspace import nudge_fence
-from poolhouse.worktreerules import CHANGES_THE_TREE
 
-__all__ = ["NO_PROGRESS_S", "STOPPED_WHY", "Hooks", "Stopped", "Stream", "admit", "converse", "follow", "tools_of", "unsandboxable", "writes"]
+__all__ = ["NO_PROGRESS_S", "STOPPED_WHY", "Hooks", "Stopped", "Stream", "admit", "converse", "follow", "tools_of", "unsandboxable"]
 
 READ_TOOLS = ("read", "glob", "grep")
 EDIT_TOOLS = ("edit", "write", "shell")
@@ -52,13 +51,9 @@ LEAD_TOOLS = ("lead_ask", "lead_note")
 """OpenCode's names of every tool a delegate has: files, a shell inside the confinement and the two ways to the lead; no fetch and no search of the
 web, and no subagent, which would run outside these limits."""
 EDITING = frozenset({"Edit", "Write"})
-"""The tools, as the classifier names them, that always change files: a run that called one, or a shell line that writes (`writes`), tried to change
-the project."""
+"""The tools, as the classifier names them, that always change files: a run that called one, or a shell line that writes
+(`delegate_refusals.writes`), tried to change the project."""
 SHELL_TOOL = "Bash"
-WRITERS = frozenset({"chmod", "cp", "dd", "install", "ln", "mkdir", "mv", "patch", "rm", "rmdir", "rsync", "tee", "touch", "truncate", "unzip"})
-"""The programs a shell line names when it changes files."""
-IN_PLACE = frozenset({"perl", "ruby", "sed"})
-"""The programs that change files only when told to edit in place."""
 NO_PROGRESS_S = IDLE_SECONDS
 """Seconds a run may print nothing while neither the model server nor the lead has the turn and no shell command is within its timeout, before it
 is ended: the project's one request timeout."""
@@ -160,24 +155,6 @@ def admit(rec: store.Delegate, asked: str) -> None:
     harnessing.admit(arguments(rec), "opencode", asked, interactive=False)
 
 
-def _writes(program: str, words: list[str]) -> bool:
-    if program == "git":
-        return any(word in CHANGES_THE_TREE for word in words[:3])
-    return program in WRITERS or (program in IN_PLACE and any(word.startswith(("-i", "-pi", "--in-place")) for word in words))
-
-
-def writes(command: str) -> bool:
-    """Whether a shell line asks to change files, read from its text and never run: a redirect to anything but ``/dev/null`` or a descriptor, a
-    program that changes files (`WRITERS`), an edit in place, or a git command that changes the tree. What a program or a script changes without
-    the line saying so is not seen here: what it leaves in the project is counted by the publication."""
-    for part in segments(command)[0]:
-        if any(">" in operator and target != "/dev/null" and not target.lstrip("&").isdigit() for operator, target in part.redirects):
-            return True
-        if part.argv and _writes(Path(part.argv[0]).name, list(part.argv[1:])):
-            return True
-    return False
-
-
 def allowed_seconds(asked: object) -> float:
     """The timeout a shell call runs under, given the milliseconds it asked for: the confinement's default, and never past its maximum."""
     if isinstance(asked, bool) or not isinstance(asked, (int, float)) or not asked > 0:
@@ -187,10 +164,12 @@ def allowed_seconds(asked: object) -> float:
 
 class Hooks:
     """What the box's plugin has asked the parent, as the parent heard it: whether the plugin is there at all, the last tool it asked about, whether
-    one would change files, and the shell calls that have not ended. ``moved`` is called when a tool is asked about."""
+    one would change files, and the shell calls that have not ended. ``moved`` is called when a tool is asked about, and ``answered`` with each
+    such call: its id, tool and arguments, and whether it was denied."""
 
-    def __init__(self, moved: Callable[[], None] = lambda: None) -> None:
-        self.loaded, self.tried, self.tool, self.moved = False, False, "", moved
+    def __init__(self, moved: Callable[[], None] = lambda: None,
+                 answered: Callable[[str, str, Mapping[str, Any], bool], None] = lambda *_: None) -> None:
+        self.loaded, self.tried, self.tool, self.moved, self.answered = False, False, "", moved, answered
         self._shells: dict[str, float] = {}
         """The shell calls that have no result yet, by id: when the time each may take is over."""
         self._lock = threading.Lock()
@@ -208,8 +187,10 @@ class Hooks:
         asked = payload.get("tool_input")
         asked = asked if isinstance(asked, dict) else {}
         self.tool = name
-        self.tried = self.tried or name in EDITING or (name == SHELL_TOOL and writes(str(asked.get("command") or "")))
-        if name == SHELL_TOOL and said.get("hookSpecificOutput", {}).get("permissionDecision") != "deny":
+        self.tried = self.tried or name in EDITING or (name == SHELL_TOOL and delegate_refusals.writes(str(asked.get("command") or "")))
+        denied = said.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+        self.answered(call, name, asked, denied)
+        if name == SHELL_TOOL and not denied:
             with self._lock:
                 self._shells[call] = time.monotonic() + allowed_seconds(asked.get("timeout"))
         self.moved()
@@ -221,9 +202,10 @@ class Hooks:
 
 
 class Stream:
-    """What OpenCode has said so far, one line of ``run --format json`` at a time."""
+    """What OpenCode has said so far, one line of ``run --format json`` at a time. ``ran`` is given the part of each tool call that has ended."""
 
-    def __init__(self) -> None:
+    def __init__(self, ran: Callable[[Mapping[str, Any]], None] = lambda _part: None) -> None:
+        self.ran = ran
         self.texts: list[str] = []
         self.last: list[str] = []
         """The text of the newest step: the final answer, once a step ends the run."""
@@ -249,6 +231,7 @@ class Stream:
             self.last.append(part["text"])
         elif kind == "tool_use":
             self.tool = str(part.get("tool") or "")
+            self.ran(part)
         elif kind == "step_finish":
             self._spent(part)
         elif kind == "error":
@@ -296,10 +279,12 @@ class Stopped(SystemExit):
         self.answer = answer
 
 
-def _published(rec: store.Delegate, confinement: isolation.Confinement, answer: harness.Answer) -> harness.Answer:
-    """``answer`` with what the publications of a delegate that edits came to, as data and in the launcher's words."""
+def _published(rec: store.Delegate, confinement: isolation.Confinement, answer: harness.Answer,
+               seen: delegate_refusals.Writes) -> harness.Answer:
+    """``answer`` with what the publications of a delegate that edits came to, as data and in the launcher's words, and the writes it was refused."""
     if rec.edit:
         answer.published = confinement.published()
+        answer.refused_writes = seen.refused(answer.published.applied)
         if said := confinement.said():
             answer.text += "\n\nPublication, in the launcher's words:\n" + nudge_fence.clean("\n".join(said))
     return answer
@@ -438,8 +423,9 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
     with leased(rec.model, say) as (base_url, config, found):
         alias = claude.alias_of(base_url, found)
         mine.record_model(alias, "poolhouse-agent", base_url)
-        stream = Stream()
-        hooks = Hooks()
+        seen = delegate_refusals.Writes(args.project)
+        stream = Stream(seen.ran)
+        hooks = Hooks(answered=seen.asked)
 
         def progress() -> None:
             store.set_progress(rec.name, stream.turns, nudge_fence.clean(hooks.tool or stream.tool))
@@ -458,6 +444,7 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
         run = harnessing.Session(mine, Path(args.project), brief_of(rec))
         with harnessing.confined(args, run, how, renderer(rec, binary, served)) as confinement:
             store.set_status(rec.name, "working", alias)
+            seen.within(confinement.profile.stage, confinement.profile.refuses_write)
             status, why, read = 1, "", False
             try:
                 with store.log_file(rec.name).open("ab") as errors:
@@ -467,7 +454,7 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
                 status, read = process.returncode, True
             except (SystemExit, KeyboardInterrupt) as stop:
                 confinement.close(publish=False, keep_patch=True)
-                raise Stopped(_published(rec, confinement, stream.answer(status, STOPPED_WHY))) from stop
+                raise Stopped(_published(rec, confinement, stream.answer(status, STOPPED_WHY), seen)) from stop
             except (Denied, OSError, RuntimeError, ValueError) as error:
                 why, read = f"{type(error).__name__}: {error}", True
                 say(why)
@@ -478,4 +465,4 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
             answer.tried = hooks.tried
             if answer.is_error:
                 confinement.close(publish=False, keep_patch=True)
-    return _published(rec, confinement, answer)
+    return _published(rec, confinement, answer, seen)
