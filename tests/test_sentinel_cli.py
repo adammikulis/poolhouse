@@ -125,15 +125,37 @@ def test_mode_shows_and_changes_for_a_process_no_agent_started_and_is_refused_to
     assert sentinel.default().store.state_of("member", "x") == State.CLEAR
 
 
-def test_an_agent_may_not_pin_a_model_by_hand_and_nothing_is_pinned(capsys, monkeypatch):
+def test_an_agent_pins_a_local_model_by_hand_and_pins_it_again_after_it_changes(capsys, monkeypatch):
     model = home.home() / "m.gguf"
     model.parent.mkdir(parents=True, exist_ok=True)
     model.write_bytes(b"GGUF" * 1000)
     monkeypatch.setenv("CLAUDECODE", "1")
-    with pytest.raises(caller.AgentRefused, match="pinning a model file by hand is refused to an agent"):
+    assert run(capsys, "baseline", "--pin", str(model), "--json")[0] == 0
+    model.write_bytes(b"GGUF" * 2000)
+    assert run(capsys, "baseline", "--pin", str(model), "--json")[0] == 0
+    assert sentinel.default().manifest.pins()[str(model)].bytes == 8000
+    assert [r for r in caller.audit_rows() if r["event"] == "refused"] == []
+
+
+def test_an_agent_may_not_replace_the_pin_of_a_changed_downloaded_model(capsys, monkeypatch):
+    model = home.home() / "m.gguf"
+    model.parent.mkdir(parents=True, exist_ok=True)
+    model.write_bytes(b"GGUF" * 1000)
+    made = sentinel.default().manifest.pin(model, "model", source="pull")
+    model.write_bytes(b"GGUF" * 2000)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    with pytest.raises(caller.AgentRefused, match="changed downloaded model is refused to an agent"):
         command(["baseline", "--pin", str(model), "--json"])
-    assert sentinel.default().manifest.pins() == {}
-    assert [r["action"] for r in caller.audit_rows() if r["event"] == "refused"] == ["pinning a model file by hand"]
+    assert sentinel.default().manifest.pins()[str(model)] == made
+
+
+@pytest.mark.parametrize("source", ["pull", "manifest", "first-use", "pinned-digest"])
+def test_a_hand_pin_cannot_claim_a_source_only_a_download_or_a_serve_records(capsys, source):
+    model = home.home() / "m.gguf"
+    model.parent.mkdir(parents=True, exist_ok=True)
+    model.write_bytes(b"GGUF" * 1000)
+    code, _, err = run(capsys, "baseline", "--pin", str(model), "--source", source)
+    assert code == 2 and "name another" in err and sentinel.default().manifest.pins() == {}
 
 
 def test_review_lists_what_is_held_for_anyone_with_no_terminal_and_no_prompt(capsys, monkeypatch):

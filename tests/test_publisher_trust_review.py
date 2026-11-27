@@ -12,7 +12,7 @@ import pytest
 from model_pins import pinned
 from net_site import gguf_bytes
 
-from poolhouse import caller, http, hub, sentinel
+from poolhouse import http, hub, sentinel
 from poolhouse.fleet.catalogue import SUGGESTED, UNFILTERED, is_unfiltered
 from poolhouse.fleet.models import ModelError, Models
 from poolhouse.hub import admission, publishers
@@ -62,13 +62,13 @@ def baseline_args(path, source="agent"):
     return argparse.Namespace(pin=[str(path)], kind="model", source=source, honey=False, json=False)
 
 
-def test_pinning_a_model_with_baseline_is_refused_to_an_agent_at_once(tmp_path, monkeypatch):
-    path = tmp_path / "evil.gguf"
+def test_a_pin_an_agent_makes_with_baseline_is_a_hand_pin_and_never_a_download_s(tmp_path, monkeypatch):
+    path = tmp_path / "own.gguf"
     path.write_bytes(gguf_bytes(extra=300))
     monkeypatch.setenv("CLAUDECODE", "1")
-    with pytest.raises(caller.AgentRefused):
-        sentinel_cli.baseline(baseline_args(path))
-    assert str(path) not in pins()
+    assert sentinel_cli.baseline(baseline_args(path, source="pull")) == 2 and str(path) not in pins()
+    assert sentinel_cli.baseline(baseline_args(path)) == 0
+    assert pins()[str(path)].source == "agent"
 
 
 def test_a_pin_that_nobody_vouched_for_does_not_vouch_for_another_file(tmp_path):

@@ -390,7 +390,7 @@ class ServerManager(Admitting):
         chosen = mtp.plan(spec, binary=binary, escalate=escalate)
         if chosen.draft:
             try:
-                guarded.verify(chosen.draft, state_file=self.state_file, stop=self.reclaim)
+                guarded.verify(chosen.draft, state_file=self.state_file, stop=self.reclaim, named=False)
             except guarded.SentinelRefused as refused:
                 chosen = mtp.Plan(note=f"MTP off: {refused}", loud=True)
         return mtp.applied(spec, chosen), chosen

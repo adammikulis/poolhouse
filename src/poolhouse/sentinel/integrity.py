@@ -82,6 +82,11 @@ def _state(path: Path) -> tuple[int, int, int, str]:
 class Manifest:
     """The pinned files of this machine, sealed on disk."""
 
+    DOWNLOADED = frozenset({"pull", "manifest"})
+    """The sources of a pin a download or a signed list made: other bytes under it are refused."""
+    SELF_MADE = frozenset({"first-use", "pinned-digest"})
+    """The sources of a pin recorded by itself when a local file was served: a scan holds nothing for a change to it."""
+
     def __init__(self, path: Path, clock: Callable[[], float] = time.time) -> None:
         self._file = SealedFile(path)
         self.clock = clock
