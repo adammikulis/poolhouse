@@ -127,12 +127,14 @@ class Comparison:
     note: str = ""
 
     def chosen(self, only: str = "", *, reference: bool = False) -> list[str]:
-        """The names to measure, in the config's order; ``only`` narrows them."""
+        """The names to measure, in the config's order. ``only`` narrows the builds compared; the reference is
+        among them when ``reference`` is asked for, whatever ``only`` names."""
         wanted = [w for w in only.split(",") if w]
         unknown = sorted(set(wanted) - set(self.quants))
         if unknown:
             raise ValueError(f"{self.id} has no build named {', '.join(unknown)}; it has {', '.join(self.quants)}")
-        return [n for n in self.quants if (n in wanted if wanted else (reference or n != self.reference))]
+        return [n for n in self.quants
+                if (reference if n == self.reference else not wanted or n in wanted)]
 
 
 def cache_comparison(plan: Comparison, name: str, caches: str) -> Comparison:

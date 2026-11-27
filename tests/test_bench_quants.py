@@ -225,6 +225,19 @@ def test_tasks_compares_the_same_items_and_does_not_ask_them_again(tmp_path, mon
     assert alone.serving.extra_args == ("-ub", "1")
 
 
+def test_narrowing_to_one_build_still_asks_the_reference_and_its_floor(tmp_path, monkeypatch):
+    items = tmp_path / "items.jsonl"
+    items.write_text(json.dumps(HUMANEVAL) + "\n")
+    monkeypatch.setattr(quants, "served", canned_served({"REF": RIGHT, "IQ": RIGHT}))
+    monkeypatch.setattr(quants.codeitems, "grade", lambda item, reply: True)
+    args = args_for(tmp_path, "tasks", "--items", str(items), "--only", "IQ", "--floor")
+    assert quants.run(args) == 0
+    assert sorted((r["server"]["quant"], r["server"]["route"]) for r in bench.runs(args.kept)) == [
+        ("IQ", "batched"), ("REF", "batched"), ("REF", "single")]
+    plan = quants.load_comparison(args)
+    assert plan.chosen("IQ,REF") == ["IQ"] and plan.chosen("IQ", reference=True) == ["REF", "IQ"]
+
+
 def test_speed_labels_a_contended_repeat_and_leaves_it_out_of_the_interval(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(quants, "served", canned_served({}))
     rate = {"IQ": 100.0, "K": 200.0, "REF": 50.0}                     # canned tokens per second
