@@ -926,12 +926,22 @@ note = "the module reads no secret: it names credential-store commands and files
 [[group]]
 match = ["human:node_signing.py:*"]
 status = "covered"
-count = 2
-tests = ["tests/test_node_signing.py::test_enable_and_remove_are_refused_to_an_agent_and_run_nothing",
-         "tests/test_node_signing.py::test_the_command_refused_to_an_agent_fails_and_says_why",
+count = 1
+tests = ["tests/test_node_signing.py::test_nothing_inside_a_confinement_changes_the_certificate_and_the_refusal_is_audited",
+         "tests/test_node_signing.py::test_an_agent_the_user_told_turns_the_certificate_on_and_off_and_the_audit_names_it",
          "tests/test_node_signing.py::test_no_build_or_start_makes_imports_or_trusts_a_certificate",
-         "tests/test_node_signing.py::test_a_trust_step_that_does_not_finish_removes_what_was_imported"]
-note = "adding or removing the signing certificate is refused to an agent before anything runs; building and starting write no keychain; a declined, timed-out or interrupted trust step removes what was imported"
+         "tests/test_node_signing.py::test_a_trust_step_that_does_not_finish_removes_what_was_imported",
+         "tests/test_redteam_signature_route.py::test_a_confined_daemon_writes_no_keychain_whoever_answers"]
+note = "a confinement is refused before anything runs, from the command and the app alike; an agent the user told may add or remove the certificate and the audit log names it; building and starting write no keychain; a declined, timed-out or interrupted trust step removes what was imported"
+
+[[group]]
+match = ["route:fleet/signature_routes.py:*"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_signature_route.py::test_only_the_persons_signed_in_window_reads_or_answers_the_question",
+         "tests/test_redteam_signature_route.py::test_an_answer_that_is_not_exactly_yes_or_no_changes_nothing",
+         "tests/test_redteam_signature_route.py::test_a_confined_daemon_writes_no_keychain_whoever_answers"]
+note = "no session, an uncredentialed or token session, an agent or token header, another origin, a cross-site fetch, a program without browser headers and a network address are refused with no keychain command and no stored answer; only an exact yes or no is taken. An unconfined process of the same account holding the launch secret is not stopped (docs/node.md)"
 
 [[group]]
 match = ["human:*"]

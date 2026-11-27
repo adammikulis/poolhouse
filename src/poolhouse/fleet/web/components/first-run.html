@@ -1,9 +1,11 @@
 <!-- first-run: one-time device, model and private coding workspace preparation -->
 <template>
-  <div class="centre" id="first-run" hidden><div class="card" id="first-run-card"></div></div>
+  <div class="centre" id="first-run" hidden><div class="card" id="first-run-card"></div><macos-signature ask></macos-signature></div>
 </template>
 <style>
-first-run .centre { align-items:start; min-height:var(--app-height,100dvh); padding:var(--page-gutter,24px); overflow:auto; }
+first-run .centre { align-items:start; align-content:start; min-height:var(--app-height,100dvh); padding:var(--page-gutter,24px); overflow:auto; }
+first-run macos-signature { width:100%; max-width:760px; }
+first-run macos-signature[ask] > section { width:100%; }
 first-run #first-run-card { max-width:760px; width:100%; border-radius:var(--page-panel-radius,12px); }
 first-run .wizard-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:24px; align-items:center; }
 first-run .wizard-actions button { width:auto; margin:0; }

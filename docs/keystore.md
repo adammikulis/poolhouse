@@ -28,7 +28,8 @@ owner as AAD, so a value wrapped for one purpose or owner does not open for anot
   encryption key so your memory and fleet identity stay private. You will see one Keychain
   prompt.") and then the one OS prompt, which creates the master. A chat or tool reply gets the
   same sentence from `Keystore.pending_notice()`.
-- After that, no prompt: the master is read at most once per process and kept in memory.
+- After that, no prompt: the master is read at most once per process and kept in memory. On macOS every
+  later call but `poolhouse-security unlock` and `keystore-reset` forbids dialogs.
 
 ## Limits that keep it quiet
 
@@ -40,7 +41,7 @@ authorised, so they are counted in two classes (`rate.json`, a list of times per
 | Reads of the existing master per user per hour | 600 (`READ_CEILING`); the next one raises `KeystoreBusy` and logs an event. From 80% of the ceiling each read first sleeps a random 50 to 250 ms, inside the lock, so a stampede slows down before it stops |
 | Creates and deletes per user per hour | 5 (`WRITE_CEILING`), counted when the keystore made the change: a change it refused changed nothing and is not counted. The next one raises `KeystoreBusy` |
 | A read the person asked for (`poolhouse-security unlock`) | counted, never turned away by the read count |
-| After the OS refuses, the person declines, a prompt is not answered in time or the keystore fails | nothing is remembered. `KeystoreDenied` carries what happened in the system's words (a prompt nobody answered is not called a refusal), and the very next request asks the keystore again, so the system shows its own prompt again at once. No cooldown, no state file, no limit on asking after a no: the person's answer to each prompt is theirs |
+| After the OS refuses, the person declines, a prompt is not answered in time or the keystore fails | nothing is remembered. `KeystoreDenied` carries what happened in the system's words (a prompt nobody answered is not called a refusal), and the very next request asks the keystore again; where that request may show a dialog (not on macOS once the key is made, unlock apart) the system shows its own prompt again at once. No cooldown, no state file, no limit on asking after a no: the person's answer to each prompt is theirs |
 | Processes starting together | one lock (`flight.lock`): each process reads the OS keystore itself, one at a time, polling the lock every 20 ms and backing off to 0.5 s. The master is never written to a file or shared between processes, so a swarm costs one backend read per process, not one per use |
 | Background process (no terminal and no desktop session, a Windows session 0, or any agent marker: `POOLHOUSE_NONINTERACTIVE`, `POOLHOUSE_AGENT`, `CLAUDECODE`) | never creates the master; reads it only after `poolhouse-security unlock`; otherwise `KeystoreLocked` naming that command |
 
@@ -129,10 +130,11 @@ executable, and before that executable changes (a host Python upgrade, `poolhous
 certificate enable` or `remove`) the program that reads the key hands it to the new one through a pipe:
 [handing the key on](node.md#handing-the-key-on). The master, and so every wrapped file, stays the same.
 
-An interpreter that no installed runtime hands the key from (a development install run by a Python that
-was since upgraded) is asked about the item by macOS: a background process cannot answer, and a person at
-the screen can run `poolhouse-security unlock` in a terminal and tell macOS to always allow it, which is
-unverified. Creating the item with the `security` CLI and `-T` so that a "stable launcher" is trusted was
+Once the key is made, no command but `poolhouse-security unlock` (and `keystore-reset`) lets macOS show a
+dialog about it: every other call tells the Security framework to fail. So a program no installed runtime
+hands the key to (a development install run by a Python that was since upgraded, or the first update from
+a build that hands nothing on) cannot read it and says so; a person at the screen can run
+`poolhouse-security unlock` in a terminal and tell macOS to always allow it, which is unverified. Creating the item with the `security` CLI and `-T` so that a "stable launcher" is trusted was
 considered and not done:
 
 - A launcher that is a script is not what the Keychain checks: the kernel runs the interpreter named

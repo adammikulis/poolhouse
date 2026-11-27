@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 58,
+   "covered": 57,
    "partial": 0,
    "uncovered": 0,
    "n/a": 1,
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 124,
+   "covered": 125,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
@@ -3961,34 +3961,20 @@
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
   },
   {
-   "id": "human:node_signing.py:enable",
+   "id": "human:node_signing.py:_asked",
    "kind": "human",
-   "source": "node_signing.py:enable",
+   "source": "node_signing.py:_asked",
    "trust": "an agent process or a member",
    "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
    "tests": [
-    "tests/test_node_signing.py::test_enable_and_remove_are_refused_to_an_agent_and_run_nothing",
-    "tests/test_node_signing.py::test_the_command_refused_to_an_agent_fails_and_says_why",
+    "tests/test_node_signing.py::test_nothing_inside_a_confinement_changes_the_certificate_and_the_refusal_is_audited",
+    "tests/test_node_signing.py::test_an_agent_the_user_told_turns_the_certificate_on_and_off_and_the_audit_names_it",
     "tests/test_node_signing.py::test_no_build_or_start_makes_imports_or_trusts_a_certificate",
-    "tests/test_node_signing.py::test_a_trust_step_that_does_not_finish_removes_what_was_imported"
+    "tests/test_node_signing.py::test_a_trust_step_that_does_not_finish_removes_what_was_imported",
+    "tests/test_redteam_signature_route.py::test_a_confined_daemon_writes_no_keychain_whoever_answers"
    ],
-   "note": "adding or removing the signing certificate is refused to an agent before anything runs; building and starting write no keychain; a declined, timed-out or interrupted trust step removes what was imported"
-  },
-  {
-   "id": "human:node_signing.py:remove",
-   "kind": "human",
-   "source": "node_signing.py:remove",
-   "trust": "an agent process or a member",
-   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
-   "status": "covered",
-   "tests": [
-    "tests/test_node_signing.py::test_enable_and_remove_are_refused_to_an_agent_and_run_nothing",
-    "tests/test_node_signing.py::test_the_command_refused_to_an_agent_fails_and_says_why",
-    "tests/test_node_signing.py::test_no_build_or_start_makes_imports_or_trusts_a_certificate",
-    "tests/test_node_signing.py::test_a_trust_step_that_does_not_finish_removes_what_was_imported"
-   ],
-   "note": "adding or removing the signing certificate is refused to an agent before anything runs; building and starting write no keychain; a declined, timed-out or interrupted trust step removes what was imported"
+   "note": "a confinement is refused before anything runs, from the command and the app alike; an agent the user told may add or remove the certificate and the audit log names it; building and starting write no keychain; a declined, timed-out or interrupted trust step removes what was imported"
   },
   {
    "id": "human:reputation/cli.py:_guarded.run",
@@ -9032,6 +9018,20 @@
     "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine"
    ],
    "note": "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
+  },
+  {
+   "id": "route:fleet/signature_routes.py:/ui/signature",
+   "kind": "route",
+   "source": "fleet/signature_routes.py:SignatureRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_signature_route.py::test_only_the_persons_signed_in_window_reads_or_answers_the_question",
+    "tests/test_redteam_signature_route.py::test_an_answer_that_is_not_exactly_yes_or_no_changes_nothing",
+    "tests/test_redteam_signature_route.py::test_a_confined_daemon_writes_no_keychain_whoever_answers"
+   ],
+   "note": "no session, an uncredentialed or token session, an agent or token header, another origin, a cross-site fetch, a program without browser headers and a network address are refused with no keychain command and no stored answer; only an exact yes or no is taken. An unconfined process of the same account holding the launch secret is not stopped (docs/node.md)"
   },
   {
    "id": "route:fleet/studio_destinations.py:/ui/studio/*",

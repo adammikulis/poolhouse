@@ -126,7 +126,7 @@ def test_a_truncated_or_hostile_executable_names_no_libraries_and_raises_nothing
 
 
 def test_a_listener_beyond_this_machine_under_an_interpreter_is_found_and_nothing_else_is():
-    apps = node_app.apps_directory()
+    apps = app_bundle.apps_directory()
     ours = str(runtime_identity.executable_path())
     node = str(node_app.executable_path())
     rows = [("/py/bin/python3.13", "10.0.0.5"), ("/py/bin/python3.13", "127.0.0.1"), ("/py/bin/python3.13", "::1"),

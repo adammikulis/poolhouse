@@ -278,14 +278,31 @@ def test_only_a_signature_with_codesigns_own_requirement_or_the_certificates_is_
         "the certificate's words on a signature that has no certificate"
 
 
+def audited() -> list[tuple[str, str, str]]:
+    """The audit log's certificate changes, as (event, action, through what)."""
+    wanted = (node_signing.ENABLE, node_signing.REMOVE)
+    return [(row["event"], row["action"], row["via"]) for row in caller.audit_rows() if row.get("action") in wanted]
+
+
 @pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_AGENT"])
-def test_enable_and_remove_are_refused_to_an_agent_and_run_nothing(tools, monkeypatch, marker):
+def test_an_agent_the_user_told_turns_the_certificate_on_and_off_and_the_audit_names_it(tools, monkeypatch, marker):
     monkeypatch.setenv(marker, "1")
+    node_signing.enable(lambda _text: None)
+    assert tools.certificates == {SHA: {"key": True, "trusted": True}}
+    node_signing.remove(lambda _text: None)
+    assert tools.certificates == {}
+    assert audited() == [("ran", node_signing.ENABLE, "command"), ("ran", node_signing.REMOVE, "command")]
+    assert all(row["who"].startswith(f"agent {marker}") for row in caller.audit_rows() if row.get("via") == "command")
+
+
+def test_nothing_inside_a_confinement_changes_the_certificate_and_the_refusal_is_audited(tools, monkeypatch):
+    monkeypatch.setattr(caller, "confined", lambda: True)
     said = []
     for change in (node_signing.enable, node_signing.remove):
-        with pytest.raises(caller.AgentRefused, match="must not write your keychain"):
+        with pytest.raises(caller.AgentRefused, match="confinement"):
             change(said.append)
-    assert tools.calls == [] and said == []
+    assert tools.calls == [] and said == [] and node_signing.answer() == ""
+    assert audited() == [("refused", node_signing.ENABLE, "command"), ("refused", node_signing.REMOVE, "command")]
 
 
 def test_enable_says_what_it_adds_before_it_changes_anything(tools):
@@ -353,11 +370,11 @@ def test_the_command_signs_the_apps_again_after_enable_and_after_remove(tmp_path
         assert not (bundle.parent / ".building").exists()
 
 
-def test_the_command_refused_to_an_agent_fails_and_says_why(tools, monkeypatch, capsys):
+def test_the_command_an_agent_runs_adds_the_certificate(tools, monkeypatch):
     monkeypatch.setattr(node_permission.sys, "platform", "darwin")
     monkeypatch.setenv("CLAUDECODE", "1")
-    assert node_permission.main(["certificate", "enable"]) == 1
-    assert tools.calls == [] and "refused to an agent" in capsys.readouterr().err
+    assert node_permission.main(["certificate", "enable"]) == 0
+    assert tools.certificates[SHA]["trusted"] and audited() == [("ran", node_signing.ENABLE, "command")]
 
 
 def test_another_system_has_no_certificate_to_change(tools, monkeypatch, capsys):

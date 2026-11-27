@@ -111,6 +111,21 @@ def test_a_background_call_forbids_prompts_and_a_person_s_does_not(tmp_path, cou
     assert asked == ["forbid"]
 
 
+@pytest.mark.parametrize(("system", "quiet"), [("darwin", ["forbid"]), ("linux", [])])
+def test_on_macos_reading_a_key_already_made_shows_no_dialog_unless_it_is_the_persons_own_command(
+        tmp_path, counting, monkeypatch, system, quiet):
+    asked: list[str] = []
+    monkeypatch.setattr(keystore_guard, "forbid_prompts", lambda: asked.append("forbid") or True)
+    monkeypatch.setattr(sys, "platform", system)
+    make(tmp_path).subkey("memory", "a")
+    assert asked == [], "the first key of an install may be asked about"
+    make(tmp_path).subkey("memory", "a")
+    assert asked == quiet, "after an update the program that reads it may be another: it fails and does not ask"
+    asked.clear()
+    make(tmp_path).provision()
+    assert asked == [], "the unlock command is the person asking for the dialog"
+
+
 # -- nothing hangs ---------------------------------------------------------------------------------------
 
 

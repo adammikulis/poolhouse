@@ -334,11 +334,18 @@ class Keystore:
             self._say(NOTICE)
             self._put_doc("noticed.json", {"at": self._clock()})
 
+    def _may_ask(self, person: bool) -> bool:
+        """Whether the system may show a dialog for a call. On macOS, once the key is made, only a person's own command lets it:
+        a program an update changed fails to read the key rather than asking about it."""
+        if not self._is_interactive():
+            return False
+        return person or sys.platform != "darwin" or not self._doc("provisioned.json").get("at")
+
     def _call(self, kind: str, purpose: str, work: Callable[[Any], Any], *, person: bool = False) -> Any:
         """One backend call, gated, counted, audited. A refusal raises with the system's words and is remembered by nothing."""
         ring = self._ring()
         self._spend(kind, purpose, person=person)
-        person_here = self._is_interactive()
+        person_here = self._may_ask(person)
         if person_here:
             self._tell()
         else:
@@ -571,7 +578,7 @@ def _refused(cause: BaseException) -> str:
     else:
         what = f"the keystore said: {said}"
     return (f"Poolhouse could not get its key, because {what}, so encrypted data stays locked. Nothing is remembered: "
-            f"the next request asks the keystore again and your computer shows its prompt again. To set the key up now, "
+            f"the next request asks the keystore again. To set the key up, or on macOS to be asked about it again, "
             f"run `{UNLOCK_COMMAND}`.")
 
 

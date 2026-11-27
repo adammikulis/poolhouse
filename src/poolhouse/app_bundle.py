@@ -17,6 +17,8 @@ from poolhouse.home import home
 from poolhouse.lock import only_one
 
 NAME = "Poolhouse"
+NODE_ID = "app.poolhouse.node"  # never changed: a new id is a new app to macOS and loses every grant
+NODE_EXECUTABLE = "poolhouse-node"
 USAGE = "Poolhouse finds and joins your other devices on this network."
 BONJOUR = ["_poolhouse._tcp"]
 MINIMUM_SYSTEM = "13.0"
@@ -32,6 +34,11 @@ class AppError(OSError):
 def apps_directory() -> Path:
     """Where the bundles live: outside every checkout."""
     return home() / "apps"
+
+
+def node_bundle() -> Path:
+    """The Poolhouse.app of the node (`poolhouse.node_app`)."""
+    return apps_directory() / f"{NAME}.app"
 
 
 def info_plist(bundle_id: str, executable: str, version: str = "0", *, icon: bool = True) -> dict:

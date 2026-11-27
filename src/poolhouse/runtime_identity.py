@@ -467,6 +467,15 @@ def resign(bundle: Path, identifier: str, requirement_for: Callable[[str], str])
     return signed
 
 
+def resign_apps() -> list[tuple[Path, str]]:
+    """Sign every Poolhouse app on this Mac again with what the keychain now holds; each as (app, what `resign` returned)."""
+    apps = [(bundle, BUNDLE_ID, requirement) for bundle in bundles()]
+    node = app_bundle.node_bundle()
+    if (node / "Contents" / "MacOS" / app_bundle.NODE_EXECUTABLE).is_file():
+        apps.append((node, app_bundle.NODE_ID, lambda sha1: node_signing.certificate_requirement(app_bundle.NODE_ID, sha1)))
+    return [(bundle, resign(bundle, identifier, requirement_for)) for bundle, identifier, requirement_for in apps]
+
+
 def _link(link: Path, target: Path | str) -> None:
     fresh = link.with_name(f".{link.name}.new")
     fresh.unlink(missing_ok=True)

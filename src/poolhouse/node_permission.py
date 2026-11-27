@@ -106,14 +106,6 @@ SIGNED = {"certificate": "is signed with the certificate", "ad-hoc": "is signed 
           "kept": "keeps the certificate signature it had, because signing it again failed"}
 
 
-def resign_apps() -> list[tuple[Path, str]]:
-    """Sign every Poolhouse app on this Mac again with what the keychain now holds; each as (app, how it is signed: one of `SIGNED`)."""
-    apps = [(bundle, runtime_identity.BUNDLE_ID, runtime_identity.requirement) for bundle in runtime_identity.bundles()]
-    if node_app.executable_path().is_file():
-        apps.append((node_app.bundle_path(), node_app.BUNDLE_ID, node_app.requirement))
-    return [(bundle, runtime_identity.resign(bundle, identifier, requirement_for)) for bundle, identifier, requirement_for in apps]
-
-
 def _certificate_command(args) -> int:
     """``poolhouse local-network certificate``: add or remove the user's signing certificate, then sign the apps accordingly."""
     if sys.platform != "darwin":
@@ -122,7 +114,7 @@ def _certificate_command(args) -> int:
     adding = args.change == "enable"
     signed: list[tuple[Path, str]] = []
     try:
-        (node_signing.enable if adding else node_signing.remove)(say, lambda: signed.extend(resign_apps()))
+        (node_signing.enable if adding else node_signing.remove)(say, lambda: signed.extend(runtime_identity.resign_apps()))
     except (OSError, subprocess.SubprocessError) as exc:
         warn(f"certificate: {exc}")
         return 1

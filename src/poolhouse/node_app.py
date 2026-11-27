@@ -19,18 +19,18 @@ import sys
 from pathlib import Path
 
 from poolhouse import app_bundle, node_binary, node_signing, runtime, runtime_identity
-from poolhouse.app_bundle import ICON_SVG, NAME, AppError, apps_directory, icns
+from poolhouse.app_bundle import ICON_SVG, NAME, AppError, icns
 from poolhouse.files import read_json, write_json
 from poolhouse.log import say, warn
 
-BUNDLE_ID = "app.poolhouse.node"
-EXECUTABLE = "poolhouse-node"
+BUNDLE_ID = app_bundle.NODE_ID
+EXECUTABLE = app_bundle.NODE_EXECUTABLE
 SOURCE_RECORD = "source.json"
 
 
 def bundle_path() -> Path:
     """The Poolhouse.app bundle."""
-    return apps_directory() / f"{NAME}.app"
+    return app_bundle.node_bundle()
 
 
 def executable_path(bundle: Path | None = None) -> Path:

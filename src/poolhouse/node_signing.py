@@ -1,15 +1,13 @@
 """How the macOS apps Poolhouse makes are signed, and the one certificate a user may add for them.
 
-An app is signed locally (ad hoc) by default: no certificate, and codesign's own designated requirement, which names the code
-itself, so macOS may ask for a permission again after an update changes the code. `enable` is the user's opt-in
-(`poolhouse local-network certificate enable`): there is no Apple developer account, so it makes a self-signed code-signing
-certificate and its key in the user's login keychain, trusted for code signing in the user domain only. The apps' requirement
-then names the certificate instead of the code, so a permission should stay across updates. `remove` deletes all of it.
+An app is signed locally (ad hoc) by default: codesign's own requirement names the code, so macOS may ask for a permission again
+after an update changes it. A user may opt in (`enable`, or the app's question, whose answer `answer` keeps) to a self-signed
+code-signing certificate and key in their login keychain, trusted for code signing in the user domain only: the apps' requirement
+then names the certificate, so a permission should stay across updates. `remove` deletes all of it.
 
-Whether the user opted in is what the keychain says: a signing identity of that name that macOS lists as usable, or none. Nothing
-but `enable` and `remove` adds, trusts or deletes a certificate. Poolhouse's encryption key is another item of the same keychain
-(`poolhouse.keystore`) under either signature: macOS lets only the code that made it read it, the certificate or none, so a new
-signature gets the key handed to it (`poolhouse.keystore_handoff`).
+Opted in is what the keychain says: a signing identity of that name that macOS lists as usable. It changes only when the user
+asks. Poolhouse's encryption key is another item of that keychain, read only by the code that made it under either
+signature, so a new signature gets the key handed to it (`poolhouse.keystore_handoff`).
 """
 
 from __future__ import annotations
@@ -30,11 +28,14 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import caller, real_machine
+from poolhouse.files import read_json, write_json
 from poolhouse.home import account_roots, home
 from poolhouse.lock import Busy, only_one
 from poolhouse.log import warn
 
 CERT_NAME = "Poolhouse Local Signing"
+CHOICE = "signing-choice.json"
+ANSWERS = ("yes", "no")
 OPENSSL = "/usr/bin/openssl"  # the system LibreSSL: its .p12 files are the kind `security import` reads
 DAYS = 3650
 TOOL_TIMEOUT = 120.0
@@ -44,7 +45,6 @@ CDHASH = r'cdhash H"[0-9a-f]{40}"'
 STOPPING = tuple(getattr(signal, name) for name in ("SIGINT", "SIGTERM", "SIGHUP") if hasattr(signal, name))
 ENABLE = "poolhouse local-network certificate enable"
 REMOVE = "poolhouse local-network certificate remove"
-WHY_NOT_AN_AGENT = "an agent must not write your keychain"
 KEY_HANDED = ("Poolhouse hands the encryption key it keeps in your login keychain to its app as newly signed, with no prompt, before "
               "it uses that app.")
 WHAT_ENABLE_ADDS = f"""This adds a code-signing certificate to your login keychain:
@@ -328,12 +328,37 @@ def _stopping() -> Callable[[int, object], None]:
     return stop
 
 
-def enable(say: Callable[[str], None], then: Callable[[], None] = lambda: None) -> None:
-    """The user's opt-in: say what it adds, make the certificate and key, put them in the login keychain and trust them for code
-    signing, then run ``then``. A step that fails, is declined or is stopped removes what was imported. Refused at once to an agent."""
-    caller.refuse_agent(ENABLE, WHY_NOT_AN_AGENT)
+def answer() -> str:
+    """What the user last chose, "yes" for the certificate or "no", or "" while they have not said."""
+    found = read_json(home() / CHOICE, {})
+    said = found.get("certificate") if isinstance(found, dict) else None
+    return said if said in ANSWERS else ""
+
+
+def remember(said: str) -> None:
+    """Keep the user's choice, so the app does not ask again."""
+    if said not in ANSWERS:
+        raise ValueError(f"the choice is one of {', '.join(ANSWERS)}")
+    write_json(home() / CHOICE, {"schema_version": 1, "certificate": said})
+
+
+def _asked(action: str, via: str) -> None:
+    """Record who is changing the keychain and through what; nothing inside a confinement may."""
+    if caller.confined():
+        with suppress(OSError):  # a confinement may hold no write to the state root: the refusal still stands
+            caller.record("refused", action=action, via=via)
+        raise caller.AgentRefused(f"{action} is refused: nothing inside a confinement writes your keychain")
+    caller.record("ran", action=action, via=via)
+
+
+def enable(say: Callable[[str], None], then: Callable[[], None] = lambda: None, *, via: str = "command") -> None:
+    """The user's opt-in, run when the user asks for it: by them, by an agent they told, or by their answer in the app. Say what
+    it adds, make the certificate and key, put them in the login keychain and trust them for code signing, then run ``then``. A
+    step that fails, is declined or is stopped removes what was imported. The audit log names who ran it."""
+    _asked(ENABLE, via)
     real_machine.require("adding a signing certificate to the login keychain")
     with _changing():
+        remember("yes")
         if identities():
             say(f"the {CERT_NAME!r} certificate is already in your login keychain and trusted for code signing; nothing was added")
         else:
@@ -390,13 +415,14 @@ def _discard(sha1: str, certificate: Path, *, trusted: bool) -> None:
             warn("the certificate was not set up, and nothing of it is left")
 
 
-def remove(say: Callable[[str], None], then: Callable[[], None] = lambda: None) -> None:
-    """Delete every certificate of this name with its private key and trust setting; with none there the keychain is not changed.
-    ``then`` runs once no identity of the name is left, whatever else is; raises for what a further run could still delete.
-    Refused at once to an agent."""
-    caller.refuse_agent(REMOVE, WHY_NOT_AN_AGENT)
+def remove(say: Callable[[str], None], then: Callable[[], None] = lambda: None, *, via: str = "command") -> None:
+    """Run when the user asks, as `enable` is: delete every certificate of this name with its private key and trust setting; with
+    none there the keychain is not changed. ``then`` runs once no identity of the name is left, whatever else is; raises for what
+    a further run could still delete. The audit log names who ran it."""
+    _asked(REMOVE, via)
     real_machine.require("removing the signing certificate from the login keychain")
     with _changing():
+        remember("no")
         left, why = _remove(say)
         if not identities(usable=False):
             then()

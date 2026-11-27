@@ -299,8 +299,6 @@ def nothing_spawns(monkeypatch):
 def test_a_signing_certificate_is_never_made_or_read_outside_the_installed_software(nothing_spawns, tmp_path, monkeypatch):
     from poolhouse import caller, node_signing
 
-    for name in caller.AGENT_MARKERS:
-        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(caller, "confined", lambda: False)
     signed: list[list[str]] = []
     monkeypatch.setattr(node_signing, "_run", lambda argv: signed.append(argv) or "")

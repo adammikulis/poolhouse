@@ -293,8 +293,9 @@ def signature_findings() -> list[Finding]:
         note = f"`{node_signing.REMOVE}` deletes it, and `{node_signing.ENABLE}` then adds one that can be used"
     else:
         said = "local (no certificate)"
-        note = ("macOS may ask again for network permission after an update. To keep the permission, "
-                f"`{node_signing.ENABLE}` adds a certificate to your keychain; it says what it adds before macOS asks for your password")
+        note = ("macOS may ask again for network permission after an update. The app asks whether to keep the permission (Settings, "
+                f"Compute & device), and `{node_signing.ENABLE}` adds a certificate to your keychain; it says what it adds before "
+                "macOS asks for your password")
     found = [Finding(name="macOS signature", good=True, said=said, note=note)]
     selected = runtime.selection_prefix()
     if selected is not None and (kept := runtime_identity.kept_note(selected)):

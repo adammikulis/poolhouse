@@ -1109,9 +1109,21 @@ How often macOS asks again under either signature is unmeasured.
   could not. It fails, naming each, while a certificate, an identity or a trust setting it can delete is left, or when the trust
   settings cannot be read; unreadable trust settings stop no deletion. A setting whose certificate file is nowhere is named, with
   Keychain Access as the place to delete it. With nothing there it changes nothing in the keychain.
-- **Who may.** Both commands are refused at once to an agent or a confined process (`caller.refuse_agent`) and outside the
-  installed software on the real home (`real_machine`), and one of them runs at a time. No install, update, rollback, node start or
-  setup run creates, imports, trusts or deletes a certificate.
+- **The app asks.** On an installed Mac the setup page and the app show the question while it is unanswered, with what each answer
+  does: add the certificate or not, or, where one is already there, keep it or remove it. Nothing waits for the answer, and "Decide
+  later" hides the question until the page is loaded again. An answer is kept in `~/.poolhouse/signing-choice.json`, which the
+  terminal commands write too, and the question is not shown again. Settings, Compute & device, shows how Poolhouse is signed and
+  changes it. A declined password dialog leaves nothing behind, is said on the page and does not bring the question back.
+- **Who may.** The user, and an agent the user told to: both commands run for either, and the audit log
+  (`authority-audit.jsonl`) names who ran each and whether the command or the app's window asked. Nothing tells an agent that was
+  told from one acting on its own, so an agent runs them only when its user asked for that change. They are refused to a confined
+  process and outside the installed software on the real home (`real_machine`), and one change runs at a time. No install, update,
+  rollback, node start or setup run creates, imports, trusts or deletes a certificate.
+- **Who answers the app.** The app's route (`/ui/signature`) answers only this computer's own window over loopback in a session a
+  person opened (a spent launch ticket or the setup page): no token, no agent header, no other origin and no network address, so an
+  agent does not answer the question for the user. A daemon an agent restarted still takes the person's answer. What this does not
+  stop: an unconfined process of the same account that reads the daemon's launch secret and sends a browser's headers, as for every
+  other action of the signed-in window. Adding the certificate meets macOS's own password dialog whoever asks.
 - **Opted in is what the keychain says.** `security find-identity -v -p codesigning` listing an identity of that name is the whole
   record. A certificate that is untrusted, has no key or cannot be read counts as none.
 - **Falling back.** An app that carries a certificate signature which verifies stays as it is when the certificate cannot sign its
@@ -1146,6 +1158,17 @@ makes a second key while another signature keeps one.
 An upgrade changes a signed identity only when it brings other code: the node binary is built again only when the node's sources
 (`app/`) differ from the last build's, and a runtime is built from the interpreter the Poolhouse executable was copied from while
 that one is there unchanged. What the rows say macOS asks is not measured.
+
+Each way an update can end in a macOS dialog, and whether this build prevents it:
+
+| Dialog | When | Prevented | What shows it |
+|---|---|---|---|
+| Keychain access to the encryption key | A program whose signature has no item reads the key | Yes: once the key is made, only `unlock` and `keystore-reset` allow a dialog, and the hand-off forbids them | Tests assert the Security framework is told to forbid dialogs; that macOS then shows none was measured on test items, not on an installed one |
+| Password for the certificate's trust setting | A build creates a certificate | Yes: no update creates, trusts or deletes one | Tests with the plumbing-only keychain |
+| `codesign` asking to use the certificate's key, or for the keychain's password | An update signs with the certificate and the key's access was allowed once rather than always, or the keychain is locked | No | Cannot be shown without the real keychain: Poolhouse can forbid dialogs only in its own process, and `codesign` is another one |
+| Local Network and firewall permission | The local signature, and the node's or the interpreter's code changed (also the first binding) | No: macOS keys the permission to the code it is shown | Only a real Mac shows it |
+| Local Network permission, once | A node app signed so that only its id is required is signed again at its next start | No: that requirement is satisfied by any program that claims the id | Only a real Mac shows it |
+| Any of the above from the older build | The first update to this build runs the installed build's code, which creates and trusts a certificate when it signs and finds none, and hands no key on | No: this build's code does not run yet | The older code |
 
 | What changes | Local signature | Certificate | Left to do |
 |---|---|---|---|

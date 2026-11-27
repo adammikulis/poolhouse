@@ -1,0 +1,97 @@
+<!-- macos-signature: whether Poolhouse's apps on this Mac are signed with a certificate; asked once, changeable in settings -->
+<style>
+macos-signature { display:block; }
+macos-signature:empty { display:none; }
+macos-signature[ask] > section { border:1px solid var(--line); background:var(--bg-raised); color:var(--text); border-radius:14px; padding:16px 20px; margin:12px auto; width:calc(100% - 32px); max-width:760px; box-sizing:border-box; }
+macos-signature h2 { font-size:1.15rem; margin:0 0 8px; }
+macos-signature .signature-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px; margin-top:12px; }
+macos-signature .signature-option { border:1px solid var(--line); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:10px; }
+macos-signature .signature-option p { margin:0; line-height:1.5; }
+macos-signature .signature-option button { width:auto; margin:auto 0 0; align-self:flex-start; }
+macos-signature .signature-later { width:auto; margin:12px 0 0; }
+</style>
+<script>
+(function () {
+  const M = window.fleetModel, el = M.el;
+  const HIDDEN = ['sign-in', 'launch-needed'];
+  const ADD = 'Adds a certificate and its key to your login keychain and trusts it for your account. macOS will prompt you for '
+    + 'your password; if it also asks about the key, choose to always allow it. Permissions you give Poolhouse should stay after an update. '
+    + 'Any program running as you could use that key to sign itself as Poolhouse.';
+  const NOTHING = 'Nothing is added to your keychain. macOS may ask for the same permissions again after an update.';
+  const KEEP = 'Nothing changes. Permissions you give Poolhouse should stay after an update. '
+    + 'Any program running as you could use that key to sign itself as Poolhouse.';
+  const REMOVE = 'Deletes the certificate and its key from your login keychain; macOS may ask for your password. '
+    + 'macOS may ask for the same permissions again after an update.';
+  const WHY = 'macOS remembers what you allow Poolhouse to do, such as finding your devices on the network, by how Poolhouse '
+    + 'is signed. Poolhouse works whether or not you answer.';
+  class MacosSignature extends HTMLElement {
+    connectedCallback() {
+      if (this.wired) return;
+      this.wired = true; this.ask = this.hasAttribute('ask'); this.setup = !!this.closest('first-run');
+      M.onRoute(route => {
+        const here = this.setup ? route === 'first-run' : this.ask ? route !== 'first-run' && !HIDDEN.includes(route) : route === 'settings';
+        this.here = !!route && here;
+        if (!this.sending && !this.working) this.answered = false;
+        if (this.here) this.load();
+        else clearTimeout(this.timer);
+      });
+    }
+    async load() {
+      const session = M.sessionContext();
+      try { this.apply(await M.api('/ui/signature'), session); }
+      catch { this.replaceChildren(); }
+    }
+    apply(state, session) {
+      clearTimeout(this.timer);
+      if (session !== M.sessionContext() || !state.ok || !state.applies) { this.replaceChildren(); return; }
+      this.working = state.working;
+      this.draw(state);
+      if (state.working && this.here) this.timer = setTimeout(() => this.load(), 1000);
+    }
+    async choose(said) {
+      if (this.sending) return;
+      this.sending = true; this.answered = true;
+      for (const button of this.querySelectorAll('button')) button.disabled = true;
+      const session = M.sessionContext();
+      try {
+        const result = await M.api('/ui/signature', {method:'POST', body:JSON.stringify({certificate:said})});
+        if (result.ok) this.apply(result, session);
+        else { await this.load(); this.append(el('div', {class:'err', role:'alert'}, result.error || 'The answer could not be saved.')); }
+      } finally { this.sending = false; }
+    }
+    option(text, label, said, secondary) {
+      return el('div', {class:'signature-option'}, el('p', {}, text),
+        el('button', {type:'button', class:secondary ? 'ghost' : '', onclick:() => this.choose(said)}, label));
+    }
+    options(state, asking) {
+      if (state.working || (this.ask && !asking)) return [];
+      if (state.certificate) return [...(asking ? [this.option(KEEP, 'Keep the certificate', 'yes')] : []),
+        this.option(REMOVE, 'Remove the certificate', 'no', true)];
+      return [this.option(ADD, 'Add the certificate', 'yes'),
+        ...(asking ? [this.option(NOTHING, 'Do not add it', 'no', true)] : []),
+        ...(!asking && state.leftovers ? [this.option(REMOVE, 'Remove the certificate', 'no', true)] : [])];
+    }
+    draw(state) {
+      const asking = this.ask && !state.answer;
+      if (this.ask && (this.later || (!asking && !this.answered))) { this.replaceChildren(); return; }
+      const now = state.certificate ? 'Poolhouse is signed with the certificate in your login keychain.'
+        : state.leftovers ? 'A Poolhouse certificate is in your login keychain and cannot be used. Poolhouse is signed locally.'
+        : 'Poolhouse is signed locally. No certificate is in your login keychain.';
+      const title = !asking ? 'macOS signature'
+        : state.certificate ? 'Keep the Poolhouse signing certificate?' : 'Keep macOS permissions after updates?';
+      const why = asking ? WHY : this.ask ? '' : now;
+      const choices = this.options(state, asking);
+      const status = state.working ? 'Working. Answer the macOS prompt if one opens.'
+        : this.ask && !asking ? `${now} You can change this in Settings.` : '';
+      const later = asking && !state.working ? el('button', {type:'button', class:'ghost signature-later',
+        onclick:() => { this.later = true; this.replaceChildren(); }}, 'Decide later') : null;
+      this.replaceChildren(el('section', {'aria-label':'macOS signature'}, el('h2', {}, title),
+        why ? el('p', {class:'hint'}, why) : null,
+        choices.length ? el('div', {class:'signature-options'}, ...choices) : null,
+        status ? el('p', {role:'status', 'aria-live':'polite'}, status) : null,
+        state.error ? el('div', {class:'err', role:'alert'}, state.error) : null, later));
+    }
+  }
+  customElements.define('macos-signature', MacosSignature);
+})();
+</script>
