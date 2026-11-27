@@ -8,7 +8,7 @@ project inside an operating-system sandbox with no network but the model. Codex 
 lighter system prompt and tool list).
 
 ```
-poolhouse-codex                                  # Qwen3.8-Flash-Next-UD-IQ2_XS if installed and it fits, else Qwen3.8-27B-UD-Q4_K_XL; this directory, your own settings
+poolhouse-codex                                  # Qwen3.8-Flash-Next-UD-IQ2_XS if installed and it fits, else Qwen3.8-27B-UD-Q3_K_XL; this directory, your own settings
 poolhouse-codex Qwen3.5-2B --permissions yolo --project ~/work/repo -- exec "fix the failing test"
 poolhouse-claude --on http://127.0.0.1:8080 --permissions read-only -- -p "explain this repo"
 poolhouse-claude --sandbox -- -p "fix the failing test"
@@ -76,11 +76,12 @@ needs no install step; a missing SDK is reported as a defective install, never a
    one slot, q8_0 KV cache, the model's own multi-token-prediction head where it has one, the
    model's measured settings when there are some. The model is asked for before it is loaded: when
    the wired-memory limit cannot hold it at that window, the launcher says what is needed and stops; Poolhouse does not
-   change the limit. `poolhouse-serve memory --for Qwen3.8-27B-UD-Q4_K_XL.gguf --ctx
-   262144 --kv q8_0` says what the 27B needs (29.2 GiB on the measured machine, 2026-10-03). The default model is
+   change the limit. `poolhouse-serve memory --for Qwen3.8-27B-UD-Q3_K_XL.gguf --ctx
+   262144 --kv q8_0` says what the 27B needs (its weights are 13.1 GB). The default model is
    `Qwen3.8-Flash-Next-UD-IQ2_XS` when it is installed and `suggest.largest_fit` rates it green at 262,144 tokens
    (`harnessing.default_model()`; measured 2026-11-25 on the 128 GB machine: 56.8 GiB wired, 48 GiB resident, n-gram
-   table on SSD), else the 27B. The larger Flash-Next quants still do not fit this machine and are never the default.
+   table on SSD), else the 27B. An install that has the 27B default of an earlier version (`hub.naming.DENSE_27B`)
+   and not this one goes on using it: an upgrade starts no download. The larger Flash-Next quants still do not fit this machine and are never the default.
    `--ctx N` is the total across `--slots` (default 1); `--on URL` uses a server already up.
    A server already up on the same weights is taken as it serves them, whatever its port, window,
    draft head or cache settings (`harnessing.adopted`), when it holds at least 65,536 tokens a slot,
@@ -475,16 +476,6 @@ poolhouse-delegate stop NAME
   serves `/v1/responses` and `/v1/messages` in the managed build. Claude Code needs `/v1/messages`.
 - The thinking-off default of the model's profile applies; the Claude Code settings also turn
   always-on thinking off.
-
-## Comparing the harnesses
-
-`scripts/compare-harnesses --model NAME` serves the model once and runs the fixture in
-`tests/fixtures/toy_bugfix` (a one-line bug, scored by its own test, in a temporary git repository)
-through `poolhouse-claude` and `poolhouse-codex`, recording wall time, tool calls, the tokens the server
-processed (llama-server `/metrics`), the tokens each harness says it sent and how many came from
-the cache, the last request's prompt and cached tokens from `/slots`, the first-turn cost of each harness measured with a one-line prompt, and whether the test
-passes. Rows are appended to `docs/experiments/harness-comparison.md`. Poolhouse's own agent loop is
-skipped where `poolhouse-workspace agent` does not exist. It refuses Flash-Next.
 
 ## Sources
 

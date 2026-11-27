@@ -44,6 +44,7 @@ from typing import Any
 
 from poolhouse import home
 from poolhouse.files import write_json
+from poolhouse.serve import inuse
 
 __all__ = [
     "TRUST_S",
@@ -178,7 +179,10 @@ def _stop(port: int, entry: Mapping[str, Any]) -> bool:
     from poolhouse.serve.manager import default_manager
 
     pid = entry.get("pid")
+    if inuse.why_in_use(port, entry, default_manager().state_file):
+        return False
     if isinstance(pid, int) and pid > 0:
+        inuse.stopped(port, pid, "idle past the reclaim time, nothing holds it and no request is on it")
         stop_pid(pid)
     return default_manager().reclaim(int(port)) or isinstance(pid, int)
 

@@ -285,6 +285,7 @@ def every_server() -> list[dict]:
                     "draft": after("--spec-draft-model", "-md") or after("--model-draft")
                              or after("-hfd"),
                     "spec_type": after("--spec-type"),
+                    "key_file": after("--api-key-file"),
                     "n_gpu_layers": offloaded_layers(argv),
                     "draft_max": int(ahead) if ahead.isdigit() else None,
                     "rss": rss})

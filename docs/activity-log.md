@@ -24,6 +24,7 @@ at most 4 KB. Bodies are never stored: a metadata name such as `body`, `text`, `
 | `security.*` | any sentinel event: keystore operations, quarantine and release | kind, severity, source, outcome |
 | `reputation.observed` | a source misbehaves | source, event, resulting state |
 | `model.lease` | the broker grants, shares or refuses a lease | model, quant, who asked, purpose, port, context, parallel, MTP and draft flags, weight |
+| `model.stop` | a model server is stopped or replaced | port, process id, who asked and from which process, why |
 | `net.download` | a download is kept or held | host, size, SHA-256, kind, scan result |
 | `runtime.deploy` | `poolhouse runtime ensure`, `rollback` or `restart-host` finishes or is refused | commit, command, result, agent, whether a person ran it, and `delegated` when an agent passed the `runtime.deploy` authority gate |
 | `bench.run` | a bench run is kept | label, command, model, build, rows, store and key |

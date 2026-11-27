@@ -12,6 +12,10 @@ WEIGHT_SUFFIXES = (".gguf", ".safetensors", ".bin", ".pt", ".onnx")
 DRAFT_MARK = ".draft"
 """The extra suffix a draft head carries: ``thing-Q4.draft.gguf``."""
 
+DENSE_27B = ("Qwen3.8-27B-UD-Q3_K_XL.gguf", "Qwen3.8-27B-UD-Q4_K_XL.gguf", "Qwen3.8-27B-Q4_K_M.gguf")
+"""The files that have been the default dense 27B, the current one first: an install holding an earlier one and not the current one
+goes on using it."""
+
 # How a draft head names itself, and the `--spec-type` each one needs. A head is named by
 # the *method* it implements, not by the fact that it is a draft: `mtp-` for
 # multi-token prediction, `eagle3-` for EAGLE3. A rule that knew only one of them reported

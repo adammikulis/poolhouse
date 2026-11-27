@@ -30,7 +30,8 @@ class StartupModelTests(unittest.TestCase):
         result = startup_models.choices(machine=self.machine(24564 / 1024, 4))
         selected = next(row for row in result["models"] if row["recommended"])
         self.assertEqual(selected["params_b"], 27)
-        self.assertIn("UD-Q4_K_XL", selected["ref"])
+        self.assertEqual(selected["file"], "Qwen3.8-27B-UD-Q3_K_XL.gguf")
+        self.assertEqual(selected["download_gb"], 13.1)
         self.assertIn("/MTP/mtp-Qwen3.8-27B", selected["draft_ref"])
         self.assertFalse(selected["fits_now"])
 
@@ -48,9 +49,12 @@ class StartupModelTests(unittest.TestCase):
         self.assertFalse(any(row["params_b"] == 27 for row in result["models"]))
 
     def test_disk_offer_accounts_for_prediction_head(self):
-        result = startup_models.choices(machine=self.machine(24, 24), disk_gb=17)
-        self.assertFalse(any("Q4_K_XL" in row["file"] for row in result["models"]))
-        self.assertTrue(any("IQ4_XS" in row["file"] for row in result["models"]))
+        def offered(disk_gb):
+            result = startup_models.choices(machine=self.machine(24, 24), disk_gb=disk_gb)
+            return [row["file"] for row in result["models"] if row["params_b"] == 27]
+
+        self.assertEqual(offered(13), [])  # the weights alone are 12.24 GiB; the head takes it past 13
+        self.assertEqual(offered(14), ["Qwen3.8-27B-UD-Q3_K_XL.gguf"])
 
     def test_failed_prediction_head_is_a_failed_download(self):
         models = Mock()

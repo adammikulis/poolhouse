@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from poolhouse import home, hub
-from poolhouse.hub import places, scan
+from poolhouse.hub import hfstore, places, scan
 from poolhouse.hub.naming import _SHARD, DRAFT_MARK, WEIGHT_SUFFIXES
 
 
@@ -47,7 +47,8 @@ def standard(roots: Sequence[Path | str] | None = None) -> list[places.Place]:
 
 
 def weight_paths(roots: Sequence[Path] | None = None) -> list[Path]:
-    """Every weight file under ``roots`` (the model roots by default), in root order.
+    """Every weight file under ``roots`` (the model roots by default), in root order, except that a Hub cache's older
+    copy of a file its ``refs/main`` snapshot also holds (`hfstore.superseded`) comes after all the others.
 
     A Hub cache keeps a snapshot of symlinks into ``blobs/``; the link is returned, never
     the blob it points at, and a caller reading a size ``stat()``s through it. An Ollama
@@ -61,7 +62,7 @@ def weight_paths(roots: Sequence[Path] | None = None) -> list[Path]:
             out.extend(e.path for e in scan.scan_ollama(place))
         else:
             out.extend(_walk(place))
-    return out
+    return sorted(out, key=hfstore.superseded)
 
 
 def on_disk(*, alongside: bool = False) -> dict[str, int]:
