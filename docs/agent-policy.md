@@ -854,12 +854,19 @@ no shape this repository has decided to live with. Budgets and red-team debt onl
 - **Install what can be installed.** Nothing fails, refuses or quietly does less for want of a library, tool, browser,
   runtime or built artifact that Poolhouse can install or build: it does so the first time it is needed, with the
   installers it has (`poolhouse.provision` for a declared extra, `serve.build_recover` for llama.cpp,
-  `opencode_install.keep` for a pinned release asset, `fleet.environment.provide` for the job environment). It is
-  pinned by the project's declarations or a digest, goes into Poolhouse's state or the project's environment (never a
-  system Python or the account's own settings), says what it is doing, is done by one process while the others wait,
-  works offline once cached, and never happens at upgrade time. `POOLHOUSE_INSTALL_AT_NEED=off` and a LAN-only download
-  source stop it. What only the account holder can add is reported with why. `scripts/gates/install_instructions.py`
-  (metric `install-instructions`) counts installer commands written out in messages under `src/poolhouse`; it only falls.
+  `opencode_install.keep` for a pinned release asset, `fleet.environment.provide` for the job environment). It goes
+  into Poolhouse's state or the project's environment (never a system Python or the account's own settings), says what
+  it is doing, is done by one process while the others wait, works offline once cached, and never happens at upgrade
+  time. `POOLHOUSE_INSTALL_AT_NEED=off` and a LAN-only download source stop it. What only the account holder can add is
+  reported with why. `scripts/gates/install_instructions.py` (metric `install-instructions`) counts installer commands
+  written out in messages under `src/poolhouse`; it only falls.
+- **What is fetched and then run is pinned.** Nothing is installed at need without a version and a digest this
+  repository records, and a mismatch fails the install: Python libraries from `src/poolhouse/requirements.lock`
+  (`poolhouse.pinned`; `scripts/lock-requirements` writes it, run after changing a dependency), llama.cpp and its
+  converter from `patches/llama.cpp/verified.json`, release assets from the tables beside their installers. Chromium is
+  the revision the locked Playwright release names, with no digest held here. What cannot be pinned (no prebuilt wheel,
+  a source address, another package index) is not installed unless somebody asks for it by name. A pinned download is
+  kept on a device with no virus scanner; one a scanner flags is refused.
 - Writes are refused when they add a function whose body already exists elsewhere, a raw HTTP call, a docstring over
   twelve lines, a signature over eight parameters, or a write that takes a file over its line limit or makes an
   already-over file longer (`scripts/install-hooks.sh` installs the pre-commit chain).

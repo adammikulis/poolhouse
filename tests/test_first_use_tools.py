@@ -15,8 +15,14 @@ from poolhouse import codex_install, harnessing, opencode_install, provision
 from poolhouse.decide import router
 from poolhouse.fleet import environment as environments, updates
 from poolhouse.gguf import tools
-from poolhouse.net import git as netgit
-from poolhouse.serve import binary, build_platform, build_recover, build_release
+from poolhouse.serve import (
+    binary,
+    build_patches,
+    build_platform,
+    build_recover,
+    build_release,
+    llamacpp_compile,
+)
 from poolhouse.serve.build_paths import builds_dir
 from poolhouse.serve.policy import LocalPolicy
 from poolhouse.speech import asr
@@ -88,20 +94,21 @@ def test_a_missing_quantiser_comes_with_a_release_downloaded_once(switched_on, r
     assert releases == [False]
 
 
-def test_a_missing_converter_is_cloned_whole_the_first_time(switched_on, monkeypatch, tmp_path):
+def test_a_missing_converter_is_fetched_whole_at_the_verified_commit_the_first_time(switched_on, monkeypatch, tmp_path):
     monkeypatch.setenv("POOLHOUSE_CACHE", str(tmp_path / "cache"))
     monkeypatch.setattr(tools, "source_dirs", lambda: (tools.llama_cpp_src(),))
-    cloned = []
+    fetched = []
 
-    def clone(url, dest, **kw):
-        cloned.append(dest)
+    def checkout(upstream, sha, dest, pipeline):
+        fetched.append((upstream.git_url, sha, dest.name))
         dest.mkdir(parents=True)
         (dest / tools.CONVERTER_NAME).write_text(MARKED)
 
-    monkeypatch.setattr(netgit, "clone", clone)
+    monkeypatch.setattr(llamacpp_compile, "checkout", checkout)
     found = tools.require_converter()
     assert found == (tools.llama_cpp_src() / tools.CONVERTER_NAME).resolve() and tools.require_converter() == found
-    assert [path.name for path in cloned] == ["llama.cpp-src.part"], "cloned once, beside where it ends up"
+    assert fetched == [("https://github.com/ggml-org/llama.cpp", build_patches.pinned_commit(), "llama.cpp-src.part")], \
+        "fetched once, at the verified commit, beside where it ends up"
 
 
 def test_a_cmake_on_path_is_used_and_a_missing_one_is_installed(monkeypatch, tmp_path):
@@ -119,7 +126,8 @@ class Managed:
     def __init__(self, root, works=True):
         self.root, self.works, self.installed, self.ready_now = root, works, [], False
 
-    def install(self, names, *, on_progress=None):
+    def install(self, names, *, on_progress=None, locked=False):
+        assert locked, "what nobody asked for by name comes from the lock"
         self.installed.append(names)
         self.ready_now = self.works
         return {name: {"ok": self.works, "error": "" if self.works else "no space"} for name in names}
@@ -179,7 +187,7 @@ def test_a_pinned_digest_is_what_the_download_is_held_to(monkeypatch, tmp_path):
     monkeypatch.setattr(opencode_install.net, "default", lambda: SimpleNamespace(json=lambda url, ask: release))
     held = []
 
-    def download(asset, into):
+    def download(asset, into, **how):
         held.append(asset["digest"])
         raise updates.UpdateError("stopped before any bytes: plumbing only")
 
@@ -231,12 +239,16 @@ def test_a_missing_browser_is_answered_with_the_bundled_one(monkeypatch, tmp_pat
     assert chromium.asked[1]["executable_path"] == "/kept/chromium"
 
 
-def test_the_bundled_browser_is_downloaded_once_into_the_state_root(switched_on, tmp_path):
+def test_the_bundled_browser_is_downloaded_once_into_the_state_root(switched_on, monkeypatch, tmp_path):
     executable = tmp_path / "chromium"
     ran = []
 
+    for name in ("PLAYWRIGHT_DOWNLOAD_HOST", "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST", "NODE_TLS_REJECT_UNAUTHORIZED"):
+        monkeypatch.setenv(name, "elsewhere")
+
     def run(argv, **kw):
         ran.append(argv[1:3])
+        assert "elsewhere" not in kw["env"].values(), "the browser comes from Playwright's own source, checked"
         assert kw["env"]["PLAYWRIGHT_BROWSERS_PATH"].endswith("browsers")
         if argv[1:3] == ["-m", "playwright"]:
             executable.write_text(MARKED)

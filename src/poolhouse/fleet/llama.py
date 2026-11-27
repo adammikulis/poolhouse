@@ -1,4 +1,4 @@
-"""Getting a llama.cpp server onto this machine."""
+"""Getting a llama.cpp server onto this machine: the one verified release, each file held to its recorded sha256."""
 
 from __future__ import annotations
 
@@ -12,11 +12,12 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import net
-from poolhouse.http import ServerError
 from poolhouse.hub.probe import machine_memory
 from poolhouse.lock import only_one
 from poolhouse.safenames import Unsafe, unpack
 from poolhouse.serve.backend import devices_of
+from poolhouse.serve.build_patches import pinned_release
+from poolhouse.serve.build_paths import BuildFailed
 
 from .download_progress import Transfer
 from .settings import Settings
@@ -25,12 +26,6 @@ from .updates import UpdateError, download
 __all__ = ["LlamaError", "asset_for_this_machine", "cache_dir",
            "ensure_server", "find_server"]
 
-REPO = "ggml-org/llama.cpp"
-# The list, not /releases/latest: the binary builds are tagged bNNNNN and marked
-# prerelease, and /releases/latest leaves prereleases out.
-API = "https://api.github.com/repos/{repo}/releases?per_page={count}"
-LOOK_BACK = 15
-TIMEOUT = 15.0
 ARCHIVES = (".zip", ".tar.gz")
 SERVER = "llama-server.exe" if sys.platform == "win32" else "llama-server"
 
@@ -110,43 +105,21 @@ def cuda_ready(binary: Path) -> bool:
     return re.search(r"^\s*CUDA\d+:\s*\S", devices_of(binary), re.MULTILINE) is not None
 
 
-def latest(repo: str = REPO, *, timeout: float = TIMEOUT,
-           count: int = LOOK_BACK) -> dict[str, Any]:
-    """The newest release carrying a build for this machine."""
+def verified_release() -> dict[str, Any]:
+    """The pinned llama.cpp release (`serve.build_patches.pinned_release`)."""
     try:
-        found = net.default().json(API.format(repo=repo, count=count), net.Ask(
-            purpose="llama.cpp releases", tries=3,
-            headers={"Accept": "application/vnd.github+json"}))
-    except (ServerError, OSError, ValueError) as exc:
-        raise LlamaError(f"could not reach the llama.cpp releases: {exc}") from None
-
-    releases = found if isinstance(found, list) else [found]
-    got = _first_with_a_build(releases)
-    if got is None:
-        raise LlamaError(
-            f"no llama.cpp build for this machine ({'/'.join(_tokens())}) in the "
-            f"last {len(releases)} releases")
-    return got
+        return pinned_release()
+    except BuildFailed as exc:
+        raise LlamaError(str(exc)) from None
 
 
-def _first_with_a_build(releases: list[dict[str, Any]]) -> dict[str, Any] | None:
-    for release in releases:
-        if release.get("draft"):
-            continue
-        if asset_for_this_machine(release) is not None:
-            return release
-    return None
-
-
-def ensure_server(root: Path | str, *, on_progress: Any = None,
-                  repo: str = REPO, sources: str | None = None) -> Path:
+def ensure_server(root: Path | str, *, on_progress: Any = None, sources: str | None = None) -> Path:
     """Install a server under its shared build-directory mutation lease."""
     with only_one(cache_dir(root).parent / ".llama-install.lock"):
-        return _ensure_server(root, on_progress=on_progress, repo=repo, sources=sources)
+        return _ensure_server(root, on_progress=on_progress, sources=sources)
 
 
-def _ensure_server(root: Path | str, *, on_progress: Any = None,
-                   repo: str = REPO, sources: str | None = None) -> Path:
+def _ensure_server(root: Path | str, *, on_progress: Any = None, sources: str | None = None) -> Path:
     """The llama-server binary, downloading it if this machine has none."""
     vendor = cache_dir(root)
     found = find_server(vendor)
@@ -160,13 +133,11 @@ def _ensure_server(root: Path | str, *, on_progress: Any = None,
         raise LlamaError("The model server is not installed. Choose Internet only or Both "
                          "to download it, or install a local server with LAN only selected.")
 
-    if on_progress:
-        on_progress("Looking for a llama.cpp build")
-    release = latest(repo)
+    release = verified_release()
     asset = asset_for_this_machine(release)
     if asset is None:
         raise LlamaError(
-            f"llama.cpp {release.get('tag_name') or 'latest'} has no build for "
+            f"llama.cpp {release.get('tag_name')} has no build for "
             f"this machine ({'/'.join(_tokens())})")
 
     companion = cuda_companion(asset, release)
@@ -225,7 +196,8 @@ def _download(asset: dict[str, Any], into: str, report: Any) -> Path:
 
     if report:
         report(f"Downloading {asset['name']} ({int(asset.get('size') or 0) / (1 << 20):.1f} MB)")
-    return download(asset, into, on_progress=net.Hooks(progress=progress, phase=phase))
+    # only the pinned release comes through here, so having no virus scanner is no refusal; one that flags it still refuses
+    return download(asset, into, on_progress=net.Hooks(progress=progress, phase=phase), allow_unscanned=True)
 
 
 def _unpack(archive: Path, into: Path) -> None:

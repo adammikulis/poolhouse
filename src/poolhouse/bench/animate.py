@@ -18,7 +18,6 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from poolhouse import provision
 from poolhouse.log import say, warn
 
 NOT_MEASURED = "not measured"
@@ -326,10 +325,11 @@ def run(args: Any) -> int:
     if args.dry_run:
         return 0
     try:
-        provision.ensure("viz", "manim")
-    except ImportError as exc:
-        warn(f"manim could not be installed (on macOS it is built against the cairo system library, which is not "
-             f"installed by Poolhouse): {exc}")
+        import manim  # noqa: F401
+    except ImportError:
+        warn("rendering needs manim, which is not here and which Poolhouse does not install: one of its parts has no "
+             "prebuilt file the project's lock can hold to a digest, and on macOS it also needs the cairo system library. "
+             "--dry-run prints the plan without it")
         return 2
     where = render(doc, out=args.out, png=args.png, quality=args.quality,
                    seconds=args.seconds, only=only, work=args.work)

@@ -270,7 +270,7 @@ def bench_python(environment: Environment | None) -> Path:
                            f"{ON_THE_SCREEN}")
     if not _measures(environment):
         try:
-            done = environment.install([MEASURING]).get(MEASURING) or {}
+            done = environment.install([MEASURING], locked=True).get(MEASURING) or {}
         except (OSError, subprocess.SubprocessError) as exc:
             done = {"ok": False, "error": str(exc)}
         if not done.get("ok") or not _measures(environment):

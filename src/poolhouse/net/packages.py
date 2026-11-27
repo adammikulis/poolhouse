@@ -96,8 +96,9 @@ def _admit(value, hosts):
     hosts.admit(value, "Python packages")
 
 
-def run(python, args, *, timeout, env=None):
-    """Run pip after admitting its configured package sources."""
+def run(python, args, *, timeout, env=None, locked: Path | None = None):
+    """Run pip after admitting its configured package sources. ``locked``, for an install only, names a requirements file
+    with digests that the caller wrote: exactly its releases are installed as well, and a file that does not match fails."""
     environment = dict(os.environ if env is None else env)
     if not args or args[0] not in NETWORK:
         if not args or args[0] not in {"inspect", "uninstall", "check", "show"}:
@@ -146,6 +147,10 @@ def run(python, args, *, timeout, env=None):
         for value in entries:
             rewritten.extend(["--" + name, value])
     rewritten.extend(remaining[1:])
+    if locked is not None:
+        if rewritten[0] != "install":
+            raise Refused("a locked requirements file is only installed")
+        rewritten.extend(["--require-hashes", "--no-deps", "--only-binary=:all:", "--requirement", str(locked)])
     with tempfile.TemporaryDirectory(prefix="poolhouse-pip-") as temporary:
         guarded = git.environment("https", Path(temporary))
         for name in list(environment):

@@ -82,6 +82,10 @@ class _LoadedOnce:
         return self._model
 
 
+REVISIONS = {"small.en": "d1d751a5f8271d482d14ca55d9e2deeebbae577f"}
+"""The model-repository revision the default model is fetched at. A model somebody names is their choice and is fetched as the library does."""
+
+
 class FasterWhisperASR(_LoadedOnce):
     """``faster-whisper``: CTranslate2 Whisper, fast on CPU."""
 
@@ -112,8 +116,8 @@ class FasterWhisperASR(_LoadedOnce):
 
     def _load(self):
         WhisperModel = provision.module("faster_whisper", "asr").WhisperModel
-
-        return WhisperModel(self.model, device=self.device, compute_type=self.compute_type)
+        pinned = {"revision": REVISIONS[self.model]} if self.model in REVISIONS else {}
+        return WhisperModel(self.model, device=self.device, compute_type=self.compute_type, **pinned)
 
     def transcribe(self, audio, *, language: str | None = None) -> Transcript:
         model = self._require()

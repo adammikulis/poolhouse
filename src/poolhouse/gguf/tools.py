@@ -9,12 +9,11 @@ import shutil
 import sys
 from pathlib import Path
 
-from poolhouse import home, lazy, provision
+from poolhouse import home, lazy, net, provision
 from poolhouse.files import promote
 from poolhouse.httpguard import Refused
 from poolhouse.lock import only_one
 from poolhouse.log import warn
-from poolhouse.net import git as netgit
 
 CONVERTER_NAME = "convert_hf_to_gguf.py"
 WAIT_S = 1800.0
@@ -22,7 +21,7 @@ WAIT_S = 1800.0
 
 
 def llama_cpp_src() -> Path:
-    """Where `ensure_converter` clones llama.cpp."""
+    """Where `ensure_converter` puts llama.cpp's source."""
     return home.cache("llama.cpp-src")
 
 
@@ -83,9 +82,10 @@ def require_converter(explicit: str | Path | None = None) -> Path:
     return ensure_converter()
 
 
-def ensure_converter(*, ref: str = "master") -> Path:
-    """Locate the converter, shallow-cloning llama.cpp into the cache if it is absent. One process clones, beside the
-    place it ends up in, so an interrupted clone is never mistaken for a checkout."""
+def ensure_converter() -> Path:
+    """Locate the converter, fetching llama.cpp's source at the verified commit (`serve.build_patches.pinned_commit`) into
+    the cache if it is absent. One process fetches, beside the place it ends up in, so an interrupted fetch is never
+    mistaken for a checkout."""
     if found := find_converter():
         return found
     source = llama_cpp_src()
@@ -99,8 +99,10 @@ def ensure_converter(*, ref: str = "master") -> Path:
         shutil.rmtree(partial, ignore_errors=True)
         warn(f"fetching llama.cpp's source into {source}, needed for the first time")
         try:
-            netgit.clone("https://github.com/ggml-org/llama.cpp", partial, branch=ref)
-        except (netgit.GitFailed, Refused) as exc:
+            commit = lazy.load("poolhouse.serve.build_patches", "pinned_commit")()
+            upstream = lazy.load("poolhouse.serve.llamacpp_upstream", "Upstream")()
+            lazy.load("poolhouse.serve.llamacpp_compile", "checkout")(upstream, commit, partial, net.default())
+        except (RuntimeError, OSError, Refused) as exc:
             raise ToolNotFound(f"llama.cpp could not be fetched: {exc}") from exc
         if not (partial / CONVERTER_NAME).is_file():
             raise _not_found("the llama.cpp source fetched holds no converter.")
@@ -148,7 +150,7 @@ def _release_dirs() -> tuple[Path, ...]:
 
 
 def require_quantize(explicit: str | Path | None = None) -> Path:
-    """``find_quantize``, downloading the newest llama.cpp release first when no path is named and none is here; the
+    """``find_quantize``, downloading the verified llama.cpp release first when no path is named and none is here; the
     release is kept in ``builds/`` and the build serving uses is left as it is. `ToolNotFound` says why it could not be."""
     found = find_quantize(explicit)
     why = f"{explicit} was named, so nothing was fetched in its place."

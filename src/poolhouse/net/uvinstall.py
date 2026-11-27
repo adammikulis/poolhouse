@@ -31,17 +31,21 @@ def _plain(environment: dict[str, str]) -> bool:
         and not any(environment.get(name) for name in REDIRECTS)
 
 
-def install(python: Path, spec: str | Sequence[str], *, timeout: float, environment: dict[str, str],
+def install(python: Path, spec: str | Sequence[str] | Path, *, timeout: float, environment: dict[str, str],
             offline: bool = False) -> subprocess.CompletedProcess | None:
     """`uv pip install` the spec or specs into the interpreter's environment; None when uv is missing or the environment redirects
-    sources. ``offline`` installs from uv's cache alone and exits non-zero when that does not hold everything."""
+    sources. ``offline`` installs from uv's cache alone and exits non-zero when that does not hold everything. A ``spec`` that is a
+    path names a requirements file with digests: exactly its releases are installed, and a file that does not match fails."""
     tool = program(environment.get("PATH"))
     if tool is None or not _plain(environment):
         return None
-    specs = [spec] if isinstance(spec, str) else list(spec)
-    for one in specs:
-        if url := one.partition(" @ ")[2]:
-            packages._admit(url, packages.policy.default())
+    if isinstance(spec, Path):
+        specs = ["--require-hashes", "--no-deps", "--only-binary", ":all:", "--requirement", str(spec)]
+    else:
+        specs = [spec] if isinstance(spec, str) else list(spec)
+        for one in specs:
+            if url := one.partition(" @ ")[2]:
+                packages._admit(url, packages.policy.default())
     clean = {name: value for name, value in environment.items() if not name.startswith(("UV_", "PIP_"))}
     return subprocess.run([tool, "pip", "install", "--no-config", *(["--offline"] if offline else []), "--link-mode", link_mode(),
                            "--python", str(python), *specs], capture_output=True, text=True, timeout=timeout, env=clean)

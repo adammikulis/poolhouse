@@ -461,7 +461,7 @@ def test_a_build_from_source_that_fails_is_followed_by_the_release_and_both_are_
     monkeypatch.setattr(build_recover, "build_from_release", release_fails)
     with pytest.raises(BuildFailed) as both:
         build_recover.fetch()
-    assert "from source: the patches do not apply" in str(both.value) and "from the newest release: no asset" in str(both.value)
+    assert "from source: the patches do not apply" in str(both.value) and "from the verified release: no asset" in str(both.value)
 
 
 def test_a_binary_path_that_looks_like_an_option_or_a_command_is_one_argument_of_codesign(tmp_path):

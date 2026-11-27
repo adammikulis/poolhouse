@@ -53,14 +53,16 @@ def can_build_from_source() -> bool:
 def cmake_flags() -> list[str]:
     """Which GPU backend to build, decided the same way on every platform: a CUDA compiler
     beats a Vulkan SDK beats neither. Metal is unconditional on macOS -- every Mac since the
-    architecture this reads GGUF for has one."""
+    architecture this reads GGUF for has one. The build never downloads llama.cpp's web page:
+    upstream's step takes whatever its bucket holds then, which nothing here pins."""
+    fetched_nothing = ["-DLLAMA_USE_PREBUILT_UI=OFF"]
     if platform.system() == "Darwin":
-        return ["-DGGML_METAL=ON", "-DLLAMA_CURL=ON"]
+        return [*fetched_nothing, "-DGGML_METAL=ON", "-DLLAMA_CURL=ON"]
     if shutil.which("nvcc"):
-        return ["-DGGML_CUDA=ON"]
+        return [*fetched_nothing, "-DGGML_CUDA=ON"]
     if vulkan_available():
-        return ["-DGGML_VULKAN=ON"]
-    return []
+        return [*fetched_nothing, "-DGGML_VULKAN=ON"]
+    return fetched_nothing
 
 
 def now_iso() -> str:

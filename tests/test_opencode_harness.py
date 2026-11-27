@@ -30,6 +30,7 @@ from poolhouse import (
     opencode_install,
 )
 from poolhouse.http import Server
+from poolhouse.net.scan import Outcome, ScanResult
 
 pytest_plugins = ["tests.confined_kit"]
 
@@ -324,7 +325,7 @@ def test_opencode_names_are_in_the_closed_records():
 
 @pytest.fixture
 def releases(monkeypatch, tmp_path):
-    """A local release feed that serves the two pinned releases (real zips with a marked file in each) with the digests the feed reports."""
+    """A local release feed that serves the two pinned releases (real zips with a marked file in each), whose digests stand in for the pins."""
     monkeypatch.setattr(opencode_install, "asset_name", lambda: "opencode-test-arm64.zip")
     monkeypatch.setattr(opencode_install, "ripgrep_asset_name", lambda: "ripgrep-test-arm64.zip")
     bodies = {}
@@ -334,6 +335,10 @@ def releases(monkeypatch, tmp_path):
             archive.writestr(member, f"#!/bin/sh\necho {said} NOT THE REAL PROGRAM\n")
         bodies[asset] = made.getvalue()
     state = {"digest": {name: hashlib.sha256(body).hexdigest() for name, body in bodies.items()}, "asked": []}
+    pins = {(tag, "opencode-test-arm64.zip"): state["digest"]["opencode-test-arm64.zip"] for tag in (opencode_install.VERSION, "v9.9.9")}
+    pins[opencode_install.RIPGREP, "ripgrep-test-arm64.zip"] = state["digest"]["ripgrep-test-arm64.zip"]
+    monkeypatch.setattr(opencode_install, "PINNED", pins)
+    state["pins"] = pins
 
     class Feed(http.server.BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -407,11 +412,42 @@ def test_a_program_still_being_copied_is_never_taken_for_the_pinned_one(releases
 
 
 @pytest.mark.usefixtures("loopback_net")
-def test_a_download_that_does_not_match_its_digest_installs_nothing(releases):
-    releases["digest"]["opencode-test-arm64.zip"] = "0" * 64
+def test_a_download_that_does_not_match_the_pinned_digest_installs_nothing_whatever_the_feed_reports(releases):
+    releases["pins"][opencode_install.VERSION, "opencode-test-arm64.zip"] = "0" * 64
     with pytest.raises(opencode_install.InstallFailed, match="digest"):
         opencode_install.ensure()
     assert opencode_install.kept() == ""
+
+
+@pytest.mark.parametrize("flagged", [False, True])
+def test_a_pinned_download_is_kept_where_there_is_no_virus_scanner_and_refused_when_one_flags_it(releases, loopback_net, flagged):
+    loopback_net.scanners = [Flagging()] if flagged else []
+    if not flagged:
+        assert opencode_install.ensure() == opencode_install.kept() != ""
+        return
+    with pytest.raises(opencode_install.InstallFailed, match="infected"):
+        opencode_install.ensure()
+    assert opencode_install.kept() == ""
+
+
+class Flagging:
+    """A virus scanner that flags every file: plumbing only, nothing is scanned."""
+
+    name = "plumbing-scanner"
+
+    def available(self):
+        return True
+
+    def scan(self, path):
+        return ScanResult(self.name, Outcome.INFECTED, "PLUMBING signature", "PLUMBING signature")
+
+
+@pytest.mark.usefixtures("loopback_net")
+def test_an_asset_with_no_pinned_digest_is_not_downloaded(releases):
+    releases["pins"].clear()
+    with pytest.raises(opencode_install.InstallFailed, match="no sha256 is pinned"):
+        opencode_install.ensure()
+    assert opencode_install.kept() == "" and releases["asked"] == []
 
 
 @pytest.mark.usefixtures("confinable", "from_a_terminal")

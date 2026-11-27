@@ -186,11 +186,11 @@ def _archive_names(path: Path) -> tuple[list[tuple[str, int, int, bool, bool]], 
 
 
 def audit_archive(path: Path, *, max_entries: int = MOST_ARCHIVE_ENTRIES,
-                  max_bytes: int = MOST_ARCHIVE_BYTES, max_ratio: int = MOST_RATIO) -> list[str]:
+                  max_bytes: int = MOST_ARCHIVE_BYTES, max_ratio: int = MOST_RATIO, nested: bool = False) -> list[str]:
     """Why an archive must not be unpacked: too many entries, too large once unpacked, a
     compression ratio over ``max_ratio``, a hard link, a device, a zip's symlink or a tar's
-    that `check_links` refuses, an absolute or climbing path, or an archive inside it. Empty
-    when it is fine. Nothing is extracted."""
+    that `check_links` refuses, an absolute or climbing path, or, unless ``nested`` allows
+    it, an archive inside it. Empty when it is fine. Nothing is extracted."""
     try:
         rows, own, entries = _archive_names(path)
     except (zipfile.BadZipFile, tarfile.TarError, OSError, EOFError, Unsafe) as exc:
@@ -208,7 +208,7 @@ def audit_archive(path: Path, *, max_entries: int = MOST_ARCHIVE_ENTRIES,
             check_links(entries)
         except Unsafe as exc:
             problems.append(str(exc))
-    seen = {"link": False, "path": False, "nested": False}
+    seen = {"link": False, "path": False, "nested": nested}
     for name, _size, _comp, link, _dir in rows:
         if link and not seen["link"]:
             problems.append(f"{name[:60]!r} is a link or a device")
@@ -225,7 +225,7 @@ def audit_archive(path: Path, *, max_entries: int = MOST_ARCHIVE_ENTRIES,
     return problems
 
 
-def sniff(path: Path, kind: str = "", *, content_type: str = "") -> Verdict:
+def sniff(path: Path, kind: str = "", *, content_type: str = "", nested: bool = False) -> Verdict:
     """Whether ``path`` is the ``kind`` of file it should be (by default what its name claims).
 
     A ``.gguf`` has GGUF magic, a sane version and counts; a ``.safetensors`` has a header
@@ -258,7 +258,7 @@ def sniff(path: Path, kind: str = "", *, content_type: str = "") -> Verdict:
         if shown not in ("zip", "gzip", "tar"):
             problems.append(f"the bytes are {shown or 'unrecognised'}, not an archive")
         else:
-            problems += audit_archive(path)
+            problems += audit_archive(path, nested=nested)
     elif claimed in ("png", "jpeg", "step") and shown != claimed:
         problems.append(f"the bytes are {shown or 'unrecognised'}, not {claimed}")
     elif claimed == "json":

@@ -4,9 +4,12 @@
 process runs in (a runtime Poolhouse made, or the project's virtual environment) with the installer a
 runtime is built with (`net.uvinstall`, else pip through `net.packages`): from the package cache
 alone first, so what was installed once installs again offline, then from the package index. The
-requirements are the ones the project declares, never a name taken from input. One process installs at
-a time and the others wait for it. A system Python is never written to, and nothing is installed when
-Poolhouse is upgraded: only when something needs it.
+requirements are the ones the project declares, never a name taken from input, and only the releases the
+project's hashed lock lists are installed (`poolhouse.pinned`): a file that does not match its digest
+fails the install, and what the lock does not hold is not installed. What is already installed is left
+as it is unless something new needs another version of it. One process installs at a time and the
+others wait for it. A system Python is never written to, and nothing is installed when Poolhouse is
+upgraded: only when something needs it.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import tomllib
@@ -40,6 +44,11 @@ WAIT_S = 1800.0
 INSTALL_S = 1800.0
 BEAT_S = 15.0
 """Seconds between the lines saying an install is still running."""
+ROUNDS = 5
+"""How many times an install is asked again for what the newly installed releases turn out to need."""
+
+Installer = Callable[[Path, Path], subprocess.CompletedProcess]
+"""``(interpreter, requirements file) -> result``: what installs locked releases."""
 
 
 class Unavailable(ModuleNotFoundError):
@@ -120,19 +129,26 @@ def requirements(extra: str, table: dict[str, list[str]] | None = None) -> list[
     return out
 
 
-def _kept(table: dict[str, list[str]]) -> list[str]:
-    """The declared ranges that what is installed already satisfies, asked for again so that an install
-    cannot move a package Poolhouse is using out of its range."""
-    names = ["", *(one.extra for one in lazy.load("poolhouse.installed", "STANDARD"))]
+def _holds(want: Requirement) -> bool:
+    """Whether a version of ``want`` that satisfies it is installed in this environment."""
+    try:
+        here = version(want.name)
+    except PackageNotFoundError:
+        return False
+    return want.specifier.contains(here, prereleases=True)
+
+
+def _unmet(names: list[str]) -> list[Requirement]:
+    """What the installed distributions ``names`` depend on that is not installed in a version they accept."""
     out = []
-    for text in (row for name in names if name in table for row in requirements(name, table)):
-        want = Requirement(text)
+    for name in names:
         try:
-            here = version(want.name)
+            declared = requires(name) or []
         except PackageNotFoundError:
             continue
-        if not want.url and want.specifier.contains(here, prereleases=True):
-            out.append(text)
+        for want in map(Requirement, declared):
+            if (want.marker is None or want.marker.evaluate({"extra": ""})) and not _holds(want):
+                out.append(want)
     return out
 
 
@@ -169,26 +185,26 @@ def _beating(what: str) -> Iterator[None]:
         thread.join()
 
 
-def _install(python: Path, specs: list[str]) -> subprocess.CompletedProcess:
-    """Install ``specs`` into ``python``'s environment: the cache alone first, then the index."""
+def _install(python: Path, locked: Path) -> subprocess.CompletedProcess:
+    """Install the releases ``locked`` lists, and nothing else, into ``python``'s environment, each file held to its digest:
+    from the package cache alone first, then from the index."""
     uv = lazy.load("poolhouse.net.uvinstall", "install")
     environment = lazy.load("poolhouse.runtime", "installer_environment")()
-    cached = uv(python, specs, timeout=INSTALL_S, environment=environment, offline=True)
+    cached = uv(python, locked, timeout=INSTALL_S, environment=environment, offline=True)
     if cached is not None and not cached.returncode:
         return cached
     if refused := download_refusal():
         raise Unavailable(f"they are not in this device's package cache, and {refused}")
     if cached is not None:
-        return uv(python, specs, timeout=INSTALL_S, environment=environment)
+        return uv(python, locked, timeout=INSTALL_S, environment=environment)
     if not _present("pip"):
         subprocess.run([str(python), "-m", "ensurepip"], capture_output=True, timeout=INSTALL_S, check=False,
                        env=environment)
-    return lazy.load("poolhouse.net.packages", "run")(python, ["install", *specs], timeout=INSTALL_S,
-                                                      env=environment)
+    return lazy.load("poolhouse.net.packages", "run")(python, ["install"], timeout=INSTALL_S, env=environment, locked=locked)
 
 
 def _supply(extra: str, wanted: tuple[str, ...], python: Path | None,
-            run: Callable[[Path, list[str]], subprocess.CompletedProcess] | None) -> None:
+            run: Installer | None) -> None:
     if os.environ.get(SWITCH, "").strip().lower() == "off":
         raise Unavailable(f"the {extra!r} libraries ({', '.join(wanted)}) are not here, and installing at first "
                           f"use is switched off ({SWITCH}=off)")
@@ -202,30 +218,47 @@ def _supply(extra: str, wanted: tuple[str, ...], python: Path | None,
 
 
 def _install_missing(extra: str, wanted: tuple[str, ...], python: Path,
-                     run: Callable[[Path, list[str]], subprocess.CompletedProcess]) -> None:
+                     run: Installer) -> None:
     """Under the lock: install the extra unless what was wanted arrived while this process waited."""
     importlib.invalidate_caches()
     if all(map(_present, wanted)):
         return
-    table = _table()
-    asked = requirements(extra, table)
+    asked = requirements(extra)
     if not asked:
         raise Unavailable(f"the {extra!r} libraries have no release for this Python and system")
+    pinned = lazy.load("poolhouse.pinned", "select")
+    chosen = [one for one in pinned(asked) if one.applies()]
+    ranges = {canonicalize_name(want.name): want for want in map(Requirement, asked)}
+    needed = [one for one in chosen if not _holds(ranges.get(one.name) or Requirement(one.name))]
     warn(f"installing the {extra} libraries, needed for the first time: {', '.join(asked)}")
-    with _beating(f"installing the {extra} libraries"):
-        done = run(python, [*asked, *(kept for kept in _kept(table) if kept not in asked)])
+    for _ in range(ROUNDS):
+        if not needed:
+            break
+        _put(extra, python, needed, run)
+        importlib.invalidate_caches()
+        short = {canonicalize_name(want.name) for want in _unmet([one.name for one in needed])}
+        needed = [one for one in chosen if one.name in short]
+    if needed or (gone := [name for name in wanted if not _present(name)]):
+        raise Unavailable(f"installing the {extra!r} libraries did not bring "
+                          f"{', '.join(one.name for one in needed) if needed else ', '.join(gone)}")
+    warn(f"installed the {extra} libraries")
+
+
+def _put(extra: str, python: Path, needed: list, run: Installer) -> None:
+    """Install the locked releases ``needed``, at their digests."""
+    with tempfile.TemporaryDirectory(prefix="poolhouse-locked-") as scratch:
+        locked = Path(scratch) / "requirements.txt"
+        locked.write_text(lazy.load("poolhouse.pinned", "text")(needed), encoding="utf-8")
+        with _beating(f"installing the {extra} libraries"):
+            done = run(python, locked)
     if done.returncode:
         said = "\n".join(f"{done.stdout or ''}\n{done.stderr or ''}".strip().splitlines()[-12:])
         raise Unavailable(f"the {extra!r} libraries could not be installed (the installer exited "
                           f"{done.returncode}):\n{said}")
-    importlib.invalidate_caches()
-    if gone := [name for name in wanted if not _present(name)]:
-        raise Unavailable(f"installing the {extra!r} libraries did not bring {', '.join(gone)}")
-    warn(f"installed the {extra} libraries")
 
 
 def ensure(extra: str, *modules: str, python: Path | None = None,
-           run: Callable[[Path, list[str]], subprocess.CompletedProcess] | None = None) -> None:
+           run: Installer | None = None) -> None:
     """Have ``modules`` importable here, installing the extra ``extra`` when one is missing.
 
     ``python`` and ``run`` replace the interpreter written to and the installer. Raises `Unavailable`.

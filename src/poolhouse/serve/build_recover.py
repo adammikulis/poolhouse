@@ -14,6 +14,7 @@ from poolhouse import provision
 from poolhouse.lock import only_one
 from poolhouse.log import warn
 from poolhouse.serve.binary import managed_current, managed_root
+from poolhouse.serve.build_patches import verified_upstream
 from poolhouse.serve.build_paths import BuildFailed
 from poolhouse.serve.build_platform import can_build_from_source, server_name
 from poolhouse.serve.build_release import build_from_release
@@ -38,14 +39,15 @@ def _one_at_a_time() -> Iterator[None]:
 
 
 def _make(*, force: bool) -> Path:
-    """The binary of a good build made now and switched to as `current`, the way `poolhouse-serve build` makes one: from
-    source when this machine has a compiler, else from the newest release, and from the other when that fails. ``force``
-    builds afresh over a copy already in ``builds/``. `BuildFailed` names every attempt."""
+    """The binary of a good build made now and switched to as `current`: from the verified source commit when this machine
+    has a compiler and a commit is pinned, else from the pinned release, and from the other when that fails. Neither is ever
+    upstream's head or newest release. ``force`` builds afresh over a copy already in ``builds/``. `BuildFailed` names
+    every attempt."""
     tries: list[tuple[str, Callable[[argparse.Namespace], tuple[Path, str]], argparse.Namespace]] = []
-    if can_build_from_source():
+    if can_build_from_source() and verified_upstream():
         tries.append(("from source", build_from_source, argparse.Namespace(
             source="", commit="", upstream_head=False, force=force, jobs=0)))
-    tries.append(("from the newest release", build_from_release, argparse.Namespace(force=force)))
+    tries.append(("from the verified release", build_from_release, argparse.Namespace(force=force)))
     failed = []
     for how, build, args in tries:
         try:

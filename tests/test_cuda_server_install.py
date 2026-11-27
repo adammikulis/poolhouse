@@ -79,7 +79,7 @@ class CudaServerInstallTests(unittest.TestCase):
         server, runtime = self.archives()
         messages = []
         with patch.object(self.llama, "_tokens", return_value=(self.token,)), patch.object(
-                self.llama, "latest", return_value=self.release), patch.object(
+                self.llama, "pinned_release", return_value=self.release), patch.object(
                 self.llama.shutil, "which", return_value=None), patch.object(
                 self.llama, "download", side_effect=[server, runtime]) as download, patch.object(
                 self.llama, "cuda_ready", return_value=True):
@@ -97,7 +97,7 @@ class CudaServerInstallTests(unittest.TestCase):
         def fetch(asset, directory, **options):
             return server if asset is self.asset else original(asset, directory, **options)
         with patch.object(self.llama, "_tokens", return_value=(self.token,)), patch.object(
-                self.llama, "latest", return_value=self.release), patch.object(
+                self.llama, "pinned_release", return_value=self.release), patch.object(
                 self.llama.shutil, "which", return_value=None), patch.object(
                 self.llama, "download", side_effect=fetch), self.assertRaisesRegex(
                 self.llama.LlamaError, "sha256 digest"):
@@ -106,7 +106,7 @@ class CudaServerInstallTests(unittest.TestCase):
     def test_server_that_cannot_initialize_cuda_is_refused(self):
         server, runtime = self.archives()
         with patch.object(self.llama, "_tokens", return_value=(self.token,)), patch.object(
-                self.llama, "latest", return_value=self.release), patch.object(
+                self.llama, "pinned_release", return_value=self.release), patch.object(
                 self.llama.shutil, "which", return_value=None), patch.object(
                 self.llama, "download", side_effect=[server, runtime]), patch.object(
                 self.llama, "cuda_ready", return_value=False), self.assertRaisesRegex(

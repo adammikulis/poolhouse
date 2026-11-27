@@ -15,6 +15,7 @@ import contextlib
 import importlib
 import os
 import random
+import re
 import subprocess
 import sys
 import time
@@ -71,6 +72,8 @@ def placed() -> tuple[int, int] | None:
 
 
 MISSING = ("Executable doesn't exist", "is not found at")
+REDIRECT = re.compile(r"PLAYWRIGHT_(?:\w+_)?DOWNLOAD_HOST|NODE_TLS_REJECT_UNAUTHORIZED")
+"""Environment settings that would fetch the browser from somewhere else, or without checking who answers."""
 """What Playwright says when the browser asked for is not on this computer."""
 EXECUTABLE = ("from playwright.sync_api import sync_playwright\n"
               "with sync_playwright() as p:\n print(p.chromium.executable_path)")
@@ -78,9 +81,13 @@ EXECUTABLE = ("from playwright.sync_api import sync_playwright\n"
 
 def bundled_chromium(run: Any = subprocess.run) -> str:
     """The Chromium of this Playwright release kept under the state root (``tools/browsers``), downloaded by Playwright's own
-    installer the first time; one process downloads and the others use it. Raises `BrowserUnavailable` with why not."""
+    installer the first time; one process downloads and the others use it. Which Chromium that is comes from the revision
+    table inside the installed Playwright release, itself held to the project's hashed lock; Poolhouse holds no digest of the
+    browser's own files. Playwright's settings for another download host, and for skipping certificate checks, are not
+    passed on. Raises `BrowserUnavailable` with why not."""
     kept = home.state("tools", "browsers")
-    environment = {**os.environ, "PLAYWRIGHT_BROWSERS_PATH": str(kept)}
+    environment = {name: value for name, value in os.environ.items() if not REDIRECT.fullmatch(name)}
+    environment["PLAYWRIGHT_BROWSERS_PATH"] = str(kept)
 
     def executable() -> str:
         said = run([sys.executable, "-c", EXECUTABLE], capture_output=True, text=True, timeout=60, env=environment)

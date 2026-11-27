@@ -1,5 +1,5 @@
-"""Downloading a release for a machine with no compiler: the newest GitHub release with an
-asset for this platform, ggml-org/llama.cpp's own or a fork's, unpacked and installed flat."""
+"""Downloading a release for a machine with no compiler, unpacked and installed flat: ggml-org/llama.cpp's pinned
+release (its newest when asked for by name), or the newest or named release of a fork somebody names."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from poolhouse.http import ServerError
 from poolhouse.log import say
 from poolhouse.safenames import Unsafe, unpack
 from poolhouse.serve.binary import is_windows
+from poolhouse.serve.build_patches import pinned_release
 from poolhouse.serve.build_paths import BuildFailed, builds_dir, named_dest, slug
 from poolhouse.serve.build_platform import (
     arches_in,
@@ -55,8 +56,10 @@ def _releases_for(repo: str, per_page: int = 5, timeout: float = 30.0) -> list[d
         raise BuildFailed(f"could not reach {repo}'s GitHub releases: {exc}") from None
 
 
-def _llama_releases(per_page: int = 5, timeout: float = 30.0) -> list[dict]:
-    return _releases_for("ggml-org/llama.cpp", per_page=per_page, timeout=timeout)
+def _llama_releases(per_page: int = 5, timeout: float = 30.0, *, newest: bool = False) -> list[dict]:
+    """The llama.cpp releases to download from: the pinned one (`build_patches.pinned_release`), or, only when
+    ``newest`` is asked for by name, what GitHub lists, held to the digests GitHub reports."""
+    return _releases_for("ggml-org/llama.cpp", per_page=per_page, timeout=timeout) if newest else [pinned_release()]
 
 
 def _release_asset_globs(*, fork: bool = False) -> list[str]:
@@ -138,8 +141,9 @@ def _release_install(dest: Path, archive: Path, *, extra: Path | None = None) ->
 
 
 def build_from_release(args) -> tuple[Path, str]:
-    say("checking ggml-org/llama.cpp's releases")
-    releases = _llama_releases()
+    newest = bool(getattr(args, "upstream_head", False))
+    say("checking ggml-org/llama.cpp's releases" if newest else "taking the verified ggml-org/llama.cpp release")
+    releases = _llama_releases(newest=newest)
     globs = _release_asset_globs()
 
     for release in releases:
@@ -157,12 +161,13 @@ def build_from_release(args) -> tuple[Path, str]:
             say(f"downloading {match} from {tag}")
             with tempfile.TemporaryDirectory(prefix="poolhouse-llama-release-") as tmp:
                 tmp_path = Path(tmp)
-                archive = gh_updates.download(assets[match], tmp_path)
+                # the pinned bytes are kept where no virus scanner exists; one that flags them still refuses
+                archive = gh_updates.download(assets[match], tmp_path, allow_unscanned=not newest)
                 extra = None
                 companion = _cudart_companion(match, assets)
                 if companion is not None:
                     say(f"downloading {companion['name']} (CUDA runtime)")
-                    extra = gh_updates.download(companion, tmp_path)
+                    extra = gh_updates.download(companion, tmp_path, allow_unscanned=not newest)
                 say("installing")
                 binary = _release_install(dest, archive, extra=extra)
 

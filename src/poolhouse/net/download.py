@@ -93,6 +93,7 @@ class Want:
     size: int = 0
     require_digest: bool = False
     allow_unscanned: bool = False
+    nested: bool = False   # an archive holding archives is accepted, only with a pinned ``sha256``
     max_bytes: int = MOST_BYTES
     min_rate: float = httpguard.DOWNLOAD.min_rate
     rate_window_s: float = httpguard.DOWNLOAD.rate_window_s
@@ -426,7 +427,8 @@ def _finish(pipe: Pipeline, staged: Path, final: Path, want: Want,
         raise refuse(note, f"{size} bytes, expected {want.size}")
     if want.verify is not None and (problem := want.verify(staged, headers)):
         raise refuse(note, problem)
-    verdict = sniff.sniff(staged, want.kind or sniff.expected_kind(name), content_type=served)
+    verdict = sniff.sniff(staged, want.kind or sniff.expected_kind(name), content_type=served,
+                          nested=want.nested and bool(want.sha256))
     if not verdict.ok:
         raise refuse(note, "; ".join(verdict.problems))
     if arrival.phase:
