@@ -1,5 +1,5 @@
-"""A model server started under the sandbox: loopback only, the GPU, and nothing readable
-beyond its binary and the files it was asked to load."""
+"""A model server started under the sandbox: no network of its own (it listens on a Unix socket a relay serves on loopback), the GPU, and
+nothing readable beyond its binary and the files it was asked to load."""
 
 from __future__ import annotations
 
@@ -77,10 +77,10 @@ def confine(argv: Sequence[str], env: Mapping[str, str], binary: Path, *,
     argv = list(argv)
     socket_path = ""
     port = 0
-    if sys.platform.startswith("linux"):
+    if sys.platform != "win32":   # the server binds no address: it listens on a Unix socket, and a relay outside the box listens on loopback
         host_index = argv.index("--host")
         port = int(argv[argv.index("--port") + 1])
-        socket_dir = os.path.realpath(tempfile.mkdtemp(prefix="poolhouse-server-"))
+        socket_dir = os.path.realpath(tempfile.mkdtemp(prefix="pp-", dir="/tmp"))   # short: a Unix socket's path has a small limit
         socket_path = str(Path(socket_dir) / "model.sock")
         writable = (*writable, socket_dir)
         argv[host_index + 1] = socket_path
@@ -88,6 +88,7 @@ def confine(argv: Sequence[str], env: Mapping[str, str], binary: Path, *,
         base.name, read=tuple(sorted({*base.read, *reads, *map(os.path.realpath, writable)})),
         write=tuple(os.path.realpath(w) for w in writable), exec=base.exec,
         net=Net.deny() if socket_path else base.net,
+        unix_namespaces=(str(Path(socket_path).parent),) if socket_path and sys.platform == "darwin" else (),
         gpu=True, env={**policies.system_env(), **{k: env[k] for k in KEEP if k in env}},
         limits=base.limits)
     began = time.time()

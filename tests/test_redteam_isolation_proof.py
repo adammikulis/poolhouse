@@ -65,7 +65,14 @@ def reads_in_the_home(inside=""):
     return lambda text: text + f'(allow file-read* (subpath "{Path.home()}{inside}"))\n'
 
 
+def binds_the_model_port(text):
+    """A rule that lets the box bind the one port it reaches, as a rule naming a port of this machine does for every address of it."""
+    port = re.search(r'\(remote ip "localhost:(\d+)"\)', text).group(1)
+    return text + f'(allow network-bind (local ip "localhost:{port}"))\n'
+
+
 MUTANTS = {
+    "a port the box reaches can be bound": (binds_the_model_port, "P09"),
     "the default is allow": (swap(r"\(deny default", "(allow default"), "P01"),
     "any signal is allowed": (swap(r"\(allow signal \(target children\)\)", "(allow signal)"), "P11"),
     "process info of others is readable": (drop("(deny process-info-pidinfo)"), "P12"),

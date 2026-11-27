@@ -31,6 +31,7 @@ from poolhouse import (
     delegate_candidate,
     delegate_confined,
     delegate_guard,
+    delegate_recorder,
     delegate_refusals,
     delegate_resume,
     delegate_review,
@@ -201,6 +202,7 @@ class _InPlace:
                 folder.mkdir()
                 self.before.copy(folder)
             reached = (f"http://127.0.0.1:{bridge.start()}", alias, window)
+            delegate_recorder.of(self.rec.name).hide(bridge.token, serverkeys.for_url(url) or "")
             _written(self.rec, own, (reached, bridge.token), ask, folder)
             if ask.session:
                 delegate_resume.carry_conversation(self.scratch / "data", own / "data")
@@ -218,6 +220,7 @@ class _InPlace:
             why = f"{type(error).__name__}: {error}"
             self.say(why)
             answer = harness.Answer("", harness.Usage(), is_error=True, why=why)
+            delegate_recorder.of(self.rec.name).ended(ask, delegate_review.Ran(answer), time.time() - began)
         finally:
             bridge.stop()
             shutil.rmtree(own, ignore_errors=True)
@@ -241,12 +244,13 @@ class _InPlace:
             drain()   # the hook recorded the call before the harness could say how it ended
             seen.ran(part)
 
-        stream = delegate_confined.Stream(ran)
+        record = delegate_recorder.of(rec.name).of_pass(ask, lambda: store.status(rec.name).get("state") == "asking")
+        stream = delegate_confined.Stream(ran, record)
 
         def progress() -> None:
             store.set_progress(rec.name, stream.turns, nudge_fence.clean(hooks.tool or stream.tool))
 
-        hooks.moved, hooks.answered = progress, seen.asked
+        hooks.moved, hooks.answered = progress, record.after(seen.asked)
         drain = _heard(own / "calls.jsonl", hooks)
 
         def moved() -> None:
@@ -270,6 +274,7 @@ class _InPlace:
         running = inplace.Direct(argv, environment(own, self.binary), str(folder), busy)
         store.set_phase(rec.name, ask.phase, ask.round)
         store.set_status(rec.name, "working", alias)
+        record.started()
         status, why = 1, ""
         try:
             with store.log_file(rec.name).open("ab") as errors:

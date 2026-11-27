@@ -329,11 +329,12 @@ the same lease, window, permission profiles, workspace session and publication o
   login is run and nothing waits. OpenCode's own traffic (update check, the model list, LSP downloads, sharing, the Claude Code file import) is off.
   Its permissions never ask: the plugin and the mount decide.
 - **Its server.** `opencode run` has no mode without a server, and its own private one (`--standalone`) listens on a port the operating system picks,
-  which a box that names the ports it opens cannot allow (the Seatbelt log showed the bind of port 0 denied). So the confined process runs
-  `opencode serve --hostname 127.0.0.1 --port N` and, once `/api/info` answers 200 (it answers 503 while the server starts, and `run` asks only once),
-  `opencode run --server http://127.0.0.1:N`, with `N` chosen by the launcher and opened for the
-  box as `Net.only(bridge, listen=(N,))` (outbound, bind and inbound on that one loopback port and no other), and the server answers only to the bridge
-  token (`OPENCODE_PASSWORD`). The proof's loopback canaries stay denied.
+  which the box cannot grant (the Seatbelt log showed the bind of port 0 denied). So the confined process runs
+  `opencode serve --hostname 127.0.0.1 --port 4096` and, once `/api/info` answers 200 (it answers 503 while the server starts, and `run` asks only
+  once), `opencode run --server http://127.0.0.1:4096`, and the server answers only to the bridge token (`OPENCODE_PASSWORD`). On macOS no port is
+  bound, since a rule that lets a box bind one lets it listen to the network: both processes load a file of the agent home first
+  (`BUN_INSPECT_PRELOAD`, `opencode.through_socket`) that puts the server on a Unix socket of the box and sends requests for that URL there. A Linux
+  box binds the port on its own loopback. The proof's loopback canaries stay denied.
 - **The gate.** A plugin (OpenCode 2's shape, a default export with `id` and `setup`: its `execute.before` and `execute.after` tool hooks and its
   `context` session hook) runs the same client as Pi's extension (`poolhouse.harness_js`) and asks the parent's classifier over the session bridge
   before each tool call; a deny, or a hook that cannot be reached, throws, which OpenCode hands back to the model as the tool's error. 2.4.2 loads a
@@ -367,6 +368,7 @@ poolhouse-delegate start --task "list the python files here and say what each do
 poolhouse-delegate warm [--model ID] [--edit]
 poolhouse-delegate wait NAME
 poolhouse-delegate status [NAME]
+poolhouse-delegate follow NAME [--once]
 poolhouse-delegate result NAME
 poolhouse-delegate stop NAME
 poolhouse-delegate grade NAME correct|partly|wrong|unusable --critique TEXT [--check "RUN => SAW"] [--survived PERCENT] [--as AGENT]
@@ -385,8 +387,35 @@ session that started the delegate reviews the branch, grades it (`grade`, an ent
 rejected, fails or is stopped keeps its patch, and its worktree and branch are removed; so is a worktree after a commit. If the runner's process is
 gone, `stop NAME` removes what it left. `--in-place` changes the project folder itself instead; a project with no commit is also changed in place.
 
-`--wait` returns when the delegate ends (its result and exit status) or asks something (status 3); `wait NAME` does the same for one already
-started. Run either in the background and the harness that runs it is woken then; the board message reaches the lead either way.
+`--wait` returns when the delegate ends (its result and exit status), asks something (status 3) or has a new notice while it goes on
+(status 4, "What the lead is told"); `wait NAME` does the same for one already started. Run either in the background and the harness that runs it is
+woken then; the board message reaches the lead either way.
+
+### Watching a run
+
+**The record** (`poolhouse.delegate_record`). The launcher, outside the box, appends one JSON line to `events.jsonl` in the delegate's folder as
+each thing happens: the run and its model, every change of state, the preflight's findings, each attempt and restart and why it ended, each step,
+each tool call with its command or file and whether it was denied, each result with its exit status, time and the end of its output, the model's
+visible messages, each test run with its passed, failed and error counts (`poolhouse.delegate_testrun`: pytest and `scripts/test`, unittest, cargo,
+jest, vitest, `node --test`), each step's tokens, tokens a second of model time and share of the prompt reused, each notice and how the run ended.
+Nothing removes it: `stop`, the end of a run and the removal of the box leave it. What a box said is data: every text is stripped of terminal
+escapes and of control and invisible characters, has recognized credentials, the credentials of the runner's environment and the run's own tokens
+replaced, and is cut to a bound (a command 2000 characters, an output its last 60 lines and 4000 characters); past 16 MB the record leaves outputs
+and messages out, past 24 MB it adds only what says how the run went, and it ends at 32 MB (docs/limits.md).
+
+**`status`** prints one line per run, fenced as data: its state, what it is doing now and for how long (running a named command, the model
+generating or queued, waiting for the lead, the model or the next step, and how long ago the last event was), its turn and its last test run.
+**`follow NAME`** prints the whole record from the start, fenced as data, and goes on while the run does (`--once` prints what there is).
+**The page.** The web app's **Work > Delegates** view (`/ui/#delegates`) lists the runs and shows one run's timeline as it grows. Its routes
+(`/ui/delegates`, `/ui/delegates/NAME?after=N`) are read-only, behind the page's own sign-in, and answered to this computer alone.
+
+### What the lead is told
+
+Besides the question a delegate asks and the message that its run ended, `poolhouse.delegate_notices` sends the lead a message, subject
+`delegate notice: ...`, when: an attempt is broken off from outside, or a review fails (an error that ends the run is the last message); a restart
+begins; the preflight in the box fails; a test run in the box fails for what looks like setup (a command that cannot start, a runner that cannot
+collect, a module, a permission or a connection the box lacks), once for each such line; and nothing has happened for 10 minutes, again after 20, 40
+and so on. A run sends at most 30. Nothing waits for an answer to one.
 
 ### Self-check before delivery
 
@@ -520,7 +549,7 @@ and one list of entries in one shape: every self-check round (`kind` `self-check
   `asking` (waiting on the lead), `done`, `partial` (some changes applied, others refused, in conflict or not published), `unapplied`
   (it tried to change files and nothing was applied), `rejected` (the self-check never accepted it), `failed` or `stopped`. Only `done` makes
   `result` exit 0. `status` names the phase and round of a running delegate; `result` lists each pass with its time and tokens.
-- **Files.** `~/.poolhouse/delegates/NAME/` holds `record.json`, `status.json`, `result.json`, `grading.json`, `start/` and `log`.
+- **Files.** `~/.poolhouse/delegates/NAME/` holds `record.json`, `status.json`, `result.json`, `grading.json`, `events.jsonl`, `start/` and `log`.
 
 ## What is not covered
 

@@ -276,6 +276,20 @@ def test_the_pinned_release_gives_up_on_a_replys_head_only_where_the_config_name
     assert ran.status == 1 and "Timed out waiting for response headers" in ran.row["error"], (ran.row, ran.log[-4000:])
 
 
+ASKS_ITS_SERVER = """socket=$(sed -n '1s/^[^"]*"//; 1s/".*$//p' "$HOME/bin/poolhouse-server.js" 2>/dev/null)
+asked() { /usr/bin/curl -s -o /dev/null -w 'server=%{http_code}\\n' "$@" http://127.0.0.1:4096/api/info; }
+if [ -n "$socket" ]; then asked --unix-socket "$socket"; else asked; fi
+echo "preload=${BUN_INSPECT_PRELOAD-unset}\""""
+"""A shell of the box asks the run's own server where it is: on the box's socket where the launch gave one (macOS), else on the box's loopback."""
+
+
+def test_the_pinned_releases_server_answers_inside_its_box_and_its_shell_inherits_no_preload(delegated, served):
+    ran = delegated.run([("shell", {"command": ASKS_ITS_SERVER})], "--edit")
+    assert ran.status == 0 and SAID in ran.row["text"], (ran.row, ran.log[-4000:])
+    [result] = offered(served)[1]
+    assert "server=401" in result and "preload=unset" in result, (result, ran.log[-4000:])
+
+
 def test_a_plugin_the_pinned_release_cannot_load_is_named_in_the_delegates_log_and_the_run_fails(delegated, monkeypatch):
     monkeypatch.setattr(opencode, "plugin", lambda _settings: "PLUMBING: this is not a program (")
     ran = delegated.run([("glob", {"pattern": "*"})])
