@@ -49,7 +49,7 @@ def test_chat_readiness_reports_actual_dependency(monkeypatch):
     from poolhouse.fleet import chat_routes
     monkeypatch.setattr(chat_routes, "targets", lambda *args: [])
     route = ChatRoutes()
-    route.ui = SimpleNamespace(serving=None)
+    route.ui = SimpleNamespace(serving=None, root=None, members=lambda: [])
     route.method = "GET"
     replies = []
     route.send = lambda status, body: replies.append((status, body))

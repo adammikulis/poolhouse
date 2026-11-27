@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import struct
 import threading
@@ -253,6 +254,7 @@ class TestProxy:
 
         daemon, _, model = wired
         model.api_key = serverkeys.issue(model.port)
+        serverkeys.bind(model.port, os.getpid())   # as the start of a leased server does: a key is sent only once its process is known
         with daemon.post("/infer/v1/chat/completions",
                          {"messages": [{"role": "user", "content": "hi"}]}) as r:
             assert json.loads(r.read())["choices"][0]["message"]["content"] == marked("hello")

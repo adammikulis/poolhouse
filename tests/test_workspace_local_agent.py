@@ -612,7 +612,7 @@ def test_with_no_one_to_ask_a_question_has_no_answer_and_a_plan_and_a_fact_go_at
 # -- profiles, context, coding model -------------------------------------------------------
 
 
-def test_a_context_that_does_not_fit_says_the_longest_that_does_and_the_person_only_command(monkeypatch):
+def test_a_context_that_does_not_fit_says_the_longest_that_does_and_names_no_missing_command(monkeypatch):
     from types import SimpleNamespace as NS
 
     from poolhouse.serve import wired
@@ -622,7 +622,7 @@ def test_a_context_that_does_not_fit_says_the_longest_that_does_and_the_person_o
         enough_now=False, table=rows, need_bytes=120 * 2**30, model="m.gguf"))
     problem, hint = lp.admit("m.gguf", 262144)
     assert "64K" in problem and "120.0 GiB" in problem
-    assert hint == "poolhouse-serve memory --for m.gguf --ctx 262144 --kv q8_0 --apply"
+    assert hint == "" and "does not change" in problem and "--apply" not in problem
 
 
 def test_start_refuses_a_context_that_does_not_fit_before_registering_anything(kit, monkeypatch, tmp_path):

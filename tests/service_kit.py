@@ -17,6 +17,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from testfarm_kit import (  # noqa: F401
     BOARD,
     Device,
@@ -69,7 +71,9 @@ class Nodes:
         asking = Device(device.root, device.state, device.client, got["token"], got["name"], device.person)
         draft = asking.call("service_draft", token=asking.token, **params)
         approve(asking, "service_bind", narrowed={"resource": draft["resource"], "uses": 1})
-        return asking.call("service_bind", token=asking.token, **params)
+        key = serialization.load_pem_private_key(identity.keyfile.read_bytes(), password=None)
+        proof = key.sign(bytes.fromhex(draft["proof_bytes"]), ec.ECDSA(hashes.SHA256())).hex()   # the node binds only who holds the key
+        return asking.call("service_bind", token=asking.token, challenge=draft["challenge"], proof=proof, **params)
 
     def serve(self, *ports: int, host: str = "127.0.0.1") -> None:
         """Bind each node's service at its port on ``host`` and wait until every node lists them all."""

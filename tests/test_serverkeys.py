@@ -137,14 +137,20 @@ def test_start_issues_a_key_and_hands_it_to_the_server(monkeypatch, tmp_path):
     assert key and "--api-key" not in argv and serverkeys.for_url("http://127.0.0.1:8123") == key
 
 
-def test_claude_and_codex_run_with_the_servers_key(tmp_path):
-    from poolhouse import claude, codex
+def test_claude_and_codex_run_with_the_servers_key(tmp_path, monkeypatch):
+    from poolhouse import claude, codex, harnessid, harnessing
 
     key = serverkeys.issue(8123)
     serverkeys.bind(8123, os.getpid())
     assert claude.environment("http://127.0.0.1:8123", "m", base={})["ANTHROPIC_AUTH_TOKEN"] == key
     assert claude.environment("http://127.0.0.1:9", "m", base={})["ANTHROPIC_AUTH_TOKEN"] == "local"
-    assert codex.environment(tmp_path, {}, key=key)[codex.KEY_ENV] == key
+    monkeypatch.setattr(codex, "alias_of", lambda *_: "m")
+    monkeypatch.setattr(harnessing, "window_of", lambda _: 0)
+    ran = []
+    assert codex.launch(["--on", "http://127.0.0.1:8123", "--project", str(tmp_path), "--codex", "true"], say=lambda _: None,
+                        session_factory=lambda name, *_: harnessid.HarnessSession(name), run_codex=lambda run: ran.append(run) or 0) == 0
+    [named] = [word.partition("=")[2].strip('"') for word in ran[0].argv if word.startswith("model_providers.poolhouse.env_key=")]
+    assert ran[0].env[named] == key
     assert f'env_key = "{codex.KEY_ENV}"' in codex.config_toml("http://127.0.0.1:8123", "m", 0, ("a", "b", 1.0))
 
 

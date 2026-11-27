@@ -55,9 +55,9 @@ def parse_ctx(text: str) -> int:
 
 def admit(model: str, ctx: int) -> tuple[str, str]:
     """``("", "")`` when ``model`` at ``ctx`` (q8_0 cache, MTP head shared) fits under the memory
-    limit now; otherwise the one-line reason with the longest context that does fit and, as the
-    hint, the command a person runs to raise the limit. A model the estimator cannot read is let
-    through to the broker."""
+    limit now; otherwise the one-line reason with the longest context that does fit, and no hint:
+    no command of Poolhouse raises the limit. A model the estimator cannot read is let through to
+    the broker."""
     try:
         plan = wired.plan(model, wired.Ask(context=ctx, kv=KV))
     except (FileNotFoundError, ValueError, OSError):
@@ -68,8 +68,7 @@ def admit(model: str, ctx: int) -> tuple[str, str]:
     gib = plan.need_bytes / wired.GIB
     fit = f"the longest context that fits now is {now // 1024}K" if now else "no listed context fits now"
     return (f"{plan.model} at {ctx // 1024}K needs {gib:.1f} GiB wired and that is over this "
-            f"machine's current limit; {fit}",
-            f"poolhouse-serve memory --for {plan.model} --ctx {ctx} --kv {KV} --apply")
+            f"machine's current limit, which Poolhouse does not change; {fit}", "")
 
 
 def _groups(messages: list[dict[str, Any]], start: int) -> list[tuple[int, int]]:
