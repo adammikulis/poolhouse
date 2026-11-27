@@ -19,12 +19,19 @@ from poolhouse.serve.process import cmdline_digest, started_at
 from poolhouse.testing.registry import record_server
 
 
-def test_a_key_is_found_by_the_url_of_its_port():
-    key = serverkeys.issue(8123)
-    serverkeys.bind(8123, os.getpid())
-    assert serverkeys.for_url("http://127.0.0.1:8123/v1/models") == key
-    assert serverkeys.for_url("http://localhost:8123") == key
-    assert serverkeys.for_url("http://127.0.0.1:8124") == ""
+@pytest.fixture
+def port():
+    """A port this process listens on at 127.0.0.1, as a server does."""
+    with socket.create_server(("127.0.0.1", 0)) as held:
+        yield held.getsockname()[1]
+
+
+def test_a_key_is_found_by_the_url_of_its_port(port):
+    key = serverkeys.issue(port)
+    serverkeys.bind(port, os.getpid())
+    assert serverkeys.for_url(f"http://127.0.0.1:{port}/v1/models") == key
+    assert serverkeys.for_url(f"http://localhost:{port}") == "", "the name leads to ::1 too, where this process does not listen"
+    assert serverkeys.for_url("http://127.0.0.1:9") == ""
 
 
 def test_a_key_is_not_sent_to_another_host():
@@ -49,23 +56,23 @@ def test_a_key_whose_server_has_died_is_not_sent():
     assert serverkeys.for_url("http://127.0.0.1:8123") == ""
 
 
-def test_a_bound_key_is_sent_while_its_process_lives():
-    key = serverkeys.issue(8123)
-    serverkeys.bind(8123, os.getpid())
-    assert serverkeys.for_url("http://127.0.0.1:8123") == key
+def test_a_bound_key_is_sent_while_its_process_lives(port):
+    key = serverkeys.issue(port)
+    serverkeys.bind(port, os.getpid())
+    assert serverkeys.for_url(f"http://127.0.0.1:{port}") == key
 
 
-def test_forgetting_a_port_drops_the_key_of_an_ended_server_and_never_that_of_a_live_one():
-    key = serverkeys.issue(8123)
-    serverkeys.write_key_file(8123, key)
-    serverkeys.bind(8123, os.getpid())
-    serverkeys.forget(8123)   # a start that failed beside a live server on the port
-    assert serverkeys.for_url("http://127.0.0.1:8123") == key and serverkeys.key_file(8123).exists()
+def test_forgetting_a_port_drops_the_key_of_an_ended_server_and_never_that_of_a_live_one(port):
+    key = serverkeys.issue(port)
+    serverkeys.write_key_file(port, key)
+    serverkeys.bind(port, os.getpid())
+    serverkeys.forget(port)   # a start that failed beside a live server on the port
+    assert serverkeys.for_url(f"http://127.0.0.1:{port}") == key and serverkeys.key_file(port).exists()
     gone = subprocess.Popen(["true"])
     gone.wait()
-    serverkeys.bind(8123, gone.pid)
-    serverkeys.forget(8123)
-    assert serverkeys.for_url("http://127.0.0.1:8123") == "" and not serverkeys.key_file(8123).exists()
+    serverkeys.bind(port, gone.pid)
+    serverkeys.forget(port)
+    assert serverkeys.for_url(f"http://127.0.0.1:{port}") == "" and not serverkeys.key_file(port).exists()
     serverkeys.issue(8124)   # one that never came up
     serverkeys.forget(8124)
     assert serverkeys.for_url("http://127.0.0.1:8124") == ""
@@ -88,10 +95,10 @@ def test_no_file_whose_name_can_be_known_in_advance_holds_a_key():
     assert serverkeys.key_file(8123).name != held.name and not held.exists()
 
 
-def test_a_request_to_a_leased_server_carries_its_key():
-    key = serverkeys.issue(8123)
-    serverkeys.bind(8123, os.getpid())
-    request = build_request("http://127.0.0.1:8123/props")
+def test_a_request_to_a_leased_server_carries_its_key(port):
+    key = serverkeys.issue(port)
+    serverkeys.bind(port, os.getpid())
+    request = build_request(f"http://127.0.0.1:{port}/props")
     assert request.get_header("Authorization") == f"Bearer {key}"
 
 
@@ -116,7 +123,7 @@ def test_the_command_passes_the_key_to_llama_server(tmp_path):
     assert serverkeys.key_file(8123).read_text().strip() == "sekrit"
 
 
-def test_start_issues_a_key_and_hands_it_to_the_server(monkeypatch, tmp_path):
+def test_start_issues_a_key_and_hands_it_to_the_server(monkeypatch, tmp_path, port):
     weights = tmp_path / "m.gguf"
     weights.write_bytes(b"GGUF")
     binary = tmp_path / "llama-server"
@@ -132,13 +139,13 @@ def test_start_issues_a_key_and_hands_it_to_the_server(monkeypatch, tmp_path):
     monkeypatch.setattr(be, "launch", launch)
     with broker_grant(), pytest.raises(be.ServerFailed):
         be.LlamaServerBackend(binary=binary, sandboxed=False, policy=LocalPolicy()).start(
-            be.ServerSpec(model=weights, port=8123), lease=be.Lease(port=8123, owner_pid=os.getpid(), state_file="x"),
+            be.ServerSpec(model=weights, port=port), lease=be.Lease(port=port, owner_pid=os.getpid(), state_file="x"),
             check_flags=False, preflight=False)
     argv = seen[0]
     keyfile = Path(argv[argv.index("--api-key-file") + 1])
     key = keyfile.read_text().strip()
-    serverkeys.bind(8123, os.getpid())
-    assert key and "--api-key" not in argv and serverkeys.for_url("http://127.0.0.1:8123") == key
+    serverkeys.bind(port, os.getpid())
+    assert key and "--api-key" not in argv and serverkeys.for_url(f"http://127.0.0.1:{port}") == key
 
 
 def test_claude_and_codex_run_with_the_servers_key(tmp_path, monkeypatch):

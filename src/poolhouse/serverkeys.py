@@ -12,14 +12,25 @@ import time
 import urllib.parse
 from pathlib import Path
 
+import psutil
+
 from poolhouse import home
 from poolhouse.files import read_json, write_json
+from poolhouse.listening import listens_on
 from poolhouse.lock import only_one, pid_alive
 
-__all__ = ["LOOPBACK", "bind", "bound", "for_url", "forget", "issue", "key_file", "write_key_file"]
+__all__ = ["LOOPBACK", "bind", "bound", "for_url", "forget", "issue", "key_file", "unproxied", "write_key_file"]
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 STARTING_S = 600
+START_TOLERANCE_S = 2.0
+
+
+def _born(pid: int) -> float | None:
+    try:
+        return float(psutil.Process(pid).create_time())
+    except (psutil.Error, OSError, ValueError):
+        return None
 
 
 def _file() -> Path:
@@ -121,28 +132,44 @@ def forget(port: int) -> None:
 
 
 def bind(port: int, pid: int) -> None:
-    """Tie the key issued for ``port`` to the server process ``pid``."""
+    """Tie the key issued for ``port`` to the server process ``pid``, known by its number and when it started."""
     with _locked():
         entries = _entries()
         if str(int(port)) in entries:
-            entries[str(int(port))]["pid"] = int(pid)
+            entries[str(int(port))].update(pid=int(pid), started=_born(int(pid)))
             _save(entries)
 
 
 def bound(port: int) -> int:
-    """The process the key of ``port`` is bound to, while this computer holds that key and the process lives; 0 otherwise."""
+    """The process the key of ``port`` is bound to, while this computer holds that key and that very process runs (its number and when it started:
+    a number is used again); 0 otherwise."""
     entry = _entries().get(str(int(port)))
-    return int(entry["pid"]) if isinstance(entry, dict) and entry.get("pid") and _live(entry) and _read(key_file(port)) else 0
+    if not (isinstance(entry, dict) and entry.get("pid") and _live(entry) and _read(key_file(port))):
+        return 0
+    then, now = entry.get("started"), _born(int(entry["pid"]))
+    same = isinstance(then, (int, float)) and now is not None and abs(now - then) <= START_TOLERANCE_S
+    return int(entry["pid"]) if same else 0
 
 
 def for_url(url: str) -> str:
-    """The key of the leased server at a loopback ``url``, or ``""`` when none is running there."""
-    parts = urllib.parse.urlsplit(url)
-    if parts.hostname not in LOOPBACK:
-        return ""
+    """The key of the leased server at a loopback ``url``, or ``""``: it is given only while the process it is bound to listens at the very address
+    the URL names (``localhost`` names both, so both)."""
     try:
+        parts = urllib.parse.urlsplit(url)
         port = parts.port or (443 if parts.scheme == "https" else 80)
     except ValueError:
         return ""
+    if parts.hostname not in LOOPBACK:
+        return ""
     # Only a key bound to its server's process is sent: no health probe made before the listener is checked carries one.
-    return _read(key_file(port)) if bound(port) else ""
+    pid = bound(port)
+    addresses = ("127.0.0.1", "::1") if parts.hostname == "localhost" else (parts.hostname,)
+    return _read(key_file(port)) if pid and all(listens_on(pid, port, each) for each in addresses) else ""
+
+
+def unproxied(*named: str) -> dict[str, str]:
+    """``NO_PROXY`` for a program that is to reach a server of this computer: the entries of each of ``named`` (a ``NO_PROXY`` it already had) and
+    this computer's own names, so that no proxy is handed a request with the server's key."""
+    entries = [entry.strip() for each in (*named, *LOOPBACK) for entry in each.split(",")]
+    direct = ",".join(dict.fromkeys(entry for entry in entries if entry))
+    return {"NO_PROXY": direct, "no_proxy": direct}

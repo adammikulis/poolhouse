@@ -82,9 +82,8 @@ def held_to(base_url: str) -> dict[str, str]:
     what the person's own ``NO_PROXY`` says."""
     made = {**dict.fromkeys(CLOUD, "0"), "ANTHROPIC_UNIX_SOCKET": ""}
     if urlsplit(base_url).hostname in serverkeys.LOOPBACK:
-        named = [os.environ.get("NO_PROXY", ""), os.environ.get("no_proxy", ""), _own_setting("NO_PROXY"), _own_setting("no_proxy"), *serverkeys.LOOPBACK]
-        direct = ",".join(dict.fromkeys(entry.strip() for each in named for entry in each.split(",") if entry.strip()))
-        made.update(NO_PROXY=direct, no_proxy=direct)
+        made.update(serverkeys.unproxied(os.environ.get("NO_PROXY", ""), os.environ.get("no_proxy", ""), _own_setting("NO_PROXY"),
+                                         _own_setting("no_proxy")))
     return made
 
 

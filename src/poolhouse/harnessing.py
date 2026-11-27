@@ -31,6 +31,7 @@ from poolhouse import (
     lead_bridge,
     opencode_install,
     runtime,
+    safetext,
     serverkeys,
 )
 from poolhouse.activity.source_snapshot import protected_roots, validate_storage
@@ -524,8 +525,10 @@ def serve_and_run(args: argparse.Namespace, name: str, say: Callable[[str], None
     if args.on:
         target = named_server(args.on)
         base_url = target.url
-        # every request to an address with a bound key carries it, so one not shown to be that server is asked nothing
-        if not target.ours and serverkeys.for_url(base_url):
+        if target.unreadable:
+            say(f"error: --on {args.on[:120]!a}: {target.why}")
+            return 2
+        if target.keyed:   # this computer's server holds a key for that port, and this address is not shown to be that server
             say(f"error: no key is sent to {shown(base_url)}, and nothing was asked of it: {target.why}")
             return 2
         alias = alias_of(base_url, "")
@@ -590,6 +593,7 @@ def confined(args: argparse.Namespace, run: Session, how: Harness,
         rail = rail_of(args, helper.name, stage)   # a call is the box's own words, judged as text; after it the box is given what its lead sent
 
         def answered(event: str, payload: dict) -> dict:
+            payload = safetext.utf8(payload)
             if event == "pre":
                 said = harnesshook.confined_pre(payload, rail)
             elif event == "stop":

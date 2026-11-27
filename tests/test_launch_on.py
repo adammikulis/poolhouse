@@ -12,15 +12,21 @@ import os
 import socket
 import subprocess
 import threading
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 
 import pytest
 from test_serve_refused_key import started
 
-from poolhouse import claude, harnessing, home, serverkeys
-from poolhouse.files import write_json
+from poolhouse import claude, codex, harnessid, harnessing, home, opencode, pi, serverkeys
+from poolhouse.client.health import reported_models
+from poolhouse.files import read_json, write_json
+from poolhouse.http import Cancellation, build_request, cancel_scope
+from poolhouse.serve import backend as be
+from poolhouse.serve.grant import broker_grant
 from poolhouse.serve.leases import lease_file
+from poolhouse.serve.policy import LocalPolicy
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import cmdline_digest, started_at
 from poolhouse.testing.registry import record_server
@@ -172,3 +178,92 @@ def test_a_server_that_asks_for_no_key_and_is_not_ours_is_still_used(listeners):
     listener = listeners()
     status, said, ran = launched(f"http://127.0.0.1:{listener.server_port}")
     assert status == 0 and ran[0][1] == CANNED and set(listener.heard) == {None}, said
+
+
+@pytest.fixture
+def proxy(listeners, monkeypatch):
+    """An HTTP proxy the environment names, with no exception for this computer: it keeps what it is sent."""
+    held = listeners()
+    monkeypatch.setattr(urllib.request, "_opener", None)   # as in a new process: the library's own opener reads the proxies when it is first made
+    for name in ("NO_PROXY", "no_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    for name in ("HTTP_PROXY", "http_proxy"):
+        monkeypatch.setenv(name, f"http://127.0.0.1:{held.server_port}")
+    return held
+
+
+@pytest.mark.redteam
+@pytest.mark.parametrize("case", [(False, ""), (True, ""), (False, "localhost"), (True, "localhost")],
+                         ids=["plain", "cancellable", "plain-with-localhost-excepted", "cancellable-with-localhost-excepted"])
+def test_a_request_to_this_computer_never_goes_through_a_proxy_of_the_environment(processes, tmp_path, proxy, monkeypatch, case):
+    cancellable, excepted = case
+    port, _key = ours(processes, tmp_path)
+    if excepted:
+        monkeypatch.setenv("NO_PROXY", excepted)
+    if cancellable:
+        with cancel_scope(Cancellation()):
+            assert reported_models(f"http://127.0.0.1:{port}")
+    else:
+        status, said, ran = launched(f"http://localhost:{port}")
+        assert status == 0 and ran[0][1], said
+    assert proxy.heard == [], "the proxy was asked, with the server's key"
+
+
+@pytest.mark.redteam
+@pytest.mark.parametrize("harness", [codex, pi, opencode], ids=["codex", "pi", "opencode"])
+def test_a_harness_run_in_place_is_told_to_reach_this_computer_with_no_proxy(processes, tmp_path, proxy, monkeypatch, harness):
+    port, _key = ours(processes, tmp_path)
+    monkeypatch.setenv("NO_PROXY", "held.example")
+    monkeypatch.setattr(harness, "alias_of", lambda *_: "m")
+    monkeypatch.setattr(harnessing, "window_of", lambda _: 0)
+    ran, said, name = [], [], harness.__name__.rsplit(".", 1)[-1]
+    assert harness.launch(["--on", f"http://127.0.0.1:{port}", "--project", str(tmp_path), f"--{name}", "true", "--", "word"], say=said.append,
+                          session_factory=lambda made, *_: harnessid.HarnessSession(made),
+                          **{f"run_{name}": lambda run: ran.append(run) or 0}) == 0, said
+    for variable in ("NO_PROXY", "no_proxy"):
+        excepted = ran[0].env[variable].split(",")
+        assert {"held.example", "127.0.0.1", "localhost", "::1"} <= set(excepted), ran[0].env[variable]
+
+
+@pytest.mark.redteam
+@pytest.mark.parametrize("case", ["another-process-listens", "the-pid-was-reused", "bound-with-no-start-time"])
+def test_a_key_is_attached_only_when_its_own_process_listens_at_the_address(processes, case):
+    held = socket.create_server(("127.0.0.1", 0))
+    port = held.getsockname()[1]
+    serverkeys.issue(port)
+    serverkeys.bind(port, sleeper(processes) if case == "another-process-listens" else os.getpid())
+    if case in ("the-pid-was-reused", "bound-with-no-start-time"):
+        entries = read_json(home.state("server-keys.json"), {})
+        entries[str(port)]["started"] = 1.0
+        if case == "bound-with-no-start-time":
+            del entries[str(port)]["started"]
+        write_json(home.state("server-keys.json"), entries)
+    with held:
+        assert serverkeys.for_url(f"http://127.0.0.1:{port}/props") == ""
+        assert build_request(f"http://127.0.0.1:{port}/props").get_header("Authorization") is None
+
+
+def test_a_request_written_to_localhost_is_sent_with_the_key_to_the_address_the_server_holds(processes, tmp_path):
+    port, key = ours(processes, tmp_path)
+    request = build_request(f"http://localhost:{port}/props")
+    assert (request.full_url, request.get_header("Authorization")) == (f"http://127.0.0.1:{port}/props", f"Bearer {key}")
+
+
+@pytest.mark.redteam
+@pytest.mark.parametrize("written", ["http://[::1", "http://127.0.0.1:abc", "http://127.0.0.1:99999", "http://127.0.0.1:8080/a b", "nothing"])
+def test_an_address_that_cannot_be_asked_is_one_sentence_and_no_traceback(written):
+    status, said, ran = launched(written)
+    assert status == 2 and ran == [] and "--on" in said and "is not an http address" in said, said
+
+
+def test_a_start_on_a_port_a_keyed_server_holds_leaves_that_servers_key(processes, tmp_path):
+    port, key = ours(processes, tmp_path)
+    weights, binary = tmp_path / "other.gguf", tmp_path / "llama-server"
+    weights.write_bytes(b"GGUF")
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    with broker_grant(), pytest.raises(be.ServerFailed, match="held by a process"):
+        be.LlamaServerBackend(binary=binary, sandboxed=False, policy=LocalPolicy()).start(
+            be.ServerSpec(model=weights, port=port), lease=be.Lease(port=port, owner_pid=os.getpid(), state_file=str(lease_file())),
+            check_flags=False, preflight=False)
+    assert serverkeys.for_url(f"http://127.0.0.1:{port}") == key
