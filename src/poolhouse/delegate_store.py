@@ -1,5 +1,6 @@
-"""What a delegate leaves under the state root: its record, its status, its result, its log and its grading record, one owner-only folder each.
-Nothing removes a folder: `stop` and the end of a run remove the working copies they made, never what is recorded."""
+"""What a delegate leaves under the state root: its record, its status, its result, its log, its grading record and the record of what it did
+(`delegate_record`), one owner-only folder each. Nothing removes a folder: `stop` and the end of a run remove the working copies they made, never
+what is recorded."""
 
 from __future__ import annotations
 
@@ -10,15 +11,15 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, lock, safetext
+from poolhouse import delegate_record, home, lock, safetext
 from poolhouse.board.names import valid_name
+from poolhouse.delegate_record import ENDED
 from poolhouse.files import read_json, write_json
 
-__all__ = ["Delegate", "finished", "folder", "graded", "keep", "load", "log_file", "names", "result", "save", "save_result", "set_phase",
+__all__ = ["Delegate", "finished", "folder", "graded", "keep", "load", "log_file", "names", "note", "result", "save", "save_result", "set_phase",
            "set_progress", "set_status", "status"]
 
-ENDED = ("done", "partial", "unapplied", "rejected", "failed", "stopped")
-PROGRESS = ("turns", "tool", "phase", "round")
+PROGRESS = ("turns", "tool", "phase", "round", "now", "heard", "tests", "spent", "notices", "told")
 """What a status keeps when its state changes."""
 _STATUS = threading.Lock()
 """Held while the status is read and written again: the runner writes progress while a question marks the state from another thread."""
@@ -97,23 +98,36 @@ def load(name: str) -> Delegate | None:
 
 def names() -> list[str]:
     """Every delegate with a record, oldest first."""
-    root = home.state("delegates")
-    found = [load(p.name) for p in root.iterdir() if p.is_dir()] if root.is_dir() else []
-    return [r.name for r in sorted((r for r in found if r), key=lambda r: r.started)]
+    return [name for name in delegate_record.names() if load(name)]
 
 
 def status(name: str) -> dict[str, Any]:
     """What the runner last wrote: ``state`` (starting, loading, working, asking, done, partial, unapplied, rejected, failed or stopped),
-    ``detail``, ``beat``, the ``phase`` (work, review or fix) and its ``round`` and, once a run has said something, its ``turns`` and last
-    ``tool``."""
-    found = read_json(home.state("delegates", name) / "status.json", {}) if valid_name(name) else {}
-    return found if isinstance(found, dict) else {}
+    ``detail``, ``beat``, ``since`` the state began, the ``phase`` (work, review or fix) and its ``round`` and, once a run has said something, its
+    ``turns`` and last ``tool``, what it is doing ``now``, when it was last ``heard``, its last ``tests``, what it ``spent`` and how many
+    ``notices`` its lead was given, the last one ``told``."""
+    return delegate_record.held(name, "status.json") if valid_name(name) else {}
 
 
 def set_status(name: str, state: str, detail: str = "") -> None:
+    """Mark the state of ``name``; a state or detail that differs from the last is also an event of its record."""
     with _STATUS:
-        progress = {key: value for key, value in status(name).items() if key in PROGRESS}
-        write_json(folder(name) / "status.json", safetext.utf8({**progress, "state": state, "detail": detail, "beat": time.time()}))
+        held = status(name)
+        now = time.time()
+        changed = (held.get("state"), held.get("detail")) != (state, detail)
+        since = held.get("since", now) if held.get("state") == state else now
+        progress = {key: value for key, value in held.items() if key in PROGRESS}
+        if changed:
+            progress["heard"] = now
+        write_json(folder(name) / "status.json", safetext.utf8({**progress, "state": state, "detail": detail, "since": since, "beat": now}))
+    if changed:
+        delegate_record.append(name, "state", state=state, detail=detail)
+
+
+def note(name: str, **fields: Any) -> None:
+    """Set ``fields`` of the status of ``name``; its state stays as it is."""
+    with _STATUS:
+        write_json(folder(name) / "status.json", safetext.utf8({**status(name), **fields}))
 
 
 def set_progress(name: str, turns: int, tool: str) -> None:
@@ -125,7 +139,7 @@ def set_progress(name: str, turns: int, tool: str) -> None:
 def set_phase(name: str, phase: str, round_: int) -> None:
     """The pass that runs now: its phase and, for a review or a fix, its round."""
     with _STATUS:
-        held = {key: value for key, value in status(name).items() if key not in ("turns", "tool")}
+        held = {key: value for key, value in status(name).items() if key not in ("turns", "tool", "now")}
         write_json(folder(name) / "status.json", safetext.utf8({**held, "phase": phase, "round": round_, "beat": time.time()}))
 
 

@@ -19,6 +19,7 @@ from . import (
 )
 from .board_routes import BoardRoutes
 from .chat_routes import ChatRoutes
+from .delegate_routes import DelegateRoutes
 from .extension_routes import ExtensionRoutes
 from .features_routes import FeatureRoutes
 from .initial_setup_routes import InitialSetupRoutes
@@ -597,7 +598,7 @@ class JobRoutes:
 
 
 class Router(InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
-             BoardRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
+             BoardRoutes, DelegateRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
              KnowledgeRoutes, *experimental_routes.load(), NativePickRoutes, StudioRoutes, WorkspaceRoutes, LaunchRoutes, ExtensionRoutes, Base):
     """Every screen's routes, in the order a request meets them."""
 

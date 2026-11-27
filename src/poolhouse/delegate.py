@@ -1,13 +1,14 @@
 """``poolhouse-delegate``: hand a task to a local coding agent on the model this machine serves and read what it sends back.
 
-    poolhouse-delegate start --task TEXT [--edit] [--wait] ...     status [NAME]     wait NAME     result NAME     stop NAME
+    poolhouse-delegate start --task TEXT [--edit] [--wait] ...     status [NAME]     follow NAME     wait NAME     result NAME     stop NAME
     poolhouse-delegate grade NAME VERDICT --critique TEXT [--check "RUN => SAW"]     record NAME     summary
 
 The agent is OpenCode, a subagent of the session that starts it, `read-only` unless the lead chooses another tier, and
 confined (`poolhouse.delegate_confined`; on the folder itself, with a warning, where there is no sandbox). Before
 delivery a fresh reviewer on the same model tries to prove the work wrong (`poolhouse.delegate_review`); a change is
 published once accepted, except `.git`, coding tools' settings, credentials and links that lead out. Every run keeps a
-grading record (`poolhouse.delegate_grade`). Nothing waits on a person: a refusal says why (docs/harnesses.md).
+grading record (`poolhouse.delegate_grade`) and a record of each thing it did (`poolhouse.delegate_record`), which `follow` and the web page's
+Delegates view read. Nothing waits on a person: a refusal says why (docs/harnesses.md).
 """
 
 from __future__ import annotations
@@ -28,10 +29,12 @@ from poolhouse import (
     coding_policy,
     delegate_confined,
     delegate_grade,
+    delegate_record,
     delegate_resume,
     delegate_review,
     delegate_run,
     delegate_store as store,
+    delegate_timeline,
     delegate_tree,
     delegate_unboxed,
     harnessid,
@@ -52,8 +55,7 @@ from poolhouse.workspace import nudge_fence
 
 __all__ = ["main", "standing_model"]
 
-JOB = "job"
-LIVE = ("starting", "loading", "working", "asking")
+JOB, LIVE = delegate_record.JOB, delegate_record.LIVE
 
 
 COMMANDS = Group(
@@ -80,7 +82,7 @@ def _running(asked: store.Delegate) -> str:
     """The name of the delegate still running what ``asked`` describes, or an empty string."""
     for name in store.names():
         rec = store.load(name)
-        if rec and rec.key() == asked.key() and rec.board == asked.board and _view(name)[0] in LIVE:
+        if rec and rec.key() == asked.key() and rec.board == asked.board and delegate_record.state_of(name)[0] in LIVE:
             return name
     return ""
 
@@ -127,7 +129,7 @@ def _folder(source: str, edit: bool) -> str:
          help="the attempts to continue a run something outside its task broke off, such as its model's server going away (default: %(default)s)"),
     flag("--in-place", action="store_true",
          help="with --edit: change the project folder itself, not a worktree and branch of the delegate's own"),
-    flag("--wait", action="store_true", help="return only when it ends or asks something (run this in the background to be woken then)")])
+    flag("--wait", action="store_true", help="return only when it ends, asks or has something to tell (run this in the background to be woken then)")])
 def start(args: argparse.Namespace) -> int:
     """Register the agent as a subagent of the calling session, then run it detached; prints its name."""
     isolation.require_attended("starting a delegate")   # a delegate, and whatever it starts, hands no task on
@@ -222,17 +224,20 @@ def _announce(rec: store.Delegate, pid: int, why: str) -> None:
     say(f"it asks you with a message from {rec.name}: read `poolhouse-workspace inbox`, answer with `poolhouse-workspace send {rec.name} answer TEXT`")
     if rec.branch:
         say(f"it works on branch {rec.branch} in a worktree of its own; what stands is committed there for you to review and land")
-    say(f"poolhouse-delegate status {rec.name} | wait {rec.name} | result {rec.name} | stop {rec.name}")
+    say(f"poolhouse-delegate status {rec.name} | follow {rec.name} | wait {rec.name} | result {rec.name} | stop {rec.name}")
 
 
 ASKS = 3
 """The exit status of a wait that ended because the delegate asked something."""
+TELLS = 4
+"""The exit status of a wait that ended because the delegate has a new notice (`delegate_notices`) and its run goes on."""
 
 
 def _waited(name: str) -> int:
-    """Return when ``name`` ends (its result printed, and its exit status) or asks something (`ASKS`)."""
+    """Return when ``name`` ends (its result printed, and its exit status), asks something (`ASKS`) or has a new notice (`TELLS`)."""
+    seen = int(store.status(name).get("notices") or 0)
     while True:
-        state, detail = _view(name)
+        state, detail = delegate_record.state_of(name)
         if state == "asking":
             say(f"{name} asks you something ({nudge_fence.clean(detail)}): read `poolhouse-workspace inbox`, answer with "
                 f"`poolhouse-workspace send {name} answer TEXT`, then `poolhouse-delegate wait {name}`")
@@ -242,12 +247,19 @@ def _waited(name: str) -> int:
                 return result(argparse.Namespace(name=name))
             say(f"{name} {state}: {nudge_fence.clean(detail)}")
             return 1
+        row = store.status(name)
+        if (new := int(row.get("notices") or 0) - seen) > 0:
+            say(f"{name} goes on, with {new} new notice(s); the last, as data:")
+            say(nudge_fence.fenced([nudge_fence.clean(str(row.get("told")))]))
+            say(f"`poolhouse-delegate follow {name}` shows the run; `poolhouse-delegate wait {name}` waits again")
+            return TELLS
         time.sleep(lead_bridge.POLL_S)
 
 
-@COMMANDS.command("wait", help="return when the agent ends or asks something (run this in the background to be woken then)", options=[flag("name")])
+@COMMANDS.command("wait", help="return when the agent ends, asks or has something to tell (run this in the background to be woken then)",
+                  options=[flag("name")])
 def wait(args: argparse.Namespace) -> int:
-    """The result once it ends, else status `ASKS` when it asks."""
+    """The result once it ends, else status `ASKS` when it asks and `TELLS` when a notice is new."""
     if store.load(args.name) is None:
         raise ValueError(f"no delegate {args.name}; `poolhouse-delegate status` lists them")
     return _waited(args.name)
@@ -266,33 +278,39 @@ def warm(args: argparse.Namespace) -> int:
                                     kind="warm", review_rounds=delegate_review.ROUNDS, no_review=True, resumes=0, in_place=True, wait=False))
 
 
-def _view(name: str) -> tuple[str, str]:
-    """``(state, detail)`` of ``name``: a process that is gone with no end written is a failure, said so."""
-    row = store.status(name)
-    state, detail = str(row.get("state") or "starting"), str(row.get("detail") or "")
-    if state in LIVE and not jobs.alive(JOB, home=store.folder(name)):
-        return "failed", f"the process ended without a result; its log is {store.log_file(name)}"
-    return state, detail
-
-
-@COMMANDS.command("status", help="what each agent is doing", options=[flag("name", nargs="?", default="")])
+@COMMANDS.command("status", help="one line per agent: what it is doing now and for how long, and how its last test run went",
+                  options=[flag("name", nargs="?", default="")])
 def status(args: argparse.Namespace) -> int:
-    """One line per delegate (or the one named)."""
+    """One line per delegate (or the one named), fenced as data: a line quotes a command a local model chose."""
     shown = [args.name] if args.name else store.names()
+    found = []
     for name in shown:
         rec = store.load(name)
         if rec is None:
             raise ValueError(f"no delegate {name}; `poolhouse-delegate status` lists them")
-        state, detail = _view(name)
-        age = round(time.time() - rec.started)
-        row = store.status(name)
-        progress = f"  {row['turns']} turn(s), last tool {nudge_fence.clean(str(row.get('tool') or 'none'))}" if row.get("turns") else ""
-        phase = _phase(rec, state, row)
-        say(f"{name}  {state}  {age}s  {Path(rec.model).name}  {rec.lead}  {rec.task[:60]!r}{phase}{progress}"
-            + (f"  {nudge_fence.clean(detail)}" if detail else ""))
-    if not shown:
-        say("no delegate; `poolhouse-delegate start --task TEXT` starts one")
+        found.append(_row(rec))
+    say(nudge_fence.fenced(found) if found else "no delegate; `poolhouse-delegate start --task TEXT` starts one")
     return 0
+
+
+def _row(rec: store.Delegate) -> str:
+    """The line of one delegate."""
+    state, detail = delegate_record.state_of(rec.name)
+    now, row = time.time(), store.status(rec.name)
+    turns = f"turn {row['turns']}" if row.get("turns") else ""
+    seen = "; ".join(each for each in (delegate_record.doing(state, row, now), turns, delegate_record.tested(row.get("tests"), now)) if each)
+    line = (f"{rec.name}  {state}  {round(now - rec.started)}s  {Path(rec.model).name}  {rec.lead}  {rec.task[:60]!r}{_phase(rec, state, row)}  "
+            f"{seen}" + (f"  {detail}" if detail else ""))
+    return nudge_fence.clean(line).replace("\n", " ")
+
+
+@COMMANDS.command("follow", help="an agent's run step by step, and each new step as it happens; a finished run in full", options=[
+    flag("name"), flag("--once", action="store_true", help="print what there is now and return")])
+def follow(args: argparse.Namespace) -> int:
+    """Its commands with their exit status and output, the model's messages, test counts, attempts and notices, from the run's record."""
+    if store.load(args.name) is None:
+        raise ValueError(f"no delegate {args.name}; `poolhouse-delegate status` lists them")
+    return delegate_timeline.follow(args.name, once=args.once)
 
 
 def _phase(rec: store.Delegate, state: str, row: dict) -> str:
@@ -328,7 +346,7 @@ def result(args: argparse.Namespace) -> int:
     """The final text and what it cost; exit 1 while there is none."""
     if store.load(args.name) is None:
         raise ValueError(f"no delegate {args.name}; `poolhouse-delegate status` lists them")
-    state, detail = _view(args.name)
+    state, detail = delegate_record.state_of(args.name)
     row = store.result(args.name)
     if not row:
         say(f"{args.name} has no result yet: {state}" + (f", {detail}" if detail else "") + "; it may be waiting on your answer: `poolhouse-workspace inbox`")
@@ -387,7 +405,7 @@ def stop(args: argparse.Namespace) -> int:
 def grade(args: argparse.Namespace) -> int:
     """Add one grade to the run's record, from a session that is neither the run's nor on its model."""
     held = delegate_grade.record(args.name)
-    if store.load(args.name) and _view(args.name)[0] in LIVE:
+    if store.load(args.name) and delegate_record.state_of(args.name)[0] in LIVE:
         raise ValueError(f"{args.name} is still running; grade it when it has ended")
     client = Client(node_launch.default_state())
     board = str(held["run"].get("board") or place.at_path(client, Path.cwd()))
@@ -423,7 +441,7 @@ def summary(args: argparse.Namespace) -> int:
     records = []
     for name in store.names():
         held = delegate_grade.record(name)
-        held["run"].setdefault("state", _view(name)[0])
+        held["run"].setdefault("state", delegate_record.state_of(name)[0])
         records.append(held)
     rows = [row for row in delegate_grade.summary(records) if args.model in row["model"] and args.kind in ("", row["kind"])]
     if args.json:
