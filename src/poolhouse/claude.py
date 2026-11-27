@@ -8,23 +8,25 @@ import os
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
+from urllib.parse import urlsplit
 
-from poolhouse import coding_policy, harnessing, inplace, isolation, lead_bridge, serverkeys
+from poolhouse import coding_policy, harnessing, home, inplace, isolation, lead_bridge, serverkeys
 from poolhouse.client import reported_models
 from poolhouse.client.health import served_alias
+from poolhouse.files import read_json
 from poolhouse.guard import harnesses
 from poolhouse.isolation.environment import MIN_COMPACT_WINDOW, MODEL_VARS, OFFLINE
 from poolhouse.log import say
 from poolhouse.serve import provenance
 
-__all__ = ["INSTRUCTIONS", "STANCES", "environment", "launch", "main", "settings"]
+__all__ = ["INSTRUCTIONS", "STANCES", "environment", "held_to", "launch", "main", "settings"]
 
 INSTRUCTIONS = harnesses.RECORDS["claude"]
 """The instruction and settings names Claude Code reads from a project (`guard.harnesses`)."""
 DEFAULT_PORT = 8080
 
 DEFAULT_SLOTS = 1      # one conversation, one slot, the whole measured cache
-CLOUD = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")
+CLOUD = tuple(f"CLAUDE_CODE_USE_{each}" for each in ("BEDROCK", "VERTEX", "FOUNDRY", "MANTLE", "ANTHROPIC_AWS", "ANTHROPIC_GOOGLE_CLOUD", "GATEWAY"))
 """The switches that send every request to a hosted provider instead of the served model."""
 NO_CHANGES = ("--disallowed-tools=Bash,Edit,MultiEdit,Write,NotebookEdit",)
 STANCES = {coding_policy.READ_ONLY: NO_CHANGES, coding_policy.PLAN: (*NO_CHANGES, "--permission-mode", "plan"),
@@ -64,6 +66,26 @@ def settings(pre: str = "", post: str = "", wait: float = 0.0, stop: str = "", e
         completion = [{"hooks": [{"type": "command", "command": stop, "timeout": 30}]}]
         out.setdefault("hooks", {}).update(Stop=completion, SubagentStop=completion)
     return json.dumps(out, sort_keys=True)
+
+
+def _own_setting(name: str) -> str:
+    """What the ``env`` block of the person's own user settings gives the variable ``name``, or empty."""
+    folder = home.expand(os.environ.get("CLAUDE_CONFIG_DIR") or home.user_home() / ".claude")
+    held = read_json(folder / "settings.json", {})
+    env = held.get("env") if isinstance(held, dict) else None
+    return str(env.get(name) or "") if isinstance(env, dict) else ""
+
+
+def held_to(base_url: str) -> dict[str, str]:
+    """The variables of a run's settings, which win over the person's and the project's, that keep every request at ``base_url``: no hosted provider,
+    no unix socket and, for a server on this computer, no proxy (one a project's settings name is handed every request with the server's key), beside
+    what the person's own ``NO_PROXY`` says."""
+    made = {**dict.fromkeys(CLOUD, "0"), "ANTHROPIC_UNIX_SOCKET": ""}
+    if urlsplit(base_url).hostname in serverkeys.LOOPBACK:
+        named = [os.environ.get("NO_PROXY", ""), os.environ.get("no_proxy", ""), _own_setting("NO_PROXY"), _own_setting("no_proxy"), *serverkeys.LOOPBACK]
+        direct = ",".join(dict.fromkeys(entry.strip() for each in named for entry in each.split(",") if entry.strip()))
+        made.update(NO_PROXY=direct, no_proxy=direct)
+    return made
 
 
 def alias_of(base_url: str, model: str) -> str:
@@ -120,13 +142,13 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
 
     def direct(context: inplace.Context) -> inplace.Rendering:
         pointed = {**environment(context.base_url, context.alias, context=context.window, base={}), "ANTHROPIC_AUTH_TOKEN": context.key}
-        files = {"settings.json": settings(env={**pointed, "ANTHROPIC_API_KEY": "", **dict.fromkeys(CLOUD, "0")})}
+        files = {"settings.json": settings(env={**pointed, "ANTHROPIC_API_KEY": "", **held_to(context.base_url)})}
         argv = [binary, "--settings", str(context.file("settings.json"))]
         if brief:
             files["brief.md"] = brief
             argv += ["--append-system-prompt-file", str(context.file("brief.md"))]
         flags = STANCES[harnessing.stance(args, printing=printing(extra))]
-        return inplace.Rendering((*argv, *flags, *extra), files, pointed, ("ANTHROPIC_API_KEY", *CLOUD))
+        return inplace.Rendering((*argv, *flags, *extra), files, pointed, ("ANTHROPIC_API_KEY", "ANTHROPIC_UNIX_SOCKET", *CLOUD))
 
     try:
         with harnessing.opened(args, "claude-code", served, say) as run:

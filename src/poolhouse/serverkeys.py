@@ -12,7 +12,7 @@ from poolhouse import home
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import only_one, pid_alive
 
-__all__ = ["bind", "for_url", "forget", "issue", "key_file", "write_key_file"]
+__all__ = ["LOOPBACK", "bind", "for_url", "forget", "issue", "key_file", "write_key_file"]
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 STARTING_S = 600

@@ -16,6 +16,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import secrets
+import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -33,6 +36,7 @@ from poolhouse import (
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.client import families
 from poolhouse.guard import harnesses
+from poolhouse.isolation.serving import IDLE_SECONDS
 from poolhouse.log import say
 from poolhouse.serve import provenance
 from poolhouse.serve.ports import free_port
@@ -55,10 +59,10 @@ UNGUARDED = "OpenCode ran without poolhouse's plugin reporting, so its tool call
 
 @dataclass(frozen=True, slots=True)
 class Setup:
-    """What one run's ``opencode.json`` is made from: the bridge's URL, the model's name and its window (``served``) and its token; the path of the
-    plugin's folder; the command of the MCP server `lead` (its tools reach OpenCode as `lead_ask` and `lead_note`); the model's thinking switches;
-    and either the launcher's brief, by path, or an ``agent`` of the run's own (its system prompt and its permission rules), which every request then
-    uses."""
+    """What one run's config is made from: the server's URL, the model's name and its window (``served``) and its token; the path of the plugin's
+    folder; the command of the MCP server `lead` (its tools reach OpenCode as `lead_ask` and `lead_note`); the model's thinking switches; either
+    the launcher's brief, by path, or an ``agent`` of the run's own (its system prompt and its permission rules), which every request then uses; and
+    the name the config gives the ``provider``."""
 
     served: tuple[str, str, int]
     token: str
@@ -67,6 +71,7 @@ class Setup:
     thinking: Mapping[str, Any] | None = None
     brief: str = ""
     agent: Mapping[str, Any] | None = None
+    provider: str = PROVIDER
 
 
 def config(setup: Setup) -> str:
@@ -80,10 +85,10 @@ def config(setup: Setup) -> str:
     made: dict[str, Any] = {
         "$schema": "https://opencode.ai/config.json", "mcp": {isolation.SERVER: {"type": "local", "command": list(setup.lead), "enabled": True,
                                                                                   "timeout": int(lead_bridge.tool_timeout() * 1000)}},
-        "model": f"{PROVIDER}/{alias}", "small_model": f"{PROVIDER}/{alias}",
-        "provider": {PROVIDER: {"npm": "@ai-sdk/openai-compatible", "name": "poolhouse",
-                                "options": {"baseURL": base_url.rstrip("/") + "/v1", "apiKey": setup.token}, "models": {alias: model}}},
-        "enabled_providers": [PROVIDER], "plugins": [setup.plugin], "share": "disabled", "autoupdate": False}   # a path, to a folder
+        "model": f"{setup.provider}/{alias}", "small_model": f"{setup.provider}/{alias}",
+        "provider": {setup.provider: {"npm": "@ai-sdk/openai-compatible", "name": "poolhouse",
+                                      "options": {"baseURL": base_url.rstrip("/") + "/v1", "apiKey": setup.token}, "models": {alias: model}}},
+        "enabled_providers": [setup.provider], "plugins": [setup.plugin], "share": "disabled", "autoupdate": False}   # a path, to a folder
     if window:
         made["tool_output"] = {"max_bytes": window, "max_lines": window}
     if setup.agent is None:
@@ -206,28 +211,76 @@ OWN = ("$schema", "model", "small_model", "provider", "tool_output", "instructio
 UNCHANGING = {"edit": "deny", "bash": "deny", "shell": "deny"}
 STANCES = {coding_policy.READ_ONLY: UNCHANGING, coding_policy.PLAN: UNCHANGING, coding_policy.YOLO: {"*": "allow"}}
 """OpenCode's own permission rules for each `harnessing.stance` of a run in place that changes the person's."""
+UNREAD = dict.fromkeys(("OPENCODE_CONFIG_PROJECT_DISABLE", "OPENCODE_DISABLE_PROJECT_CONFIG"), "true")
+"""The switches that keep OpenCode from reading the project's configuration and plugins: an agent's rules there come after this run's, so a run asked
+to change nothing reads none of them."""
+INLINE = "OPENCODE_CONFIG_CONTENT"
+"""The variable whose text OpenCode reads as configuration after the person's and the project's, so what it names neither can replace."""
+SCREEN_VALUES = ("--prompt", "--session", "-s", "--server", "--log-level")
+"""The flags of OpenCode's screen that take the next word as their value, which is then no message."""
 
 
 def printing(extra: Sequence[str]) -> bool:
     """Whether the arguments after ``--`` hold a message, which OpenCode answers once; otherwise it opens its own screen."""
-    return any(not word.startswith("-") for word in extra)
+    words = iter(extra)
+    for word in words:
+        if word in SCREEN_VALUES:
+            next(words, None)
+        elif not word.startswith("-"):
+            return True
+    return False
+
+
+def _beside(theirs: str, made: dict[str, Any]) -> dict[str, Any]:
+    """``made`` over the inline configuration the person's own environment holds (``theirs``), which is read from the same variable."""
+    if not theirs.strip():
+        return made
+    try:
+        held = json.loads(theirs)
+    except ValueError:
+        held = None
+    if not isinstance(held, dict):
+        raise ValueError(f"the {INLINE} of this environment is not a JSON object, so the served model cannot be added to it")
+    both = {**held, **made, "provider": {**held.get("provider", {}), **made["provider"]}}
+    if "instructions" in made:
+        both["instructions"] = [*held.get("instructions", []), *made["instructions"]]
+    return both
+
+
+def _own_server(binary: str, rest: Sequence[str]) -> list[str]:
+    """``--standalone`` where ``binary`` has a background service (its help names the flag): that service is a process of its own, started before
+    this run or outliving it, and it reads neither this run's inline config nor its key. A server the caller names with ``--server`` is theirs."""
+    if any(word == "--standalone" or word.split("=")[0] == "--server" for word in rest):
+        return []
+    try:
+        said = subprocess.run([binary, "--help"], capture_output=True, stdin=subprocess.DEVNULL, timeout=IDLE_SECONDS, check=False).stdout
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"{binary} did not answer --help, so what its release does cannot be told") from None
+    return ["--standalone"] if b"--standalone" in said else []
 
 
 def direct(context: inplace.Context, command: Sequence[str], stance: str, brief: str) -> inplace.Rendering:
-    """A run in place of ``command`` (the binary, then the words after ``--``): ``opencode``, or ``opencode run`` with a message, and one config
-    file naming the served model, merged over the person's own."""
+    """A run in place of ``command`` (the binary, then the words after ``--``): the screen, or ``run`` with a message, on a server of its own where
+    the release would else use a background one. The served model is added by inline config (`INLINE`) under a provider name made for this run, so a
+    project's config can neither move its address nor name it; the screen takes the model from there, since only ``run`` has ``--model``. The key is
+    only in a variable named for this run, which the inline config refers to, so no text a config can read back holds it. A run asked to change
+    nothing also reads none of the project's configuration (`UNREAD`)."""
     binary, *extra = command
-    setup = Setup((context.base_url, context.alias, context.window), context.key, str(context.file(PLUGIN)), (),
-                  families.for_model_id(context.alias).think_kwargs(False), str(context.file(BRIEF)))
+    variable = inplace.key_variable()
+    setup = Setup((context.base_url, context.alias, context.window), f"{{env:{variable}}}", str(context.file(PLUGIN)), (),
+                  families.for_model_id(context.alias).think_kwargs(False), str(context.file(BRIEF)), provider=f"{PROVIDER}-{secrets.token_hex(8)}")
     made = {key: value for key, value in json.loads(config(setup)).items() if key in OWN and (key != "instructions" or brief)}
-    env = {"OPENCODE_CONFIG": str(context.file(CONFIG))}
+    env = {variable: context.key}
     if rules := STANCES.get(stance):
         made["permission"] = rules
         env["OPENCODE_PERMISSION"] = json.dumps(rules)
-    files = {CONFIG: json.dumps(made, sort_keys=True, indent=1), **({BRIEF: brief} if brief else {})}
+        if rules is UNCHANGING:
+            env.update(UNREAD)
+    env[INLINE] = json.dumps(_beside(os.environ.get(INLINE, ""), made), sort_keys=True)
     words = ["run"] if printing(extra) else []
     rest = extra[1:] if extra[:1] == ["run"] else extra
-    return inplace.Rendering((binary, *words, "--model", f"{PROVIDER}/{context.alias}", *rest), files, env)
+    model = ["--model", f"{setup.provider}/{context.alias}"] if words else []
+    return inplace.Rendering((binary, *words, *_own_server(binary, rest), *model, *rest), {BRIEF: brief} if brief else {}, env)
 
 
 def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = say,

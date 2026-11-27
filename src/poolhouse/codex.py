@@ -52,17 +52,18 @@ STANCES = {coding_policy.READ_ONLY: _allowed("read-only"), coding_policy.PLAN: _
 """Codex's own sandbox and approval settings for each `harnessing.stance` of a run in place."""
 
 
-def _model(base_url: str, alias: str, window: int) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+def _model(base_url: str, alias: str, window: int, key_env: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """The top-level settings and the provider's own that point Codex at the served model, each value as TOML."""
     top = [("model", _q(alias)), ("model_provider", _q(PROVIDER))]
     if window:
         top += [("model_context_window", str(int(window))), ("model_auto_compact_token_limit", str(int(window * COMPACT_SHARE)))]
-    return top, [("name", _q("poolhouse")), ("base_url", _q(base_url.rstrip("/") + "/v1")), ("wire_api", _q("responses")), ("env_key", _q(KEY_ENV))]
+    return top, [("name", _q("poolhouse")), ("base_url", _q(base_url.rstrip("/") + "/v1")), ("wire_api", _q("responses")), ("env_key", _q(key_env))]
 
 
-def overrides(base_url: str, alias: str, window: int, more: Sequence[tuple[str, str]] = ()) -> list[str]:
-    """The ``-c key=value`` words of a run in place: the served model, no code mode (a local model is given plain tools), then ``more``."""
-    top, provider = _model(base_url, alias, window)
+def overrides(base_url: str, alias: str, window: int, key_env: str, more: Sequence[tuple[str, str]] = ()) -> list[str]:
+    """The ``-c key=value`` words of a run in place: the served model, whose key is in the variable ``key_env``, no code mode (a local model is given
+    plain tools), then ``more``. Codex reads them over every config file, the project's included."""
+    top, provider = _model(base_url, alias, window, key_env)
     given = [*top, *((f"model_providers.{PROVIDER}.{key}", value) for key, value in provider), ("features.code_mode.enabled", "false"), *more]
     return [word for key, value in given for word in ("-c", f"{key}={value}")]
 
@@ -71,7 +72,7 @@ def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, f
     """The ``config.toml`` for one sandboxed run: provider, window, the (pre, post, wait) hooks, and the MCP server `lead` (``mcp`` is its command
     line). Same input, same bytes."""
     pre, post, wait = hooks
-    top, provider = _model(base_url, alias, window)
+    top, provider = _model(base_url, alias, window, KEY_ENV)
     lines = [*(f"{key} = {value}" for key, value in top[:2]), "check_for_update_on_startup = false", *(f"{key} = {value}" for key, value in top[2:])]
     lines += [
         "", "[shell_environment_policy]", 'inherit = "core"',
@@ -130,8 +131,10 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
 
     def direct(context: inplace.Context) -> inplace.Rendering:
         more = [("developer_instructions", _q(opened[0].brief))] if opened[0].brief else []
-        words = overrides(context.base_url, context.alias, context.window, [*more, *STANCES[harnessing.stance(args, printing=printing(extra))]])
-        return inplace.Rendering((binary, *words, *extra), env={KEY_ENV: context.key})
+        variable = inplace.key_variable()
+        words = overrides(context.base_url, context.alias, context.window, variable,
+                          [*more, *STANCES[harnessing.stance(args, printing=printing(extra))]])
+        return inplace.Rendering((binary, *words, *extra), env={variable: context.key})
 
     def render(context: isolation.Context) -> isolation.Rendering:
         run = opened[0]

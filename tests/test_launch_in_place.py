@@ -59,19 +59,20 @@ def session(name, project, parent, say):
     return harnessid.HarnessSession(f"helper-{name[-6:]}")
 
 
-def launched(harness, person, *words, extra=(), **options):
-    """Run ``harness`` with a runner that keeps what it was given; returns its exit code, the run and the launcher's lines."""
+def launched(harness, person, *words, extra=(), binary="", **options):
+    """Run ``harness`` (the system's `true` unless ``binary`` names another) with a runner that keeps what it was given; returns its exit code, the
+    run and the launcher's lines."""
     _home, project = person
     seen, lines = {}, []
 
     def runner(run):
         seen.update(argv=list(run.argv), env=dict(run.env), cwd=run.cwd, config=run.config,
                     files={word: Path(word).read_text() for word in run.argv[1:] if len(word) < 255 and Path(word).is_file()})
-        if "OPENCODE_CONFIG" in run.env:
-            seen["opencode"] = json.loads(Path(run.env["OPENCODE_CONFIG"]).read_text())
+        if "OPENCODE_CONFIG_CONTENT" in run.env:
+            seen["opencode"] = json.loads(run.env["OPENCODE_CONFIG_CONTENT"])
         return 7
 
-    binary = shutil.which("true") or "/usr/bin/true"
+    binary = binary or shutil.which("true") or "/usr/bin/true"
     argv = ["--on", URL, "--project", str(project), f"--{harness}", binary, *words, *(("--", *extra) if extra else ())]
     code = OWN[harness].launch(argv, say=lines.append, session_factory=session, **{f"run_{harness}": runner}, **options)
     return code, seen, lines
@@ -84,6 +85,7 @@ def test_a_launch_runs_on_the_project_folder_itself_on_a_computer_with_no_sandbo
     code, seen, lines = launched(harness, person)
     assert code == 7, lines
     assert seen["cwd"] == str(project) and seen["config"] is None, "no copy, no folder of the launcher's for the harness's own files"
+    assert seen["env"]["PWD"] == str(project), "a harness that works in the folder PWD names works in the project, wherever the launch was typed"
     assert seen["env"]["HOME"] == str(home) and seen["env"]["PATH"] == os.environ["PATH"], "the person's own settings, MCP servers and programs"
     assert seen["env"]["POOLHOUSE_AGENT"] and "CLAUDECODE" not in seen["env"] and "CLAUDE_CODE_SESSION_ID" not in seen["env"], \
         "marked as an agent, and never as the session the command was typed in"
@@ -102,31 +104,87 @@ def test_claude_is_pointed_at_the_model_by_this_runs_settings_and_keeps_the_pers
     assert not [word for word in seen["argv"] if word.startswith(("--permission-mode", "--disallowed-tools", "--dangerously"))]
 
 
+@pytest.mark.redteam
+def test_claude_takes_no_provider_proxy_or_socket_a_projects_settings_could_name(person, monkeypatch):
+    home, _project = person
+    monkeypatch.setenv("NO_PROXY", "intranet.invalid")
+    (home / ".claude" / "settings.json").write_text('{"env": {"NO_PROXY": "theirs.invalid"}}')
+    code, seen, _ = launched("claude", person)
+    given = json.loads(seen["files"][seen["argv"][seen["argv"].index("--settings") + 1]])["env"]
+    switches = ("BEDROCK", "VERTEX", "FOUNDRY", "MANTLE", "ANTHROPIC_AWS", "ANTHROPIC_GOOGLE_CLOUD", "GATEWAY")
+    assert code == 7 and [given.get(f"CLAUDE_CODE_USE_{each}") for each in switches] == ["0"] * len(switches)
+    assert given.get("ANTHROPIC_UNIX_SOCKET") == "" and given.get("NO_PROXY") == given.get("no_proxy")
+    assert set(given.get("NO_PROXY", "").split(",")) >= {"127.0.0.1", "localhost", "::1", "intranet.invalid", "theirs.invalid"}
+
+
 def test_codex_is_pointed_at_the_model_by_overrides_and_keeps_its_own_home_and_sandbox(person):
     code, seen, _ = launched("codex", person)
     assert code == 7
     given = [seen["argv"][at + 1] for at, word in enumerate(seen["argv"]) if word == "-c"]
     assert 'model_provider="poolhouse"' in given and f'model="{ALIAS}"' in given
-    assert f'model_providers.poolhouse.base_url="{URL}/v1"' in given and seen["env"]["POOLHOUSE_API_KEY"]
+    assert f'model_providers.poolhouse.base_url="{URL}/v1"' in given
     assert "CODEX_HOME" not in seen["env"] or seen["env"]["CODEX_HOME"] == os.environ.get("CODEX_HOME")
     assert "--sandbox" not in seen["argv"] and not [each for each in given if each.startswith(("sandbox_mode", "approval_policy"))]
 
 
-def test_opencode_runs_the_one_on_path_interactively_or_once_with_a_message(person, tmp_path, monkeypatch):
-    bin_folder = tmp_path / "bin"
-    bin_folder.mkdir()
-    own = bin_folder / "opencode"
-    own.write_text("#!/bin/sh\n# PLUMBING, NOT A CODING AGENT\n")
+@pytest.mark.redteam
+def test_codex_is_given_the_key_in_a_variable_no_projects_config_can_name(person):
+    keys = []
+    for _ in range(2):
+        _, seen, _ = launched("codex", person)
+        [named] = [word.partition("=")[2].strip('"') for word in seen["argv"] if word.startswith("model_providers.poolhouse.env_key=")]
+        assert named.startswith("POOLHOUSE_RUN_KEY_") and seen["env"][named] == "local" and "POOLHOUSE_API_KEY" not in seen["env"]
+        keys.append(named)
+    assert keys[0] != keys[1], "a name of this run's own"
+
+
+def stood_in(folder, monkeypatch, help_text=""):
+    """A marked script first on PATH as `opencode`, which answers ``--help`` with ``help_text``."""
+    folder.mkdir()
+    own = folder / "opencode"
+    own.write_text(f"#!/bin/sh\n# PLUMBING, NOT A CODING AGENT\necho '{help_text}'\n")
     own.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_folder}{os.pathsep}{os.environ['PATH']}")
-    assert harnessing.binary_for("opencode") == str(own), "an opencode on PATH is the person's own"
-    code, seen, _ = launched("opencode", person)
-    assert code == 7 and seen["argv"][1:] == ["--model", f"poolhouse/{ALIAS}"], "no message: the interactive screen"
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ['PATH']}")
+    return str(own)
+
+
+def test_opencode_runs_the_one_on_path_interactively_or_once_with_a_message(person, tmp_path, monkeypatch):
+    own = stood_in(tmp_path / "bin", monkeypatch)
+    assert harnessing.binary_for("opencode") == own, "an opencode on PATH is the person's own"
+    code, seen, _ = launched("opencode", person, binary=own)
+    assert code == 7 and seen["argv"][1:] == [], "no message: the interactive screen, which has no --model"
     made = seen["opencode"]
-    assert made["provider"]["poolhouse"]["options"]["baseURL"] == URL + "/v1" and made["model"] == f"poolhouse/{ALIAS}"
-    assert not {"mcp", "plugin", "enabled_providers", "permission", "share", "autoupdate"} & set(made), "the person's own settings stand"
-    code, seen, _ = launched("opencode", person, extra=("fix the test",))
-    assert code == 7 and seen["argv"][1:] == ["run", "--model", f"poolhouse/{ALIAS}", "fix the test"]
+    [provider] = made["provider"]
+    options = made["provider"][provider]["options"]
+    assert provider.startswith("poolhouse-") and options["baseURL"] == URL + "/v1" and made["model"] == f"{provider}/{ALIAS}"
+    assert options["apiKey"].startswith("{env:POOLHOUSE_RUN_KEY_") and seen["env"][options["apiKey"][5:-1]] == "local"
+    assert not {"mcp", "plugins", "enabled_providers", "permission", "share", "autoupdate"} & set(made), "the person's own settings stand"
+    for words in (("--prompt", "fix the test"), ("--session", "ses_1", "--continue")):
+        code, seen, _ = launched("opencode", person, binary=own, extra=words)
+        assert code == 7 and seen["argv"][1:] == list(words), "the value of a flag of the screen is no message"
+    code, seen, _ = launched("opencode", person, binary=own, extra=("fix the test",))
+    [provider] = seen["opencode"]["provider"]
+    assert code == 7 and seen["argv"][1:] == ["run", "--model", f"{provider}/{ALIAS}", "fix the test"]
+
+
+def test_a_release_with_a_background_service_gets_a_server_of_the_runs_own(person, tmp_path, monkeypatch):
+    own = stood_in(tmp_path / "bin", monkeypatch, "--standalone  Run with a private server instead of the background service")
+    _, seen, _ = launched("opencode", person, binary=own)
+    assert seen["argv"][1:] == ["--standalone"]
+    _, seen, _ = launched("opencode", person, binary=own, extra=("fix the test",))
+    assert seen["argv"][1:3] == ["run", "--standalone"]
+    _, seen, _ = launched("opencode", person, binary=own, extra=("--server", "http://127.0.0.1:1"))
+    assert "--standalone" not in seen["argv"], "a server the caller names is theirs"
+
+
+def test_opencode_keeps_the_inline_config_of_the_persons_own_environment(person, monkeypatch):
+    monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", json.dumps({"theme": "theirs", "provider": {"theirs": {"name": "theirs"}}}))
+    code, seen, _ = launched("opencode", person)
+    assert code == 7 and seen["opencode"]["theme"] == "theirs"
+    assert sorted(each.split("-")[0] for each in seen["opencode"]["provider"]) == ["poolhouse", "theirs"]
+    monkeypatch.setenv("OPENCODE_CONFIG_CONTENT", "not json")
+    code, seen, lines = launched("opencode", person)
+    assert code == 2 and not seen and "OPENCODE_CONFIG_CONTENT" in lines[-1]
 
 
 READ_ONLY_OF = {

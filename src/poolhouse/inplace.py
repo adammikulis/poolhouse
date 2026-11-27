@@ -1,14 +1,17 @@
 """How a launched coding harness starts: in place by default, or in the sandbox a launch asked for.
 
 In place, the harness runs on the project folder itself with the person's own settings, MCP servers, programs and network, and is pointed at the
-served model by the arguments and the environment of this one run. Nothing of the person's or the project's configuration is written: what a run needs
-written is in a private folder under the state root, removed when the run ends. `Direct` is what a runner is given in place of a confinement.
+served model by the arguments and the environment of this one run, which the project's own config cannot replace; the server's key is given where
+that config cannot name it. Nothing of the person's or the project's configuration is written: what a run needs written is in a private folder under
+the state root, removed when the run ends. The project's plugins, hooks and programs run with the person's rights, as in the harness started by hand.
+`Direct` is what a runner is given in place of a confinement.
 """
 
 from __future__ import annotations
 
 import contextlib
 import os
+import secrets
 import signal
 import subprocess
 import threading
@@ -21,11 +24,17 @@ from poolhouse import harnessing, isolation, platform, serverkeys
 from poolhouse.board import session as sessions
 from poolhouse.serve.process import kill_process_tree
 
-__all__ = ["IDENTITY", "Context", "Direct", "Rendering", "environment", "run", "started"]
+__all__ = ["IDENTITY", "Context", "Direct", "Rendering", "environment", "key_variable", "run", "started"]
 
 IDENTITY = (sessions.AGENT_ENV, sessions.SUBAGENT_ENV, sessions.TOKEN_ENV, "CODEX_THREAD_ID", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID",
             "POOLHOUSE_SESSION_ID", "POOLHOUSE_SESSION_HARNESS")
 """What names the session a launch was typed in; the harness it starts has a session of its own."""
+
+
+def key_variable() -> str:
+    """The name of a variable made for one run, which the server's key is given in: a project's config reads a variable it can name, and this one it
+    cannot."""
+    return f"POOLHOUSE_RUN_KEY_{secrets.token_hex(8).upper()}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,7 +69,8 @@ class Direct:
     """No folder of the launcher's: the harness keeps what it writes in its own folders."""
 
     def __init__(self, argv: Sequence[str], env: Mapping[str, str], cwd: str | Path, busy: Callable[[], int] = lambda: 0) -> None:
-        self.argv, self.env, self.cwd, self.busy = tuple(argv), dict(env), str(cwd), busy
+        self.argv, self.cwd, self.busy = tuple(argv), str(cwd), busy
+        self.env = {**env, "PWD": self.cwd}   # a harness works in the folder PWD names (OpenCode 2.4.2 does), as a shell standing in it would say
         self.process: subprocess.Popen[bytes] | None = None
 
     def popen(self, *, stdin: Any = None, stdout: Any = None, stderr: Any = None) -> subprocess.Popen[bytes]:

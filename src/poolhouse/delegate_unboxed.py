@@ -89,7 +89,9 @@ def _written(rec: store.Delegate, own: Path, served: tuple[str, str, int], token
     agent = {"mode": "primary", "system": delegate_confined.brief_of(rec), "permissions": delegate_confined.permissions(tools)}
     setup = opencode.Setup(served, token, str(config / opencode.PLUGIN), lead, families.for_model_id(served[1]).think_kwargs(False), agent=agent)
     (config / opencode.CONFIG).write_text(opencode.config(setup), encoding="utf-8")
-    (config / opencode.PLUGIN).write_text(opencode.plugin(settings), encoding="utf-8")
+    entry = config / opencode.PLUGIN / opencode.ENTRY
+    entry.parent.mkdir(parents=True)
+    entry.write_text(opencode.plugin(settings), encoding="utf-8")
 
 
 def _heard(path: Path, hooks: delegate_confined.Hooks) -> Callable[[], None]:
