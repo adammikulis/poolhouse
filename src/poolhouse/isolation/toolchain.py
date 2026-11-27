@@ -13,7 +13,7 @@ import errno
 import os
 import re
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -125,9 +125,40 @@ def system_toolchain() -> tuple[str, ...]:
     """The system toolchain every session may read and run, as the directories this machine has (5.2 and 8.2): the command-line developer
     tools, and the program and library trees of Homebrew and `/usr/local`."""
     found = [COMMAND_LINE_TOOLS] if sys.platform == "darwin" else []
-    for prefix in ("/opt/homebrew", "/usr/local"):
+    for prefix in PREFIXES:
         found += [f"{prefix}/{name}" for name in HOMEBREW]
     return tuple(os.path.realpath(path) for path in found if Path(path).is_dir() and os.path.realpath(path) == path)
+
+
+DEVELOPER_LINK = "/private/var/db/xcode_select_link"
+"""The link `xcode-select` keeps to the developer folder the machine has selected."""
+
+
+def developer_selection() -> tuple[str, ...]:
+    """The link a session may look at, never what it names: Apple's `/usr/bin/git` (and every shim like it) reads where it points and ends at
+    once when it may not, so a program that names the shim, or a `PATH` that finds it first, had no git. A folder it names that the session
+    cannot read is passed over for the command-line tools (`system_toolchain`)."""
+    return (DEVELOPER_LINK,) if sys.platform == "darwin" and Path(DEVELOPER_LINK).is_symlink() else ()
+
+
+PREFIXES = ("/opt/homebrew", "/usr/local")
+SETTINGS = ("openssl*/openssl.cnf", "openssl*/cert.pem")
+"""Under a prefix's `etc`, the files a program of the system toolchain ends without: OpenSSL's configuration (node and `openssl` refuse to
+start when they may not open it) and its list of public certificate authorities. Nothing else of `etc`, no key folder among it."""
+
+
+def system_settings(prefixes: Sequence[str] = PREFIXES) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """The `SETTINGS` this machine has, as ``(files to read, links to them to look at)``; one that leads out of its prefix's `etc` is left out."""
+    files: list[str] = []
+    links: list[str] = []
+    for prefix in prefixes:
+        etc = Path(prefix, "etc")
+        for found in (each for pattern in SETTINGS for each in sorted(etc.glob(pattern))):
+            real = Path(os.path.realpath(found))
+            if real.is_file() and real.is_relative_to(os.path.realpath(etc)):
+                files.append(str(real))
+                links += [str(found)] if found.is_symlink() else []
+    return tuple(dict.fromkeys(files)), tuple(links)
 
 
 VERSION_FOLDERS = (".pyenv/versions", ".local/share/uv/python")

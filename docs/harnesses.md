@@ -219,14 +219,20 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
   anything installed in that environment (an editable install there points at the person's own checkout, which is not readable).
 - **No environment.** A project that asks for one (`pyproject.toml`, `requirements.txt`, `package.json` and the like) and has none the box can
   use is told so in one sentence, in the delegate's brief and in its result.
-- **The preflight.** Before the harness starts, the launcher runs in the proved box `git status`, `diff`, `log` and `show`, and (for a stage
-  the session writes) asks the project's test runner to collect its smallest test file (`scripts/test`, pytest, a `package.json` test
-  program, `cargo metadata`). What fails is posted to the launching session at once and is in the delegate's brief and result; an edit run
-  that changed files and could not start the tests ends `partial`, with `untested:` first in its detail (`isolation.preflight`).
-- **History.** The stage holds the newest 200 commits of the project's `HEAD` and no blob a commit holds under a credential name. A session
-  that reads and runs nothing finds `status.txt`, `changes.diff` and `log.txt` in `.git/poolhouse-review` (`isolation.history`).
-- **Programs.** The system's, Homebrew's and `/usr/local`'s `bin` and Apple's command-line tools are on `PATH`. `/usr/bin/python3` does not
-  run (it is a shim that asks a service the profile refuses). git does not read the system configuration. A program file the session wrote
+- **The preflight.** Before the harness starts, the launcher runs in the proved box `git status`, `diff`, `log` and `show`, writes the tree
+  of a copy of the index as a tool's snapshot does, runs `git` with no environment and the system's `PATH` alone, and (for a stage the
+  session writes) asks the project's test runner to collect its
+  smallest test file (`scripts/test`, pytest, a `package.json` test program, `cargo metadata`). What fails is posted to the launching session
+  at once and is in the delegate's brief and result; an edit run that changed files and could not start the tests ends `partial`, with
+  `untested:` first in its detail (`isolation.preflight`).
+- **History.** The stage holds the newest 200 commits of the project's `HEAD` and no blob a commit holds under a credential name. Its trees
+  are read without those names (`git replace`), so status, diffs, the log, the index and `git write-tree` work and show neither the file nor a
+  change or deletion of it; the commits keep their own ids. A session that reads and runs nothing finds `status.txt`, `changes.diff` and
+  `log.txt` in `.git/poolhouse-review` (`isolation.history`).
+- **Programs.** The system's, Homebrew's and `/usr/local`'s `bin` and Apple's command-line tools are on `PATH`. Apple's `/usr/bin/git` and
+  `/usr/bin/python3` run the command-line tools' own, so a program that names one, or starts `git` with no environment, finds it
+  (`isolation.toolchain.developer_selection`). Of Homebrew's and `/usr/local`'s `etc` the box reads only OpenSSL's `openssl.cnf` and public
+  `cert.pem`, without which node and `openssl` do not start (`toolchain.system_settings`). git does not read the system configuration. A program file the session wrote
   into the stage cannot be run (`sh script.sh` and `python file.py` can).
 - **git.** `.git` is read-only: `git status` and `git diff` work; `git add` and `git commit` fail.
 - **Time and output.** A command ends at its timeout (180 s unless it asks for another, at most 600 s) with everything it left running: the

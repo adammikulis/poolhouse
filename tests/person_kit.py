@@ -65,12 +65,14 @@ def _repo(where: Path) -> Path:
 
 @pytest.fixture
 def project_tasks(workspace_node, monkeypatch, tmp_path):
-    """A signed-in person, two projects (two git checkouts, so two boards) and ``call(path, project=, method=, body=)``
-    to the project task route; ``(call, node, projects)``."""
+    """A signed-in person, two projects (two git checkouts the node holds, so two boards) and ``call(path, project=,
+    method=, body=)`` to the project task route; ``(call, node, projects)``."""
     monkeypatch.setattr(node_launch, "default_state", lambda: workspace_node.state)
     monkeypatch.delenv("POOLHOUSE_BOARD")
     projects = {ident: SimpleNamespace(name=name, root=str(_repo(tmp_path / name)))
                 for ident, name in ((PROJECT, "experiment"), (OTHER, "other"))}
+    for project in projects.values():   # a launch registers its project with the node; looking one up never does
+        place.add(workspace_node.client, Path(project.root))
     registry = SimpleNamespace(machine="local", get=lambda ident: projects[ident])
     sessions = Sessions()
     session = sessions.open("fixture-person", "launch-ticket")
