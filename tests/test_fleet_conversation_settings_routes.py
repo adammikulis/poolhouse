@@ -1,12 +1,16 @@
 """Saved conversation settings through the guarded daemon API."""
 from __future__ import annotations
 
+from contextlib import contextmanager
+
 import pytest
 from launch_support import browser, sign_in, signed
 from test_fleet_ui import Serving
 from test_fleet_ui_founded import (  # noqa: F401  (fixtures: this test's own node)
+    alone,
     founded_node,
     governed,
+    unfounded_node,
 )
 
 from poolhouse.fleet.conversations import Conversations
@@ -14,8 +18,8 @@ from poolhouse.fleet.conversations import Conversations
 pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture
 
 
-@pytest.fixture
-def conversation_api(tmp_path, governed):  # noqa: F811 - a conversation is bound to the pool the node names
+@contextmanager
+def signed_daemon(tmp_path):
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
     served.ui.root = served.files.parent
@@ -30,6 +34,23 @@ def conversation_api(tmp_path, governed):  # noqa: F811 - a conversation is boun
         yield served
     finally:
         served.close()
+
+
+@pytest.fixture
+def conversation_api(tmp_path, governed):  # noqa: F811 - a conversation is bound to the pool the node names
+    with signed_daemon(tmp_path) as served:
+        yield served
+
+
+def test_a_device_in_no_founded_pool_starts_a_conversation_and_opens_studio(tmp_path, alone):  # noqa: F811
+    """A fresh device is its own pool of one: nothing it does alone waits for a pool to be founded."""
+    with signed_daemon(tmp_path) as served:
+        payload = {"operation_id": "a" * 32, "title": "First chat"}
+        status, made, _ = served.call("/ui/conversations", method="POST", body=payload)
+        assert status == 201, made
+        assert served.call("/ui/conversations/operations/" + "a" * 32)[:2] == (200, made)
+        status, workflows, _ = served.call("/ui/studio/workflows")
+        assert (status, workflows) == (200, {"workflows": []})
 
 
 def test_settings_update_preserves_title_and_messages(conversation_api):

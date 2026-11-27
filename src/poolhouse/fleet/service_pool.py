@@ -77,10 +77,13 @@ class Pool:
         except (OSError, ValueError) as exc:
             raise PermissionError("Current pool compute authorization is unavailable; the node must answer.") from exc
 
-    def pool_id(self) -> str:
-        """The canonical pool id reported by this local node."""
+    def pool_id(self, *, or_unfounded: bool = False) -> str:
+        """The canonical pool id reported by this local node; with ``or_unfounded``, '' while the node says it is its own
+        unfounded pool of one."""
         result = self._call("pool_status")
         pool = result.get("pool") if isinstance(result, dict) else None
+        if or_unfounded and pool == "" and (result.get("governance") or {}).get("mode") == "unfounded":
+            return ""
         if not isinstance(pool, str) or not POOL_ID.fullmatch(pool):
             raise PermissionError("The node returned an invalid pool identity.")
         return pool
