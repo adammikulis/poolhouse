@@ -80,6 +80,7 @@ def test_unchecked_source_configuration_is_refused(monkeypatch, tmp_path, option
 
 
 def test_standard_package_provider_is_scoped_and_keeps_distrust_refusals(monkeypatch, tmp_path):
+    import time
     from types import SimpleNamespace
 
     from poolhouse.net.policy import Distrusted
@@ -89,7 +90,7 @@ def test_standard_package_provider_is_scoped_and_keeps_distrust_refusals(monkeyp
     packages.run("python", ["install", "tensor"], timeout=5, env={})
     assert calls[-1][0][4:6] == ["--index-url", "https://pypi.org/simple"]
     assert not policy.default().listed("pypi.org")
-    monkeypatch.setattr(observers, "gate", lambda kind, key: SimpleNamespace(since=1, reason="distrusted"))
+    monkeypatch.setattr(observers, "gate", lambda kind, key: SimpleNamespace(since=time.time(), state="bad", reason="distrusted"))
     calls.clear()
     with pytest.raises(Distrusted):
         packages.run("python", ["install", "tensor"], timeout=5, env={})

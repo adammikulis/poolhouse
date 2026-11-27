@@ -98,7 +98,8 @@ class Policy:
     """Allow-list plus recorded approvals; an allow-list entry may hold ``*`` wildcards."""
 
     def __init__(self, allowed: Iterable[str] = ALLOWED, *, path: Path | None = None,
-                 clock: Callable[[], float] = time.time) -> None:
+                 clock: Callable[[], float] = time.time, person: bool = False) -> None:
+        self.person = person
         self.allowed = tuple(p.lower() for p in allowed)
         self.path = path
         self.clock = clock
@@ -155,13 +156,21 @@ class Policy:
         now = self.clock()
         return any(a.host == host and (not a.until or a.until > now) for a in self.approvals())
 
+    def named(self, url: str) -> bool:
+        """Whether the host of ``url`` is listed or approved."""
+        host = host_of(url)
+        netloc = urllib.parse.urlsplit(url.strip()).netloc.lower().rsplit("@", 1)[-1] if host else ""
+        return bool(host) and (self.listed(host) or self.listed(netloc) or self.approved(host))
+
     def admit(self, url: str, purpose: str = "fetch") -> str:
-        """The host of ``url`` when it may be reached; `NeedsApproval` otherwise."""
+        """The host of ``url`` when it may be reached; `NeedsApproval` otherwise. A ``person`` policy (the caller named
+        the URL) admits any https URL, with no reputation hold."""
         host = host_of(url)
         if not host:
             raise Refused("that URL has no host")
-        netloc = urllib.parse.urlsplit(url.strip()).netloc.lower().rsplit("@", 1)[-1]
-        if self.listed(host) or self.listed(netloc) or self.approved(host):
+        if self.person and urllib.parse.urlsplit(url.strip()).scheme == "https":
+            return host
+        if self.named(url):
             self._tighten(host, url, purpose)
             return host
         raise NeedsApproval(host, purpose)

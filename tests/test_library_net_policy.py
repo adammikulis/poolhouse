@@ -1,15 +1,18 @@
-"""`net.get` and `net.download` reach the built-in hosts and the hosts a person approved unless the caller names a
-pipeline; the allow-list is the `allowed` argument of `net.Policy`, and `net.library()` is the pipeline a program
-names to reach any host."""
+"""`net.get` and `net.download` fetch any https URL the caller names; `net.default()`, which Poolhouse's own code
+passes, reaches the built-in and approved hosts. The allow-list is the `allowed` argument of `net.Policy`, and
+`net.library()` is the pipeline that lists every host."""
 
 from __future__ import annotations
 
 import contextlib
+import importlib
 
 import pytest
 
 from poolhouse import httpguard, net
 from poolhouse.net import pipeline as pipeline_module, policy
+
+download_module = importlib.import_module("poolhouse.net.download")
 
 URL = "https://api.acme.example/v1/model.gguf"
 
@@ -42,12 +45,30 @@ def unsealed(monkeypatch):
     return seen
 
 
-def test_get_and_download_refuse_a_host_nobody_listed_when_no_pipeline_is_named(unsealed, tmp_path):
-    with pytest.raises(net.NeedsApproval, match=r"api\.acme\.example"):
+def test_get_and_download_fetch_any_https_url_the_caller_names_when_no_pipeline_is_given(unsealed, tmp_path):
+    with pytest.raises(Reached):
         net.get(URL)
-    with pytest.raises(net.NeedsApproval, match=r"api\.acme\.example"):
+    with pytest.raises(Reached):
         net.download(URL, tmp_path / "model.gguf")
-    assert unsealed == [] and not (tmp_path / "model.gguf").exists()
+    assert unsealed == [URL, URL]
+
+
+def test_plain_http_to_an_unlisted_host_is_refused_even_when_the_caller_names_it(unsealed, tmp_path):
+    plain = URL.replace("https:", "http:")
+    with pytest.raises(net.NeedsApproval):
+        net.get(plain)
+    with pytest.raises(net.NeedsApproval):
+        net.download(plain, tmp_path / "model.gguf")
+    assert unsealed == []
+
+
+def test_a_file_over_an_unlisted_hop_of_a_caller_named_download_is_not_pinned_as_a_pull(unsealed):
+    chosen = net.named()
+    listed, other = "https://huggingface.co/x", URL
+    assert download_module._vouched(chosen, (listed, listed))
+    assert not download_module._vouched(chosen, (listed, other))
+    assert download_module._vouched(net.default(), (other,)) and not download_module._vouched(net.library(), (listed,))
+    assert not net.default().policy.person
 
 
 def test_the_default_pipeline_is_the_app_one_and_the_library_one_is_a_choice(unsealed):
@@ -133,7 +154,7 @@ def test_building_the_library_pipeline_does_not_widen_the_app_one(unsealed):
     net.library()
     assert not net.default().policy.listed("api.acme.example")
     with pytest.raises(net.NeedsApproval):
-        net.get(URL)
+        net.get(URL, pipeline=net.default())
 
 
 def test_the_library_pipeline_keeps_the_guards_that_are_not_a_host_list(unsealed):

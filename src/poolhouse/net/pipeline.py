@@ -224,6 +224,18 @@ def library() -> Pipeline:
     return _STANDARD["library"]
 
 
+def named() -> Pipeline:
+    """The pipeline for a URL the caller named (`net.get` or `net.download` given no pipeline): the one `use` installed,
+    else a standard one that also fetches any https URL, with no reputation hold. Addresses, redirects, size limits,
+    digests and scanning apply as in `default`. Poolhouse's own code passes `default`, so a URL another device, a page or a
+    model supplied never comes through here."""
+    if _CURRENT is not None:
+        return _CURRENT
+    if "named" not in _STANDARD:
+        _STANDARD["named"] = Pipeline(policy=hosts.Policy(person=True))
+    return _STANDARD["named"]
+
+
 @contextlib.contextmanager
 def use(pipeline: Pipeline) -> Iterator[Pipeline]:
     """Make ``pipeline`` the default for the block; a test points the world at a local server."""
