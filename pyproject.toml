@@ -82,13 +82,19 @@ coordinator = ["py-machineid"]
 # `poolhouse-speech`: faster-whisper transcribes, piper speaks. A piper voice is a
 # model file and config file named by POOLHOUSE_PIPER_VOICE; `poolhouse-speech providers` says what
 # each engine still wants
-speech = ["faster-whisper>=1.2.1", "piper-tts>=1.8.0"]
-audio = ["poolhouse[speech]", "imageio-ffmpeg>=0.6,<1", "torchaudio>=2.11"]
+speech = ["poolhouse[asr]", "piper-tts>=1.8.0"]
+# the parts installed alone, the first time something needs them (`poolhouse.provision`)
+asr = ["faster-whisper>=1.2.1"]
+ffmpeg = ["imageio-ffmpeg>=0.6,<1"]
+heif = ["pillow-heif>=0.22"]
+llama-build = ["cmake>=3.28"]
+audio = ["poolhouse[speech,ffmpeg]", "torchaudio>=2.11"]
 gguf = ["gguf>=0.10", "numpy>=1.24"]
 graph = ["numpy>=1.24"]
 # `poolhouse-decide`: the embed backend's head
 decide = ["numpy>=1.24", "safetensors>=0.4"]
-# the pointer backend runs a released checkpoint on torch; its files are downloaded only on request
+# the pointer backend runs a released checkpoint on torch; its libraries and pinned files are fetched the first time it
+# is chosen by name (`backend="auto"` downloads nothing)
 decide-pointer = ["poolhouse[decide]", "torch>=2.14", "transformers>=5.17", "peft>=0.21.0",
                   "huggingface_hub>=1.32"]
 # an embedded property graph: one file on disk, native Cypher, no server.

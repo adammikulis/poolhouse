@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib import metadata
 from pathlib import Path
@@ -20,11 +21,12 @@ from typing import Any
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
-from poolhouse import maintenance, net
+from poolhouse import home, maintenance, net, provision
 from poolhouse.files import promote
 from poolhouse.http import ServerError
 from poolhouse.httpguard import Refused
 from poolhouse.lock import only_one
+from poolhouse.log import warn
 from poolhouse.net import packages
 
 from . import compute_artifact, compute_install, dependency_proof
@@ -37,6 +39,8 @@ METADRIVE_SOURCE = ("metadrive-simulator @ git+https://github.com/metadriverse/"
                     "metadrive.git@85e5dadc6c7436d324348f6e3d8f8e680c06b4db")
 
 PYTHON = "3.13"
+PROVIDE_WAIT_S = 3600.0
+"""How long a second process waits for the one already installing libraries for the same environment."""
 STANDALONE = ("https://api.github.com/repos/astral-sh/"
               "python-build-standalone/releases/latest")
 
@@ -543,6 +547,27 @@ class Environment:
 
     def remove(self) -> None:
         shutil.rmtree(self.path, ignore_errors=True)
+
+
+def provide(environment: Environment, names: list[str], ready: Callable[[], None]) -> None:
+    """Make ``ready`` pass: when it raises, the ``names`` libraries are installed first (one process at a time, the
+    others find it done) and it is asked again. Raises OSError with what was wrong and why nothing could be installed."""
+    try:
+        ready()
+        return
+    except (OSError, subprocess.SubprocessError) as exc:
+        if refused := provision.download_refusal():
+            raise OSError(f"{exc}; it was not installed: {refused}") from exc
+    lock = home.expand(environment.root) / ".env-provide.lock"
+    with only_one(lock, wait=True, timeout=PROVIDE_WAIT_S, announce=warn, note="installing libraries"):
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            ready()
+            return
+        warn(f"installing the {', '.join(names)} libraries, needed for the first time")
+        changed = environment.install(names, on_progress=warn)
+        if failed := [f"{name}: {one.get('error')}" for name, one in changed.items() if not one.get("ok")]:
+            raise OSError("the libraries could not be installed: " + "; ".join(failed))
+        ready()
 
 
 def _base(spec: str) -> str:

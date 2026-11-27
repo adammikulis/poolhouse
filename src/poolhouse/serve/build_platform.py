@@ -12,9 +12,10 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
+from poolhouse import provision
 from poolhouse.serve.binary import child_env, is_windows
 
-__all__ = ["arches_from_source", "arches_in", "can_build_from_source", "cmake_flags", "copy_flat",
+__all__ = ["arches_from_source", "arches_in", "can_build_from_source", "cmake_flags", "cmake_program", "copy_flat",
            "now_iso", "server_name", "verify_libraries", "version_of", "vulkan_available"]
 
 # `LLM_ARCH_QWEN4EXP, "qwen4exp"` -- every architecture name llama.cpp's own source reads,
@@ -24,6 +25,15 @@ _ARCH_NAME = re.compile(r'LLM_ARCH_\w+,\s*"([a-z0-9_]+)"')
 
 def server_name() -> str:
     return "llama-server.exe" if is_windows() else "llama-server"
+
+
+def cmake_program(found: str | None = None) -> str:
+    """``found`` or the ``cmake`` on PATH; with neither, the one of the ``llama-build`` extra, installed first. Raises
+    `provision.Unavailable` when none can be had."""
+    if here := found or shutil.which("cmake"):
+        return here
+    package = provision.module("cmake", "llama-build")
+    return str(Path(package.CMAKE_BIN_DIR) / ("cmake.exe" if is_windows() else "cmake"))
 
 
 def vulkan_available() -> bool:

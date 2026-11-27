@@ -12,8 +12,11 @@ are paced and can be held to hours when somebody is meant to be awake.
 from __future__ import annotations
 
 import contextlib
+import importlib
 import os
 import random
+import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -21,11 +24,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from poolhouse import home, provision
+from poolhouse.lock import only_one
+from poolhouse.log import warn
 from poolhouse.net import browserguard
+
+FETCH_S = 1800.0
+"""Seconds the browser's download, and a wait for another process's, may take."""
 
 
 class BrowserUnavailable(RuntimeError):
-    """Playwright is not installed. `pip install poolhouse[scrape]`, then `playwright install`."""
+    """Playwright or a browser is not here and could not be installed."""
 
 
 @dataclass
@@ -61,15 +70,70 @@ def placed() -> tuple[int, int] | None:
     return x, y
 
 
+MISSING = ("Executable doesn't exist", "is not found at")
+"""What Playwright says when the browser asked for is not on this computer."""
+EXECUTABLE = ("from playwright.sync_api import sync_playwright\n"
+              "with sync_playwright() as p:\n print(p.chromium.executable_path)")
+
+
+def bundled_chromium(run: Any = subprocess.run) -> str:
+    """The Chromium of this Playwright release kept under the state root (``tools/browsers``), downloaded by Playwright's own
+    installer the first time; one process downloads and the others use it. Raises `BrowserUnavailable` with why not."""
+    kept = home.state("tools", "browsers")
+    environment = {**os.environ, "PLAYWRIGHT_BROWSERS_PATH": str(kept)}
+
+    def executable() -> str:
+        said = run([sys.executable, "-c", EXECUTABLE], capture_output=True, text=True, timeout=60, env=environment)
+        found = said.stdout.strip() if said.returncode == 0 else ""
+        return found if found and Path(found).is_file() else ""
+
+    try:
+        if found := executable():
+            return found
+        if refused := provision.download_refusal():
+            raise BrowserUnavailable(f"no browser is on this computer, and none was downloaded: {refused}")
+        kept.mkdir(parents=True, exist_ok=True)
+        with only_one(kept / "fetch.lock", wait=True, timeout=FETCH_S, announce=warn, note="downloading Chromium"):
+            if found := executable():
+                return found
+            warn("a browser is needed for the first time: downloading Playwright's Chromium once")
+            done = run([sys.executable, "-m", "playwright", "install", "chromium"], timeout=FETCH_S, env=environment,
+                       stdout=2)   # its progress goes to standard error, so a program reading this one's output is not fed it
+            if done.returncode:
+                raise BrowserUnavailable(f"Playwright's installer exited {done.returncode}; its output is above")
+        if found := executable():
+            return found
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise BrowserUnavailable(f"no browser is on this computer, and none could be downloaded: {exc}") from exc
+    raise BrowserUnavailable("Playwright's installer finished and left no Chromium")
+
+
+def _launch_errors() -> tuple[type[BaseException], ...]:
+    """What a browser launch raises: Playwright's own error where Playwright is here, and RuntimeError."""
+    try:
+        return (importlib.import_module("playwright.sync_api").Error, RuntimeError)
+    except ImportError:
+        return (RuntimeError,)
+
+
+def _context(play: Any, profile: Path, window: Window) -> Any:
+    """The persistent context of ``window``: the browser it names, else the bundled Chromium where that one is not here."""
+    options = {"headless": window.headless, "args": window.args(), "accept_downloads": not window.guarded,
+               "viewport": {"width": window.width, "height": window.height}}
+    try:
+        return play.chromium.launch_persistent_context(str(profile), channel=window.channel, **options)
+    except _launch_errors() as exc:
+        if not any(said in str(exc) for said in MISSING):
+            raise
+    return play.chromium.launch_persistent_context(str(profile), executable_path=bundled_chromium(), **options)
+
+
 @contextlib.contextmanager
 def _paged(play: Any, window: Window) -> Iterator[Any]:
     """A page on that Playwright, over a profile directory that persists."""
     profile = Path(window.profile).expanduser()
     profile.mkdir(parents=True, exist_ok=True)
-    context = play.chromium.launch_persistent_context(
-        str(profile), headless=window.headless, channel=window.channel,
-        args=window.args(), accept_downloads=not window.guarded,
-        viewport={"width": window.width, "height": window.height})
+    context = _context(play, profile, window)
     if window.guarded:
         browserguard.install(context)
     context.set_default_timeout(window.timeout_ms)
@@ -94,7 +158,7 @@ def browser(window: Window, play: Any = None) -> Iterator[Any]:
             yield page
         return
     try:
-        from playwright.sync_api import sync_playwright
+        sync_playwright = provision.module("playwright.sync_api", "scrape").sync_playwright
     except ImportError as exc:  # pragma: no cover - depends on what is installed
         raise BrowserUnavailable(str(exc)) from exc
     with sync_playwright() as opened, _paged(opened, window) as page:

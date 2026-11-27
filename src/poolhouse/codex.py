@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
@@ -108,9 +107,13 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
     args = harnessing.parser("codex", "Codex", DEFAULT_PORT, DEFAULT_SLOTS).parse_args(ours)
     provenance.told(args.lease_for)
     args.session_factory = session_factory
-    binary = args.codex or shutil.which("codex") or ""
+    try:
+        binary = args.codex or harnessing.installed_binary("codex")
+    except (ImportError, RuntimeError, OSError) as why:
+        say(f"error: no `codex` on PATH, and it could not be installed: {why}")
+        return 2
     if not binary:
-        say("error: no `codex` on PATH; install Codex or pass --codex PATH")
+        say("error: no `codex` on PATH; pass --codex PATH")
         return 2
     if not harnessing.checked(args, "codex", say, interactive=not printing(extra)):
         return 2

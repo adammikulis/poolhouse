@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from poolhouse import provision
 from poolhouse.media import ImageError, kind, mime, to_data_url
 
 DEFAULT_MAX_EDGE = 1024
@@ -41,27 +42,24 @@ def load_bytes(source: Path | str | bytes) -> bytes:
 
 
 def _pillow():
-    """Pillow, or an ``ImageError`` naming the extra that installs it."""
+    """Pillow, installed the first time it is needed; an ``ImageError`` saying why it could not be."""
     try:
-        from PIL import Image
+        return provision.module("PIL.Image", "vision")
     except ImportError as exc:
-        raise ImageError(
-            "Pillow is needed to convert or resize images -- "
-            "install it with 'pip install poolhouse[vision]'"
-        ) from exc
-    return Image
+        raise ImageError(f"Pillow is needed to convert or resize images: {exc}") from exc
 
 
-def _open_heif_too() -> None:
-    """Teach Pillow to read HEIC, if the plugin for it is installed."""
+def _open_heif_too() -> str:
+    """Teach Pillow to read HEIC, the plugin installed the first time; why it could not be, or an empty string."""
     try:
-        import pillow_heif
-    except ImportError:
-        return
+        pillow_heif = provision.module("pillow_heif", "heif")
+    except ImportError as exc:
+        return str(exc)
     try:
         pillow_heif.register_heif_opener()
-    except Exception:                                 # noqa: BLE001
-        pass
+    except Exception as exc:                          # noqa: BLE001
+        return f"HEIC support did not load: {exc}"
+    return ""
 
 
 def resize_to_fit(
@@ -107,13 +105,12 @@ def to_supported_format(data: bytes) -> tuple[bytes, bool]:
     import io
 
     Image = _pillow()
-    _open_heif_too()
+    no_heif = _open_heif_too() if detected == "heic" else ""
     try:
         image = Image.open(io.BytesIO(data))
     except OSError as exc:
-        hint = ("; HEIC needs 'pip install pillow-heif'"
-                if detected == "heic" else "")
-        raise ImageError(f"cannot convert {detected}: {exc}{hint}") from exc
+        why = f"; {no_heif}" if no_heif else ""
+        raise ImageError(f"cannot convert {detected}: {exc}{why}") from exc
     with image:
         buffer = io.BytesIO()
         image.convert("RGB").save(buffer, format="PNG")

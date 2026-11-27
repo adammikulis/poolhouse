@@ -24,7 +24,7 @@ from poolhouse.lock import only_one
 from poolhouse.log import say
 from poolhouse.safenames import Unsafe, unpack
 
-__all__ = ["REPO", "RIPGREP", "VERSION", "InstallFailed", "asset_name", "ensure", "kept", "ripgrep_asset_name"]
+__all__ = ["REPO", "RIPGREP", "VERSION", "InstallFailed", "asset_name", "ensure", "keep", "kept", "ripgrep_asset_name"]
 
 REPO = "anomalyco/opencode"
 """The project's releases (the former sst/opencode, which redirects here)."""
@@ -90,31 +90,34 @@ def ensure() -> str:
     with only_one(root() / "fetch.lock", wait=True, timeout=WAIT_S, note="fetching OpenCode"):
         if binary := kept():
             return binary
-        _fetch(f"{RELEASE}{VERSION}", asset_name(), "opencode")
-        _fetch(f"{RIPGREP_RELEASE}{RIPGREP}", ripgrep_asset_name(), "rg")
+        keep(f"{RELEASE}{VERSION}", asset_name(), _name("opencode"), _folder() / _name("opencode"))
+        keep(f"{RIPGREP_RELEASE}{RIPGREP}", ripgrep_asset_name(), _name("rg"), _folder() / _name("rg"))
         return kept()
 
 
-def _fetch(url: str, want: str, program: str) -> None:
-    """Keep ``program`` from the asset ``want`` of the release at ``url`` in the pinned folder."""
+def keep(url: str, want: str, member: str, target: Path, *, sha256: str = "") -> None:
+    """Keep the file ``member`` of the asset ``want``, of the GitHub release at ``url``, as ``target``. ``sha256`` pins the asset: it is
+    the digest the download is held to, in place of the one the release reports. `InstallFailed` names why it was not."""
     try:
-        release = net.default().json(url, net.Ask(purpose="OpenCode releases", tries=3, headers={"Accept": "application/vnd.github+json"}))
+        release = net.default().json(url, net.Ask(purpose="tool releases", tries=3, headers={"Accept": "application/vnd.github+json"}))
     except (ServerError, OSError, ValueError) as why:
         raise InstallFailed(f"could not reach the release {url}: {why}") from None
     asset = next((a for a in (release.get("assets") or [] if isinstance(release, dict) else []) if a.get("name") == want), None)
     if asset is None:
         raise InstallFailed(f"the release {url} carries no {want}")
+    if sha256:
+        asset = {**asset, "digest": f"sha256:{sha256}"}
     say(f"fetching {want}")
-    with tempfile.TemporaryDirectory(prefix="poolhouse-opencode-") as scratch:
+    with tempfile.TemporaryDirectory(prefix="poolhouse-tool-") as scratch:
         try:
             archive = updates.download(asset, scratch)
             staging = Path(scratch) / "unpacked"
             unpack(archive, staging)
         except (updates.UpdateError, Unsafe) as why:
             raise InstallFailed(f"{want} was not installed: {why}") from None
-        found = next((p for p in staging.rglob(_name(program)) if p.is_file()), None)
+        found = next((p for p in staging.rglob(member) if p.is_file()), None)
         if found is None:
-            raise InstallFailed(f"{want} holds no {_name(program)}")
-        with files.writing(_folder() / _name(program), suffix=".part") as part:   # whole or absent: `kept` is asked without the lock
+            raise InstallFailed(f"{want} holds no {member}")
+        with files.writing(target, suffix=".part") as part:   # whole or absent: a kept tool is asked for without the lock
             shutil.copy2(found, part)
             part.chmod(stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)

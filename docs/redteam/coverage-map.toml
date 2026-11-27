@@ -285,7 +285,14 @@ tests = ["tests/test_studio_native_picks.py::test_native_endpoint_never_accepts_
 note = "Original-source selection requires the authenticated Studio principal and a current resource callback. Exact native callbacks additionally require the private local app launch proof, nonce and single-use chooser claim; hostile browser headers, forged proofs, stale authority and injected fields cannot mint a watch source."
 
 [[group]]
-match = ["spawn:serve/python_runtime.py:command"]
+match = ["spawn:provision.py:_install"]
+status = "covered"
+count = 1
+tests = ["tests/test_provision.py::test_the_installer_takes_no_destination_or_module_path_from_the_environment", "tests/test_provision.py::test_a_system_python_is_never_installed_into", "tests/test_provision.py::test_an_extra_follows_the_extras_it_names_keeps_its_markers_and_never_names_poolhouse"]
+note = "The only process started is the environment's own interpreter running ensurepip with a fixed argument list. What is installed is what the project declares for an extra, never a name from input and never poolhouse from an index; a system interpreter is refused, and variables that move the destination or the module path are removed."
+
+[[group]]
+match = ["spawn:serve/python_runtime.py:command.ready"]
 status = "covered"
 count = 1
 tests = ["tests/test_serve_python_runtime.py::test_unready_managed_runtime_never_falls_back", "tests/test_serve_python_runtime.py::test_installed_or_forged_source_shape_cannot_downgrade", "tests/test_serve_python_runtime.py::test_isolated_module_probe_executes_without_model_import", "tests/test_serve_python_runtime.py::test_server_environment_preserves_only_explicit_hub_credential"]

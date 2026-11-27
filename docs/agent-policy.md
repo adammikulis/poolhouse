@@ -851,6 +851,15 @@ no shape this repository has decided to live with. Budgets and red-team debt onl
   (`scripts/gates/refusal_stubs.py`, metric `refusal-stubs`) is a feature nobody built, refusing every caller for ever; it
   blocked every local coding harness until the isolated launcher replaces it. A feature that cannot be built yet is not
   merged behind a refusal: either its entry points do not exist, or it works. The metric only falls.
+- **Install what can be installed.** Nothing fails, refuses or quietly does less for want of a library, tool, browser,
+  runtime or built artifact that Poolhouse can install or build: it does so the first time it is needed, with the
+  installers it has (`poolhouse.provision` for a declared extra, `serve.build_recover` for llama.cpp,
+  `opencode_install.keep` for a pinned release asset, `fleet.environment.provide` for the job environment). It is
+  pinned by the project's declarations or a digest, goes into Poolhouse's state or the project's environment (never a
+  system Python or the account's own settings), says what it is doing, is done by one process while the others wait,
+  works offline once cached, and never happens at upgrade time. `POOLHOUSE_INSTALL_AT_NEED=off` and a LAN-only download
+  source stop it. What only the account holder can add is reported with why. `scripts/gates/install_instructions.py`
+  (metric `install-instructions`) counts installer commands written out in messages under `src/poolhouse`; it only falls.
 - Writes are refused when they add a function whose body already exists elsewhere, a raw HTTP call, a docstring over
   twelve lines, a signature over eight parameters, or a write that takes a file over its line limit or makes an
   already-over file longer (`scripts/install-hooks.sh` installs the pre-commit chain).

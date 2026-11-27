@@ -15,7 +15,7 @@ Classes
 - **C, plain config**: a path, a name, a limit, an address; no safety consequence.
 - **D, opt-in speed-up**: faster when set and off by default. The decision column says why it stays off or why it was turned on.
 
-Counts: A 32, B 34, C 119, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
+Counts: A 33, B 34, C 119, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
 
 ## A: opt-in safety
 
@@ -23,6 +23,7 @@ Counts: A 32, B 34, C 119, D 6 (a variable name counts once, a row naming no var
 | --- | --- | --- | --- | --- |
 | `POOLHOUSE_NODE_LAN` | `poolhouse.lan` (node start, daemon bind, beacons) | was: a node on the LAN, multicast and a macOS Local Network prompt | tests/conftest.py, rigs | **fixed**: `lan.allowed()` is true only for the installed software on the account's own state root and not under pytest; `off` still narrows. A moved `POOLHOUSE_HOME`, a redirected `HOME` or a test closes it with nothing set |
 | `POOLHOUSE_RUNTIME_ENSURE` | `scripts/hooks/workspace_hook.py` | was: every hook call in any tree could start a runtime build | conftest, smoke | **fixed**: the refresh runs only on the persons machine; `off` still narrows |
+| `POOLHOUSE_INSTALL_AT_NEED` (`off`) | `poolhouse.provision` | a missing library is installed into the running virtual environment, and a missing tool, build or model file is downloaded, the first time it is needed | conftest at import (inherited by children) | structural under pytest (set at import): no test installs a package or downloads a build; `off` only narrows, and a LAN-only download source narrows the same way |
 | `POOLHOUSE_NONINTERACTIVE` | `poolhouse.keystore`, `person`, hooks | the real OS keystore may ask a person | conftest, `runtime_deploy`, workers | **structural**: the machine's own keystore is reachable only by the installed software on the real home (`poolhouse.real_machine`); the former no-real-keystore variable was removed and nothing can turn the real keystore on elsewhere |
 | `POOLHOUSE_HOME`, `POOLHOUSE_CACHE` | `poolhouse.home` | the real `~/.poolhouse` and `~/.cache/poolhouse` | `_no_machine_state` and `_real_home` (autouse, session) | structural under pytest: the redirect is autouse and the run fails if a file under the real root changed. A rig outside pytest (`tests/pool_check`) sets both itself |
 | `POOLHOUSE_BENCH_CEILING`, `POOLHOUSE_BENCH_HOME`, `POOLHOUSE_BENCH_TRACE`, `POOLHOUSE_FIT_FILE`, `POOLHOUSE_INGEST_HOME`, `POOLHOUSE_JOBS_HOME`, `POOLHOUSE_KOKORO_MODEL`, `POOLHOUSE_KOKORO_VOICES`, `POOLHOUSE_LIMITS_FILE`, `POOLHOUSE_LLAMA_BUILD`, `POOLHOUSE_PIPER_VOICE`, `POOLHOUSE_PROFILES_FILE`, `POOLHOUSE_SEARCH`, `POOLHOUSE_TRAIN_CEILING`, `POOLHOUSE_TRAIN_HOME`, `POOLHOUSE_WEB_PROFILE`, `POOLHOUSE_WHISPER_CPP_MODEL`, `POOLHOUSE_CHECKOUTS`, `POOLHOUSE_RATES` | `poolhouse.home.OVERRIDES` and one reader each | the machine's own file (measurements, limits, a voice, a search engine) | a shell | structural under pytest: `_no_machine_state` deletes them for every test |

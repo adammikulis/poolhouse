@@ -30,17 +30,20 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-if importlib.util.find_spec("jwt") is None:
-    sys.exit(f"agent-identity: PyJWT is not installed in {sys.prefix}; run `poolhouse runtime ensure`, "
-             "which installs the github-app extra")
-
 from poolhouse import (
     caller,
     credentials,
     home,
+    provision,
     real_machine,
     runtime,
 )
+
+try:   # PyJWT, installed the first time this command runs without it; the imports below need it
+    provision.ensure("github-app", "jwt")
+except ImportError as why:
+    sys.exit(f"agent-identity: PyJWT is needed and could not be installed: {why}")
+
 from poolhouse.command import Group, flag
 from poolhouse.fleet import runtime_wheel, updates
 from poolhouse.fleet.onboard import web

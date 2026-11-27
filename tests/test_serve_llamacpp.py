@@ -9,12 +9,13 @@ import json
 import shutil
 import socket
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 import poolhouse.setup as stack_setup
-from poolhouse import sandbox, sentinel
+from poolhouse import provision, sandbox, sentinel
 from poolhouse.sandbox.run import wrapped
 from poolhouse.serve import (
     binary,
@@ -256,7 +257,8 @@ def test_status_offline_says_unknown(site, pipe):
     assert llamacpp_status.gather(site.upstream, pipe, check=False)["upstream"] == {}
 
 
-def test_a_missing_tool_is_named_and_nothing_is_installed(site, pipe, monkeypatch):
+def test_a_cmake_that_cannot_be_installed_is_named_and_no_system_installer_is_run(site, pipe, monkeypatch):
+    monkeypatch.setitem(sys.modules, "cmake", None)  # the cmake package is not here either
     site.commit(100)
     asked = []
     real = subprocess.run
@@ -264,7 +266,7 @@ def test_a_missing_tool_is_named_and_nothing_is_installed(site, pipe, monkeypatc
     monkeypatch.setattr(subprocess, "run", lambda argv, *a, **k: asked.append(argv) or real(argv, *a, **k))
     with pytest.raises(BuildFailed) as caught:
         llamacpp_update.update("master", llamacpp_update.Env(site.upstream, pipe, smoke=passes))
-    assert "missing cmake" in str(caught.value) and "installs nothing" in str(caught.value)
+    assert "missing cmake" in str(caught.value) and provision.SWITCH in str(caught.value)
     assert not any("brew" in str(a) or "install" in str(a) for a in asked)
     assert site.hits == []
 

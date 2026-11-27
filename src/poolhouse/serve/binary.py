@@ -202,8 +202,18 @@ def machine_binary(name: str, candidates: tuple[str, ...]) -> Path | None:
 
 
 def require_binary(name: str = "llama-server", **kwargs: object) -> Path:
-    """``find_binary`` or raise with the search path spelled out."""
+    """``find_binary``; a ``llama-server`` that is nowhere is built or downloaded first (`build_recover.ensure`). Raises
+    `BinaryNotFound` with the search path and why none could be made. A path the caller named is never stood in for."""
     found = find_binary(name, **kwargs)  # type: ignore[arg-type]
+    why = f"{name} is only built or downloaded when no path is named for it."
+    if found is None and name == "llama-server" and not kwargs.get("explicit"):
+        try:
+            lazy.load("poolhouse.serve.build_recover", "ensure")()
+        except (OSError, RuntimeError, ValueError) as exc:
+            why = f"None could be built or downloaded: {exc}"
+        else:
+            found = find_binary(name, **kwargs)  # type: ignore[arg-type]
+            why = "The build made here was not found afterwards."
     if found is not None:
         return found
     raise BinaryNotFound(
@@ -211,11 +221,7 @@ def require_binary(name: str = "llama-server", **kwargs: object) -> Path:
         f"($POOLHOUSE_LLAMA_BUILD or build=) under {managed_named()}, "
         f"{managed_current()}, "
         f"a vendor dir, PATH, {home.cache()}, and "
-        f"{', '.join(str(d) for d in _LOGIN_SHELL_DIRS)}.\n"
-        f"poolhouse-serve build   builds llama.cpp's own master (or downloads the newest "
-        f"release, on a machine with no compiler) -- usually what you want, since a "
-        f"release lags master by an architecture or two.\n"
-        f"On macOS: brew install llama.cpp"
+        f"{', '.join(str(d) for d in _LOGIN_SHELL_DIRS)}.\n{why}"
     )
 
 

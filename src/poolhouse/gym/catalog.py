@@ -6,7 +6,7 @@ import subprocess
 import sys
 from importlib.util import find_spec
 
-from poolhouse import maintenance
+from poolhouse import maintenance, provision
 from poolhouse.gym.transport import interpreter, python_environment
 from poolhouse.gym.worlds import schema
 
@@ -29,6 +29,9 @@ ENVIRONMENTS = {
                     "library": "SUMO-RL", "physics": "SUMO", "modules": ["sumo_rl", "gymnasium"],
                     "extra": "gym-traffic", "actions": []},
 }
+_AT_NEED = ("warehouse", "traffic")
+"""The environments whose libraries all come from the package index, so this interpreter can be given them at first use;
+MetaDrive is a pinned source build and the drones need Python 3.12, both installed by Libraries."""
 
 
 def catalogue():
@@ -55,9 +58,8 @@ def catalogue():
                         "world_schema": schema(name), "simulation_modes": ["episode", "world"],
                         "supported_controllers": ["manual", "random", "decider", "ppo", *(["native-idm"] if name == "car" else ["native-patrol"] if name == "drone" else [])],
                         "available": not missing, "missing": missing,
-                        "install": f"pip install 'poolhouse[{spec['extra']}]'" +
-                                   ("; install the pinned MetaDrive source from docs/studio-gym.md"
-                                    if "metadrive" in spec["modules"] else "")})
+                        "install": (f"the {spec['extra']} libraries are installed the first time it runs" if name in _AT_NEED
+                                    else f"the {spec['extra']} libraries hold a pinned source build: Libraries installs them")})
     return entries
 
 
@@ -79,5 +81,12 @@ def require(environment):
     entry = next((row for row in catalogue() if row["id"] == environment), None)
     if entry is None:
         raise ValueError(f"Unknown environment: {environment}")
+    if not entry["available"] and "interpreter" not in entry and environment in _AT_NEED:
+        spec = ENVIRONMENTS[environment]
+        try:
+            provision.ensure(spec["extra"], *spec["modules"])
+        except ImportError as exc:
+            raise RuntimeError(f"Missing {', '.join(entry['missing'])}. {exc}") from exc
+        entry = next(row for row in catalogue() if row["id"] == environment)
     if not entry["available"]:
         raise RuntimeError(f"Missing {', '.join(entry['missing'])}. {entry['install']}")

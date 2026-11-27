@@ -131,9 +131,9 @@ def _chosen(ask: Ask, folder_: str, pick: localmodel.Pick | None) -> tuple[lp.Pr
     would not fit, a coding agent without a project or a known harness."""
     prof = lp.profile(ask.profile)
     if prof.name == "chat":
-        problem = agent_dependency.problem()
+        problem = agent_dependency.problem(install=True)
         if problem:
-            raise Unavailable(problem, "pip install 'poolhouse[agents]'")
+            raise Unavailable(problem)
     ctx = ask.ctx or prof.ctx
     chosen = pick or localmodel.choose(
         ask.model, selection=localmodel.Selection(coding=prof.name == "coding", context=ctx))

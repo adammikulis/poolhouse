@@ -42,7 +42,7 @@ from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-from poolhouse import net
+from poolhouse import net, provision
 from poolhouse.home import cache, state
 from poolhouse.http import Refused, ServerError, check
 from poolhouse.markup import cut, extract
@@ -56,7 +56,6 @@ Engine = Callable[..., list[dict[str, Any]]]
 """``(query, limit) -> [{"title", "url", "snippet"}, ...]``; may raise SearchUnavailable.
 An engine that can page also takes ``page`` (1-based) as a third argument."""
 
-INSTALL = "pip install 'poolhouse[web]'"
 # what a plain fetch has to come back with before it counts as having read the page:
 # a script-built site serves a shell with a title and nothing else, and that shell is
 # what falls through to the browser
@@ -101,16 +100,13 @@ def ddgs_engine(query: str, limit: int, page: int = 1) -> list[dict[str, Any]]:
     ``duckduckgo,brave``). ddgs raises its own exceptions for a rate limit, a timeout and
     for "no results" alike; all of them become ``SearchUnavailable`` here, with the reason.
     """
-    try:
-        from ddgs import DDGS
-        from ddgs.exceptions import DDGSException
-    except ImportError as exc:
-        raise ImportError(f"ddgs is not installed: {INSTALL}") from exc
+    DDGS = provision.module("ddgs", "web").DDGS
+    refused = provision.module("ddgs.exceptions", "web").DDGSException
     backend = os.environ.get("DDGS_BACKEND") or "auto"
     try:
         rows = DDGS().text(query, max_results=limit, backend=backend,
                              **({"page": page} if page > 1 else {}))
-    except DDGSException as exc:
+    except refused as exc:
         raise SearchUnavailable(f"{type(exc).__name__}: {exc}") from exc
     return [{"title": r.get("title", ""), "url": r.get("href", ""), "snippet": r.get("body", "")}
             for r in rows]

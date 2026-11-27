@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import importlib.util
 import shutil
 import subprocess
 import tempfile
 import threading
 from pathlib import Path
 
+from poolhouse import provision
 from poolhouse.speech.protocols import (
     DEFAULT_SAMPLE_RATE,
     ProviderError,
@@ -22,14 +24,22 @@ class AudioConversionError(ProviderError):
     """ffmpeg could not decode the input."""
 
 
+def ffmpeg_program() -> str:
+    """The ``ffmpeg`` on PATH, else the one the ``ffmpeg`` extra carries, installed the first time audio needs it.
+    Raises `AudioConversionError` when none can be had."""
+    if found := shutil.which("ffmpeg"):
+        return found
+    try:
+        return provision.module("imageio_ffmpeg", "ffmpeg").get_ffmpeg_exe()
+    except (ImportError, RuntimeError, OSError) as exc:
+        raise AudioConversionError(
+            "ffmpeg is how arbitrary uploaded audio becomes something a model can read; none is on PATH and "
+            f"none could be installed: {exc}") from exc
+
+
 def to_wav_16k(audio: Path | str | bytes, *, sample_rate: int = DEFAULT_SAMPLE_RATE) -> bytes:
     """Anything ffmpeg understands -> mono PCM WAV at ``sample_rate``."""
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg is None:
-        raise AudioConversionError(
-            "ffmpeg is not on PATH. It is how arbitrary uploaded audio becomes something "
-            "a model can read. On macOS: brew install ffmpeg"
-        )
+    ffmpeg = ffmpeg_program()
 
     data = as_bytes(audio)
     result = subprocess.run(
@@ -96,12 +106,12 @@ class FasterWhisperASR(_LoadedOnce):
             import faster_whisper  # noqa: F401
         except ImportError as exc:
             return ProviderHealth.missing(f"faster-whisper is not installed ({exc})")
-        if shutil.which("ffmpeg") is None:
-            return ProviderHealth.missing("ffmpeg is not on PATH")
+        if shutil.which("ffmpeg") is None and importlib.util.find_spec("imageio_ffmpeg") is None and provision.refusal():
+            return ProviderHealth.missing(f"no ffmpeg, and none could be installed: {provision.refusal()}")
         return ProviderHealth.ok(self.model)
 
     def _load(self):
-        from faster_whisper import WhisperModel
+        WhisperModel = provision.module("faster_whisper", "asr").WhisperModel
 
         return WhisperModel(self.model, device=self.device, compute_type=self.compute_type)
 

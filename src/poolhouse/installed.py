@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib.util
 import platform
 import re
-import shlex
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, requires, version as installed_version
 
@@ -14,6 +13,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 
+from poolhouse import lazy
 from poolhouse.log import say
 
 __all__ = ["STANDARD", "STORE_MACOS_FLOOR", "Capability", "behind", "declared", "extras",
@@ -34,10 +34,6 @@ class Capability:
     name: str
     does: str
     module: str
-
-    @property
-    def fix(self) -> list[str]:
-        return ["pip", "install", f"poolhouse[{self.extra}]"]
 
     def present(self) -> bool:
         """Whether the module behind this extra can be imported on this machine."""
@@ -160,18 +156,17 @@ def store_wants_newer_macos() -> str:
 
 
 def report() -> int:
-    """Print what this install cannot do, and the line that fixes each. 0 when it can do
-    everything."""
+    """Print what this install does not hold yet, and what becomes of each. 0 when it holds everything."""
     gone = missing()
+    refused = lazy.load("poolhouse.provision", "refusal")() if gone else ""
     for one in gone:
         say(f"  ! {one.name}: not installed -- {one.does}")
-        say(f"    fix: {shlex.join(one.fix)}")
+        say(f"    it cannot be installed here: {refused}" if refused else "    it is installed the first time it is needed")
     old = behind()
     for _, name, have, wanted in old:
         say(f"  ! {name} {have} is installed, and {wanted} is asked for")
     if old:
-        say("    fix: pip install " + " ".join(
-            sorted({f"'{wanted}'" for _, _, _, wanted in old})))
+        say("    a runtime built by `poolhouse runtime ensure` holds the versions asked for")
     floor = store_wants_newer_macos() if any(c.extra == "store" for c in gone) else ""
     if floor:
         say(f"    {floor}")

@@ -17,7 +17,7 @@ from poolhouse.sandbox.policies import SYSTEM_EXEC, system_env
 from poolhouse.sandbox.policy import Limits, Net, Policy
 from poolhouse.serve import llamacpp_ccache
 from poolhouse.serve.build_paths import BuildFailed
-from poolhouse.serve.build_platform import cmake_flags, server_name
+from poolhouse.serve.build_platform import cmake_flags, cmake_program, server_name
 from poolhouse.serve.llamacpp_upstream import Upstream
 
 __all__ = ["CMAKE_TARGET", "Job", "Toolchain", "checkout", "compile_source", "toolchain"]
@@ -81,9 +81,9 @@ def find_make() -> str:
 
 
 def toolchain() -> Toolchain:
-    """The tools a build needs, found on this machine. `BuildFailed` names each one missing;
-    nothing is installed."""
-    missing = [name for name in ("git", "cmake") if _which(name) is None]
+    """The tools a build needs: ``cmake`` is installed when it is not here (`build_platform.cmake_program`); git, the
+    compiler and make are the operating system's, and `BuildFailed` names each one missing."""
+    missing = [name for name in ("git",) if _which(name) is None]
     if platform.system() == "Windows":
         raise BuildFailed("building llama.cpp from source is not supported on Windows; "
                           "`poolhouse-serve build --from release` downloads a release instead")
@@ -103,8 +103,12 @@ def toolchain() -> Toolchain:
         missing.append("make or ninja")
     if missing:
         raise BuildFailed("cannot build llama.cpp: missing " + ", ".join(missing)
-                          + "; poolhouse installs nothing, install them and run it again")
-    cmake = os.path.realpath(_which("cmake") or "")
+                          + "; these are the operating system's own developer tools, which only the account holder can "
+                            "add (Apple's installer asks for its licence to be accepted)")
+    try:
+        cmake = os.path.realpath(cmake_program(_which("cmake")))
+    except ImportError as exc:
+        raise BuildFailed(f"cannot build llama.cpp: missing cmake, which could not be installed: {exc}") from exc
     trees = {_tree(cmake), _tree(cc), _tree(cxx), _tree(make), "/usr", "/Library/Developer"}
     if sysroot:
         trees.add(_tree(sysroot) if "/Developer/" not in sysroot else sysroot.split("/Developer/")[0] + "/Developer")

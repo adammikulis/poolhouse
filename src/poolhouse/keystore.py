@@ -32,6 +32,7 @@ from poolhouse import (
     keystore_guard,
     platform,
     private_path,
+    provision,
     real_machine,
     sentinel,
 )
@@ -114,9 +115,9 @@ def os_user() -> str:
 def scrypt_key(passphrase: str, salt: bytes, n: int = SCRYPT_N) -> bytes:
     """A 32-byte key from a passphrase, for the explicit passphrase fallback."""
     try:
-        from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+        Scrypt = provision.module("cryptography.hazmat.primitives.kdf.scrypt", "memory").Scrypt
     except ImportError as exc:
-        raise KeystoreUnavailable("this needs `pip install cryptography`") from exc
+        raise KeystoreUnavailable(f"this needs cryptography: {exc}") from exc
     return Scrypt(salt=salt, length=32, n=n, r=8, p=1).derive(passphrase.encode())
 
 
@@ -261,10 +262,11 @@ class Keystore:
 
     def _ring(self) -> Any:
         try:
+            provision.ensure("memory", "keyring", "cryptography")
             import keyring
             import keyring.errors
         except ImportError as exc:
-            raise KeystoreUnavailable("the keystore needs `pip install keyring cryptography`") from exc
+            raise KeystoreUnavailable(f"the keystore needs keyring and cryptography: {exc}") from exc
         try:
             usable = float(getattr(keyring.get_keyring(), "priority", 0)) > 0
         except (keyring.errors.KeyringError, AttributeError, TypeError, ValueError, OSError):
@@ -489,10 +491,10 @@ def _parse(held: Any) -> bytes | None:
 def aead(key: bytes) -> Any:
     """AES-256-GCM under ``key``."""
     try:
-        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        module = provision.module("cryptography.hazmat.primitives.ciphers.aead", "memory")
     except ImportError as exc:
-        raise KeystoreUnavailable("the keystore needs `pip install cryptography`") from exc
-    return AESGCM(key)
+        raise KeystoreUnavailable(f"the keystore needs cryptography: {exc}") from exc
+    return module.AESGCM(key)
 
 
 _DEFAULTS: dict[tuple[str, int], Keystore] = {}
