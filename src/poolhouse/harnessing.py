@@ -36,7 +36,7 @@ from poolhouse import (
 from poolhouse.activity.source_snapshot import protected_roots, validate_storage
 from poolhouse.board.client import NodeError
 from poolhouse.briefing import REQUIRED_BRIEFING
-from poolhouse.client import is_healthy
+from poolhouse.client import is_healthy, refuses_key
 from poolhouse.errors import Denied
 from poolhouse.hub.probe import MachineMemory
 from poolhouse.isolation import places
@@ -228,6 +228,8 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
         url = f"http://{DEFAULT_HOST}:{port}"
         params = None if entry.get("pending") or not is_healthy(url, timeout=1.0) else serving_params(url, timeout=5.0)
         if params is None or not params.n_ctx:
+            if not entry.get("pending") and refuses_key(url):
+                continue   # the broker replaces it or refuses the launch, and says which (`serve.refused_keys`)
             declined.append(f"{up} is still loading or does not report its settings; leasing its own")
             continue
         each, held = int(params.n_ctx), max(1, int(params.total_slots or 1))

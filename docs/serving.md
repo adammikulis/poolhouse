@@ -240,6 +240,12 @@ says:
 A holder that joins a server already up (a second `up` for the same shape, or another lease
 for the same model) is recorded with its own reason, so every holder of a server is listed.
 
+A server that refuses this build's key (its settings routes answer 401 or 403, as one an earlier
+build left up does) is never shared. When nothing but the server itself holds it and no request is
+on it, the next start or lease for its model, or for its port, stops it, starts a new one and says
+so in one line. While a lease holds it or a request is on it, a launch of its model fails at once
+and names the lease. A server the record does not prove Poolhouse started is left running.
+
 ```
 poolhouse-serve status            each lease with why, who, where, and the others using its server
 poolhouse-serve leases [--json]   every server the broker holds, each holder with the above

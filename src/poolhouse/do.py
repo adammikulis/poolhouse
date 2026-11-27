@@ -479,7 +479,7 @@ def client_for(args: argparse.Namespace) -> Any:
 
         return Client(args.url, request=Request(n_predict=args.n_predict),
                       transport=Transport(timeout=args.timeout))
-    from poolhouse.client import Client, Request, Transport
+    from poolhouse.client import Client, Request, Transport, refuses_key
     from poolhouse.serve.leases import already_up
     from poolhouse.serve.profile import profile_for, said
     from poolhouse.serve.recent import note
@@ -488,7 +488,7 @@ def client_for(args: argparse.Namespace) -> Any:
     found = str(hub.located(args.model, loose=True) or args.model)
     note(found, by="chat")
     up = already_up(found, args.port)
-    if up is not None:
+    if up is not None and not refuses_key(str(up["base_url"])):   # a refused one is for the broker to replace, or to refuse by lease
         # the weights are up already, whatever the settings: use them rather than reload them
         say(f"using the server already up on {args.port}: {Path(found).name}, "
             f"{up.get('slots') or '?'} slot(s)")

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 from poolhouse import leasetable
 from poolhouse.client import is_healthy, reported_models
-from poolhouse.client.health import serving_params
+from poolhouse.client.health import refuses_key, serving_params
 from poolhouse.node_health import Refused
 from poolhouse.serve import admission, ledger, node_memory, unmanaged
 from poolhouse.serve.backend import Lease, ServerBackend, ServerInfo, ServerSpec
@@ -166,7 +166,7 @@ class Admitting:
                 loading = loading or admission.pending_serves(spec, entry)
                 continue
             base_url = f"http://{DEFAULT_HOST}:{port}"
-            if not is_healthy(base_url, timeout=1.0):
+            if not is_healthy(base_url, timeout=1.0) or refuses_key(base_url):
                 continue
             shape = replace(spec, port=port)
             mismatch = serving_mismatch(shape, reported_models(base_url), serving_params(base_url))
@@ -200,6 +200,9 @@ class Admitting:
             told(f"port {spec.port}: not adopting the server there -- {seen.why}")
             return None
         base_url = f"http://{DEFAULT_HOST}:{spec.port}"
+        if refuses_key(base_url):
+            told(f"port {spec.port}: not adopting pid {seen.pid} -- it refuses this build's key")
+            return None
         mismatch = serving_mismatch(spec, reported_models(base_url), serving_params(base_url))
         if mismatch:
             told(f"port {spec.port}: not adopting pid {seen.pid} -- " + "; ".join(mismatch))

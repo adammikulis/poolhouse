@@ -36,6 +36,7 @@ from poolhouse.serve import (
     lease_history,
     node_memory,
     provenance,
+    refused_keys,
     startup,
     unmanaged,
 )
@@ -326,6 +327,7 @@ class Broker(BrokerHolds):
         how = Starting(**{**{k: v for k, v in options.items() if k != "backend"},
                           "who": caller.label or who()})
         pid = caller.pid or os.getpid()
+        refused_keys.settle(self, spec, caller.say or manager.say or self.say)
         reservation = self._reserve_model_start(pid, str(spec.model), timeout)
         try:
             with grant.broker_grant():
@@ -446,6 +448,11 @@ class Broker(BrokerHolds):
             raise BrokerError(guarded.blocked(ask.models[0]))
         ask = replace(ask, models=allowed)
         self.adopt()
+        for model in ask.models:
+            try:
+                refused_keys.settle(self, replace(ask, models=(model,)).server_spec(ask.port), self.say)
+            except ServerFailed as why:
+                raise BrokerError(str(why)) from why
         deadline = time.monotonic() + timeout
         while True:
             waiting = Waiting(lease=uuid.uuid4().hex, ask=ask, since=time.monotonic())

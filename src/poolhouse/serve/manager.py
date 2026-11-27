@@ -19,7 +19,7 @@ import psutil
 from poolhouse import leasetable, serverkeys
 from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.chat import forget_server
-from poolhouse.client.health import serving_params
+from poolhouse.client.health import refuses_key, serving_params
 from poolhouse.files import write_json
 from poolhouse.hub import free_memory, room as machine_room
 from poolhouse.limits import read as limits_read
@@ -263,7 +263,9 @@ class ServerManager(Admitting):
         self._sweep_orphans(spec.port, told)
         with self._port_lock(spec.port):
             entry = self._load().get(str(spec.port))
-            stray = entry if isinstance(entry, dict) and orphaned(entry) else None
+            # one that refuses this build's key and is still here is in use or not ours (`refused_keys`): never stopped as a stray
+            stray = (entry if isinstance(entry, dict) and orphaned(entry)
+                     and not refuses_key(f"http://{DEFAULT_HOST}:{spec.port}") else None)
             try:
                 adopted = self.adopt(spec)
             except ServerFailed as why:
@@ -527,6 +529,8 @@ class ServerManager(Admitting):
         base_url = f"http://{DEFAULT_HOST}:{spec.port}"
         if str(spec.port) not in self._load() or not is_healthy(base_url, timeout=1.0):
             return None
+        if refuses_key(base_url):
+            raise ServerFailed(f"port {spec.port}: the server there refuses this build's key, so it is not shared")
 
         mismatch = serving_mismatch(spec, reported_models(base_url), serving_params(base_url))
         entry = self._load().get(str(spec.port), {})

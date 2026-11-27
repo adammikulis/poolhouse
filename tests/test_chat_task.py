@@ -335,6 +335,7 @@ def test_a_model_already_up_on_the_port_is_used_as_it_stands(monkeypatch, tmp_pa
             built["url"] = url
 
     monkeypatch.setattr("poolhouse.client.Client", FakeClient)
+    monkeypatch.setattr("poolhouse.client.refuses_key", lambda *a, **k: False)
     args = chat.COMMAND.parser().parse_args(["look", "--model", "quince-2b.gguf"])
     client = do.client_for(args)
     assert isinstance(client, FakeClient) and built["url"] == "http://127.0.0.1:8080"

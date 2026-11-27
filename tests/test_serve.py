@@ -736,6 +736,7 @@ class TestAdoptingTheWrongShape:
         monkeypatch.setattr(mod, "is_healthy", lambda *a, **k: True)
         monkeypatch.setattr(mod, "reported_models", lambda *a, **k: ["a-model.gguf"])
         monkeypatch.setattr(mod, "serving_params", lambda *a, **k: None)
+        monkeypatch.setattr(mod, "refuses_key", lambda *a, **k: False)
         record_server(lease_file(), 8099, model="a-model.gguf")
         assert ServerManager().adopt(ServerSpec(context=4096, model="a-model.gguf", port=8099, parallel=4))
 

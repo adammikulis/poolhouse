@@ -9,6 +9,7 @@ import logging
 import math
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -165,6 +166,23 @@ def listens_on(pid: int | None, port: int) -> bool:
                    for one in found for c in one.net_connections(kind="inet"))
     except (psutil.Error, TypeError):
         return False
+
+
+def request_on(pid: int, port: int, *, samples: int = 5, apart_s: float = 0.2) -> bool | None:
+    """Whether a connection to ``port`` of the server ``pid`` (or of one of its children) stays open over ``samples`` looks, which a request
+    in progress does and a probe just answered does not; None when its sockets cannot be read."""
+    for look in range(samples):
+        if look:
+            time.sleep(apart_s)
+        try:
+            parent = psutil.Process(pid)
+            found = [parent, *parent.children(recursive=True)]
+            if not any(c.status == psutil.CONN_ESTABLISHED and c.laddr and c.laddr.port == port
+                       for one in found for c in one.net_connections(kind="tcp")):
+                return False
+        except (psutil.Error, OSError):
+            return None
+    return True
 
 
 def cmdline_digest(pid: int | None) -> str | None:
