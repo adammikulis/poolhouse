@@ -1,6 +1,7 @@
 """Import feedback stays visible without covering edits or moving focus."""
 import pytest
 from browser_expect import expect
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_dataset_catalogue import remote  # noqa: F401
 from test_dataset_imports import served  # noqa: F401
 from test_studio_canvas_browser import studio_browser  # noqa: F401

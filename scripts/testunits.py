@@ -61,6 +61,7 @@ def build(cargo: str, work: Path, targets: list[str], execute: Callable[[list[st
 
     The workspace products this build used are touched, so the pruning of idle products (``testartifacts``) leaves them be.
     """
+    testnode.fetch(cargo, work, environment)
     output = execute(build_argv(cargo, targets), work, {**environment, "CARGO_BUILD_JOBS": jobs()})
     made = executables(output, targets)
     touch(output, work)

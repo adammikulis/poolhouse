@@ -20,6 +20,13 @@ NATIVE = "abcdef12345"
 LEAD = "native-lead-1"
 
 
+def register_project(node, folder: Path) -> None:
+    """``folder`` as a project of the node's board: a hook acts only in a project the node already knows."""
+    owner = node.member("milestone-project-owner")
+    node.allow(owner, "source_add")
+    node.client.call("project_add", "", owner.token, id=node.board, kind="folder", path=str(folder))
+
+
 @pytest.fixture
 def board(tmp_path, monkeypatch, workspace_node):
     """A fake `poolhouse-workspace` that records each call, a board with a lead and its subagent, and a private hook state."""
@@ -48,6 +55,7 @@ if sys.argv[1:2] == ['spawn']:
     monkeypatch.syspath_prepend(str(HOOKS))
     monkeypatch.chdir(tmp_path)
     lead = workspace_node.member(LEAD)
+    register_project(workspace_node, tmp_path)
     child = workspace_node.member(NATIVE, parent=lead)
     return child.name, tmp_path
 
@@ -212,14 +220,17 @@ def test_an_unnamed_subagent_fails_loudly(board):
     assert posts(tmp_path) == []
 
 
-def test_the_stop_hook_forgets_the_milestones(board):
+def test_a_turn_end_keeps_the_milestones_of_a_subagent_that_may_go_on(board):
     import tool_count
     _, tmp_path = board
     preload(NATIVE, 99)
     assert call(event(tmp_path, tool_use_id="toolu_s")).returncode == 0
-    assert list(tool_count.stem(NATIVE).parent.glob(f"{tool_count.stem(NATIVE).name}.*"))
+    held = sorted(tool_count.stem(NATIVE).parent.glob(f"{tool_count.stem(NATIVE).name}.*"))
+    assert held
     assert call({**event(tmp_path), "hook_event_name": "SubagentStop"}, "claude-subagent-stop").returncode == 0
-    assert not list(tool_count.stem(NATIVE).parent.glob(f"{tool_count.stem(NATIVE).name}.*"))
+    assert sorted(tool_count.stem(NATIVE).parent.glob(f"{tool_count.stem(NATIVE).name}.*")) == held
+    assert call(event(tmp_path, tool_use_id="toolu_after")).returncode == 0
+    assert len(posts(tmp_path)) == 1, "the milestone announced before the turn ended is not announced again"
 
 
 def test_the_start_hook_records_when_the_subagent_began(board):
@@ -262,6 +273,7 @@ def test_the_lead_finds_the_notice_in_its_inbox(workspace_node, tmp_path, monkey
     monkeypatch.syspath_prepend(str(HOOKS))
     monkeypatch.chdir(tmp_path)
     lead = workspace_node.member(LEAD)
+    register_project(workspace_node, tmp_path)
     child = workspace_node.member(NATIVE, parent=lead)
     workspace_node.session(lead).subscribe("agent", child.name, force=True)
     preload(NATIVE, 99)

@@ -162,6 +162,8 @@ def _place(row: Row, name: str, folder: Folder, apply: bool) -> Row:
     twin = target if target.exists() else blob if blob.exists() else None
     if twin is not None and not hfstore.same_bytes(twin, path):
         return _blocked(row, f"{twin} holds other bytes; it is not replaced")
+    if twin is not target and blob.is_symlink():
+        return _blocked(row, f"{blob} is a link, which a publication does not write through; it is left as it is")
     action = "have" if twin is not None else "link"
     if not apply:
         return Row(row.rel, row.path, row.size, action, row.how)

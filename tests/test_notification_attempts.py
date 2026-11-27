@@ -10,7 +10,7 @@ import pytest
 
 from poolhouse import private_counters
 from poolhouse.board import credentials
-from poolhouse.workspace import board_cli, nudge
+from poolhouse.workspace import board_cli, notification_context, nudge
 
 pytest_plugins = ["node_kit"]
 
@@ -55,7 +55,8 @@ def test_stop_budget_bounds_new_message_flood_and_clock_rollback():
         view = waiting(1000 + i * 121)
         view.rows[0]["id"] = view.messages[0]["id"] = f"board:origin:{i}"
         result = nudge.output("stop", view, "{}", saved)
-        assert json.loads(result)["decision"] == "block"
+        said = json.loads(result)
+        assert said["systemMessage"] and "decision" not in said, "a stop hook is told and never held"
         saved = result.saved
         assert not nudge.output("stop", waiting(100), "{}", saved)
     assert nudge.output("prompt", waiting(100), "{}", saved)  # Body retries survive rollback.
@@ -203,10 +204,10 @@ def test_stop_budget_write_failure_emits_no_block(reading, monkeypatch):
 def test_notification_client_is_bounded_before_board_resolution(monkeypatch):
     import argparse
     seen = []
-    def connecting(**kwargs):
-        seen.append(kwargs["client"])
+    def resolving(client, _cwd):
+        seen.append(client)
         raise OSError("node stopped")
-    monkeypatch.setattr(board_cli.session, "connect", connecting)
+    monkeypatch.setattr(notification_context, "existing_board", resolving)
     args = argparse.Namespace(token_file="", agent="own-session", board="", hook="prompt")
     assert board_cli.nudging(args) == 0
     assert seen[0].autostart is False
