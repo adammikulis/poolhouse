@@ -38,6 +38,7 @@ from poolhouse.board.client import NodeError
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.client import is_healthy, refuses_key
 from poolhouse.errors import Denied
+from poolhouse.hub.naming import DENSE_27B
 from poolhouse.hub.probe import MachineMemory
 from poolhouse.isolation import places
 from poolhouse.isolation.refusals import sentence
@@ -80,7 +81,7 @@ __all__ = [
 ]
 
 DEFAULT_CTX = 0
-DEFAULT_MODEL = "Qwen3.8-27B-UD-Q4_K_XL.gguf"
+DEFAULT_MODEL = DENSE_27B[0]
 """The model a session gets when the preferred one is not installed or does not fit: the dense 27B."""
 PREFERRED_MODEL = "Qwen3.8-Flash-Next-UD-IQ2_XS"
 """The owner's coding model: used when it is installed and this machine holds it at `PREFERRED_WINDOW` (the larger Flash-Next quants are not named, so they are never the default)."""
@@ -93,7 +94,8 @@ REPORT_CAP = 2**31 - 1
 
 def default_model(machine: MachineMemory | None = None) -> str:
     """The model a coding session or delegate takes when none is named: `PREFERRED_MODEL` when it is installed and
-    ``suggest.largest_fit`` rates it green at its full `PREFERRED_WINDOW` on ``machine`` (this one by default), else `DEFAULT_MODEL`."""
+    ``suggest.largest_fit`` rates it green at its full `PREFERRED_WINDOW` on ``machine`` (this one by default), else the first of
+    `hub.naming.DENSE_27B` that is installed, else `DEFAULT_MODEL`."""
     for one in hub.installed_find(PREFERRED_MODEL, hub.discover(formats=("gguf",))):
         try:
             fit = suggest.largest_fit(one.path, machine)
@@ -101,7 +103,7 @@ def default_model(machine: MachineMemory | None = None) -> str:
             continue
         if fit.verdict == "green" and fit.context >= PREFERRED_WINDOW:
             return one.filename
-    return DEFAULT_MODEL
+    return next((name for name in DENSE_27B if hub.located(name)), DEFAULT_MODEL)
 
 
 def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentParser:

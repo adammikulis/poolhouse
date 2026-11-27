@@ -63,7 +63,7 @@ Source: https://developers.openai.com/api/docs/models (retrieved 2026-10-08; pag
 ### 1.3 Local (Qwen3.8)
 
 Names as they appear in this repository's docs, not looked up externally: `Qwen3.8-27B`
-(`Qwen3.8-27B-UD-Q4_K_XL.gguf` is the owner's default 27B quant), `Qwen3.8-Flash-Next`, and the decider
+(`Qwen3.8-27B-UD-Q3_K_XL.gguf` is the owner's default 27B quant), `Qwen3.8-Flash-Next`, and the decider
 base `Qwen3.5-2B`. Vendor-reported and aggregator figures for the 27B and Flash-Next were collected on
 2026-10-12 (section 2.7); none was collected for the 2B.
 

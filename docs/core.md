@@ -7,7 +7,7 @@ workspace, approval or app is imported or asked for, and no node, broker or sent
 ```python
 from poolhouse import core
 
-path = core.resolve("Qwen3.8-27B-UD-Q4_K_XL.gguf")   # a name or a path to an installed GGUF; ModelNotFound otherwise
+path = core.resolve("Qwen3.8-27B-UD-Q3_K_XL.gguf")   # a name or a path to an installed GGUF; ModelNotFound otherwise
 core.fit(path, 32768).said()                         # the preflight's report: would it load, and if not why
 with core.serve(path, 32768, reasoning_budget=0) as server:   # admitted, started, healthy
     server.base_url, server.model_id, server.port, server.api_key

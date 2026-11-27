@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import hub, optional
+from poolhouse.hub import remote, uploads
 from poolhouse.hub.naming import _SHARD
 from poolhouse.log import say, warn
 from poolhouse.serve.tensors import resident_bytes
@@ -82,9 +83,27 @@ def _parser(extend: Callable[[Any], None] | None = None) -> argparse.ArgumentPar
     shape.add_argument("model", help="a path, an hf: reference already fetched, or a file "
                                      "name copied from `files`")
     shape.add_argument("--json", action="store_true", help="the same as JSON")
+    watched = sub.add_parser("updates", help="what Unsloth has uploaded for the models here, from the daily check; "
+                                             "nothing is downloaded")
+    on = watched.add_mutually_exclusive_group()
+    on.add_argument("--on", dest="switch", action="store_const", const=True, help="check once a day while Poolhouse runs (the default)")
+    on.add_argument("--off", dest="switch", action="store_const", const=False, help="stop checking and hide what was found")
+    watched.add_argument("--now", action="store_true", help="check now, posting no workspace notice")
     if extend:
         extend(sub)
     return ap
+
+
+def _updates(args) -> int:
+    """``poolhouse-models updates``: the switch of the daily upload check and what it found."""
+    if args.switch is not None:
+        uploads.switch(args.switch)
+    if args.now:
+        uploads.check()
+    say(f"daily check of downloaded {uploads.PUBLISHER}/* repositories: {'on' if uploads.enabled() else 'off'}")
+    for change in uploads.current():
+        say(change["text"])
+    return 0
 
 
 def _layout(args) -> int:
@@ -155,7 +174,8 @@ def _fetch(args) -> int:
 
 
 def _builds(repo: str, ending: str, listing: list[tuple[str, int]]) -> None:
-    """One line per build: its total, whether it fits here and whether it is downloaded.
+    """One line per build: its total, whether it fits here, whether it is downloaded and whether what is here differs
+    from what the repository serves now.
 
     What must fit is the build less its gathered lookup table, which a server reads from disk. Only a downloaded build's header says how
     big that table is, so a build that is not here and fits only without one says so."""
@@ -164,8 +184,9 @@ def _builds(repo: str, ending: str, listing: list[tuple[str, int]]) -> None:
     if fits:
         say(f"this machine can serve about {human_bytes(fits)}\n")
     here = {path.name: path for path in reversed(hub.weight_paths())}
-    rows = [(name, size, shards, sorted(f for f, _s in hub.build_files(repo, name, ending)))
-            for name, size, shards in hub.builds(repo, ending=ending)]
+    served = {name: (size, shards, dict(hub.build_files(repo, name, ending))) for name, size, shards in hub.builds(repo, ending=ending)}
+    rows = [(name, size, shards, sorted(files)) for name, (size, shards, files) in served.items()]
+    unlike = _unlike(repo, {name: files for name, (_size, _shards, files) in served.items()}, mine, here)
     tables = {name: size - resident_bytes(size, here[files[0]]) for name, size, shards, files in rows
               if files and sum(f in mine and f in here for f in files) >= shards}
     known = max(tables.values(), default=0)
@@ -184,8 +205,11 @@ def _builds(repo: str, ending: str, listing: list[tuple[str, int]]) -> None:
         else:
             mark = "  TOO BIG"
         if downloaded:
-            mark = ("  ON THIS MACHINE" if downloaded >= shards
-                    else f"  {downloaded}/{shards} downloaded") + mark
+            state = "ON THIS MACHINE" if downloaded >= shards else f"{downloaded}/{shards} downloaded"
+            if other := unlike.get(name):
+                counted = f"{len(other)} of {shards} files; " if shards > 1 else ""
+                state += f", DIFFERS from the repository ({counted}{other[0]})"
+            mark = f"  {state}{mark}"
         many = f"  {shards} shards" if shards > 1 else ""
         # IQ builds decode through lookup tables Metal runs slowly: on a Mac the
         # smaller IQ file was the slower model (README, "What this measured")
@@ -194,7 +218,28 @@ def _builds(repo: str, ending: str, listing: list[tuple[str, int]]) -> None:
     for name, size in listing:
         if hub.aside(name):
             say(f"{human_bytes(size):>8}  {hub.ref(repo, name)}  (alongside)")
+    if unlike:
+        say(f"\nDIFFERS: `poolhouse-models fetch hf:{repo}/<file>` downloads what the repository serves now.")
     say(f"\npoolhouse-models files {repo} --every  for individual files")
+
+
+def _unlike(repo: str, served: dict[str, dict[str, int]], mine: dict[str, int], here: dict[str, Path]) -> dict[str, list[str]]:
+    """Per build, what `uploads.difference` says of each file held here that is not the bytes the repository serves now."""
+    listed: list[remote.RemoteFile] | None = None
+    out: dict[str, list[str]] = {}
+    for build, files in served.items():
+        for name, size in sorted(files.items()):
+            if name not in mine:
+                continue
+
+            def digests(name: str = name) -> set[str]:
+                nonlocal listed
+                listed = remote.listing(repo) if listed is None else listed
+                return {digest for one in listed if one.name == name for digest in (one.sha256, one.oid)}
+
+            if detail := uploads.difference(here.get(name), mine[name], size, digests):
+                out.setdefault(build, []).append(f"{name}: {detail}")
+    return out
 
 
 def _files(args) -> int:
@@ -225,7 +270,7 @@ def main(argv: list[str] | None = None, extend: Callable[[Any], None] | None = N
     adds subcommands to the parser and ``more`` maps each to its function."""
     args = _parser(extend).parse_args(argv)
     ran = {"layout": _layout, "find": _find, "card": _card, "fetch": _fetch,
-           "files": _files, **(more or {})}[args.cmd]
+           "files": _files, "updates": _updates, **(more or {})}[args.cmd]
     try:
         return ran(args)
     except Exception as exc:  # noqa: BLE001 - the Hub is somebody else's machine

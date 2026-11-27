@@ -3,6 +3,7 @@
 
 from poolhouse import hub
 from poolhouse.fleet.catalogue import family_of
+from poolhouse.hub import uploads
 from poolhouse.hub.capabilities import capabilities
 from poolhouse.hub.naming import aside
 
@@ -10,6 +11,7 @@ from poolhouse.hub.naming import aside
 def library(roots):
     """Primary model entries with exact files, companions and runtime status."""
     rows = []
+    found = uploads.current()
     for model in hub.discover(roots=roots):
         path = model.path.resolve()
         if aside(path.name):
@@ -19,6 +21,7 @@ def library(roots):
         parts = [file for part in model.files for file in
                  (hub.weight_paths([part]) if part.is_dir() else [part])]
         rows.append({**model.as_dict(), 'path': str(path), 'family': family_of(model.name),
+                     'updates': [change['text'] for change in found if change['repo'] == model.repo],
                      'capabilities': capabilities(path, architecture=model.architecture),
                      'servable': status == 'ready', 'status': status,
                      'files': [{'name': file.name, 'size_bytes': file.stat().st_size} for file in parts if file.is_file()],

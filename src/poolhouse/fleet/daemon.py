@@ -20,7 +20,7 @@ from typing import Any
 from poolhouse import home, lan as lan_policy, macauth, runtime_identity, sentinel
 from poolhouse.files import write_text
 from poolhouse.fleet.onboard.devices import Devices
-from poolhouse.hub import default_roots
+from poolhouse.hub import default_roots, uploads
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
 from poolhouse.log import say, warn
@@ -114,6 +114,9 @@ class DaemonOptions:
     pool_actions: Any = None
     """The module of pool actions (`poolhouse.api.pool`) the page's pool routes call; the command that starts the daemon hands it in, since a
     machine-layer module may not import the tools layer. None answers every pool action with a refusal."""
+    announcer: Callable[[Callable[[], list[dict]]], Callable[[str], object]] | None = None
+    """`poolhouse.board.model_uploads.board_notice`, handed in by the command for the same reason: given the daemon's boards, it posts
+    the daily model upload check's lines. None checks and posts nothing."""
 
 
 class DaemonRuntime:
@@ -137,6 +140,7 @@ class DaemonRuntime:
         self.bench_home = options.bench_home
         self.track = options.track
         self.pool_actions = options.pool_actions
+        self.announcer = options.announcer
 
     def configure(self) -> None:
         self.root = home.expand(self.root) if self.root else default_root()
@@ -261,6 +265,7 @@ class DaemonRuntime:
         )
         self.managed_alignment.start(self.runner, self.nothing_running, self.update_admission)
         updating.follow_runtime(idle=self.nothing_running, admission=self.code_update_admission)
+        uploads.watch(self.announcer(lambda: self.projects.boards()) if self.announcer else None)
         self.control = create_control(self)
         self.tracked = str(getattr(self.settings, "track_branch", "") or "").strip()
         self.tracked_from = str(getattr(self.settings, "track_repo", "") or "") or updating.GIT_URL
@@ -470,7 +475,7 @@ def persist(*, slots: int = 1, labels: tuple[str, ...] = (), report: str = "") -
     return 2
 
 
-def run(argv: list[str] | None = None, *, pool_actions: Any = None) -> int:
+def run(argv: list[str] | None = None, *, pool_actions: Any = None, announcer: Any = None) -> int:
     ap = argparse.ArgumentParser(prog="poolhouse-traind")
     ap.add_argument("--root", default=str(default_root()))
     ap.add_argument(
@@ -643,6 +648,7 @@ def run(argv: list[str] | None = None, *, pool_actions: Any = None) -> int:
             bench_home=a.bench_home,
             track=a.track,
             pool_actions=pool_actions,
+            announcer=announcer,
         )
     )
     return 0
