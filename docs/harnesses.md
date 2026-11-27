@@ -437,16 +437,6 @@ poolhouse-delegate stop NAME
 - The thinking-off default of the model's profile applies; the Claude Code settings also turn
   always-on thinking off.
 
-## Comparing the harnesses
-
-`scripts/compare-harnesses --model NAME` serves the model once and runs the fixture in
-`tests/fixtures/toy_bugfix` (a one-line bug, scored by its own test, in a temporary git repository)
-through `poolhouse-claude` and `poolhouse-codex`, recording wall time, tool calls, the tokens the server
-processed (llama-server `/metrics`), the tokens each harness says it sent and how many came from
-the cache, the last request's prompt and cached tokens from `/slots`, the first-turn cost of each harness measured with a one-line prompt, and whether the test
-passes. Rows are appended to `docs/experiments/harness-comparison.md`. Poolhouse's own agent loop is
-skipped where `poolhouse-workspace agent` does not exist. It refuses Flash-Next.
-
 ## Sources
 
 - Claude Code hooks: https://code.claude.com/docs/en/hooks; environment variables:
