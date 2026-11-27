@@ -102,7 +102,7 @@ from signal_guard import signal_handlers_are_restored  # noqa: E402,F401  (an au
 from system_guard import no_system_probes  # noqa: E402,F401  (an autouse fixture)
 from testoptions import pytest_addoption  # noqa: E402,F401  (the suite's tier options)
 
-from poolhouse import loopback_window  # noqa: E402
+from poolhouse import loopback_window, sandbox  # noqa: E402
 from poolhouse.http import Server  # noqa: E402
 from poolhouse.testing import live  # noqa: E402
 from poolhouse.testing.fakes import (  # noqa: E402
@@ -1289,15 +1289,21 @@ def seatbelt_modules() -> frozenset[str]:
                      if line.split("#")[0].strip())
 
 
+NO_NESTED_BOX = "this module starts its own Seatbelt box, which a process already in one cannot do (sandbox_apply is refused)"
+
+
 def pytest_collection_modifyitems(config, items) -> None:
     """Mark the modules in ``heavy-modules.txt`` and ``seatbelt-modules.txt``, skip the live tests nobody switched on, leave
     the slow tests out unless --slow, the scans out unless --gate, the redteam out unless --redteam, real_model out unless --real-model."""
     heavy, seatbelt = heavy_modules(), seatbelt_modules()
+    boxed = sandbox.confined()
     for item in items:
         if Path(str(item.fspath)).name in heavy:
             item.add_marker(pytest.mark.heavy)
         if (Path(str(item.fspath)).as_posix().removeprefix(Path(__file__).parent.as_posix() + "/")) in seatbelt:
             item.add_marker(pytest.mark.seatbelt)
+            if boxed:
+                item.add_marker(pytest.mark.skip(reason=NO_NESTED_BOX))
         reason = live.skip_reason((m.name for m in item.iter_markers()), os.environ)
         if reason:
             item.add_marker(pytest.mark.skip(reason=reason))

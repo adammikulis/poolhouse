@@ -77,6 +77,7 @@ import testslots_policy
 import testslots_runner
 import testtime
 
+from poolhouse import sandbox
 from poolhouse.activity import reuse
 from poolhouse.devbranch import development_branch
 from poolhouse.activity.gate import Run, read_counts, record_run, tree_hash
@@ -242,7 +243,8 @@ def execute_run(command, environment, tier, record: OutputRecord):
         report_run(record, "test: source tree changed during the run; the result does not describe the tree "
                    "(changed now: " + ", ".join(line[3:] for line in moved[:5] if line) + ")")
         status = 4
-    if status == 0:
+    collected_only = "--collect-only" in command   # a collection: it ends well when pytest does, and is evidence of no test
+    if status == 0 and not collected_only:
         try:
             counts = read_counts(junit)
             if not sum(counts.values()) or counts["failed"] or counts["errors"]:
@@ -261,7 +263,10 @@ def execute_run(command, environment, tier, record: OutputRecord):
     kept = os.environ.get("DEV_TEST_JOB")
     if kept and junit.is_file():
         shutil.copy(junit, jobs_store().path(kept) / f"junit-{time.time_ns()}.xml")
-    save_evidence(Run(ROOT, tier, command, junit, status, wall, executed_tree), record)
+    if collected_only:
+        print("test: collected only: no test ran and nothing is recorded as run", flush=True)
+    else:
+        save_evidence(Run(ROOT, tier, command, junit, status, wall, executed_tree), record)
     if failure is not None:
         raise failure
     return status
@@ -660,7 +665,10 @@ def build_node(files: list[str] | None = None) -> int:
                                                        say=lambda text: print(text, file=sys.stderr, flush=True)))
     except testnode.BuildError as error:
         print(f"test: {error}", file=sys.stderr)
-        return 4
+        if not sandbox.confined():
+            return 4
+        os.environ[testnode.UNBUILT] = "the node binary cannot be built in a coding sandbox, which has no Rust toolchain of the account and no network"
+        print(f"test: {os.environ[testnode.UNBUILT]}: the tests that start one are skipped", file=sys.stderr)
     return 0
 
 
@@ -692,7 +700,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--confine", action="store_true", help="macOS: run pytest under the Seatbelt confinement kernel")
     args, rest = parser.parse_known_args(argv)
     rest = testselectors.relative(rest, ROOT)           # one spelling of a test file for the store, the node build and the junit file
-    REUSE["on"] = not args.no_reuse
+    REUSE["on"] = not args.no_reuse and "--collect-only" not in rest
     if args.no_reuse and not os.environ.get("DEV_TEST_JOB"):
         print(NO_REUSE_COST, file=sys.stderr, flush=True)
     set_session(testboard.acting(), args.task)

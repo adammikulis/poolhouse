@@ -28,7 +28,7 @@ from typing import Any
 import psutil
 import pytest
 
-from poolhouse import home
+from poolhouse import home, sandbox
 from poolhouse.serve import process
 
 MARK = "POOLHOUSE_TEST_RUN"
@@ -85,7 +85,7 @@ def installed_ports() -> frozenset[int]:
 @functools.cache
 def _ports(_roots: tuple[Path, ...]) -> frozenset[int]:
     found: set[int] = set()
-    for pid in psutil.pids():
+    for pid in running():
         if protected(pid):
             with contextlib.suppress(psutil.Error, OSError):
                 found |= {c.laddr.port for c in psutil.Process(pid).net_connections(kind="inet") if c.status == psutil.CONN_LISTEN}
@@ -111,7 +111,17 @@ def _holds_protected(group: int) -> bool:
     if not hasattr(os, "getpgrp"):  # Windows has no process groups to name
         return False
     wanted = group or os.getpgrp()
-    return any(protected(pid) for pid in psutil.pids() if _group(pid) == wanted)
+    return any(protected(pid) for pid in running() if _group(pid) == wanted)
+
+
+def running() -> list[int]:
+    """Every pid of the computer; none in a coding box, which may not list processes and whose profile signals none outside itself."""
+    try:
+        return psutil.pids()
+    except PermissionError:
+        if not sandbox.confined():
+            raise
+        return []
 
 
 def kill(pid: int, number: int) -> None:
