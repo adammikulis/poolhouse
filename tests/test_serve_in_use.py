@@ -6,8 +6,11 @@ CANNED, never a model) as a real process on a free port, and each record is unde
 
 from __future__ import annotations
 
+import os
+import socket
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from test_serve_admission import weights
@@ -27,8 +30,8 @@ from test_serve_refused_key import (  # noqa: F401  (fixtures)
 from poolhouse import serverkeys
 from poolhouse.files import read_json
 from poolhouse.serve import LlamaServerBackend, ServerManager, exit_guard, refused_keys
-from poolhouse.serve.broker import Ask, Broker
-from poolhouse.serve.process import kill_process_tree
+from poolhouse.serve.broker import Ask, Broker, BrokerError
+from poolhouse.serve.process import kill_process_tree, pid_exists
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -118,6 +121,30 @@ def test_a_broker_s_exit_leaves_a_server_another_process_holds(tmp_path, llama_b
         assert pid not in exit_guard.guarded()
     finally:
         kill_process_tree(pid)
+
+
+@pytest.fixture
+def full(tmp_path, llama_binary, models, session):  # noqa: F811
+    """A broker whose budget holds one model, with one server up that its holder let go: another model fits only in its place."""
+    own = ServerManager(LlamaServerBackend(binary=llama_binary), state_file=tmp_path / "servers.json")
+    broker = Broker(own, room=lambda: 0, scan=lambda: [])
+    first = broker.lease(Ask(purpose="chat", models=(models[0],), pid=session.pid, weight=1 << 30, spec={"context": 512}), timeout=30)
+    broker.release(first.lease)
+    yield SimpleNamespace(broker=broker, port=first.port, pid=broker.servers[first.port].pid, other=models[1])
+    for one in list(broker.servers.values()):
+        kill_process_tree(one.pid)
+
+
+@pytest.mark.parametrize("purpose", ["chat", "other"], ids=["same-purpose", "for-room"])
+def test_a_server_in_use_is_not_evicted_and_nothing_is_loaded_beside_it_until_it_is_free(full, monkeypatch, purpose):
+    monkeypatch.setattr("poolhouse.serve.broker_stops.SPARE_S", 0.3, raising=False)
+    wanted = Ask(purpose=purpose, models=(full.other,), pid=os.getpid(), weight=1 << 30, spec={"context": 512})
+    with socket.create_connection(("127.0.0.1", full.port), timeout=5):   # a request somebody without a lease has on it
+        with pytest.raises(BrokerError, match="a request is in progress"):
+            full.broker.lease(wanted, timeout=3)
+        assert pid_exists(full.pid) and [(one.port, one.pid) for one in full.broker.servers.values()] == [(full.port, full.pid)]
+    second = full.broker.lease(wanted, timeout=30)
+    assert not pid_exists(full.pid) and [one.port for one in full.broker.servers.values()] == [second.port]
 
 
 def test_a_server_another_install_keyed_is_listed_and_never_asked(tmp_path, manager, processes, monkeypatch):  # noqa: F811

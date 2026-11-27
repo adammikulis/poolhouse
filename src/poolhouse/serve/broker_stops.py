@@ -14,7 +14,10 @@ from poolhouse.lock import only_one
 from poolhouse.serve import exit_guard, inuse
 from poolhouse.serve.leases import recorded_servers
 
-__all__ = ["BrokerStops"]
+__all__ = ["SPARE_S", "BrokerStops"]
+
+SPARE_S = 10.0
+"""How long a server found in use, as it was about to be evicted, is left out of the next plans."""
 
 
 class BrokerStops:
@@ -89,6 +92,25 @@ class BrokerStops:
             self._write_held()
             self._cond.notify_all()
         self.say(f"port {held.port}: left running: {why}")
+
+    def _all_unused(self, placeholder: Any, evicted: list[Any], asker: int) -> bool:
+        """Whether every server about to be evicted for ``placeholder`` is shown unused. When one is in use none is stopped and
+        nothing starts: the placeholder is let go, all of them are taken back, and the one in use is not picked for `SPARE_S`."""
+        found = {held.port: why for held in evicted if (why := self._in_use(held, asker=asker))}
+        if not found:
+            return True
+        with self._cond:
+            if self.servers.get(placeholder.port) is placeholder:
+                del self.servers[placeholder.port]
+            for held in evicted:
+                if held.port in found:
+                    held.spared = (time.monotonic() + SPARE_S, found[held.port])
+                self.servers.setdefault(held.port, held)
+            self._write_held()
+            self._cond.notify_all()
+        for port, why in found.items():
+            self.say(f"port {port}: left running: {why}")
+        return False
 
     def stop(self, port: int, *, force: bool = False) -> dict[str, Any]:
         """Stop the server on ``port``. Left running while anyone holds it or a request is on it, unless ``force``."""

@@ -175,6 +175,12 @@ class Held:
     #: (``context``, ``parallel``, ``cache_type_k``/``v``, ``mtp``, ``spec_type``,
     #: ``embedding``); a setting not known is not compared
     shape: dict[str, Any] = field(default_factory=dict)
+    #: ``(until when, why)``: a server found in use as it was about to be evicted is left out of the plans until then
+    spared: tuple[float, str] = (0.0, "")
+
+    def spared_why(self) -> str:
+        """Why this server was lately found in use, so that nothing evicts it yet; empty once that time has passed."""
+        return self.spared[1] if time.monotonic() < self.spared[0] else ""
 
     def short_of(self, asked: Mapping[str, Any]) -> str:
         """Why this server cannot serve ``asked`` (an ask's spec), or "" when it can: it must
@@ -472,10 +478,9 @@ class Broker(BrokerStops, BrokerHolds):
             if isinstance(turn, Grant):
                 return turn
             placeholder, evicted = turn
+            if not self._all_unused(placeholder, evicted, ask.pid):
+                continue   # one is in use: nothing is loaded in its place, and the ask waits and plans again
             for held in evicted:
-                if why := self._in_use(held, asker=ask.pid):
-                    self._keep(held, why)
-                    continue
                 said = f"to make room for {ask.models[0]} ({ask.purpose})"
                 self.say(f"stopping port {held.port} ({held.model}) {said}")
                 self._stop(held, f"nothing else uses it; stopped {said}", asker=caller)
@@ -563,7 +568,7 @@ class Broker(BrokerStops, BrokerHolds):
                 self.say(f"{ask.models[0]}: " + "; ".join(short) + "; starting one that fits")
         if match is not None:
             return match, [], f"{match.model} is loading on port {match.port}" if match.loading else ""
-        busy = [h for h in mine if h.loading or h.held_by_others(ask.pid)]
+        busy = [h for h in mine if h.loading or h.held_by_others(ask.pid) or h.spared_why()]
         if busy:
             return None, [], "; ".join(
                 [*(h.short_of(ask.spec) for h in busy if h.serves(ask.models)
@@ -577,14 +582,14 @@ class Broker(BrokerStops, BrokerHolds):
             return None, evict, ""
         freed = sum(h.weight for h in evict)
         spare = sorted((h for h in self.servers.values() if h.ours and not h.loading
-                        and not h.holders and h not in evict),
+                        and not h.holders and not h.spared_why() and h not in evict),
                        key=lambda h: h.idle_since)
         while need > room + freed and spare:
             evict.append(spare.pop(0))
             freed += evict[-1].weight
         if need <= room + freed:
             return None, evict, ""
-        held = [h for h in self.servers.values() if h.holders or h.loading]
+        held = [h for h in self.servers.values() if h.holders or h.loading or h.spared_why()]
         if not held:
             return None, evict, ""
         return None, [], (f"{ask.models[0]} needs {need >> 20} MiB and {room >> 20} MiB of the budget is "
@@ -592,7 +597,9 @@ class Broker(BrokerStops, BrokerHolds):
 
     @staticmethod
     def _held_said(held: Held) -> str:
-        who = ", ".join(f"pid {pid}" + (f" ({label})" if label else "")
+        if why := held.spared_why():
+            return f"port {held.port} serves {held.model}, left running: {why}"
+        who =", ".join(f"pid {pid}" + (f" ({label})" if label else "")
                         for pid, label in held.holders.values()) or "loading"
         return f"port {held.port} serves {held.model} for {held.purpose or 'no purpose'}, held by {who}"
 
