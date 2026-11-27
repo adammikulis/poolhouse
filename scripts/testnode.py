@@ -244,6 +244,20 @@ def shared_build(app: Path, *, root: Path | None = None, source_key_extra: str =
     return SharedBuild(staged, target)
 
 
+def fetch(cargo: str, work: Path, environment: dict[str, str]) -> None:
+    """Download what the lock file of ``work`` names and the cargo home lacks (the exact versions, by their checksums), so the
+    ``--offline`` builds that follow find it. Nothing lacking takes no network."""
+    argv = [cargo, "fetch", "--locked"]
+    try:
+        for command in ([*argv, "--offline"], argv):
+            done = subprocess.run(command, cwd=work, capture_output=True, text=True, timeout=BUILD_TIMEOUT_S, env=environment, check=False)
+            if not done.returncode:
+                return
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise BuildError(f"cargo fetch did not run: {error}") from error
+    raise BuildError(f"cargo fetch failed:\n{done.stderr.strip()[-2000:]}")
+
+
 def compile_node(work: Path, target: Path, cargo: str) -> Path:
     """Build the node from the staged workspace; the binary cargo wrote."""
     try:

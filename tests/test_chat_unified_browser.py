@@ -1,6 +1,7 @@
 """One conversation retains its model while tool capabilities change."""
 import pytest
 from browser_expect import expect
+from service_kit import node_binary, one_node  # noqa: F401  (fixtures)
 from test_chat_workspace_discovery_browser import activity_workspace, chat_browser, team
 from test_coding_browser import coding_browser
 

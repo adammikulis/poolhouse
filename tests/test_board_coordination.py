@@ -356,17 +356,15 @@ def done_posts(node):
     return [(e.sender, e.text) for e in entries if e.fields.get('subject') == 'done']
 
 
-def test_a_nested_subagent_is_a_child_of_its_spawner_and_stop_speaks_as_itself(board, tmp_path):
+def test_a_nested_subagent_is_a_child_of_its_spawner_and_its_turn_end_says_nothing(board, tmp_path):
     events = spawn_events(tmp_path, nested=True)
     first, second = start(board, events['child']), start(board, events['grandchild'])
     parents = {a.name: a.parent for a in board.session(board.lead).agents()}
     assert len({board.lead.name, first.name, second.name}) == 3
     assert parents[first.name] == board.lead.name and parents[second.name] == first.name
     assert hook('claude-subagent-stop', {**events['grandchild'], 'agent_transcript_path': ''}).returncode == 0
-    assert announcements(board) == []
-    posts = done_posts(board)
-    assert [name for name, _ in posts] == [second.name]
-    assert posts[0][1].startswith('done: finished')
+    assert announcements(board) == [] and done_posts(board) == []
+    assert {first.name, second.name} <= {a.name for a in board.session(board.lead).agents()}
 
 
 def test_subagents_and_their_children_are_listed_as_subagents(board, tmp_path):
@@ -383,7 +381,7 @@ def test_subagents_and_their_children_are_listed_as_subagents(board, tmp_path):
     assert {row['id']: row['session_kind'] for row in listed}[names[0]] == 'subagent'
 
 
-def test_a_subagent_that_stops_is_marked_done_with_its_branch_and_its_identity_ends(board, tmp_path):
+def test_a_turn_end_marks_a_subagent_neither_done_nor_ended(board, tmp_path):
     repository = tmp_path / 'repo'
     subprocess.run(['git', 'init', '-q', '-b', 'worker/topic', str(repository)], check=True)
     event = {'agent_type': 'branch-worker', 'agent_id': 'cccccc333', 'session_id': 'sess1', 'cwd': str(repository)}
@@ -391,15 +389,12 @@ def test_a_subagent_that_stops_is_marked_done_with_its_branch_and_its_identity_e
     for number in range(4):
         board.session(child).post('#announcements', 'milestone', f'noise {number}', subject='milestone')
     assert hook('claude-subagent-stop', event).returncode == 0
-    last = done_posts(board)[-1]
-    assert last[0] == child.name and 'on worker/topic in repo' in last[1]
-    assert child.name not in [a.name for a in board.session(board.lead).agents()]
-    assert child.name in [a.name for a in board.session(board.lead).agents(retired=True)]
-    with pytest.raises(board_session.Denied, match='token is not known'):
-        board.client.call('whoami', board.board, child.token)
+    assert done_posts(board) == []
+    assert child.name in [a.name for a in board.session(board.lead).agents()]
+    assert board.client.call('whoami', board.board, child.token)['name'] == child.name
 
 
-def test_a_handoff_the_subagent_posted_is_closed_when_it_stops_if_it_was_acked_or_answered(board, tmp_path):
+def test_a_handoff_a_subagent_posted_stays_owed_after_its_turn_ends_until_it_is_answered(board, tmp_path):
     repository = tmp_path / 'repo'
     subprocess.run(['git', 'init', '-q', '-b', 'worker/topic', str(repository)], check=True)
     event = {'agent_type': 'branch-worker', 'agent_id': 'cccccc333', 'session_id': 'sess1', 'cwd': str(repository)}
@@ -418,9 +413,9 @@ def test_a_handoff_the_subagent_posted_is_closed_when_it_stops_if_it_was_acked_o
     mail_cli.ack(argparse.Namespace(ref=acked), later(board, board.lead, HOUR))
     assert owed(board) == [acked, unseen], 'while the subagent lives, a read handoff is still owed and an answered one is not'
     assert hook('claude-subagent-stop', event).returncode == 0
-    assert owed(board) == [unseen], 'stopping closes the handoff that was acked and keeps the unread one'
+    assert owed(board) == [acked, unseen], 'a turn end closes no handoff'
     shown = run(board.lead.name, 'attention').stdout
-    assert f'[{unseen}] handoff from {child.name}' in shown and f'[{acked}]' not in shown and f'[{answered}]' not in shown
+    assert all(f'[{seq}] handoff from {child.name}' in shown for seq in (acked, unseen)) and f'[{answered}]' not in shown
 
 
 def test_lead_attention_hook_injects_once_per_interval_and_skips_subagents(board, monkeypatch):

@@ -64,8 +64,8 @@ def release(tmp_path, monkeypatch):
     monkeypatch.setattr(provider, 'directory', lambda: root)
     monkeypatch.setattr(provider, 'verify_libraries', lambda *_: None)
     downloaded = []
-    def download(url, target, want):
-        assert grant.granted()
+    def download(url, target, want, *, pipeline):
+        assert grant.granted() and pipeline is provider.net.default()
         assert url == provider.URL and want.sha256 == provider.ARCHIVE_SHA256 and want.require_digest
         target.parent.mkdir(parents=True)
         shutil.copyfile(compressed, target)
@@ -148,8 +148,8 @@ def test_preparation_without_actual_broker_grant_never_writes(tmp_path, release)
 def test_changed_model_during_preparation_never_reaches_launch(tmp_path, monkeypatch, release):
     model = weights(tmp_path / 'model')
     original = provider.net.download
-    def changing(*args):
-        original(*args)
+    def changing(*args, **options):
+        original(*args, **options)
         model.write_bytes(model.read_bytes() + b'changed')
     monkeypatch.setattr(provider.net, 'download', changing)
     with pytest.raises(ServerFailed, match='model changed'):
