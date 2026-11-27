@@ -198,14 +198,8 @@ def subagent_naming_another(event: dict, command: str, rules) -> str:
     return rules.protected().other_agent(command, str(subagent_records.load(agent).get("name") or ""))
 
 
-def subagent_stamped(event: dict, given: dict) -> dict | None:
-    """The tool input of a subagent's command with the subagent's identity set in the shell, or None for any other caller.
-
-    The shell inherits the identity of the session that started the subagent; the start hook's record of the subagent
-    replaces it, and a subagent with no record has none, so its workspace commands are refused."""
-    agent = str(event.get("agent_id") or "")
-    if not agent or not isinstance(given.get("command"), str):
-        return None
+def stamp(agent: str) -> str:
+    """The lines, each ended, that set the identity of the subagent with harness id ``agent`` in the shell of its command."""
     import subagent_records
     record = subagent_records.load(agent)
     lines = [f"export POOLHOUSE_SUBAGENT={shlex.quote(subagent_records.native_key(agent))}",
@@ -214,7 +208,47 @@ def subagent_stamped(event: dict, given: dict) -> dict | None:
                  else "unset POOLHOUSE_WORKSPACE_AGENT")
     if record.get("board"):
         lines.append(f"export POOLHOUSE_BOARD={shlex.quote(record['board'])}")
-    return {**given, "command": "\n".join(lines) + "\n" + given["command"]}
+    return "".join(f"{line}\n" for line in lines)
+
+
+def unstamped(event: dict) -> dict | None:
+    """The event of a subagent's command that already begins with exactly this subagent's own stamp, holding the command after it;
+    None for any other. A permission mode that refuses a command a hook changed lets the subagent send the changed command itself:
+    those first lines are this guard's, so the rules judge what follows them and nothing is added a second time."""
+    agent, given = str(event.get("agent_id") or ""), event.get("tool_input")
+    command = given.get("command") if isinstance(given, dict) else None
+    if not agent or not isinstance(command, str) or not command.startswith("export POOLHOUSE_SUBAGENT="):
+        return None   # the record is read before the rules judge only for a command that could be a stamped one
+    if not command.startswith(own := stamp(agent)):
+        return None
+    return {**event, "tool_input": {**given, "command": command[len(own):]}}
+
+
+def unidentified(why: Exception) -> int:
+    """Refuse a subagent's command that could not be judged or given its identity: a hook that crashes lets the command run, as the
+    session that started the subagent."""
+    print(f"blocked: this subagent's command could not be judged as its own ({type(why).__name__}), so it does not run.\n\n"
+          "(poolhouse scripts/hooks/claude-bash-guard. No switch opens this rule.)", file=sys.stderr)
+    return 2
+
+
+ACTS_AS_A_SESSION = re.compile(
+    r"(?:^|[\s;&|(`'\"=]|bin/)poolhouse(?:-[a-z]+)*(?=$|[\s;&|)`'\"<>])|-m\s*poolhouse\b|POOLHOUSE_|\bgit\b[^;&|\n]*\b(?:commit|push)\b", re.M)
+"""A command that acts as a session: it runs a poolhouse program or module, reads a Poolhouse variable, or commits or pushes (whose hooks do)."""
+
+
+def subagent_stamped(event: dict, given: dict) -> dict | None:
+    """The tool input of a subagent's command with the subagent's identity set in the shell, or None for any other caller. The auto permission
+    mode refuses a command a hook changed, so there only a command that acts as a session (`ACTS_AS_A_SESSION`) is changed.
+
+    The shell inherits the identity of the session that started the subagent; the start hook's record of the subagent
+    replaces it, and a subagent with no record has none, so its workspace commands are refused."""
+    agent, command = str(event.get("agent_id") or ""), given.get("command")
+    if not agent or not isinstance(command, str):
+        return None
+    if event.get("permission_mode") == "auto" and not ACTS_AS_A_SESSION.search(command):
+        return None
+    return {**given, "command": stamp(agent) + command}
 
 
 def judge(event: dict, switched: bool, rules) -> str:
@@ -259,10 +293,17 @@ def main() -> int:
     if rules and rules.protected().too_deep(event):
         print(rules_loader.NESTED, file=sys.stderr)
         return 2
-    if refused := judge(event, switched, rules):
+    try:
+        own = unstamped(event)
+        refused = judge(own or event, switched, rules)
+        stamped = None if refused or own else subagent_stamped(event, event.get("tool_input") or {})
+    except Exception as why:
+        if not event.get("agent_id"):
+            raise
+        return unidentified(why)
+    if refused:
         print(refused, file=sys.stderr)
         return 2
-    stamped = subagent_stamped(event, event.get("tool_input") or {})
     if stamped:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": stamped}}))
     return 0

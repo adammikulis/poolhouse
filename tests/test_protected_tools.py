@@ -136,8 +136,8 @@ def test_ordinary_use_of_those_tools_is_not_refused(name, given):
     assert not tool(name, given), (name, given)
 
 
-def test_only_the_main_session_stops_a_task():
-    assert tool("TaskStop", {"task_id": "t1"}, subagent=True)
+def test_any_session_stops_a_task():
+    assert not tool("TaskStop", {"task_id": "t1"}, subagent=True)
     assert not tool("TaskStop", {"task_id": "t1"}, subagent=False)
 
 
@@ -226,8 +226,10 @@ def test_the_tool_guard_script_refuses_and_says_what_to_do():
 
 
 def test_the_tool_guard_script_treats_an_event_with_an_agent_id_as_a_subagent():
-    assert run({"tool_name": "TaskStop", "cwd": "/work", "agent_id": "a1", "tool_input": {"task_id": "t"}}).returncode == 2
-    assert run({"tool_name": "TaskStop", "cwd": "/work", "tool_input": {"task_id": "t"}}).returncode == 0
+    run_elsewhere = {"tool_name": "A_Tool_Added_Next_Year", "cwd": "/work", "tool_input": {"command": "true"}}
+    assert run({**run_elsewhere, "agent_id": "a1"}).returncode == 2, "only Bash and Monitor commands run as a subagent"
+    assert run(run_elsewhere).returncode == 0
+    assert run({"tool_name": "TaskStop", "cwd": "/work", "agent_id": "a1", "tool_input": {"task_id": "t"}}).returncode == 0
 
 
 def test_the_tool_guard_script_keeps_the_hard_rules_when_the_guard_is_off():

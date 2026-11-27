@@ -224,8 +224,13 @@ def _landing(segment: str) -> bool:
 
 
 def _reads_only(segment: str) -> bool:
-    """Whether a git command in CHANGES_THE_TREE only looks: `git stash list` and `git stash show`."""
-    return re.match(GIT + r"\s+(list|show)\b", segment) is not None and "stash" in segment.split()
+    """Whether a git command in CHANGES_THE_TREE only looks: `git stash list` and `git stash show`, and `git apply` asked only to check a
+    patch or count it."""
+    words = segment.split()
+    if "apply" in words and set(words) & {"--check", "--stat", "--numstat", "--summary"} and "--apply" not in words:
+        git = re.match(GIT, segment)
+        return git is not None and git["verb"] == "apply"
+    return re.match(GIT + r"\s+(list|show)\b", segment) is not None and "stash" in words
 
 
 def _switches_to_a_branch(segment: str) -> bool:

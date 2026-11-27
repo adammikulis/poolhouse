@@ -29,10 +29,9 @@ HELD = tuple(tuple(path.split("/")) for path in (
     "src/poolhouse/workspace/harness_ancestry.py", "scripts/hooks/harness-ancestry",
     "scripts/hooks/claude-harness-bind", "scripts/release-key", "src/poolhouse/credentials/__init__.py",
     ".git/hooks/pre-push", ".git/config", ".config/git/config", ".gitconfig"))
-MENTION = re.compile(
-    r"claude-harness-bind|harness-ancestry|\.git/(hooks|config)"
-    r"|workspace/harness_ancestry|core\.hooksPath|\.gitconfig"
-    r"|\.poolhouse/(person|node/client|node/person|authority)", re.I)
+MENTION = re.compile(r"\.git/hooks|\.poolhouse/(person|node/client|node/person|authority)", re.I)
+"""What code run from a shell may not name: git's hooks, the owner's keys, the session tokens and the authority registry. Code that only names
+git's settings or a guard's file runs (a test or a document does); writing those by redirect, copy, edit in place or `git config` is refused."""
 
 NATIVE_SESSION = frozenset({"POOLHOUSE_SESSION_ID", "POOLHOUSE_SESSION_HARNESS", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID"})
 """The variables by which a harness names the main session a shell belongs to. The stamp takes them out of a subagent's shell, so
@@ -66,7 +65,9 @@ READ_ONLY = frozenset({"wc", "grep", "egrep", "fgrep", "cat", "head", "tail", "l
 FETCHERS = {"curl": ("-o", "--output"), "wget": ("-O", "--output-document")}
 GIT_CONFIG = re.compile(r"^(core\.(hookspath|fsmonitor|sshcommand|askpass)|credential\..*helper|include(if\..*)?\.path)$", re.I)
 GIT_ENV = re.compile(r"^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|GLOBAL|SYSTEM|PARAMETERS)$")
-GIT_PATHS = frozenset({"checkout", "restore", "rm", "mv", "update-index", "clean"})
+GIT_PATHS = frozenset({"rm", "mv", "update-index", "clean"})
+"""The git commands that remove or redirect a guard. `checkout` and `restore` put a committed copy back, in a worktree whose hooks are not the
+ones that run; the primary checkout refuses them by its own rule (`worktreerules`)."""
 GIT_TAKES = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})
 WRITES_TO_A_FILE = re.compile(r"^(&?>>?|>\||&>>?)$")
 READS_A_FILE = re.compile(r"^(\d*<>?)$")
@@ -83,9 +84,11 @@ GRAPHQL = re.compile(r"BranchProtectionRule|Ruleset|mergePullRequest|enablePullR
 GH_BLOCKED: dict[str, frozenset[str] | None] = {
     "secret": None, "variable": None, "ruleset": None, "extension": None,
     "repo": frozenset({"edit", "delete", "rename", "archive", "transfer"}),
-    "workflow": frozenset({"run", "enable", "disable"}), "release": frozenset({"create", "delete", "edit", "upload"}),
+    "workflow": frozenset({"enable", "disable"}), "release": frozenset({"create", "delete", "edit", "upload"}),
     "auth": frozenset({"login", "logout", "refresh", "setup-git", "token", "switch"}),
     "alias": frozenset({"set", "import"}), "config": frozenset({"set"})}
+CHECK_WORKFLOWS = frozenset({"ci.yml", "redteam.yml", "audit.yml", "pool-check.yml", "release-dry-run.yml"})
+"""The workflows an agent may start by name: they only check. Any other can publish."""
 READERS = re.compile(r"read|get|list|search|view|find|stat|head|tail|cat|show|describe|query|fetch")
 DEPTH = 3
 SCRIPT_BYTES = 65536
@@ -475,7 +478,7 @@ def _shell_code(args: list[str]) -> str:
 
 
 def _code(verb: str, args: list[str], bodies: list[str], shell: Shell) -> str:
-    """Why interpreted code (inline, a heredoc or a script file) is refused: it names a guard, a secret or git's hooks."""
+    """Why interpreted code (inline, a heredoc or a script file) is refused: it names what `MENTION` lists."""
     if verb not in INLINE and verb not in SHELLS and verb not in ("source", "."):
         return ""
     flag = INLINE.get(verb, "")
@@ -509,6 +512,9 @@ def _gh(args: list[str], shell: Shell) -> str:
     if head == "pr" and rest == ["merge"] and (why := shell.released(str(shell.here))):
         return ("`gh pr merge` merges into a protected branch: refused to an agent until the commit has a standing independent "
                 f"land-review accept (`poolhouse-workspace land-review`) and the checkout is clean; {why}.")
+    if head == "workflow" and rest == ["run"] and not (verbs[2:] and verbs[2] in CHECK_WORKFLOWS):
+        return ("`gh workflow run` of anything but a workflow that checks is refused to an agent, since another can publish; name one "
+                f"before any flag ({', '.join(sorted(CHECK_WORKFLOWS))}).")
     blocked = GH_BLOCKED.get(head, frozenset({"-"}))
     if blocked is None or (rest and rest[0] in blocked):
         return (f"`gh {head}` changes how the repository is protected or who may act on it: refused to an agent; "
@@ -576,10 +582,7 @@ def _git_paths(args: list[str], shell: Shell) -> str:
     if sub not in GIT_PATHS:
         return ""
     plain = [a for a in rest if not a.startswith("-")]
-    before = rest[:rest.index("--")] if "--" in rest else plain
-    named = rest[rest.index("--") + 1:] if "--" in rest else (plain if sub in ("rm", "mv", "restore") else [])
-    from_a_commit = (sub == "checkout" and any(not a.startswith("-") for a in before)) or any(
-        a in ("-s", "--source") or a.startswith("--source=") for a in rest)
+    named = rest[rest.index("--") + 1:] if "--" in rest else (plain if sub in ("rm", "mv") else [])
     here = shell.here
     if moved:
         shell.move(moved)
@@ -587,7 +590,7 @@ def _git_paths(args: list[str], shell: Shell) -> str:
         if sub == "mv":
             found = shell.guarded(named[:-1], deep=True) or shell.lands_on(named[:-1], named[-1:])
         else:
-            found = shell.guarded(named, deep=sub == "rm" or from_a_commit)
+            found = shell.guarded(named, deep=sub == "rm")
     finally:
         shell.here = here
     return f"`git {sub}` would change {found}: {REFUSED}." if found else ""
@@ -869,8 +872,6 @@ def _tool_refusal(name: str, given: Mapping[str, object], here: Path, found: Map
         return "the owner's own browser is not driven by an agent: use a headless browser of your own."
     if name == "mcp__ide__executeCode":
         return "code run in the editor's kernel skips the shell rules: use Bash."
-    if name == "TaskStop":
-        return "only the main session stops a task." if subagent else ""
     keys = {"Read": ("file_path", "notebook_path"), "Glob": ("pattern", "path"), "Grep": ("path", "glob")}.get(name)
     writes = name.startswith("mcp__") and not READERS.search(name.rsplit("__", 1)[-1])
     if keys is not None:

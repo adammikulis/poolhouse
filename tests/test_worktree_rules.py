@@ -108,6 +108,7 @@ def test_a_tree_changing_git_command_in_the_primary_checkout_is_refused(repo, co
     "git worktree remove ../work", "git worktree add -b x ../x dev", "git worktree prune",
     "git worktree list", "git branch -d work", "git fetch origin", "git status", "git log --oneline",
     "git diff HEAD", "echo 'git commit'", "grep -rn 'git add' docs/", "git branch --show-current",
+    "git apply --check p.patch", "git apply --stat p.patch",
 ])
 def test_landing_and_reading_are_allowed_in_the_primary_checkout(repo, command):
     primary, _, _ = repo

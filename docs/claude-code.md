@@ -28,7 +28,12 @@ and never limits (docs/claude-subagents.md, "Tool-call milestones").
   which the harness names the session that started it (`CLAUDE_CODE_SESSION_ID`, `POOLHOUSE_SESSION_ID`,
   `POOLHOUSE_SESSION_HARNESS`, `CODEX_THREAD_ID`) are removed, so a program that drops the subagent's own marker has no
   identity instead of the lead's. A command of a subagent that sets one of those names to a value, another session's name or a
-  token is refused (an empty value, and the name inside an argument such as a `grep` pattern, are not an assignment).
+  token is refused (an empty value, and the name inside an argument such as a `grep` pattern, are not an assignment). In the
+  auto permission mode, which refuses a command a hook changed, only a command that runs a poolhouse program or module, names a
+  `POOLHOUSE_` variable, or commits or pushes is stamped; any other runs as sent. A stamped command refused that way runs when it
+  is sent again exactly as the refusal shows it.
+- The guards leave alone what harms nothing outside the worktree: `git checkout` and `git restore` there, `git apply --check`, a
+  subagent stopping a task, `gh workflow run` of a workflow that only checks, and code that merely names git's settings.
 - The guards read the text of a command, so they stop the forms their tests list and no more: expansions, `eval`, base64, heredocs
   and a program an agent writes and runs are past them, and the lead's session id can be read from the process environment and the
   harness's files. The closure is the isolated launcher's sandbox (`docs/design-isolated-launcher.md`, L1 to L5; the agent

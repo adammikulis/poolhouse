@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shlex
@@ -248,3 +249,58 @@ def test_a_subagent_that_runs_a_command_through_the_monitor_tool_acts_as_the_sub
     child = scene.name("rev1")
     done = scene.run("rev1", "poolhouse-workspace whoami --json", tool="Monitor")
     assert done.returncode == 0 and json.loads(done.stdout)["id"] == child, done.stderr
+
+
+@pytest.mark.redteam
+def test_a_subagent_command_sent_again_as_the_hook_changed_it_runs_unchanged_and_nothing_else_may_begin_that_way(scene):
+    """A permission mode that refuses a command a hook changed lets the subagent send the changed command itself; the guard must take its own
+    first lines back, and nothing but exactly this subagent's own."""
+    scene.start("rev1")
+    scene.start("rev2")
+    child, root = scene.name("rev1"), scene.world.proj.root
+
+    def ask(command: str, agent: str = "rev1") -> subprocess.CompletedProcess:
+        asked = {"tool_name": "Bash", "agent_id": agent, "session_id": "sess1", "cwd": str(root), "tool_input": {"command": command}}
+        return scene.hook("claude-bash-guard", asked)
+
+    asked = "poolhouse-workspace whoami --json"
+    changed = json.loads(ask(asked).stdout)["hookSpecificOutput"]["updatedInput"]["command"]
+    again = ask(changed)
+    assert again.returncode == 0 and not again.stdout.strip(), "the changed command, sent as it is, is let through and not changed again: " + again.stderr
+    ran = subprocess.run(["/bin/sh", "-c", changed], cwd=root, env=scene.inherited(), text=True, capture_output=True, timeout=120, check=False)
+    assert ran.returncode == 0 and json.loads(ran.stdout)["id"] == child, ran.stderr
+    own = changed.removesuffix(asked)
+    refused = (own + f"POOLHOUSE_WORKSPACE_AGENT={scene.lead.name} true", own + f"poolhouse-workspace inbox --agent {scene.lead.name}",
+               own + "poolhouse-workspace inbox --token-file /x", own + "export POOLHOUSE_SUBAGENT=other", own + "git push --force origin x",
+               own.replace(child, scene.lead.name) + "true", "true\n" + own + "true", own.replace("unset POOLHOUSE_WORKSPACE_TOKEN\n", "") + "true")
+    for command in refused:
+        done = ask(command)
+        assert done.returncode == 2, (command, done.stdout)
+    another = ask(changed, agent="rev2")
+    assert another.returncode == 2, "one subagent's stamp is not another's: " + another.stdout
+
+
+@pytest.mark.parametrize("mode", ["default", "auto"])
+def test_in_auto_mode_only_a_subagent_command_that_acts_as_a_session_is_changed(scene, mode):
+    scene.start("rev1")
+    for command, acts in (("true", False), ("ls /x/repos/poolhouse-fix/tests", False), ("scripts/test all tests/test_x.py", False),
+                          ("poolhouse-workspace whoami", True), ("/x/venv/bin/poolhouse-workspace inbox", True),
+                          ("python3 -m poolhouse.workspace whoami", True), ("git -C /x commit -m y", True)):
+        asked = {"tool_name": "Bash", "agent_id": "rev1", "session_id": "sess1", "cwd": str(scene.world.proj.root),
+                 "permission_mode": mode, "tool_input": {"command": command}}
+        done = scene.hook("claude-bash-guard", asked)
+        assert done.returncode == 0, (command, done.stderr)
+        assert bool(done.stdout.strip()) is (acts or mode == "default"), (command, done.stdout)
+
+
+@pytest.mark.redteam
+@pytest.mark.parametrize("record", ['{"generation": "x"}', '{"generation": Infinity}', '{"name": 1}', "[" * 100000],
+                         ids=["generation", "infinity", "name", "nesting"])
+def test_a_subagent_whose_identity_record_cannot_be_read_runs_nothing_rather_than_running_as_the_lead(scene, tmp_path, record):
+    scene.start("rev1")
+    [held] = (tmp_path / "hookstate" / "subagents").glob(hashlib.sha256(b"rev1").hexdigest()[:24] + ".json")
+    held.write_text(record)
+    for command in ("true", "git push --force origin x"):
+        asked = {"tool_name": "Bash", "agent_id": "rev1", "session_id": "sess1", "cwd": str(scene.world.proj.root), "tool_input": {"command": command}}
+        done = scene.hook("claude-bash-guard", asked)
+        assert done.returncode == 2 and not done.stdout.strip(), (command, done.returncode, done.stderr)
