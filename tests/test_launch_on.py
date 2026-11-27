@@ -23,10 +23,9 @@ from poolhouse import claude, codex, harnessid, harnessing, home, opencode, pi, 
 from poolhouse.client.health import reported_models
 from poolhouse.files import read_json, write_json
 from poolhouse.http import Cancellation, build_request, cancel_scope, head_once
-from poolhouse.ownership import cmdline_digest
+from poolhouse.ownership import cmdline_digest, lease_file
 from poolhouse.serve import backend as be
 from poolhouse.serve.grant import broker_grant
-from poolhouse.serve.leases import lease_file
 from poolhouse.serve.policy import LocalPolicy
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import started_at

@@ -275,7 +275,8 @@ def test_a_broker_that_took_over_from_one_that_handed_over_owns_the_server_its_h
         broker, models, holders, llama_binary, tmp_path):
     """The broker that leased a server may be gone (it handed over to newer code); a server with a live holder is the
     successor's, not an orphan the next start would stop."""
-    from poolhouse.serve.leases import orphaned, recorded_servers
+    from poolhouse.ownership import recorded_servers
+    from poolhouse.serve.leases import orphaned
 
     a = holders()
     first = broker.lease(ask(models[0], a.pid), timeout=30)

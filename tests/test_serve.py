@@ -18,6 +18,7 @@ import pytest
 from conftest import json_reply
 
 from poolhouse.client.health import ServingParams
+from poolhouse.ownership import lease_file
 from poolhouse.serve import (
     LlamaServerBackend,
     ServerBackend,
@@ -35,7 +36,7 @@ from poolhouse.serve import (
     tail,
     wait_until_free,
 )
-from poolhouse.serve.leases import lease_file, orphaned
+from poolhouse.serve.leases import orphaned
 from poolhouse.testing.canned import Canned, CannedServer, canned_binary
 from poolhouse.testing.fakes import fake_binary
 from poolhouse.testing.registry import record_server

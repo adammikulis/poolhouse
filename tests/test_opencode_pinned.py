@@ -38,8 +38,7 @@ from poolhouse import (
     procscan,
     serverkeys,
 )
-from poolhouse.ownership import cmdline_digest
-from poolhouse.serve.leases import lease_file
+from poolhouse.ownership import cmdline_digest, lease_file
 from poolhouse.serve.process import kill_process_tree, started_at
 from poolhouse.testing import canned
 from poolhouse.testing.registry import record_server

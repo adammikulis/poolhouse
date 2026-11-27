@@ -27,6 +27,7 @@ from typing import Any
 
 from poolhouse import activity, gate
 from poolhouse.client import is_healthy, reported_models, serving_params
+from poolhouse.ownership import recorded_servers
 from poolhouse.serve import (
     admission,
     canaries,
@@ -46,7 +47,7 @@ from poolhouse.serve.broker_lifecycle import admitted
 from poolhouse.serve.broker_stops import BrokerStops
 from poolhouse.serve.decision_residents import DecisionResidents
 from poolhouse.serve.events import Caller, Growth
-from poolhouse.serve.leases import orphaned, recorded_servers
+from poolhouse.serve.leases import orphaned
 from poolhouse.serve.manager import ASKING, Measuring, ServerManager, Starting
 from poolhouse.serve.matching import model_matches
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free

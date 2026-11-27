@@ -167,7 +167,7 @@ class Idleness:
 
 
 def _recorded() -> dict[int, dict]:
-    from poolhouse.serve.leases import recorded_servers
+    from poolhouse.ownership import recorded_servers
 
     return {port: entry for port, entry in recorded_servers().items()
             if not entry.get("unmanaged")}

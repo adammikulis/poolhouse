@@ -12,6 +12,7 @@ from typing import Any
 from poolhouse import sentinel
 from poolhouse.files import sha256_file
 from poolhouse.fleet.onboard.trusted import TrustedLists
+from poolhouse.ownership import recorded_servers
 from poolhouse.sentinel import Sentinel
 from poolhouse.sentinel.adapters import broker_listener, serve_hooks
 from poolhouse.sentinel.events import Event, Severity
@@ -21,7 +22,6 @@ from poolhouse.sentinel.watch import Scanner
 from poolhouse.serve import canaries, decoy
 from poolhouse.serve.backend import ServerFailed
 from poolhouse.serve.decoy import DecoyListener
-from poolhouse.serve.leases import recorded_servers
 
 logger = logging.getLogger(__name__)
 

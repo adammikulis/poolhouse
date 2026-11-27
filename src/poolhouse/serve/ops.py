@@ -23,6 +23,7 @@ from poolhouse.client.counters import Speculative, read_speculative
 from poolhouse.client.health import serving_params
 from poolhouse.fleet.serving import Serving
 from poolhouse.log import warn
+from poolhouse.ownership import lease_file, recorded_servers
 from poolhouse.serve import (
     broker_wire,
     chat_template as chat_template_mod,
@@ -43,7 +44,7 @@ from poolhouse.serve.backend import (
 )
 from poolhouse.serve.binary import BinaryNotFound
 from poolhouse.serve.fitted import fitted
-from poolhouse.serve.leases import lease_file, orphaned, recorded_servers
+from poolhouse.serve.leases import orphaned
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.mlx_tree import report_for
 from poolhouse.serve.mlxref import is_mlx

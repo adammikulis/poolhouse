@@ -27,6 +27,7 @@ from poolhouse import home, jobs, maintenance, optional, runtime_age, spawned
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import Busy, only_one
 from poolhouse.log import say as say_out
+from poolhouse.ownership import lease_file
 from poolhouse.platform import on_quit, private_file
 from poolhouse.serve import broker_runtime, guarded, provenance
 from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
@@ -35,7 +36,6 @@ from poolhouse.serve.broker_lifecycle import retire
 from poolhouse.serve.decision_process import MAX_FRAME
 from poolhouse.serve.decision_residents import DecisionOwner, validate_record, validate_result
 from poolhouse.serve.events import Caller, Growth
-from poolhouse.serve.leases import lease_file
 from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.process import owns_connection, pid_exists, started_at
 

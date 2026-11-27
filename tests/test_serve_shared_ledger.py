@@ -16,9 +16,9 @@ from test_core import current_build, model  # noqa: F401 - the fixtures of the c
 from test_serve_admission import ServedBackend
 
 from poolhouse import core, limits
+from poolhouse.ownership import lease_file, recorded_servers
 from poolhouse.serve import admission, ledger
 from poolhouse.serve.backend import ServerSpec
-from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.ports import free_port
 

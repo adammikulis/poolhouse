@@ -42,7 +42,8 @@ from poolhouse.board.client import Client, NodeError
 from poolhouse.command import Group, flag, option
 from poolhouse.errors import Denied
 from poolhouse.log import say
-from poolhouse.serve import admission, leases
+from poolhouse.ownership import recorded_servers
+from poolhouse.serve import admission
 from poolhouse.workspace import nudge_fence
 
 __all__ = ["main", "standing_model"]
@@ -63,7 +64,7 @@ def standing_model(requested: str = "") -> str:
     if requested:
         return requested
     best, window = "", 0
-    for entry in leases.recorded_servers().values():
+    for entry in recorded_servers().values():
         each = int(entry.get("context") or 0) // max(1, int(entry.get("parallel") or 1))
         if entry.get("embedding") or not admission.live(entry) or each < max(window + 1, harnessing.MIN_WINDOW):
             continue

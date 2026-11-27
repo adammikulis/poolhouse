@@ -24,6 +24,7 @@ from poolhouse.files import write_json
 from poolhouse.hub import free_memory, room as machine_room
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
+from poolhouse.ownership import lease_file, recorded_servers, same_process
 from poolhouse.serve import (
     admission,
     exit_guard,
@@ -60,13 +61,7 @@ from poolhouse.serve.escalation import (
 )
 from poolhouse.serve.events import Caller, Event, Growth, emit
 from poolhouse.serve.fitted import fitted, reusing_installed
-from poolhouse.serve.leases import (
-    lease_file,
-    merge_state,
-    orphaned,
-    recorded_servers,
-    same_process,
-)
+from poolhouse.serve.leases import merge_state, orphaned
 from poolhouse.serve.matching import model_matches, serving_mismatch
 from poolhouse.serve.mlx_tree import MlxTreeBackend
 from poolhouse.serve.mlxref import is_mlx

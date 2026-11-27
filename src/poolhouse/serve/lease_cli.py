@@ -12,9 +12,9 @@ from typing import Any
 
 from poolhouse.command import flag
 from poolhouse.log import say
+from poolhouse.ownership import lease_file
 from poolhouse.serve import holding, lease_history, ops, provenance
 from poolhouse.serve.broker import BrokerError
-from poolhouse.serve.leases import lease_file
 from poolhouse.units import parse_duration
 
 __all__ = ["OPTIONS_HISTORY", "OPTIONS_LEASES", "cmd_history", "cmd_leases", "other_holders"]

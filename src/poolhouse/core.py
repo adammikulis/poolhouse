@@ -25,11 +25,11 @@ from typing import Any
 from poolhouse import errors, lazy, serverkeys
 from poolhouse.client.health import reported_models
 from poolhouse.hub import local, room
+from poolhouse.ownership import lease_file
 from poolhouse.serve import admission, grant, ledger, stopping
 from poolhouse.serve.backend import Lease, LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.binary import require_binary
 from poolhouse.serve.children import Children
-from poolhouse.serve.leases import lease_file
 from poolhouse.serve.policy import LocalPolicy, Policy
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free
 from poolhouse.serve.preflight import Preflight, Report

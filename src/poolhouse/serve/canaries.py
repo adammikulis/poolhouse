@@ -21,11 +21,11 @@ from pathlib import Path
 
 from poolhouse.client import Client
 from poolhouse.http import ServerError
+from poolhouse.ownership import recorded_servers
 from poolhouse.sentinel import Sentinel, canary
 from poolhouse.sentinel.events import Event, Severity
 from poolhouse.sentinel.findings import Finding
 from poolhouse.sentinel.watch import canary_cadence, opt_out
-from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.process import pid_exists
 from poolhouse.serve.reclaim import busy_now

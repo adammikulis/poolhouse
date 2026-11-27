@@ -19,8 +19,8 @@ from machine_guard import stop_started
 
 from poolhouse import gate, limits
 from poolhouse.http import Options, request_json
+from poolhouse.ownership import lease_file, recorded_servers
 from poolhouse.serve import admission, broker_wire
-from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.process import kill_process_tree, pid_exists
 from poolhouse.testing.canned import canned_binary
 from tests.model_pins import pinned

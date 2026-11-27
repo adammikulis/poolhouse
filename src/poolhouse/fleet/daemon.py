@@ -24,9 +24,9 @@ from poolhouse.hub import default_roots, uploads
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
 from poolhouse.log import say, warn
+from poolhouse.ownership import lease_file
 from poolhouse.platform import name_process, private_file, quitting
 from poolhouse.serve import canaries, guarded
-from poolhouse.serve.leases import lease_file
 from poolhouse.serve.reclaim import watching
 from poolhouse.speech import service as speech
 

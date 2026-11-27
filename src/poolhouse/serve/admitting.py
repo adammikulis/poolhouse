@@ -23,10 +23,11 @@ from poolhouse import leasetable
 from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.health import refuses_key, serving_params
 from poolhouse.node_health import Refused
+from poolhouse.ownership import recorded_servers
 from poolhouse.serve import admission, inuse, ledger, node_memory, unmanaged
 from poolhouse.serve.backend import Lease, ServerBackend, ServerInfo, ServerSpec
 from poolhouse.serve.events import Event, emit
-from poolhouse.serve.leases import merge_state, orphaned, recorded_servers
+from poolhouse.serve.leases import merge_state, orphaned
 from poolhouse.serve.matching import model_matches, serving_mismatch
 from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.process import kill_process_tree

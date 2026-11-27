@@ -11,8 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import only_one
+from poolhouse.ownership import recorded_servers
 from poolhouse.serve import exit_guard, inuse
-from poolhouse.serve.leases import recorded_servers
 
 __all__ = ["SPARE_S", "BrokerStops"]
 

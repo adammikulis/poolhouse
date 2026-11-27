@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from poolhouse.ownership import lease_file, recorded_servers, same_process
+from poolhouse.ownership import recorded_servers, same_process
 from poolhouse.serve.process import pid_exists
 
-__all__ = ["already_up", "lease_file", "merge_state", "orphaned", "recorded_servers"]
+__all__ = ["already_up", "merge_state", "orphaned"]
 
 
 def merge_state(on_disk: dict, mine: dict, owner_pid: int, *, holder: str = "") -> dict:
