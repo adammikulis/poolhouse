@@ -38,10 +38,14 @@ and never limits (docs/claude-subagents.md, "Tool-call milestones").
 - A command of a subagent that sets one of those names to a value, another session's name or a token is refused (an empty value,
   and the name inside an argument such as a `grep` pattern, are not an assignment).
 - **A session whose shells hold no such line** (it began before the line was added, or the harness offered no environment file)
-  refuses nothing for that. A subagent's command there runs as the session that started it: what it writes, claims or reviews is
-  recorded under that session, so the author check of a review does not tell the two apart. The hook says so beside such a
-  command. The line is added when a session starts, resumes or compacts. On Windows, an environment file holding this line gives
-  PowerShell commands none of the file's variables; Bash commands receive them.
+  refuses a subagent one kind of command only: one that records a review verdict (`scripts/lead-review`, `land-review`,
+  `poolhouse-delegate grade`, `gh pr review --approve` or `--request-changes`, a status or review written with `gh api`), since it
+  would be recorded as the session that started it and the author check could not tell the two apart. Every other command runs,
+  as the session that started it: what it writes or claims is recorded under that session, and the hook says so beside it. The
+  line is added when a session starts, resumes or compacts, which also lifts the refusal. The refusal reads the command's text, so
+  a review recorded through a program the subagent writes, the Python library or an MCP tool is past it; an MCP tool acts as the
+  session in every case. On Windows, an environment file holding this line gives PowerShell commands none of the file's
+  variables; Bash commands receive them.
 - The guards leave alone what harms nothing outside the worktree: `git checkout` and `git restore` there, `git apply --check`, a
   subagent stopping a task, `gh workflow run` of a workflow that only checks, and code that merely names git's settings.
 - The guards read the text of a command, so they stop the forms their tests list and no more: expansions, `eval`, base64, heredocs

@@ -203,9 +203,44 @@ ACTS_AS_A_SESSION = re.compile(
 request (`scripts/lead-review` refuses the author, so it must know who runs it)."""
 
 UNNAMED = ("note: this session's shells cannot yet say which helper they run for (the session began before the line that does was added, or "
-           "the harness offered it no shell environment file), so this command runs as the session that started you: what it writes, "
-           "claims or reviews is recorded under that session. The line is added when a session starts, resumes or compacts.\n"
-           "(poolhouse scripts/hooks/claude-bash-guard. Nothing is refused for this.)")
+           "the harness offered it no shell environment file), so this command runs as the session that started you: what it writes or "
+           "claims is recorded under that session. The line is added when a session starts, resumes or compacts.\n"
+           "(poolhouse scripts/hooks/claude-bash-guard. Only a command that records a review verdict is refused for this.)")
+
+VERDICT = re.compile(
+    r"(?:^|[;&|(]\s*|\b(?:then|do|exec|eval|sudo|command|nohup|time)\s+|\btimeout\s+\S+\s+|\benv\s+(?:-\S+\s+)*"
+    r"|(?:\s-[a-z]*c|\beval)\s+[\"']\s*)(?:\w+=\S*\s+)*"
+    r"(?:(?:(?:\S*python[\d.]*|(?:\S*/)?(?:ba|z|da)?sh)\s+(?:-(?![mc]\b)\S+\s+)*)?(?:\S*/)?lead-review(?=$|[\s\"';&|)])"
+    r"|(?:(?:\S*/)?poolhouse(?:-workspace|\s+workspace)|\S*python[\d.]*\s+(?:-\S+\s+)*-m\s*poolhouse(?:\.workspace(?:\.cli)?|\s+workspace))"
+    r"\s[^;&|\n]*\bland-review\b"
+    r"|(?:(?:\S*/)?poolhouse(?:-delegate|\s+delegate)|\S*python[\d.]*\s+(?:-\S+\s+)*-m\s*poolhouse(?:\.delegate|\s+delegate))"
+    r"\s+(?:-\S+\s+)*grade\b"
+    r"|(?:\S*/)?gh\s[^;&|\n]*\bpr\s+review\b[^;&|\n]*\s(?:--approve|--request-changes|-a|-r)(?=$|[\s\"';&|)])"
+    r"|(?:\S*/)?gh\s+api\b(?=[^;&|\n]*(?:/statuses/|/reviews\b))"
+    r"(?=[^;&|\n]*\s(?:(?:-X|--method)[\s=]*(?:POST|PUT|PATCH)|-[fF]\s|--field|--raw-field|--input)))", re.M)
+"""A command that records a review verdict: the landing review of a commit (`scripts/lead-review`, `land-review`), the grade of a
+delegate's work, a pull request review that approves or asks for changes, or a status or review written through `gh api`."""
+
+UNNAMED_VERDICT = ("blocked: this command records a review verdict, and this session's shells cannot yet say which helper they run for, so "
+                   "the verdict would be recorded as the session that started you and the check that nobody reviews their own work could "
+                   "not tell you apart. Restarting, resuming or compacting the session adds the line that names helpers, and fixes this.\n\n"
+                   "(poolhouse scripts/hooks/claude-bash-guard. No switch opens this rule.)")
+
+
+def unnamed_verdict(event: dict) -> str:
+    """Why a subagent may not record a review verdict where no shell will name it; an empty string for every other call."""
+    import hook_state
+    import shell_identity
+
+    given = event.get("tool_input")
+    command = given.get("command") if isinstance(given, dict) else None
+    if not event.get("agent_id") or not isinstance(command, str):
+        return ""
+    if shell_identity.installed(hook_state.state_dir(), str(event.get("session_id") or "")):
+        return ""
+    fed_to_a_shell = re.search(r"\b(?:ba|z|da)?sh\b[^;&|\n]*<<", command)
+    run = command if fed_to_a_shell else MESSAGE.sub(r"\1 ''", without_search_patterns(without_heredocs(command)))
+    return UNNAMED_VERDICT if VERDICT.search(run) else ""
 
 
 def name_caller(event: dict) -> str:
@@ -276,7 +311,7 @@ def main() -> int:
         print(rules_loader.NESTED, file=sys.stderr)
         return 2
     try:
-        refused = judge(event, switched, rules)
+        refused = judge(event, switched, rules) or unnamed_verdict(event)
         note = "" if refused else name_caller(event)
     except Exception as why:
         if not event.get("agent_id"):

@@ -391,7 +391,8 @@ def test_a_resumed_session_that_holds_the_loader_twice_still_runs_a_subagent_as_
 
 @pytest.mark.redteam
 def test_before_a_sessions_shells_name_their_caller_a_subagents_command_runs_as_the_lead_and_is_told_so(scene):
-    """The protection a session begun before the loader does not have: nothing is refused, the command inherits the lead's identity."""
+    """The protection a session begun before the loader does not have: a command that records no review verdict inherits the lead's
+    identity, and is only told so."""
     scene.start("rev1")
     for agent, command, told in (("rev1", ASK, True), ("rev1", "git commit -m x", True), ("rev1", "ls", False), (LEAD, ASK, False)):
         done = scene.asked(agent, command, session_id="an-earlier-session")
@@ -404,6 +405,59 @@ def test_before_a_sessions_shells_name_their_caller_a_subagents_command_runs_as_
     assert who(unnamed) == scene.lead.name
     refused = scene.asked("rev1", f"poolhouse-workspace inbox --agent {scene.lead.name}", session_id="an-earlier-session")
     assert refused.returncode == 2 and "you are" in refused.stderr
+
+
+SHA = "a" * 40
+RECORDS_A_VERDICT = [
+    f"scripts/lead-review 12 {SHA} --verdict accept --note ok",
+    f"cd scripts && ./lead-review 12 {SHA} --verdict reject --note no",
+    f"python3 scripts/lead-review 12 {SHA} --verdict accept --note ok",
+    f"GH_PAGER=cat timeout 60 scripts/lead-review 12 {SHA} --verdict accept --note ok",
+    f"bash -c 'scripts/lead-review 12 {SHA} --verdict accept --note ok'",
+    f"bash <<'EOF'\nscripts/lead-review 12 {SHA} --verdict accept --note ok\nEOF",
+    f"poolhouse-workspace land-review fix/x {SHA} --verdict accept",
+    f"true; /x/bin/poolhouse-workspace land-review fix/x {SHA}",
+    f"poolhouse workspace land-review fix/x {SHA}",
+    f"python3 -m poolhouse.workspace land-review fix/x {SHA}",
+    "poolhouse-delegate grade quick-fix accept --critique right",
+    "poolhouse delegate grade quick-fix accept --critique right",
+    "gh pr review 12 --approve",
+    "gh pr review 12 --request-changes -b no",
+    f"gh api -X POST repos/o/r/statuses/{SHA} -f state=success",
+    "gh api repos/o/r/pulls/12/reviews -f event=APPROVE",
+]
+RECORDS_NO_VERDICT = [
+    "cat scripts/lead-review",
+    "grep -n verdict scripts/lead-review",
+    "rg 'land-review' docs",
+    "git commit -m 'lead-review and land-review are named here'",
+    "echo \"run scripts/lead-review when ready\"",
+    "poolhouse-workspace inbox",
+    "poolhouse-delegate record quick-fix",
+    "gh pr view 12",
+    "gh pr review 12 --comment -b seen",
+    "gh api repos/o/r/pulls/12/reviews",
+    "scripts/test all tests/test_lead_review.py",
+]
+
+
+@pytest.mark.redteam
+@pytest.mark.parametrize("command", RECORDS_A_VERDICT)
+def test_before_a_sessions_shells_name_their_caller_a_subagent_records_no_review_verdict(scene, command):
+    scene.start("rev1")
+    done = scene.asked("rev1", command, session_id="an-earlier-session")
+    assert done.returncode == 2 and not done.stdout.strip(), (done.returncode, done.stdout)
+    assert "records a review verdict" in done.stderr and "Restarting, resuming or compacting the session" in done.stderr, done.stderr
+    for agent, session in ((LEAD, "an-earlier-session"), ("rev1", "sess1")):
+        allowed = scene.asked(agent, command, session_id=session)
+        assert "records a review verdict" not in allowed.stderr, (agent, session, allowed.stderr)
+
+
+@pytest.mark.parametrize("command", RECORDS_NO_VERDICT)
+def test_before_a_sessions_shells_name_their_caller_every_other_command_of_a_subagent_runs(scene, command):
+    scene.start("rev1")
+    done = scene.asked("rev1", command, session_id="an-earlier-session")
+    assert done.returncode == 0, (command, done.stderr)
 
 
 @pytest.mark.redteam
