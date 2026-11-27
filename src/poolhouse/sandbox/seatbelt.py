@@ -195,7 +195,8 @@ def profile(policy: Policy, program: str, tag: str) -> str:
     for namespace in policy.unix_namespaces:
         out += [f"(allow network-bind (local unix-socket (subpath {quote(namespace)})))",
                 f"(allow network-inbound (local unix-socket (subpath {quote(namespace)})))",
-                f"(allow network-outbound (remote unix-socket (subpath {quote(namespace)})))"]
+                f"(allow network-outbound (remote unix-socket (subpath {quote(namespace)})))",
+                f"(allow file-write-create (require-all (subpath {quote(namespace)}) (vnode-type SOCKET)))"]   # a bind makes the socket's file
     out += _network(policy)
     out += _gpu() if policy.gpu else list(IDENTIFIER_CHANNELS)
     if policy.deny_read or policy.deny_write:
@@ -211,24 +212,20 @@ def profile(policy: Policy, program: str, tag: str) -> str:
 
 
 def _network(policy: Policy) -> list[str]:
+    """What the policy's network grants. No rule here allows a bind of an IP address: Seatbelt's `localhost` matches the wildcard and the machine's
+    network address too (its only other host is `*`), so such a rule would allow a listener the network reaches. An inbound rule carries the bind
+    with it, so the only ones are those of `_accepted`."""
     net = policy.net
     if net.mode == NetMode.DENY:
         return []
     if net.mode == NetMode.LOOPBACK:
-        return ['(allow network-outbound (remote ip "localhost:*"))',
-                '(allow network-bind (local ip "localhost:*"))',
-                '(allow network-inbound (local ip "localhost:*"))']
-    return [*(f'(allow network-outbound (remote ip "localhost:{p}"))' for p in net.ports),
-            *(rule for p in net.listen for rule in (f'(allow network-outbound (remote ip "localhost:{p}"))',
-                                                    f'(allow network-bind (local ip "localhost:{p}"))',
-                                                    f'(allow network-inbound (local ip "localhost:{p}"))')),
-            *_accepted(net.accept)]
+        return ['(allow network-outbound (remote ip "localhost:*"))']
+    return [*(f'(allow network-outbound (remote ip "localhost:{p}"))' for p in net.ports), *_accepted(net.accept)]
 
 
 def _accepted(ports: Sequence[int]) -> list[str]:
-    """TCP to ``ports`` of this machine and serving on a socket handed in, with every bind of them refused: Seatbelt's `localhost` matches the
-    wildcard and the machine's network address too, so a rule that allowed a bind would allow a listener the network reaches. The refusal follows
-    the inbound rule, which would otherwise carry the bind with it. UDP is left refused: it receives on a port its sender names."""
+    """TCP to ``ports`` of this machine and serving on a socket handed in, with every bind of them refused. The refusal follows the inbound rule,
+    which would otherwise carry the bind with it. UDP is left refused: it receives on a port its sender names."""
     if not ports:
         return []
 

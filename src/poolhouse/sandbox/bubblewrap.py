@@ -88,8 +88,6 @@ def arguments(policy: Policy, program: str, relay: str = "") -> list[str]:
     if policy.net.mode == NetMode.LOOPBACK:
         raise PolicyError("net: bubblewrap cannot give a process the host's whole loopback without giving it the host's network; "
                           "name the ports with Net.only")
-    if policy.net.listen:
-        raise PolicyError("net: bubblewrap carries ports in from the host and gives a process no port of its own to listen on")
     if policy.net.mode == NetMode.PORTS and not relay:
         raise PolicyError("net: the ports of a policy are carried in from the parent's socket directory, and none was made")
     out = ["--unshare-all", "--die-with-parent", "--new-session", "--clearenv",

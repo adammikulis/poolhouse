@@ -1,13 +1,25 @@
-"""Text from outside as one safe printable line."""
+"""Text from outside as safe printable text."""
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from typing import Any
 
-__all__ = ["escape", "utf8"]
+__all__ = ["escape", "printable", "utf8"]
 
 _EDGE = "…"
+_TERMINAL = re.compile(r"\x1b(?:\][^\x07\x1b]*(?:\x07|\x1b\\)?|\[[0-?]*[ -/]*[@-~]?|[@-_]?)")
+_BREAKS = re.compile(r"\r\n|[\r\x0b\x0c\x85\u2028\u2029]")
+
+
+def printable(text: str) -> str:
+    """``text`` of several lines with terminal escape sequences and every control, format (bidi, zero-width, tag), private, unassigned and
+    surrogate character removed; every kind of line break becomes ``\\n`` and a tab stays."""
+    out = _BREAKS.sub("\n", _TERMINAL.sub("", text))
+    if out.replace("\n", "").replace("\t", "").isprintable():
+        return out
+    return "".join(ch for ch in out if ch in "\n\t" or unicodedata.category(ch)[0] != "C")
 
 
 def escape(text: str, limit: int = 60) -> str:

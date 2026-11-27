@@ -20,7 +20,7 @@ import textwrap
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -47,6 +47,8 @@ class Box:
     port: int
     sink: Sink = field(default_factory=Sink)
     asked: list = field(default_factory=list)
+    servers: list = field(default_factory=list)
+    """The port each launch with OpenCode's rendering names for the harness's own server."""
 
 
 @pytest.fixture
@@ -84,7 +86,8 @@ def shelled(box: Box, script: str, *, look: Callable[[isolation.Confinement], ob
         # OpenCode's own config of a delegate, around the shell script that stands in for the harness
         setup = opencode.Setup((context.base_url, MODEL, 4096), "", "", (), agent={"mode": "primary", "system": brief})
         made = opencode.rendering(context, setup, (str(program),), {}, files)
-        return isolation.Rendering((str(program),), made.files, noted=made.noted)
+        box.servers.append(int(made.argv[5]))
+        return replace(made, argv=(str(program),))   # everything else the box gets for OpenCode, its server's grant included
 
     plan = isolation.Plan("claude", str(program), str(box.project), coding_policy.Policy(coding_policy.GUARDED), f"http://127.0.0.1:{box.port}",
                           isolation.Lease(MODEL, 4096, 1), "", "helper-sh", decide, lambda verb, arguments: {}, render,
