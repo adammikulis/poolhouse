@@ -15,7 +15,7 @@ Classes
 - **C, plain config**: a path, a name, a limit, an address; no safety consequence.
 - **D, opt-in speed-up**: faster when set and off by default. The decision column says why it stays off or why it was turned on.
 
-Counts: A 32, B 34, C 116, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
+Counts: A 32, B 34, C 118, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
 
 ## A: opt-in safety
 
@@ -71,6 +71,8 @@ Not a variable but a switch: `CLAUDECODE`, `POOLHOUSE_AGENT` and `POOLHOUSE_NONI
 | `POOLHOUSE_NODE_PARENT_PID`, `POOLHOUSE_ADMISSION_WAIT_S`, `POOLHOUSE_REQUEST_WAIT_S`, `POOLHOUSE_LEASE_FOR`, `POOLHOUSE_SLOTS`, `POOLHOUSE_LOG_DAYS`, `POOLHOUSE_LOG_FILES`, `POOLHOUSE_LOG_MB`, `POOLHOUSE_MIN_INTERVAL` | the owner process of a started test node (its supervisor stops when that process is gone), waits, reasons and sizes |
 | `POOLHOUSE_CORE_LIMIT_TEST_CHILD` | internal Unix Rust test-child marker in `app/poolhouse-node/src/main.rs`; the core-limit test sets it on its isolated child to run the zero-core-limit assertion instead of spawning again. Compiled only for tests; not product configuration or a protection bypass |
 | `POOLHOUSE_STATUS_COMMAND` | a JSON list that replaces the command the lead's attention hook runs to read the stuck-run verdict line (`scripts/hooks/stuck_verdict.py`) |
+| `POOLHOUSE_ATTENTION_WAIT_S` | seconds the event that starts an attention check waits for its answer (4 when unset); a later answer is shown at the next event (`scripts/hooks/claude-lead-attention`) |
+| `POOLHOUSE_LEAD_ASK_WAIT_S` | seconds a delegate's question waits for its lead's answer, set on the launching command; the project's one request timeout when unset (`poolhouse.lead_bridge`) |
 | `POOLHOUSE_STUDIO_LAUNCH_FD` | the descriptor number of the private socket on which a Studio worker's parent sends its launch message; `poolhouse.fleet.studio_worker_launch` sets it for the one child it starts and `poolhouse.studio_launch` reads it there; set by the launcher, never typed |
 | `POOLHOUSE_TOOL_MILESTONE_EVERY` | the number of tool calls between the milestone notices the post-tool hook gives a subagent after the first at 100 (`scripts/hooks/milestones.py`); unset or not a positive whole number means 50; informs and never limits |
 | `POOLHOUSE_GITHUB_STATUS_URL` | the address of the githubstatus.com summary that `scripts/github_status.py` reads for `scripts/status` and `scripts/ci_watch.py` |
