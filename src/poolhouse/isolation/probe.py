@@ -23,6 +23,9 @@ from pathlib import Path
 DARWIN = sys.platform == "darwin"
 LINUX = sys.platform.startswith("linux")
 CANNOT = {"outcome": "cannot attempt"}
+PROFILER_SECONDS = 2.0
+"""Inside the box ``system_profiler`` waits over five seconds for services it is refused and then prints nothing, longer than the whole proof is
+expected to take: it is given this long, and what it has printed by then is searched."""
 PLAN: dict = {}
 
 
@@ -222,7 +225,7 @@ def p14():
 def tool(argv):
     """True when the program ran and exited 0; False when it ran and failed or is not there."""
     try:
-        return subprocess.run(argv, capture_output=True, timeout=2, check=False, stdin=subprocess.DEVNULL).returncode == 0
+        return subprocess.run(argv, capture_output=True, check=False, stdin=subprocess.DEVNULL).returncode == 0
     except (OSError, subprocess.SubprocessError):
         return False
 
@@ -271,7 +274,7 @@ def roundtrip(path):
 
 
 def request(method, path, body=None):
-    connection = http.client.HTTPConnection("127.0.0.1", PLAN["model_port"], timeout=2)
+    connection = http.client.HTTPConnection("127.0.0.1", PLAN["model_port"])
     try:
         connection.request(method, path, body=body, headers={"Content-Type": "application/json"})
         return connection.getresponse().status
@@ -300,7 +303,6 @@ def p21():
 
     def ask():
         with socket.socket(socket.AF_UNIX) as sock:
-            sock.settimeout(2.0)
             sock.connect(PLAN["session_socket"])
             sock.sendall(b'{"verb": "poolhouse-proof-unknown-frame"}\n')
             return sock.recv(1024).decode("utf-8", "replace")
@@ -309,17 +311,20 @@ def p21():
     return {"outcome": state, "reply": reply if state == "allowed" else ""}
 
 
-def said_by(argv):
+def said_by(argv, wait=None):
+    """What ``argv`` printed, within ``wait`` seconds when one is given; with none it is waited for, inside the time the whole probe is given."""
     try:
-        return subprocess.run(argv, capture_output=True, timeout=2, check=False, stdin=subprocess.DEVNULL).stdout.decode("utf-8", "replace")
+        return subprocess.run(argv, capture_output=True, timeout=wait, check=False, stdin=subprocess.DEVNULL).stdout.decode("utf-8", "replace")
+    except subprocess.TimeoutExpired as cut:
+        return (cut.stdout or b"").decode("utf-8", "replace")
     except (OSError, subprocess.SubprocessError):
         return ""
 
 
 def p22():
-    commands = [["/usr/sbin/ioreg", "-rd1", "-c", "IOPlatformExpertDevice"], ["/usr/sbin/system_profiler", "SPHardwareDataType"],
-                ["/sbin/ifconfig", "-a"]] if DARWIN else []
-    said = [said_by(argv) for argv in commands]
+    commands = [(["/usr/sbin/ioreg", "-rd1", "-c", "IOPlatformExpertDevice"], None),
+                (["/usr/sbin/system_profiler", "SPHardwareDataType"], PROFILER_SECONDS), (["/sbin/ifconfig", "-a"], None)] if DARWIN else []
+    said = [said_by(argv, wait) for argv, wait in commands]
     if DARWIN:
         buffer = (ctypes.c_char * 16)()
         if libc().gethostuuid(buffer, (ctypes.c_long * 2)(1, 0)) == 0:

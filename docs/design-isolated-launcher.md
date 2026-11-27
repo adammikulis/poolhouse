@@ -1241,6 +1241,7 @@ sentences are the host facts of the exception recorded in "Zero friction":
 | Interactive mode before L6 | "Interactive mode is not available yet; run it with its print option, for example `poolhouse-claude -- -p 'your request'`." |
 | A service did not start | "The coding agent's helper (`name`) could not start, so the agent was not started." |
 | The proof failed | "Poolhouse could not confirm that the safety box holds on this computer (it allowed `attempt`), so the coding agent was not started." |
+| The proof was not answered | "Poolhouse could not confirm that the safety box holds on this computer (its check `attempt` did not answer in time: the computer may be very busy), so the coding agent was not started." |
 
 ## 10. The proof: the launcher shows the confinement holds, every launch
 
@@ -1279,14 +1280,15 @@ and a marker variable in its own environment set before the probe starts.
 | P19 | read its own environment | exactly the allow-list; no marker | G8 |
 | P20 | write and read back a file in the stage and in the agent home; run `--version` of each granted toolchain; `GET /health` through the model bridge; `GET /props` through it; a request with another model | succeed, succeed, succeed, 200, 404, refused | controls |
 | P21 | connect to the session bridge and send an unknown frame | well-formed refusal | controls |
-| P22 | the parent reads the serial number, hardware UUID, provisioning UDID, machine id and network hardware addresses itself; the probe runs `system_profiler SPHardwareDataType` and `ioreg -rd1 -c IOPlatformExpertDevice`, reads `/sys/class/dmi/id/*`, `/etc/machine-id`, `/var/lib/dbus/machine-id` and `/sys/class/net/*/address` (on Windows the machine GUID and the SMBIOS table) and returns what it obtained; the parent searches that for the values | none found; the record says "absent" and never holds a value | G13 |
+| P22 | the parent reads the serial number, hardware UUID, provisioning UDID, machine id and network hardware addresses itself; the probe runs `system_profiler SPHardwareDataType` and `ioreg -rd1 -c IOPlatformExpertDevice`, reads `/sys/class/dmi/id/*`, `/etc/machine-id`, `/var/lib/dbus/machine-id` and `/sys/class/net/*/address` (on Windows the machine GUID and the SMBIOS table) and returns what it obtained; the parent searches that for the values. Inside the box `system_profiler` waits over five seconds for services it is refused and then prints nothing, so it is given 2 s and what it has printed by then is searched; every other command is waited for | none found; the record says "absent" and never holds a value | G13 |
 | P23 | try every sysctl name the machine has (macOS) and every candidate file of the platform's exposure list; report what could be read | the readable set lies inside the declared exposures (5.7) and the controls of P20 | exposures |
 | P24 | call `caller.refuse_agent` and the launcher's grant control with the marker environment empty and a terminal on both ends forced true, then feed the terminal the text `yes` | `AgentRefused` at once with the reason; the grant is refused and the text changes no decision | I17 (3.5) |
 
 A control that fails is a deviation too, so a profile that refuses everything cannot pass. An attempt the platform cannot make
 (no scheduler to submit to) is not skipped: the probe reports "cannot attempt", and a guarantee whose attempts cannot be made is
-`unenforceable` in the report, so the launch refuses. The probe finishes inside the launch budget (17), which its 24 attempts share; an attempt that has not
-answered when the budget is spent is a deviation, not a retry.
+`unenforceable` in the report, so the launch refuses. The probe is expected to finish inside the launch budget (17), which its 24 attempts share, and is
+waited for up to 180 s, so a busy computer still starts its agent. An attempt not answered by then shows nothing either way: the launch stops
+saying it did not answer in time. An attempt that answered and showed more than the profile allows is reported as allowed.
 
 ### 10.2 What a deviation does
 

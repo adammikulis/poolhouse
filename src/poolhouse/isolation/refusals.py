@@ -15,11 +15,12 @@ class IsolationRefused(RuntimeError):
 
 
 class IsolationFailed(RuntimeError):
-    """The proof found the confinement open: the first attempt that got through, the guarantee it belongs to and the profile it ran under."""
+    """The proof did not show that the confinement holds: the first attempt that got through, or with ``unanswered`` the first the probe did not
+    answer in time, the guarantee it belongs to and the profile it ran under."""
 
-    def __init__(self, attempt: str, guarantee: str, digest: str, detail: str = "") -> None:
-        self.attempt, self.guarantee, self.digest, self.detail = attempt, guarantee, digest, detail
-        super().__init__(sentence("proof_failed", attempt=attempt))
+    def __init__(self, attempt: str, guarantee: str, digest: str, detail: str = "", *, unanswered: bool = False) -> None:
+        self.attempt, self.guarantee, self.digest, self.detail, self.unanswered = attempt, guarantee, digest, detail, unanswered
+        super().__init__(sentence("proof_unanswered" if unanswered else "proof_failed", attempt=attempt))
 
 
 SENTENCES: dict[str, str] = {
@@ -49,6 +50,8 @@ SENTENCES: dict[str, str] = {
     "service_failed": "The coding agent's helper ({name}) could not start, so the agent was not started.",
     "proof_failed": ("Poolhouse could not confirm that the safety box holds on this computer (it allowed {attempt}), so the coding "
                      "agent was not started."),
+    "proof_unanswered": ("Poolhouse could not confirm that the safety box holds on this computer (its check {attempt} did not answer in time: the "
+                         "computer may be very busy), so the coding agent was not started."),
     "confined_caller": "Refused: a coding session cannot change what another coding session may reach; this process runs inside one.",
     "not_placed": ("Refused: this process is marked as an agent's and the node finds no session above it, so it widens no coding session "
                    "and removes no project."),

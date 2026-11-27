@@ -5,6 +5,8 @@ lets it try the twenty-four attempts of design section 10.1, and judges every li
 canaries in a fresh directory outside every grant, listeners on loopback, a unix socket, a bystander process that carries a marker, and the
 machine's own identifiers read by the parent. A control that fails is a deviation too, so a profile that refuses everything cannot pass. A
 deviation raises `IsolationFailed` naming the first attempt that got through, and nothing else starts: no flag, variable or argument skips it.
+An attempt the probe did not answer in the time it is given shows nothing either way: nothing starts, and the message says it did not answer in
+time rather than that it was allowed.
 """
 
 from __future__ import annotations
@@ -32,17 +34,22 @@ from poolhouse.isolation.capability import capability, drop_cache, lan_address
 from poolhouse.isolation.environment import allowed
 from poolhouse.isolation.profile import Profile
 from poolhouse.isolation.refusals import IsolationFailed
+from poolhouse.isolation.serving import IDLE_SECONDS
 from poolhouse.platform import start_process
 from poolhouse.sandbox import Limits, bubblewrap, confinement, run as run_sandboxed, seatbelt
 from poolhouse.sandbox.backend import Backend
 from poolhouse.sandbox.io import IO
 from poolhouse.sandbox.run import HOOKS
 
-__all__ = ["ATTEMPTS", "BUDGET_SECONDS", "Line", "Proof", "Services", "run"]
+__all__ = ["ATTEMPTS", "BUDGET_SECONDS", "WAIT_SECONDS", "Line", "Proof", "Services", "run"]
 
 BUDGET_SECONDS = 5.0
-"""The proof's share of a launch's fixed cost: AGENTS.md section 5, "A run's fixed cost is budgeted" (fixed overhead above 5 seconds is a
-defect), shared by its 24 attempts (docs/design-isolated-launcher.md, 17). An attempt unanswered when it is spent is a deviation, not a retry."""
+"""The proof's share of a run's fixed cost, which is budgeted (AGENTS.md section 5, "A run's fixed cost is budgeted": over 5 s of fixed overhead is a
+defect), shared by its 24 attempts (docs/design-isolated-launcher.md, 17). It is what a proof is expected to take, not how long one is waited
+for (`WAIT_SECONDS`)."""
+WAIT_SECONDS = IDLE_SECONDS
+"""How long the probe is waited for, and a command the parent reads identifiers with: a computer busy enough to need more than the expected cost
+still starts its agent. It is the project's one request timeout."""
 TOLERATED = frozenset({"__CF_USER_TEXT_ENCODING"})
 """A name macOS puts in the environment of every process at exec, whatever the launcher set."""
 GUARANTEE = {"P01": "G1", "P02": "G1", "P03": "G2", "P04": "G3", "P05": "G1", "P06": "G1", "P07": "G4", "P08": "G4", "P09": "G4",
@@ -118,7 +125,8 @@ def _listen(family: int, kind: int, where: object) -> socket.socket:
 
 def _said(argv: list[str]) -> str:
     try:
-        return subprocess.run(argv, capture_output=True, text=True, timeout=BUDGET_SECONDS, check=False, stdin=subprocess.DEVNULL).stdout
+        # waited for as long as the probe: identifiers the parent could not read would leave nothing to search the probe's answer for
+        return subprocess.run(argv, capture_output=True, text=True, timeout=WAIT_SECONDS, check=False, stdin=subprocess.DEVNULL).stdout
     except (OSError, subprocess.SubprocessError):
         return ""
 
@@ -180,7 +188,9 @@ def _canaries(lan: bool) -> Iterator[Canaries]:
             _listen(socket.AF_UNIX, socket.SOCK_STREAM, str(Path(root) / "unix")),
             _listen(socket.AF_INET, socket.SOCK_STREAM, (address, 0)) if address else None]
     marker = secrets.token_hex(8)
-    bystander = start_process(["/bin/sleep", "60"], env={"POOLHOUSE_PROOF_MARKER": marker}, stdin=subprocess.DEVNULL,
+    # it reads a pipe nothing is written to, so it runs however long the probe takes and ends with the parent: a bystander that had ended
+    # would be readable as a signal's target and unreadable as a holder of arguments
+    bystander = start_process(["/bin/cat"], env={"POOLHOUSE_PROOF_MARKER": marker}, stdin=subprocess.PIPE,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     program = str(Path(root) / "program")
     shutil.copyfile(shutil.which("true") or "/usr/bin/true", program)
@@ -200,6 +210,7 @@ def _canaries(lan: bool) -> Iterator[Canaries]:
                 sock.close()
         bystander.kill()
         bystander.wait()
+        bystander.stdin.close()
         for name in _names(root):
             with contextlib.suppress(OSError):
                 (Path(root) / name).unlink()
@@ -307,7 +318,7 @@ def _judge(name: str, record: Mapping[str, object], profile: Profile, held: Cana
     return state == "denied", state
 
 
-def _fail(profile: Profile, line: Line) -> IsolationFailed:
+def _fail(profile: Profile, line: Line, *, unanswered: bool = False) -> IsolationFailed:
     """The deviation, reported to the sentinel and the activity record, with the capability cache dropped so the next call reads the machine."""
     drop_cache()
     fields: dict[str, object] = {"severity": "warning", "policy": "isolation", "attempt": line.id, "guarantee": line.guarantee,
@@ -315,8 +326,9 @@ def _fail(profile: Profile, line: Line) -> IsolationFailed:
     if HOOKS.events is not None:
         with contextlib.suppress(OSError, ValueError, RuntimeError):
             HOOKS.events("isolation.proof_failed", dict(fields))
-    activity.record("isolation.proof", subject=line.id, outcome="failed", meta={"guarantee": line.guarantee, "digest": profile.digest})
-    return IsolationFailed(line.id, line.guarantee, profile.digest, line.observed)
+    activity.record("isolation.proof", subject=line.id, outcome="unanswered" if unanswered else "failed",
+                    meta={"guarantee": line.guarantee, "digest": profile.digest})
+    return IsolationFailed(line.id, line.guarantee, profile.digest, line.observed, unanswered=unanswered)
 
 
 def _records(text: str) -> dict[str, dict[str, object]]:
@@ -329,11 +341,11 @@ def _records(text: str) -> dict[str, dict[str, object]]:
     return found
 
 
-def run(profile: Profile, services: Services, *, via: Backend | None = None, budget: float = BUDGET_SECONDS, lan: bool = True) -> Proof:
-    """Prove ``profile``: run the probe inside it and judge every attempt. Returns the `Proof`, or raises `IsolationFailed` for the first
-    attempt that showed more than the profile allows (a control that failed and an attempt that did not answer in the budget included).
-    ``lan`` is whether the parent listens on this machine's own LAN address for P08; without it the probe tries a documentation-range
-    address, as it does on a machine with none. It never leaves an attempt out."""
+def run(profile: Profile, services: Services, *, via: Backend | None = None, budget: float = WAIT_SECONDS, lan: bool = True) -> Proof:
+    """Prove ``profile``: run the probe inside it, wait up to ``budget`` seconds for it and judge every attempt. Returns the `Proof`, or raises
+    `IsolationFailed` for the first attempt that showed more than the profile allows (a control that failed included), and when none did but the
+    time ran out first, for the first attempt not answered, saying that. ``lan`` is whether the parent listens on this machine's own LAN address
+    for P08; without it the probe tries a documentation-range address, as it does on a machine with none. It never leaves an attempt out."""
     began = time.monotonic()
     with _canaries(lan) as held:
         policy = replace(profile.policy, limits=Limits(wall_seconds=budget, output_bytes=4_000_000, processes=profile.policy.limits.processes))
@@ -352,6 +364,7 @@ def run(profile: Profile, services: Services, *, via: Backend | None = None, bud
     if first is None and seen.get("digest", {}).get("digest") != profile.digest:
         first = Line("digest", "profile", "the digest the parent computed", "another profile", False)
     if first is not None:
-        raise _fail(profile, first)
+        # the attempts answer in order, so one that showed too much stands before any the time ran out on
+        raise _fail(profile, first, unanswered=done.timed_out and first.id not in seen)
     return Proof(tuple(lines), profile.digest, capability().os_build, time.time(), round(time.monotonic() - began, 3),
                  tuple(each.id for each in lines if each.observed.startswith("not checked")))
