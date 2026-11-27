@@ -2,7 +2,7 @@
 
 ``python -m poolhouse.delegate_run NAME`` is what `poolhouse-delegate start` detaches. It hands the task to `poolhouse.delegate_confined` (OpenCode
 in the isolated launcher's confinement), or on a computer that cannot sandbox it to `poolhouse.delegate_unboxed`, writes the result and tells the
-lead on the board.
+lead on the board. While it runs it keeps the run's record (`delegate_recorder`) and tells the lead what goes wrong (`delegate_notices`).
 """
 
 from __future__ import annotations
@@ -13,11 +13,14 @@ import signal
 import sys
 import time
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 from poolhouse import (
     delegate_confined,
     delegate_grade,
+    delegate_notices,
+    delegate_recorder,
     delegate_refusals,
     delegate_store as store,
     delegate_tree,
@@ -124,6 +127,11 @@ def run(name: str) -> int:
     mine = HarnessSession(name, board=rec.board, minted=True, base=limits.root(), parent=lead, state=node.state, native=Native(*rec.native))
     bridge = lead_bridge.Bridge(mine.session(), rec.lead, name, lambda state, detail="": store.set_status(name, state, detail))
     began, answer, why, state = time.time(), None, "", "failed"
+    record = delegate_recorder.of(name)
+    record.add("run", lead=rec.lead, model=Path(rec.model).name, tier=delegate_confined.tier(rec), edit=rec.edit, sandboxed=rec.sandboxed,
+               task=rec.task)
+    teller = delegate_notices.Teller(name, lambda about, text: bridge.post("status", text, subject=f"delegate notice: {about}"))
+    teller.start()
     try:
         delegate_grade.started(rec)
         answer = converse(rec, bridge, mine)
@@ -133,6 +141,8 @@ def run(name: str) -> int:
     except (Denied, NodeError, OSError, RuntimeError, ValueError, ImportError) as error:
         why = f"{type(error).__name__}: {error}"
         say(why)
+    finally:
+        teller.close()
     found, refused = (answer.published, answer.refused_writes) if answer else (None, ())
     detail = changes(state, found, refused, answer.review if answer else None)
     if answer and answer.untested:   # first, so a cut notice never drops it
@@ -145,6 +155,8 @@ def run(name: str) -> int:
     store.save_result(name, {**row, "state": state})
     delegate_grade.ended(name, state, row)
     store.set_status(name, state, why or row["detail"])
+    record.add("end", state=state, seconds=row["seconds"], turns=row["turns"],
+               detail="\n".join(each for each in (why, row["detail"]) if each))
     say(f"{state}: {row['turns']} turn(s), {row['seconds']}s")
     _tell(bridge, state, row)
     mine.revoke()
