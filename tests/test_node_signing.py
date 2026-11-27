@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import os
 import plistlib
 import shutil
@@ -381,13 +380,6 @@ def test_setup_says_nothing_about_signing_where_poolhouse_signs_nothing(tools):
     assert setup.signature_findings() == [] and tools.calls == []
 
 
-def holds_a_key() -> None:
-    """The state file saying Poolhouse keeps its encryption key in the keystore; no keystore is touched."""
-    directory = home.state("keystore")
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / "provisioned.json").write_text(json.dumps({"at": 1.0}))
-
-
 def reads_as_certificate_signed(monkeypatch, bundle: Path) -> None:
     """Plumbing only: ``bundle`` reads as signed with the certificate, which no test has a key for."""
     asked, formed = runtime_identity.requirement_of, getattr(runtime_identity, "signature_form", None)
@@ -438,40 +430,13 @@ def test_a_copy_that_does_not_start_never_takes_the_working_ones_place(installed
 
 
 @pytest.mark.usefixtures("macos")
-def test_a_changed_signature_says_how_to_let_poolhouse_read_its_key_again(installed, monkeypatch, capsys):
+def test_enable_and_remove_say_the_key_is_handed_to_the_app_and_ask_nothing_of_anybody(installed, capsys):
     runtime_identity.ensure_bundle(interpreter())
-    assert keystore.UNLOCK_COMMAND not in capsys.readouterr().err, "there is no key yet"
-    holds_a_key()
-    runtime_identity.ensure_bundle(interpreter())
-    assert keystore.UNLOCK_COMMAND not in capsys.readouterr().err, "nothing changed"
-    monkeypatch.setattr(runtime_identity, "digest", lambda files: "f" * 64)
-    runtime_identity.ensure_bundle(interpreter())
-    said = capsys.readouterr().err
-    assert "signature on this Mac changed" in said and keystore.UNLOCK_COMMAND in said and "always allow" in said
-
-
-@pytest.mark.usefixtures("macos")
-def test_enable_and_remove_say_how_to_let_poolhouse_read_its_key_again(installed, capsys):
-    runtime_identity.ensure_bundle(interpreter())
-    holds_a_key()
     for change in ("enable", "remove"):
-        if change == "remove":  # another signature stands in for the certificate's, so removing it changes the signature
-            subprocess.run(["codesign", "--force", "--sign", "-", "--identifier", "plumbing.only", "--timestamp=none",
-                            str(runtime_identity.bundle_path())], check=True, capture_output=True)
         capsys.readouterr()
         assert node_permission.main(["certificate", change]) == 0
         said = capsys.readouterr()
-        assert keystore.UNLOCK_COMMAND in said.out and "always allow" in said.out, f"{change} says it in its own words"
-        if change == "remove":
-            assert "signature on this Mac changed" in said.err
-
-
-def test_setup_says_how_to_let_poolhouse_read_its_key_again(installed):
-    for opted_in in (False, True):
-        if opted_in:
-            installed.trusted()
-        [finding] = setup.signature_findings()
-        assert keystore.UNLOCK_COMMAND in finding.note and "always allow" in finding.note
+        assert "hands the encryption key" in said.out and keystore.UNLOCK_COMMAND not in said.out + said.err, change
 
 
 def test_setup_offers_to_remove_a_certificate_that_cannot_be_used(installed):
@@ -584,9 +549,9 @@ def test_an_unfinished_setup_removes_what_it_imported_though_trust_cannot_be_rea
     assert tools.certificates == {}
 
 
-def test_the_key_advice_names_all_that_stays_locked_and_what_is_not_known():
+def test_the_unreadable_key_advice_names_all_that_stays_locked_and_what_is_not_known():
     for words in ("device key", "memory vault", "stored credentials", "signing key", "screen", "has not been verified"):
-        assert words in node_signing.KEY_ADVICE
+        assert words in keystore.UNREADABLE_ADVICE
 
 
 def made_runtime(tmp_path: Path, name: str) -> runtime.Runtime:
@@ -642,16 +607,6 @@ def test_a_kept_executable_is_in_the_outcome_the_deploy_record_and_setup(tmp_pat
     monkeypatch.setattr(setup.runtime, "selection_prefix", lambda: chosen.prefix)
     kept = [finding for finding in setup.signature_findings() if finding.name == "macOS executable"]
     assert kept and not kept[0].good and kept[0].fix == ["poolhouse", "local-network", "certificate", "enable"]
-
-
-@pytest.mark.usefixtures("macos")
-def test_a_changed_signature_is_in_the_updates_outcome_and_record(tmp_path, installed, monkeypatch):
-    chosen = made_runtime(tmp_path, "one")
-    runtime_identity.bind(chosen)
-    holds_a_key()
-    monkeypatch.setattr(runtime_identity, "digest", lambda files: "f" * 64)
-    told = runtime_deploy._identity(chosen, runtime_deploy.Plan(tmp_path, chosen.commit, None))
-    assert node_signing.KEY_NOTE in told and node_signing.KEY_NOTE in runtime_store.read_state()["identity_notices"]
 
 
 def test_a_declined_step_that_still_made_a_trust_setting_leaves_none(tools):

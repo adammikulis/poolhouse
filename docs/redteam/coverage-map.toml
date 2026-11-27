@@ -15,6 +15,14 @@ uncovered = 51
 partial = 180
 
 [[group]]
+match = ["spawn:keystore_handoff.py:*"]
+status = "covered"
+count = 1
+tests = ["tests/test_key_handoff.py::test_a_hostile_program_path_is_one_argument_of_every_step_and_no_shell_reads_it",
+         "tests/test_key_handoff.py::test_the_key_goes_only_through_the_pipe"]
+note = "each step is an argument list with no shell: the program is one argument, the code and the step name are constants; the key crosses only a pipe between the two programs, never an argument, an environment, a file or this process's output"
+
+[[group]]
 match = ["egress:client/health.py:refuses_key"]
 status = "covered"
 count = 1

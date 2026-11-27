@@ -1086,19 +1086,16 @@ the user's choice. Under either, the login keychain holds the one encryption key
 | Certificate in the login keychain | None | A certificate and its key are added and trusted for code signing, for this user only |
 | Signature | Local (ad hoc), no certificate; the app is still named Poolhouse | Signed with the certificate |
 | Designated requirement | codesign's own: hashes of the code | The bundle id and the certificate, no hash |
-| After an update that changes the code | macOS may ask again for network permission, and about the encryption key | The permission should stay |
+| After an update that changes the code | macOS may ask again for network permission | The permission should stay |
+| The encryption key | Handed to the new executable | Handed to the new executable: the certificate gives no access to it |
 | Updates | Signing needs nothing from the user | Never blocked by signing; see falling back |
 
 How often macOS asks again under either signature is unmeasured.
 
-- **The encryption key.** The keychain item that holds Poolhouse's key trusts the program that made it, as it is signed. A change of
-  the runtime executable's signature (a Python or library update under the local signature, `certificate enable`, `certificate
-  remove`, a first binding) can make macOS refuse Poolhouse the key. The node's device key, the memory vault, stored credentials
-  and the fleet signing key then stay locked: a background process cannot answer macOS, and a node whose device key is in the
-  keystore does not start. A person at the screen can run `poolhouse-security unlock` in a terminal and tell macOS to always allow
-  it; that this restores access is unverified, as is whether the keychain keeps access across rebuilds signed with the
-  certificate. A change is told in the update's outcome and the deploy record and by `certificate enable` and `remove`, and
-  `poolhouse-setup` shows the command. Poolhouse does not hand the item to the new executable.
+- **The encryption key.** macOS lets only the code that made a keychain item read it with no dialog: a rebuilt executable is
+  refused its predecessor's item, signed locally or with the certificate, and so are an app signed with the certificate reading a
+  local app's item and the reverse. Every secret Poolhouse keeps (the node's device key, the memory vault, stored credentials, the
+  fleet signing key) is under the one key, which is [handed to the new executable](#handing-the-key-on) before it is used.
 - **Opting in.** `poolhouse local-network certificate enable` prints what it adds, then makes the self-signed certificate
   `Poolhouse Local Signing` (no Apple developer account), imports it with its key into the login keychain (`/usr/bin/codesign` may
   use the key), deletes the key files, trusts the certificate for code signing in the user domain, for which macOS asks for the
@@ -1125,22 +1122,41 @@ How often macOS asks again under either signature is unmeasured.
   app is signed locally and the warning says why. A new node binary is signed locally, since the app from before holds the old
   binary. Binding a runtime again tries the certificate again.
 
+## Handing the key on
+
+Whenever the runtime executable's bytes are about to change (a Python or library upgrade, `certificate enable` or `remove`, a first
+binding), and Poolhouse keeps a key, `keystore_handoff` runs two programs joined by a pipe that nothing else reads: the program that
+reads the key now (the selected runtime's interpreter, or the executable in place) reads it with prompts forbidden, and the new
+executable, still in its staging folder, adds it as an item of its own under an account named by its code-directory hash
+(`master/<uid>:<login>@<hash>`) and reads it back. The new executable then takes the old one's place and reads the key again from
+there; one that cannot is taken out. `keystore/items.json` says which account each signature reads. No step deletes or rewrites
+the item the old program reads. After a runtime is selected (or an app is signed again) the new executable deletes the items of all
+signatures but its own and the one before, which a rollback and processes still running use. A program with no item recorded never
+makes a second key while another signature keeps one.
+
+| When | What happens |
+|---|---|
+| The hand-off fails for a reason a later try may not meet (a locked keychain, a full write allowance, a time limit) | The old executable stays, the update goes on with it where it can start the new runtime, and the next update tries again |
+| No executable is in place yet (a first binding), or it cannot start the new runtime either | The update stops and the previous runtime stays selected |
+| The program that should read the key is refused it, or no such program starts | The update goes on; the update's outcome, the deploy record and `poolhouse-setup` say the key cannot be read, that a person at the screen can run `poolhouse-security unlock` and tell macOS to always allow it (unverified), and that `keystore-reset` starts over. A later successful read clears it |
+| A stop at any point | The item the old program reads is there, and any executable left in place has an item it reads |
+
 ## What an upgrade can interrupt on macOS
 
 An upgrade changes a signed identity only when it brings other code: the node binary is built again only when the node's sources
 (`app/`) differ from the last build's, and a runtime is built from the interpreter the Poolhouse executable was copied from while
-that one is there unchanged. No row below is measured on macOS.
+that one is there unchanged. What the rows say macOS asks is not measured.
 
 | What changes | Local signature | Certificate | Left to do |
 |---|---|---|---|
 | Poolhouse upgrade, node sources and Python unchanged | Neither app is signed again | The same | Nothing known |
 | Poolhouse upgrade that changes the node | The node app's signature changes: macOS may ask for Local Network and firewall permission again | The requirement stays; macOS may still ask | Under the local signature macOS is given new code to ask about |
-| Python or its libraries upgraded or removed | The runtime executable's signature changes: the permissions, a keychain dialog for a process at the screen, and a background process locked out of the key | The requirement stays; `codesign` may show a dialog for the key, and the keychain may still refuse | The key hand-off is not built |
+| Python or its libraries upgraded or removed | The runtime executable's signature changes: macOS may ask for the permissions again. The key is handed on; with the old Python gone, no program is left to hand it on | The requirement stays; `codesign` may show a dialog for the certificate's key. The encryption key as under the local signature | A Python removed before the upgrade |
 | First binding of an install that ran as bare Python | Once, as above | Once | |
 | Signing with the certificate fails during an upgrade | Not applicable | The runtime keeps its executable; a new node binary is signed locally and macOS may ask again | |
 | Rollback to a runtime with another interpreter or node | As the upgrade it undoes | As the upgrade it undoes | |
 | Background items | An upgrade writes no login unit and the executable's path stays; whether macOS announces the item again after its signature changes | The same | |
-| Services | The node supervisor returns to the previous node when the new one does not answer; a node whose key is locked does not start again | The same | |
+| Services | The node supervisor returns to the previous node when the new one does not answer. A process started before two changes of signature reads no item until it restarts | The same | |
 
 Options where macOS asks because the code changed:
 

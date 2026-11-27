@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
-from poolhouse import home, node_signing, runtime, runtime_identity
+from poolhouse import home, keystore, node_signing, runtime, runtime_identity
 from poolhouse.checks import Finding, checkout, show, tilde
 from poolhouse.fleet.onboard.lan import can_bind
 from poolhouse.installed import standard
@@ -295,10 +295,14 @@ def signature_findings() -> list[Finding]:
         said = "local (no certificate)"
         note = ("macOS may ask again for network permission after an update. To keep the permission, "
                 f"`{node_signing.ENABLE}` adds a certificate to your keychain; it says what it adds before macOS asks for your password")
-    found = [Finding(name="macOS signature", good=True, said=said, note=f"{note}. {node_signing.KEY_ADVICE}")]
+    found = [Finding(name="macOS signature", good=True, said=said, note=note)]
     selected = runtime.selection_prefix()
     if selected is not None and (kept := runtime_identity.kept_note(selected)):
-        found.append(Finding(name="macOS executable", good=False, said=kept, fix=node_signing.ENABLE.split()))
+        signed = runtime_identity.stable_requirement(runtime_identity.requirement_of(runtime_identity.bundle_path()))
+        found.append(Finding(name="macOS executable", good=False, said=kept,
+                             fix=node_signing.ENABLE.split() if signed else ["poolhouse", "runtime", "ensure"]))
+    if lost := runtime_identity.unreadable_note():
+        found.append(Finding(name="macOS encryption key", good=False, said=lost, fix=keystore.UNLOCK_COMMAND.split()))
     return found
 
 

@@ -1,10 +1,10 @@
 {
- "surfaces": 881,
+ "surfaces": 883,
  "by_status": {
-  "covered": 565,
+  "covered": 566,
   "partial": 180,
   "uncovered": 51,
-  "n/a": 85,
+  "n/a": 86,
   "unmapped": 0
  },
  "by_kind": {
@@ -26,7 +26,7 @@
    "covered": 10,
    "partial": 0,
    "uncovered": 4,
-   "n/a": 19,
+   "n/a": 20,
    "unmapped": 0
   },
   "desktop": {
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 104,
+   "covered": 105,
    "partial": 61,
    "uncovered": 0,
    "n/a": 4,
@@ -966,6 +966,16 @@
    "id": "context:bench/measure.py",
    "kind": "context",
    "source": "bench/measure.py",
+   "trust": "tool results, pages, files, members, stored facts",
+   "attacker": "text from outside is read by a model as an instruction",
+   "status": "n/a",
+   "tests": [],
+   "note": "prompts built from the person's own benchmark questions, canaries and fixed smoke checks"
+  },
+  {
+   "id": "context:bench/quants.py",
+   "kind": "context",
+   "source": "bench/quants.py",
    "trust": "tool results, pages, files, members, stored facts",
    "attacker": "text from outside is read by a model as an instruction",
    "status": "n/a",
@@ -11420,6 +11430,19 @@
     "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
    ],
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
+   "id": "spawn:keystore_handoff.py:_runs",
+   "kind": "spawn",
+   "source": "keystore_handoff.py:_runs",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_key_handoff.py::test_a_hostile_program_path_is_one_argument_of_every_step_and_no_shell_reads_it",
+    "tests/test_key_handoff.py::test_the_key_goes_only_through_the_pipe"
+   ],
+   "note": "each step is an argument list with no shell: the program is one argument, the code and the step name are constants; the key crosses only a pipe between the two programs, never an argument, an environment, a file or this process's output"
   },
   {
    "id": "spawn:leasetable.py:Table._start",

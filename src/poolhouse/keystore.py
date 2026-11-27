@@ -1,23 +1,23 @@
 """The only module that talks to the operating system's keystore.
 
-One item per OS user holds a random 32-byte master key. Each purpose (memory vault, fleet
-signing key, wrapped credentials) gets a subkey: HKDF-SHA256 over the master with the purpose,
-owner and context in ``info``; `wrap` and `unwrap` bind purpose and owner as AAD.
+A random 32-byte master key per OS user; each purpose gets a subkey (HKDF-SHA256 with purpose, owner and context), and `wrap` and
+`unwrap` bind purpose and owner. On macOS only the code that made an item reads it, so each signature of Poolhouse's executable has
+an item, ``items.json`` says which, and `handoff` passes the master on (`poolhouse.keystore_handoff`).
 
-The machine's own keystore is used only by the installed software on the real home (`poolhouse.real_machine`), whatever the
-environment says. Nothing touches it at import, construction or `status`. The master is read once per process. Every backend
-call passes a gate: hourly ceiling, cross-process lock. Reads of an existing item and the changes have separate hourly
-ceilings (a change the keystore refused is not counted; the unlock command is never turned away). A refusal is told in the
-system's words and remembered by nothing, so the next request asks again. A background process never creates the master and
-reads it only after ``poolhouse-security unlock``. Each backend call is a sentinel event (purpose, outcome), never a value.
+The machine's own keystore is used only by the installed software on the real home (`poolhouse.real_machine`). Nothing touches it at
+import, construction or `status`. Every backend call is counted against hourly ceilings under a cross-process lock and is a sentinel
+event, never a value. A refusal is told in the system's words and remembered by nothing. A background process never creates the
+master and reads it only after ``poolhouse-security unlock``.
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import logging
 import os
 import random
+import stat
 import sys
 import threading
 import time
@@ -42,9 +42,9 @@ from poolhouse.log import warn
 from poolhouse.sentinel import permit
 from poolhouse.sentinel.events import Event, Severity
 
-__all__ = ["ENV_NONINTERACTIVE", "NOTICE", "RATE_WINDOW_S", "READ_CEILING",
-           "UNLOCK_COMMAND", "WRITE_CEILING", "Keystore", "KeystoreBusy", "KeystoreDenied", "KeystoreError",
-           "KeystoreMissing", "KeystoreUnavailable", "Wires", "aead", "default", "hkdf",
+__all__ = ["CANNOT_READ", "DONE", "ENV_NONINTERACTIVE", "FAILED", "NOTICE", "RATE_WINDOW_S", "READ_CEILING",
+           "UNLOCK_COMMAND", "UNREADABLE_ADVICE", "WRITE_CEILING", "Keystore", "KeystoreBusy", "KeystoreDenied", "KeystoreError",
+           "KeystoreMissing", "KeystoreUnavailable", "Wires", "aead", "default", "handoff", "hkdf",
            "interactive", "is_real", "os_user", "scrypt_key"]
 
 SERVICE = "poolhouse"
@@ -62,6 +62,12 @@ STATE_WAIT_S = 10.0
 SCRYPT_N = 1 << 15
 NOTICE = ("Poolhouse will ask your computer to store one encryption key so your memory and fleet "
           "identity stay private. You will see one Keychain prompt.")
+DONE, FAILED, CANNOT_READ = 0, 1, 3  # how a step of `handoff` ends
+FOREIGN = "-25293"  # what macOS answers, with prompts forbidden, to a program an item does not trust
+UNREADABLE_ADVICE = ("Poolhouse cannot read the encryption key it keeps in your login keychain, and no program on this Mac can hand it "
+                     "on. The node's device key, the memory vault, stored credentials and the fleet signing key stay locked. A person at "
+                     f"this Mac's screen can run `{UNLOCK_COMMAND}` in a terminal and tell macOS to always allow it; that this restores "
+                     "access has not been verified. `poolhouse-security keystore-reset` starts over and loses what the key protected.")
 _MAGIC = b"MKW1"
 _VERSION = 1
 
@@ -358,6 +364,100 @@ class Keystore:
         with self._mutex, self._held("flight.lock", FLIGHT_WAIT_S):
             yield
 
+    # -- the items: one per signature of the program, on macOS --
+    def _items(self) -> list[dict[str, str]]:
+        rows = self._doc("items.json").get("items", [])
+        return [row for row in rows if isinstance(row, dict) and row.get("identity") and row.get("account")]
+
+    def _held_account(self) -> str:
+        """The account of the item this program reads: the one kept for its signature; else the first one made while it is kept,
+        else the one last recorded, which macOS then asks about."""
+        mine, rows = keystore_guard.code_identity(), self._items()
+        kept = [row["account"] for row in rows]
+        fallback = self.account if not kept or self.account in kept else kept[-1]
+        return next((row["account"] for row in rows if row["identity"] == mine), fallback)
+
+    def _remember(self, identity: str, account: str, check: str = "") -> None:
+        """Record, last, that the signature ``identity`` reads ``account``."""
+        with self._held("state.lock", STATE_WAIT_S):
+            rows = [row for row in self._items() if row["identity"] != identity]
+            kept = check or self._doc("items.json").get("check", "")
+            self._put_doc("items.json", {"items": [*rows, {"identity": identity, "account": account}], "check": kept})
+
+    def _quietly(self, account: str) -> str | None:
+        try:
+            return self._call("read", "handoff", lambda r: r.get_password(SERVICE, account))
+        except KeystoreDenied:
+            return None
+
+    def give(self, out: Any) -> int:
+        """Write the stored master to the pipe ``out`` for the next signature's `take`; `CANNOT_READ` when macOS does not trust
+        this program with it, which no retry changes."""
+        if not stat.S_ISFIFO(os.fstat(out.fileno()).st_mode):
+            return FAILED
+        account = self._held_account()
+        try:
+            found = self._call("read", "handoff", lambda r: r.get_password(SERVICE, account))
+        except KeystoreDenied as why:
+            if FOREIGN in str(why.__cause__):
+                return CANNOT_READ
+            raise
+        if _parse(found) is None:
+            return CANNOT_READ
+        if mine := keystore_guard.code_identity():
+            self._remember(mine, account)
+        out.write(found)
+        out.flush()
+        return DONE
+
+    def take(self, stored: str) -> int:
+        """Keep the master handed in as an item of this program's own signature and read it back with no prompt; no other
+        signature's item is touched."""
+        key, mine = _parse(stored), keystore_guard.code_identity()
+        if key is None or not mine:
+            return FAILED
+        account = next((row["account"] for row in self._items() if row["identity"] == mine), f"{self.account}@{mine}")
+        if self._quietly(account) != stored:
+            self._call("create", "handoff", lambda r: r.set_password(SERVICE, account, stored))
+        if self._quietly(account) != stored:
+            return FAILED
+        self._remember(mine, account, hashlib.sha256(key).hexdigest())
+        self._path("unreadable.json").unlink(missing_ok=True)
+        return DONE
+
+    def check(self) -> int:
+        """Whether this program reads, with no prompt, the master that was last handed on."""
+        key = _parse(self._quietly(self._held_account()))
+        return DONE if key and hashlib.sha256(key).hexdigest() == self._doc("items.json").get("check") else FAILED
+
+    def retire(self) -> int:
+        """Delete the items of every signature but this program's and the one before it, which a rollback and processes still
+        running use. Nothing is deleted by a program that has no item of its own."""
+        mine, rows = keystore_guard.code_identity(), self._items()
+        own = [row for row in rows if row["identity"] == mine]
+        if not own:
+            return FAILED
+        others = [row for row in rows if row["identity"] != mine]
+        keep = [*others[-1:], *own]
+        for row in others[:-1]:
+            if row["account"] not in {one["account"] for one in keep}:
+                self._call("delete", "handoff", lambda r, gone=row["account"]: r.delete_password(SERVICE, gone))
+        with self._held("state.lock", STATE_WAIT_S):
+            self._put_doc("items.json", {"items": keep, "check": self._doc("items.json").get("check", "")})
+        return DONE
+
+    def signatures(self) -> int:
+        """How many signatures have an item recorded."""
+        return len(self._items())
+
+    def mark_unreadable(self, why: str) -> None:
+        """Record that no program here can hand the master on, until a read succeeds."""
+        self._put_doc("unreadable.json", {"at": self._clock(), "why": why})
+
+    def unreadable(self) -> str:
+        """Why the master cannot be handed on, when that was recorded; else ''."""
+        return str(self._doc("unreadable.json").get("why", ""))
+
     # -- the master key --
     def _master(self, purpose: str, *, create: bool, person: bool = False) -> bytes:
         with self._mutex:
@@ -366,11 +466,16 @@ class Keystore:
         with self._flight(purpose, person=person):
             if self._key is not None:
                 return bytes(self._key)
-            found = self._call("read", purpose, lambda r: r.get_password(SERVICE, self.account), person=person)
+            account = self._held_account()
+            found = self._call("read", purpose, lambda r: r.get_password(SERVICE, account), person=person)
             key = _parse(found)
             if key is None:
                 if not create:
                     raise KeystoreMissing("the OS keystore holds no poolhouse key")
+                if self._items():
+                    raise KeystoreMissing("the OS keystore holds no poolhouse key for this program, and Poolhouse keeps one for "
+                                          "another signature of itself, so no second key is made. `poolhouse-security keystore-reset` "
+                                          "starts over.")
                 if not person and self._doc("provisioned.json").get("at"):
                     raise KeystoreMissing("the OS keystore no longer holds the key poolhouse made here, so "
                                           "everything wrapped under it stays locked; poolhouse will not make a "
@@ -381,6 +486,7 @@ class Keystore:
                 self._call("create", purpose, lambda r: r.set_password(SERVICE, self.account, stored))
                 self.created = True
             self._key = bytearray(key)
+            self._path("unreadable.json").unlink(missing_ok=True)
             if not self._doc("provisioned.json").get("at"):
                 self._put_doc("provisioned.json", {"at": self._clock(), "account": self.account})
             return key
@@ -439,11 +545,12 @@ class Keystore:
             self._key = None
 
     def reset(self) -> None:
-        """Delete the master item and the state files. Everything wrapped under it is lost."""
+        """Delete every master item and the state files. Everything wrapped under it is lost."""
         self.lock()
         with self._flight("reset", person=True):
-            self._call("delete", "reset", lambda r: r.delete_password(SERVICE, self.account), person=True)
-        for name in ("provisioned.json", "noticed.json"):
+            for account in dict.fromkeys([self.account, *(row["account"] for row in self._items())]):
+                self._call("delete", "reset", lambda r, gone=account: r.delete_password(SERVICE, gone), person=True)
+        for name in ("provisioned.json", "noticed.json", "items.json", "unreadable.json"):
             self._path(name).unlink(missing_ok=True)
         self._noticed = False
 
@@ -493,6 +600,23 @@ def aead(key: bytes) -> Any:
     except ImportError as exc:
         raise KeystoreUnavailable("the keystore needs `pip install cryptography`") from exc
     return AESGCM(key)
+
+
+def handoff(action: str) -> int:
+    """One step of a hand-off (`give`, `take`, `check` or `retire`), run by the program it concerns with prompts forbidden; the
+    master enters on standard input and leaves on a standard output that is a pipe."""
+    store = Keystore(wires=Wires(interactive=lambda: False))
+    try:
+        if action == "give":
+            return store.give(sys.stdout)
+        if action == "take":
+            return store.take(sys.stdin.read())
+        if action == "check":
+            return store.check()
+        return store.retire() if action == "retire" else FAILED
+    except KeystoreError as why:
+        warn(f"keystore {action}: {why}")
+        return FAILED
 
 
 _DEFAULTS: dict[tuple[str, int], Keystore] = {}

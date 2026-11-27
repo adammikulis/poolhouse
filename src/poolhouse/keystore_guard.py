@@ -14,12 +14,15 @@ imports `keyring` (only `keystore` may); it is handed the backend or the work to
 
 from __future__ import annotations
 
+import os
 import sys
 import threading
 from collections.abc import Callable
 from typing import Any
 
-__all__ = ["BACKGROUND_WAIT_S", "PERSON_WAIT_S", "bounded", "forbid_prompts", "service_session", "unsafe_backend"]
+__all__ = ["BACKGROUND_WAIT_S", "PERSON_WAIT_S", "bounded", "code_identity", "forbid_prompts", "service_session", "unsafe_backend"]
+
+CS_OPS_CDHASH = 5  # `csops(2)`: the code-directory hash of a running process
 
 PERSON_WAIT_S = 300.0
 """How long a person at a screen has to answer the one OS prompt."""
@@ -74,6 +77,21 @@ def bounded(work: Callable[[], Any], wait_s: float) -> Any:
     if carry.error is not None:
         raise carry.error
     return done[0]
+
+
+def code_identity() -> str:
+    """The code-directory hash the macOS kernel knows this running process by, which a keychain item it makes is trusted to;
+    '' off macOS and where the kernel gives none."""
+    if sys.platform != "darwin":
+        return ""
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None, use_errno=True)
+        libc.csops.argtypes = [ctypes.c_int, ctypes.c_uint, ctypes.c_void_p, ctypes.c_size_t]
+        found = ctypes.create_string_buffer(20)
+        return found.raw.hex() if libc.csops(os.getpid(), CS_OPS_CDHASH, found, len(found.raw)) == 0 else ""
+    except (OSError, AttributeError):
+        return ""
 
 
 def _security_framework() -> Any:

@@ -24,7 +24,15 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from poolhouse import app_bundle, keystore, macho, node_signing, real_machine, runtime
+from poolhouse import (
+    app_bundle,
+    keystore,
+    keystore_handoff,
+    macho,
+    node_signing,
+    real_machine,
+    runtime,
+)
 from poolhouse.files import promote, read_json, sha256_file, write_json
 from poolhouse.home import home
 from poolhouse.log import say, warn
@@ -286,20 +294,9 @@ def _keeps(bundle: Path, identifier: str) -> bool:
     return True
 
 
-def signed_as(identity: str | None = None) -> str:
-    """The designated requirement of the installed Mac's Poolhouse executable, or '' when there is none."""
-    bundle = bundle_path(identity)
-    return requirement_of(bundle) if applies() and bundle.exists() else ""
-
-
-def _key_note(before: str, after: str) -> str:
-    """What a changed signature of the executable means for the encryption key, when Poolhouse keeps one in the keychain; else ''."""
-    return node_signing.KEY_NOTE if applies() and before != after and keystore.Keystore().status()["provisioned"] else ""
-
-
 def kept_note(prefix: Path, identity: str | None = None) -> str:
     """What to say when the runtime at ``prefix`` runs under an executable made from another interpreter than its own, which is
-    what a signature failure leaves of an app the certificate had signed; else ''."""
+    what a failed signature or key hand-off leaves of the app that was there; else ''."""
     if not applies() or not bound(prefix, identity):
         return ""
     base, row = base_of(prefix), source_of(bundle_path(identity))
@@ -308,13 +305,81 @@ def kept_note(prefix: Path, identity: str | None = None) -> str:
             return ""
     except OSError:
         return ""
-    return (f"Poolhouse runs under the certificate-signed executable made from {row.get('interpreter')}, not from {base}, because "
-            f"signing a new one failed. `{node_signing.ENABLE}` signs it again")
+    again = (f"`{node_signing.ENABLE}` signs it again" if stable_requirement(requirement_of(bundle_path(identity)))
+             else "the next update tries again")
+    return (f"Poolhouse runs under the executable made from {row.get('interpreter')}, not from {base}, because signing a new one with "
+            f"the certificate, or handing it the encryption key, failed: {again}")
 
 
-def notices(prefix: Path, identity: str | None, before: str) -> list[str]:
-    """What a person should know after the runtime at ``prefix`` was bound, ``before`` being `signed_as` from before that."""
-    return [one for one in (kept_note(prefix, identity), _key_note(before, signed_as(identity))) if one]
+def unreadable_note() -> str:
+    """What to say when the encryption key could not be handed on and nothing has read it since; else ''."""
+    why = keystore.Keystore().unreadable() if applies() else ""
+    return f"{keystore.UNREADABLE_ADVICE} ({why})" if why else ""
+
+
+def notices(prefix: Path, identity: str | None) -> list[str]:
+    """What a person should know about the executable the runtime at ``prefix`` was bound to."""
+    return [one for one in (kept_note(prefix, identity), unreadable_note()) if one]
+
+
+def _old_programs(bundle: Path) -> list[Path]:
+    """The programs that may read the key now: the interpreter the selected runtime runs as (the executable in ``bundle`` once it
+    is bound, the bare Python before) and the executable in ``bundle``."""
+    selected = runtime.selection_prefix()
+    found = [interpreter_of(selected)] if selected is not None else []
+    found.append(bundle / "Contents" / "MacOS" / EXECUTABLE)
+    return list({_real(one): one for one in found if one.is_file()}.values())
+
+
+def _hand_key_over(bundle: Path, new: Path) -> bool:
+    """Before ``new`` takes the place of the executable in ``bundle``, give it the key Poolhouse keeps, from a program that reads
+    it now. True when it was given, so that it is next read from its place; where no program can give it, that is recorded."""
+    store = keystore.Keystore()
+    if not (applies() and store.status()["provisioned"]):
+        return False
+    why = "no program that could read it starts"
+    for old in _old_programs(bundle):
+        if sha256_file(old) == sha256_file(new):
+            return False
+        if bare_problem(old):
+            continue
+        if keystore_handoff.hand_over(old, new):
+            return True
+        why = f"macOS does not let {old} read it"
+    store.mark_unreadable(why)
+    return False
+
+
+def _replace(bundle: Path, staging: Path, keep: bool) -> bool:
+    """Put the runtime executable made in ``staging`` in the place of ``bundle``'s, the key handed to it before and read from
+    there after; a new one that cannot read it is taken out again. With ``keep``, when the key cannot be handed over now, the old
+    one stays and False is returned."""
+    executable = bundle / "Contents" / "MacOS" / EXECUTABLE
+    try:
+        handed = _hand_key_over(bundle, staging / "Contents" / "MacOS" / EXECUTABLE)
+    except keystore_handoff.HandoverError as exc:
+        if not (keep and bundle.exists() and not signature_problem(bundle) and not bare_problem(executable)):
+            raise
+        warn(f"{bundle} keeps the executable it had, because the key could not be handed to a new one: {exc}")
+        return False
+    previous = staging.parent / "before" / bundle.name
+    if handed and bundle.exists():
+        shutil.copytree(bundle, previous, symlinks=True)
+    _swap(staging, bundle)
+    if handed and not keystore_handoff.reads(executable):
+        if previous.exists():
+            _swap(previous, bundle)
+        else:
+            shutil.rmtree(bundle)
+        raise keystore_handoff.HandoverError("the new executable does not read the key from its place, so it was taken out again")
+    return True
+
+
+def retire_old_keys(identity: str | None = None) -> None:
+    """Once a runtime is selected, have its executable delete the key items of every signature but its own and the one before."""
+    executable = executable_path(identity)
+    if applies() and executable.is_file() and keystore.Keystore().signatures() > 2 and not keystore_handoff.retire(executable):
+        warn("the keychain items of earlier signatures of Poolhouse were not deleted; the next update tries again")
 
 
 @contextmanager
@@ -349,7 +414,7 @@ def _build(bundle: Path, files: list[tuple[Path, str]], sha: str, signer: Signer
         problem = signature_problem(staging) or bare_problem(staging / "Contents" / "MacOS" / EXECUTABLE)
         if problem:
             raise IdentityError(problem)
-        _swap(staging, bundle)
+        _replace(bundle, staging, keep)
 
 
 def ensure_bundle(interpreter: Path, identity: str | None = None, *, signer: Signer = node_signing.sign, keep: bool = True) -> Path:
@@ -366,12 +431,13 @@ def ensure_bundle(interpreter: Path, identity: str | None = None, *, signer: Sig
                 and (not _certificate() or stable_requirement(requirement_of(bundle))):
             return executable_path(identity)
         say(f"runtime: signing the Poolhouse executable at {bundle} from {interpreter}")
-        before = requirement_of(bundle) if bundle.exists() else ""
         try:
             _build(bundle, files, sha, signer, keep)
         except (node_signing.SigningError, subprocess.SubprocessError, ValueError) as exc:
             raise IdentityError(f"Poolhouse could not sign its executable ({exc}); the runtime keeps the identity it had") from exc
-        if note := _key_note(before, requirement_of(bundle)):
+        except keystore_handoff.HandoverError as exc:
+            raise IdentityError(f"Poolhouse could not change its executable ({exc}); the runtime keeps the identity it had") from exc
+        if note := unreadable_note():
             warn(note)
     return executable_path(identity)
 
@@ -383,16 +449,21 @@ def bundles() -> list[Path]:
 
 
 def resign(bundle: Path, identifier: str, requirement_for: Callable[[str], str]) -> str:
-    """Sign an app that already exists with what the keychain now holds; returns "certificate", "ad-hoc" or, where `_keeps` says
-    so, "kept". A copy is signed beside it and moved into its place, so a failure leaves the app as it was."""
+    """Sign an app that already exists with what the keychain now holds; returns "certificate", "ad-hoc" or, where the app stays
+    as it was (`_keeps`, or its key could not be handed on), "kept". A copy is signed beside it and moved into its place, so a
+    failure leaves the app as it was."""
     with app_bundle.locked(bundle), app_bundle.staged(bundle) as staging:
-        before = requirement_of(bundle)
         shutil.copytree(bundle, staging, symlinks=True)
         signed = node_signing.sign(staging, identifier, requirement_for)
         if signed != "certificate" and _keeps(bundle, identifier):
             return "kept"
-        _swap(staging, bundle)
-        if identifier == BUNDLE_ID and (note := _key_note(before, requirement_of(bundle))):  # the node's app reads no key
+        if identifier != BUNDLE_ID:  # the node's app reads no key
+            _swap(staging, bundle)
+        elif not _replace(bundle, staging, True):
+            return "kept"
+    if identifier == BUNDLE_ID:
+        retire_old_keys(bundle.parent.name)
+        if note := unreadable_note():
             warn(note)
     return signed
 

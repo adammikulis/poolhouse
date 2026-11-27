@@ -57,7 +57,7 @@ Every backend call is a sentinel event `keystore.read`, `keystore.create` or `ke
 `keystore.refused`. No value is ever in an event, a log line or a state file.
 
 | A backend call that does not return | bounded: 300 s for a person, 20 s for a background process (which on macOS also tells the Security framework to fail rather than show a dialog); the timeout is told as a prompt nobody answered in time and remembered by nothing, so the next request asks again |
-| A master that vanished after it was made | not replaced by the next process; `KeystoreMissing`. Only `poolhouse-security unlock` starts over |
+| A master that vanished after it was made | not replaced by the next process; `KeystoreMissing`. Only `poolhouse-security unlock` starts over, and where an item is recorded for another signature of the program only `keystore-reset` does |
 | A plaintext or null keyring backend (`keyrings.alt`) | refused: `KeystoreUnavailable` |
 
 Platform findings and what is unverified: `docs/keystore-platform-audit-2026-10-08.md`.
@@ -121,17 +121,19 @@ keystore master is never put in the environment.
   so two commands at once both land. A holder that does not let go in 10 seconds makes the next
   command fail with a plain message (`CredentialError`).
 
-## macOS: why the single prompt stays
+## macOS: one item for each signature, handed on
 
-The item trusts the program that made it, as that program is signed. When the signature of what reads
-it changes (a host Python upgrade or a switch of interpreter; for an installed runtime, whose processes
-run as Poolhouse's own executable, an update that changes its local signature, `poolhouse local-network
-certificate enable` or `remove`: [the signature on macOS](node.md#the-signature-on-macos)), macOS asks
-whether the new one may read the master. A background process cannot answer: the node's device key, the
-memory vault, stored credentials and the fleet signing key stay locked, and a node whose device key is in
-the keystore does not start. A person at the screen can run `poolhouse-security unlock` in a terminal and
-tell macOS to always allow it; that this restores access is unverified. Creating the item with the
-`security` CLI and `-T` so that a "stable launcher" is trusted was considered and not done:
+macOS lets only the code that made an item read it with no dialog, and a rebuilt program is other code,
+signed with a certificate or not. So an installed runtime keeps one item for each signature of its
+executable, and before that executable changes (a host Python upgrade, `poolhouse local-network
+certificate enable` or `remove`) the program that reads the key hands it to the new one through a pipe:
+[handing the key on](node.md#handing-the-key-on). The master, and so every wrapped file, stays the same.
+
+An interpreter that no installed runtime hands the key from (a development install run by a Python that
+was since upgraded) is asked about the item by macOS: a background process cannot answer, and a person at
+the screen can run `poolhouse-security unlock` in a terminal and tell macOS to always allow it, which is
+unverified. Creating the item with the `security` CLI and `-T` so that a "stable launcher" is trusted was
+considered and not done:
 
 - A launcher that is a script is not what the Keychain checks: the kernel runs the interpreter named
   on its first line, and the access list is matched against that process. Trusting a script path
@@ -149,9 +151,9 @@ tell macOS to always allow it; that this restores access is unverified. Creating
   with `ps` by any local user; `security -i` (stdin) avoids that, as `scripts/encrypted-volume.sh`
   now does, but the read side stays as above.
 
-One prompt per interpreter change is the smaller exposure, so it stays. If that changes, the
-decision is the owner's (`docs/keystore-platform-audit-2026-10-08.md`, D-1). Not verified against a
-real item: the owner's login keychain was not touched.
+Items that trust one program each are the smaller exposure than one any program can read, so they stay.
+If that changes, the decision is the owner's (`docs/keystore-platform-audit-2026-10-08.md`, D-1). The
+measurement behind the hand-off is in [the keychain note](notes/keychain-signature-measurement.md).
 
 ## A boot-time service with no unlocked keystore
 

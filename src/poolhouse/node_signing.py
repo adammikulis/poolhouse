@@ -8,7 +8,8 @@ then names the certificate instead of the code, so a permission should stay acro
 
 Whether the user opted in is what the keychain says: a signing identity of that name that macOS lists as usable, or none. Nothing
 but `enable` and `remove` adds, trusts or deletes a certificate. Poolhouse's encryption key is another item of the same keychain
-(`poolhouse.keystore`) under either signature, and what a changed signature means for it is `KEY_ADVICE`.
+(`poolhouse.keystore`) under either signature: macOS lets only the code that made it read it, the certificate or none, so a new
+signature gets the key handed to it (`poolhouse.keystore_handoff`).
 """
 
 from __future__ import annotations
@@ -43,13 +44,9 @@ CDHASH = r'cdhash H"[0-9a-f]{40}"'
 STOPPING = tuple(getattr(signal, name) for name in ("SIGINT", "SIGTERM", "SIGHUP") if hasattr(signal, name))
 ENABLE = "poolhouse local-network certificate enable"
 REMOVE = "poolhouse local-network certificate remove"
-UNLOCK = "poolhouse-security unlock"
 WHY_NOT_AN_AGENT = "an agent must not write your keychain"
-KEY_ADVICE = ("The encryption key Poolhouse keeps in your login keychain trusts the program that made it, as it is signed. After that "
-              "signature changes, macOS may refuse Poolhouse the key: the node's device key, the memory vault, stored credentials and the "
-              "fleet signing key then stay locked, and a background process cannot answer macOS. A person at this Mac's screen can run "
-              f"`{UNLOCK}` in a terminal and tell macOS to always allow it; that this restores access has not been verified.")
-KEY_NOTE = f"Poolhouse's signature on this Mac changed. {KEY_ADVICE}"
+KEY_HANDED = ("Poolhouse hands the encryption key it keeps in your login keychain to its app as newly signed, with no prompt, before "
+              "it uses that app.")
 WHAT_ENABLE_ADDS = f"""This adds a code-signing certificate to your login keychain:
   - a self-signed certificate named "{CERT_NAME}" and its private key, which /usr/bin/codesign may use
   - a setting that it is trusted for code signing, for your user account only
@@ -57,7 +54,7 @@ macOS will ask for your password to add that setting.
 Poolhouse then signs its apps with the certificate, so a permission you give Poolhouse (such as Local Network) should stay after an update.
 Any program running as you could ask codesign to sign with this key, and so sign itself as Poolhouse.
 To undo it: {REMOVE}
-{KEY_ADVICE}"""
+{KEY_HANDED}"""
 
 
 class SigningError(OSError):
@@ -418,7 +415,7 @@ def _remove(say: Callable[[str], None]) -> tuple[list[str], list[str]]:
         say(f"there is no {CERT_NAME!r} certificate or trust setting in your login keychain; nothing to remove")
         return [], []
     say(f"removing the {CERT_NAME!r} certificate, its private key and its trust setting; macOS may ask for your password. "
-        f"Poolhouse is then signed locally.\n{KEY_ADVICE}")
+        f"Poolhouse is then signed locally.\n{KEY_HANDED}")
     why += [_delete(sha1, trust=True) for sha1 in held]
     present, settings, kept = certificates(), _settings(why), _kept_copies()
     why += [_untrust(path) for sha1, path in kept.items() if sha1 not in present and (settings is None or sha1 in settings)]

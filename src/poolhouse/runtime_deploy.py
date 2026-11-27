@@ -242,7 +242,6 @@ def _record(plan: Plan) -> None:
 def _adopt(chosen: runtime.Runtime, check: Callable[[], None] | None) -> list[str]:
     """Bind ``chosen``; returns the sentences a person should know about it, which the deploy record keeps. A kept executable that
     ``check`` (the smoke of this runtime) refuses is replaced and checked again."""
-    before = runtime_identity.signed_as(chosen.identity)
     done = runtime_identity.adopt(chosen)
     if check is not None and runtime_identity.kept_note(chosen.prefix, chosen.identity):
         try:
@@ -250,7 +249,7 @@ def _adopt(chosen: runtime.Runtime, check: Callable[[], None] | None) -> list[st
         except RECOVERABLE:
             runtime_identity.adopt(chosen, keep=False)
             check()
-    told = runtime_identity.notices(chosen.prefix, chosen.identity, before)
+    told = runtime_identity.notices(chosen.prefix, chosen.identity)
     _note({"identity_notices": told or None})
     return [*([done] if done else []), *told]
 
@@ -291,6 +290,7 @@ def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = fr
                 _adopt(chosen, check)  # the last step before the selection: the executable changes only for a runtime about to be it
                 runtime.publish(chosen)
             published = True
+            runtime_identity.retire_old_keys(chosen.identity)
             _record(plan)
         finally:
             if not published:
