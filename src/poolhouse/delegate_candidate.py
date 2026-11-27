@@ -7,7 +7,7 @@ import difflib
 import os
 import shutil
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -144,19 +144,21 @@ def diff(changes: Sequence[Edit], limit: int = 0) -> str:
     return text[:limit] + CUT if limit and len(text) > limit else text
 
 
-def git(folder: str | Path, *words: str) -> bytes:
-    """What git says of ``words`` in ``folder``, reading only: no hook, file monitor, global configuration or lock of the index. ValueError when
-    there is no git or it fails."""
+def git(folder: str | Path, *words: str, env: Mapping[str, str] | None = None) -> bytes:
+    """What git says of ``words`` in ``folder``, with ``env`` added to a closed environment: no hook, file monitor, global configuration or
+    optional lock. ValueError when there is no git or it fails."""
     program = shutil.which("git")
     if not program:
         raise ValueError("git is not installed")
     argv = [program, "-c", "core.fsmonitor=false", "-c", f"core.hooksPath={os.devnull}", "--no-optional-locks", "-C", str(folder), *words]
+    given = {**source_snapshot.git_environment(), **(env or {})}
     try:
-        done = subprocess.run(argv, env=source_snapshot.git_environment(), stdin=subprocess.DEVNULL, capture_output=True, timeout=120, check=False)
+        done = subprocess.run(argv, env=given, stdin=subprocess.DEVNULL, capture_output=True, timeout=120, check=False)
     except subprocess.TimeoutExpired as why:
         raise ValueError(f"git did not end within {why.timeout:.0f}s") from why
     if done.returncode:
-        raise ValueError(f"git {words[0]} failed with status {done.returncode}")
+        said = done.stderr.decode("utf-8", "replace").strip().splitlines()
+        raise ValueError(f"git failed with status {done.returncode}" + (f": {said[-1][:200]}" if said else ""))
     return done.stdout
 
 

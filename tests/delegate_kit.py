@@ -56,10 +56,11 @@ def said(capsys) -> str:
     return seen.out + seen.err
 
 
-def started(*words: str, checked: bool = False) -> int:
-    """`poolhouse-delegate start` on ``words``; unless ``checked``, of one attempt with no self-check, which is what a test of a single run reads."""
+def started(*words: str, checked: bool = False, tree: bool = False) -> int:
+    """`poolhouse-delegate start` on ``words``; unless ``checked``, of one attempt with no self-check, which is what a test of a single run reads;
+    unless ``tree``, editing the project folder itself, which is where the tests of a run read what it changed."""
     plain = () if checked else ("--no-review", "--resumes", "0")
-    return delegate.main(["start", *words, *plain])
+    return delegate.main(["start", *words, *plain, *(() if tree else ("--in-place",))])
 
 
 def agent_names(node, lead):

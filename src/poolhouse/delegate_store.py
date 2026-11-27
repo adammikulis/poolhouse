@@ -52,6 +52,8 @@ class Delegate:
     """The commit the project was at when it was started; empty for a folder that is no git project."""
     resumes: int = 0
     """The attempts to continue a pass that something outside its task broke off (`delegate_resume`); 0 is none, which an older record holds."""
+    branch: str = ""
+    """The branch of the worktree it edits, which is then ``workdir`` (`delegate_tree`); empty for one that edits no worktree of its own."""
 
     def key(self) -> str:
         """The same lead asking the same thing of the same folder, in the same tier, is the same delegate."""

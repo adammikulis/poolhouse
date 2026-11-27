@@ -20,6 +20,7 @@ from poolhouse import (
     delegate_grade,
     delegate_refusals,
     delegate_store as store,
+    delegate_tree,
     delegate_unboxed,
     harness,
     lead_bridge,
@@ -99,8 +100,9 @@ def _tell(bridge: lead_bridge.Bridge, state: str, row: dict[str, Any]) -> None:
     checked = f"self-check accepted in round {review['rounds']} of {review['allowed']}" if review.get("accepted") else still.strip()
     parts = [str(row["error"] if row["text"] else ""), str(row["detail"]), checked, short]   # why and what was not applied first: a cut never drops them
     body = "\n".join(each for each in parts if each)
+    waiting = " (review waiting)" if (row.get("tree") or {}).get("commit") else ""
     try:
-        bridge.post("status", f"{state}: {body}\nall of it: poolhouse-delegate result {bridge.name}", subject=f"delegate {state}")
+        bridge.post("status", f"{state}: {body}\nall of it: poolhouse-delegate result {bridge.name}", subject=f"delegate {state}{waiting}")
     except ValueError as why:
         say(f"the lead was not told: {why}")
 
@@ -135,13 +137,16 @@ def run(name: str) -> int:
     detail = changes(state, found, refused, answer.review if answer else None)
     row = safetext.utf8({**_outcome(answer, why, began), "detail": detail})   # the model's text reaches the board
     row["phases"] = store.graded(name)["run"].get("phases", [])
+    if rec.branch:   # commit what stands to its branch, keep a patch of anything else, and remove the worktree
+        state, said, row["tree"] = delegate_tree.settled(rec, state, found.applied if found else ())
+        row["detail"] = "; ".join(each for each in (said, row["detail"]) if each)
     store.save_result(name, {**row, "state": state})
     delegate_grade.ended(name, state, row)
     store.set_status(name, state, why or row["detail"])
     say(f"{state}: {row['turns']} turn(s), {row['seconds']}s")
     _tell(bridge, state, row)
     mine.revoke()
-    if rec.workdir != rec.source:
+    if rec.workdir != rec.source and not rec.branch:
         shutil.rmtree(rec.workdir, ignore_errors=True)
     return 0 if state == "done" else 1
 

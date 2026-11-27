@@ -90,7 +90,8 @@ def opened(rec: store.Delegate) -> None:
 
 def started(rec: store.Delegate) -> None:
     """What the run starts from, taken before any model works on it."""
-    state = snapshot(rec.source, store.folder(rec.name) / "start") if rec.source else {"kept": False, "why": "it was given no folder"}
+    seen = rec.workdir if rec.branch else rec.source   # a worktree of its own holds the commit and nothing more
+    state = snapshot(seen, store.folder(rec.name) / "start") if seen else {"kept": False, "why": "it was given no folder"}
     store.keep(rec.name, run={**_asked(rec), "start": state})
 
 
@@ -99,6 +100,7 @@ def ended(name: str, state: str, row: dict[str, Any]) -> None:
     store.keep(name, run={
         "state": state, "ended": time.time(), "seconds": row.get("seconds"), "tokens": {key: row[key] for key in TOKENS if key in row},
         "publication": {key: row[key] for key in PUBLICATION if key in row}, "review": row.get("review"), "error": row.get("error", ""),
+        "tree": row.get("tree"),
         "detail": row.get("detail", "")})
 
 

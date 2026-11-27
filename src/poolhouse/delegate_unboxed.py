@@ -291,7 +291,8 @@ class _InPlace:
 
     def _kept_patch(self) -> str:
         """Where what the work changed is, for one the self-check did not accept."""
-        said = "the changes are in the folder itself, since this computer has no sandbox to hold them back"
+        said = ("the changes were made in its own worktree and none of them is kept there" if self.rec.branch else
+                "the changes are in the folder itself, since this computer has no sandbox to hold them back")
         if self.before is None:
             return f"{said}; no patch of them was kept: {self.uncompared}"
         patch = store.folder(self.rec.name) / "rejected.patch"

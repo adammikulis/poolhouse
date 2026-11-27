@@ -1,6 +1,6 @@
 """``poolhouse-delegate``: hand a task to a local coding agent on the model this machine serves and read what it sends back.
 
-    poolhouse-delegate start --task TEXT [--edit] ...     status [NAME]     result NAME     stop NAME
+    poolhouse-delegate start --task TEXT [--edit] [--wait] ...     status [NAME]     wait NAME     result NAME     stop NAME
     poolhouse-delegate grade NAME VERDICT --critique TEXT [--check "RUN => SAW"]     record NAME     summary
 
 The agent is OpenCode, a subagent of the session that starts it, `read-only` unless the lead chooses another tier, and
@@ -32,10 +32,12 @@ from poolhouse import (
     delegate_review,
     delegate_run,
     delegate_store as store,
+    delegate_tree,
     delegate_unboxed,
     harnessid,
     harnessing,
     jobs,
+    lead_bridge,
     node_launch,
 )
 from poolhouse.board import place, session as sessions
@@ -120,17 +122,14 @@ def _folder(source: str, edit: bool) -> str:
          help="the rounds of self-check before delivery: a fresh reviewer, then a fix, until one accepts (default: %(default)s)"),
     flag("--no-review", action="store_true", help="deliver the work with no self-check"),
     flag("--resumes", type=int, default=delegate_resume.RESUMES,
-         help="the attempts to continue a run something outside its task broke off, such as its model's server going away (default: %(default)s)")])
+         help="the attempts to continue a run something outside its task broke off, such as its model's server going away (default: %(default)s)"),
+    flag("--in-place", action="store_true",
+         help="with --edit: change the project folder itself, not a worktree and branch of the delegate's own"),
+    flag("--wait", action="store_true", help="return only when it ends or asks something (run this in the background to be woken then)")])
 def start(args: argparse.Namespace) -> int:
     """Register the agent as a subagent of the calling session, then run it detached; prints its name."""
     authority.require("workspace.agents", "start a delegate")
-    if not args.task.strip():
-        raise ValueError("give the task as text: --task TEXT")
-    if not 1 <= args.review_rounds <= delegate_review.MOST_ROUNDS:
-        raise ValueError(f"--review-rounds is 1 to {delegate_review.MOST_ROUNDS}; --no-review turns the self-check off")
-    rounds = 0 if args.no_review else args.review_rounds
-    if not 0 <= args.resumes <= delegate_resume.MOST_RESUMES:
-        raise ValueError(f"--resumes is 0 to {delegate_resume.MOST_RESUMES}")
+    rounds = _rounds(args)
     tier = tier_of(args.edit, args.permissions)
     edit = tier != coding_policy.READ_ONLY
     kind = delegate_grade.kind_of(args.kind, edit)
@@ -144,38 +143,111 @@ def start(args: argparse.Namespace) -> int:
         say(f"{same} is already running that task; `poolhouse-delegate status {same}`")
         return 0
     why = delegate_confined.unsandboxable()
-    if why:   # on the folder itself, or an empty one of its own
-        workdir = source or tempfile.mkdtemp(prefix="poolhouse-delegate-")
-    else:
-        workdir = _folder(source, edit)
-        try:   # the folder and the gate of a sandboxed delegate, decided now: a refusal is at once and starts nothing
-            delegate_confined.admit(replace(asked, workdir=workdir), args.project if workdir == source else "")
-        except (Denied, OSError, RuntimeError, ValueError):
-            if workdir != source:
-                shutil.rmtree(workdir, ignore_errors=True)
-            raise
+    workdir, branch = _admitted(asked, args.project, why), ""
     made = harnessid.invite(harnessid.agent_name(model, "delegate", args.name), Path.cwd(), lead, say, claim=("", "poolhouse-agent"))
     if made.native is None:
         raise ValueError("the agent's session carries no native identity to run under")
+    if edit and not args.in_place and delegate_tree.possible(source):
+        try:
+            workdir, branch = _own_tree(asked, made.name, why)
+        except (Denied, OSError, RuntimeError, ValueError):
+            with contextlib.suppress(Denied, NodeError, ValueError, OSError):
+                harnessid.launcher(client, board, lead).retire(made.name)
+            raise
     rec = store.Delegate(made.name, lead, board, args.task, workdir, model, args.name, source, edit, args.max_turns,
                          [made.native.model, made.native.harness, made.native.id], permissions=tier, sandboxed=not why, kind=kind,
-                         review_rounds=rounds, commit=delegate_grade.commit_of(source), resumes=args.resumes)
+                         review_rounds=rounds, commit=delegate_grade.commit_of(source), resumes=args.resumes, branch=branch)
     store.save(rec)
     delegate_grade.opened(rec)
     job = jobs.detach(delegate_run.__name__, [rec.name], log=store.log_file(rec.name), kind=JOB,
                       home=store.folder(rec.name), same_interpreter=True)
     store.set_status(rec.name, "starting", "")
-    mode = "edits the project in a confinement" if edit else "reads only"
+    _announce(rec, job.pid, why)
+    return _waited(rec.name) if args.wait else 0
+
+
+def _rounds(args: argparse.Namespace) -> int:
+    """The self-check rounds of a start, 0 for none, after what it was given is checked."""
+    if not args.task.strip():
+        raise ValueError("give the task as text: --task TEXT")
+    if not 1 <= args.review_rounds <= delegate_review.MOST_ROUNDS:
+        raise ValueError(f"--review-rounds is 1 to {delegate_review.MOST_ROUNDS}; --no-review turns the self-check off")
+    if not 0 <= args.resumes <= delegate_resume.MOST_RESUMES:
+        raise ValueError(f"--resumes is 0 to {delegate_resume.MOST_RESUMES}")
+    return 0 if args.no_review else args.review_rounds
+
+
+def _admitted(asked: store.Delegate, typed: str, why: str) -> str:
+    """The folder of a delegate that has no worktree of its own. With no sandbox (``why``) the folder itself, or an empty one; in a sandbox the
+    folder and the gate are decided now, so a refusal is at once and starts nothing."""
     if why:
-        say(delegate_unboxed.warning(tier, why))
-        mode = f"{tier}, with no sandbox,"
-    say(f"started {rec.name} (pid {job.pid}) for {lead} on {Path(model).name}: {mode} in {workdir}")
-    if rounds:
-        held = "" if why or not edit else ", and its change is applied only once accepted"
-        say(f"a fresh reviewer checks the work before delivery, in up to {rounds} round(s){held}; --no-review turns it off")
+        return asked.source or tempfile.mkdtemp(prefix="poolhouse-delegate-")
+    workdir = _folder(asked.source, asked.edit)
+    try:
+        delegate_confined.admit(replace(asked, workdir=workdir), typed if workdir == asked.source else "")
+    except (Denied, OSError, RuntimeError, ValueError):
+        if workdir != asked.source:
+            shutil.rmtree(workdir, ignore_errors=True)
+        raise
+    return workdir
+
+
+def _own_tree(asked: store.Delegate, name: str, why: str) -> tuple[str, str]:
+    """A worktree and branch of delegate ``name``, admitted like its project; removed again when it is refused."""
+    if behind := delegate_tree.uncommitted(asked.source):
+        say(f"it starts from the project's commit: {len(behind)} uncommitted file(s) of {asked.source} are not in its worktree")
+    workdir, branch = delegate_tree.made(asked.source, name)
+    try:
+        if not why:
+            delegate_confined.admit(replace(asked, workdir=workdir), "")
+    except (Denied, OSError, RuntimeError, ValueError):
+        delegate_tree.removed(asked.source, workdir, branch, keep_branch=False)
+        raise
+    return workdir, branch
+
+
+def _announce(rec: store.Delegate, pid: int, why: str) -> None:
+    """What the lead is told of a delegate that has started."""
+    mode = "edits the project in a confinement" if rec.edit else "reads only"
+    if why:
+        say(delegate_unboxed.warning(rec.permissions, why))
+        mode = f"{rec.permissions}, with no sandbox,"
+    say(f"started {rec.name} (pid {pid}) for {rec.lead} on {Path(rec.model).name}: {mode} in {rec.workdir}")
+    if rec.review_rounds:
+        held = "" if why or not rec.edit else ", and its change is applied only once accepted"
+        say(f"a fresh reviewer checks the work before delivery, in up to {rec.review_rounds} round(s){held}; --no-review turns it off")
     say(f"it asks you with a message from {rec.name}: read `poolhouse-workspace inbox`, answer with `poolhouse-workspace send {rec.name} answer TEXT`")
-    say(f"poolhouse-delegate status {rec.name} | result {rec.name} | stop {rec.name}")
-    return 0
+    if rec.branch:
+        say(f"it works on branch {rec.branch} in a worktree of its own; what stands is committed there for you to review and land")
+    say(f"poolhouse-delegate status {rec.name} | wait {rec.name} | result {rec.name} | stop {rec.name}")
+
+
+ASKS = 3
+"""The exit status of a wait that ended because the delegate asked something."""
+
+
+def _waited(name: str) -> int:
+    """Return when ``name`` ends (its result printed, and its exit status) or asks something (`ASKS`)."""
+    while True:
+        state, detail = _view(name)
+        if state == "asking":
+            say(f"{name} asks you something ({nudge_fence.clean(detail)}): read `poolhouse-workspace inbox`, answer with "
+                f"`poolhouse-workspace send {name} answer TEXT`, then `poolhouse-delegate wait {name}`")
+            return ASKS
+        if state not in LIVE:
+            if store.result(name):
+                return result(argparse.Namespace(name=name))
+            say(f"{name} {state}: {nudge_fence.clean(detail)}")
+            return 1
+        time.sleep(lead_bridge.POLL_S)
+
+
+@COMMANDS.command("wait", help="return when the agent ends or asks something (run this in the background to be woken then)", options=[flag("name")])
+def wait(args: argparse.Namespace) -> int:
+    """The result once it ends, else status `ASKS` when it asks."""
+    if store.load(args.name) is None:
+        raise ValueError(f"no delegate {args.name}; `poolhouse-delegate status` lists them")
+    return _waited(args.name)
 
 
 WARM_TASK = "Reply with the single word ready. Use no tools."
@@ -188,7 +260,7 @@ WARM_TASK = "Reply with the single word ready. Use no tools."
 def warm(args: argparse.Namespace) -> int:
     """Run a delegate on a trivial task: the server is leased and stays up, and its prompt cache holds the part every delegate shares."""
     return start(argparse.Namespace(task=WARM_TASK, project="", name="warm", parent="", model=args.model, max_turns=1, edit=args.edit, permissions="",
-                                    kind="warm", review_rounds=delegate_review.ROUNDS, no_review=True, resumes=0))
+                                    kind="warm", review_rounds=delegate_review.ROUNDS, no_review=True, resumes=0, in_place=True, wait=False))
 
 
 def _view(name: str) -> tuple[str, str]:
@@ -294,7 +366,11 @@ def stop(args: argparse.Namespace) -> int:
         store.keep(rec.name, run={"state": store.status(rec.name).get("state", "stopped"), "ended": time.time()})
     with contextlib.suppress(Denied, NodeError, ValueError, OSError):
         harnessid.launcher(Client(node_launch.default_state()), rec.board, rec.lead).retire(rec.name)
-    if rec.workdir != rec.source:
+    if rec.branch:   # a runner that ended removed its own; one that is gone left it
+        _state, said, _kept = delegate_tree.settled(rec, "stopped", ())
+        if said:
+            say(said)
+    elif rec.workdir != rec.source:
         shutil.rmtree(rec.workdir, ignore_errors=True)
     say(f"stopped {rec.name}")
     return 0

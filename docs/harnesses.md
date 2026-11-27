@@ -332,8 +332,9 @@ machine serves, so a server already up is taken as it stands and nothing else is
 
 ```
 poolhouse-delegate start --task "list the python files here and say what each does" [--project DIR] [--name LABEL] [--edit] [--max-turns N] [--model ID] [--as AGENT]
-                         [--kind WORD] [--review-rounds N | --no-review] [--resumes N]
+                         [--kind WORD] [--review-rounds N | --no-review] [--resumes N] [--in-place] [--wait]
 poolhouse-delegate warm [--model ID] [--edit]
+poolhouse-delegate wait NAME
 poolhouse-delegate status [NAME]
 poolhouse-delegate result NAME
 poolhouse-delegate stop NAME
@@ -341,6 +342,20 @@ poolhouse-delegate grade NAME correct|partly|wrong|unusable --critique TEXT [--c
 poolhouse-delegate record NAME
 poolhouse-delegate summary [--model TEXT] [--kind WORD] [--json]
 ```
+
+### The delegate's own worktree and branch
+
+`start --edit` on the root of a git project with a commit needs nothing else from the lead (`poolhouse.delegate_tree`): the launcher adds a worktree
+beside the project (`PROJECT-NAME`) on a new branch `delegate/NAME` at the project's commit, and the delegate works there. The lead's checkout and
+git configuration are not written, and its uncommitted files are not in the worktree (`start` says how many). When the run ends `done` or `partial`,
+what was applied is committed there, each file by name, as the delegate (`NAME@poolhouse.invalid`), with no repository hook and no signature, so the
+project's hooks have not run on it. The lead's notice says a review is waiting and names the branch and commit. Nothing is merged or pushed: the
+session that started the delegate reviews the branch, grades it (`grade`, an entry of its own beside the self-check's) and lands it. A run that is
+rejected, fails or is stopped keeps its patch, and its worktree and branch are removed; so is a worktree after a commit. If the runner's process is
+gone, `stop NAME` removes what it left. `--in-place` changes the project folder itself instead; a project with no commit is also changed in place.
+
+`--wait` returns when the delegate ends (its result and exit status) or asks something (status 3); `wait NAME` does the same for one already
+started. Run either in the background and the harness that runs it is woken then; the board message reaches the lead either way.
 
 ### Self-check before delivery
 
