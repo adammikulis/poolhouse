@@ -12,8 +12,7 @@ import urllib.parse
 from dataclasses import dataclass
 
 from poolhouse import serverkeys
-from poolhouse.listening import listens_on
-from poolhouse.serve.leases import recorded_servers, same_process
+from poolhouse.ownership import listens_on, recorded_servers, same_process
 
 __all__ = ["Named", "named"]
 
@@ -47,7 +46,7 @@ def named(url: str) -> Named:
         return unreadable
     if host not in serverkeys.LOOPBACK:
         return Named(url, False, "it is not an address of this computer's loopback, and a server's key goes nowhere else")
-    held = bool(port is not None and serverkeys.bound(port))
+    held = port is not None and serverkeys.held(port)
 
     def unshown(why: str) -> Named:
         return Named(url, False, why, keyed=held)
@@ -62,8 +61,9 @@ def named(url: str) -> Named:
     if record.get("unmanaged") or record.get("pending") or not same_process(record, strict=True):
         return unshown(f"the server this computer recorded for port {port} cannot be shown to be one it started that still runs")
     if serverkeys.bound(port) != record["pid"]:
-        return unshown(f"no key this computer holds is bound to the server on port {port} (an earlier build started it, or its key was "
-                       "replaced); `poolhouse-serve down` ends it, and the next launch starts one whose key this build holds")
+        why = serverkeys.unproved(port) or "the key is bound to another process"
+        return unshown(f"no key this computer holds is bound to the server on port {port}: {why}; `poolhouse-serve down` ends it, and the next "
+                       "launch starts one whose key this build holds")
     for address in ("127.0.0.1", "::1") if host == "localhost" else (host,):
         if listens_on(record["pid"], port, address):
             there = f"[{address}]" if ":" in address else address

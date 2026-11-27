@@ -18,7 +18,7 @@ import pytest
 from poolhouse import core, serverkeys
 from poolhouse.client.health import is_healthy
 from poolhouse.files import sha256_file
-from poolhouse.listening import listens_on
+from poolhouse.ownership import listens_on
 from poolhouse.serve import admission, backend as backend_module, binary as binary_module
 from poolhouse.serve.backend import Lease, LlamaServerBackend, ServerSpec
 from poolhouse.serve.binary import BinaryTampered

@@ -27,8 +27,11 @@ files set none of this.
 
 Every key sent anywhere (`serverkeys.for_url`) has the same two conditions: the process the key was bound to, by its number and start time, still
 runs, and it listens on exactly the address the URL names (a listener on every address does not count, and `localhost` needs both loopback
-addresses; Poolhouse's own client sends a `localhost` request to `127.0.0.1` when a keyed server holds it). A key bound with no start time, as an
-earlier build bound it, is sent nowhere. No request of `poolhouse.http` to this computer goes through a proxy, whatever the environment says, and
+addresses; Poolhouse's own client sends a `localhost` request to `127.0.0.1` when a keyed server holds it). A key the previous build bound has no
+start time: it is sent only when this computer can show now that the process is that server's (the lease record's process, start time and command
+line; started after the key was issued and before the key index was last written; listening on this computer's loopback), and the start time is
+recorded then, so an update leaves a running server in use with nothing to do. Where that cannot be shown, nothing is sent and the launch or the
+broker says which part failed. No request of `poolhouse.http` to this computer goes through a proxy, whatever the environment says, and
 a harness run in place has this computer's names added to `NO_PROXY`.
 
 ## In place
@@ -232,7 +235,8 @@ the lead's notice say how many and the first paths. It is decided from the harne
   its output carries the system's refusal (`Operation not permitted`, `Permission denied`, `Read-only file system`) and names that path. `edit` or
   `write`: the same, or the release's own first line for a failed write (`Unable to write PATH`, `Unable to edit PATH`);
 - by Poolhouse's tool rules: a call that writes which the hook denied, unless an `edit` or `write` later completed on the same path (how a shell
-  line ended is not told, so none takes a refusal back). A denied call that writes no file (a credential read, a force push) is none. With no
+  line ended is not told, so none takes a refusal back). A denied push (a force push among them) and a denied `gh ... delete` or `gh api -X DELETE`
+  count: they change a remote. A denied call that only reads (a credential read) is none. With no
   sandbox the run is `unapplied` when no writing call went through at all.
 
 A command or an edit that merely fails (tests, a search with no match, an `oldString` that is not there) is no refused write. Not seen: a write a

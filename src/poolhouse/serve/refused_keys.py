@@ -13,10 +13,11 @@ import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from poolhouse import serverkeys
 from poolhouse.client.health import refuses_key
-from poolhouse.listening import listens_on
+from poolhouse.ownership import listens_on, same_process
 from poolhouse.serve.backend import ServerFailed, ServerSpec
-from poolhouse.serve.leases import recorded_servers, same_process
+from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.matching import model_matches
 from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.process import kill_process_tree, pid_exists, request_on
@@ -40,17 +41,20 @@ def settle(broker: Broker, spec: ServerSpec, say: Callable[[str], Any]) -> None:
             if (not (serves or port == spec.port) or entry.get("pending") or not isinstance(pid, int) or not pid_exists(pid)
                     or not refuses_key(f"http://{DEFAULT_HOST}:{port}")):
                 continue
+            unshown = serverkeys.unproved(port)
             if entry.get("unmanaged") or not (same_process(entry, strict=True) and listens_on(pid, port)):
                 with broker._cond:
                     broker.servers.pop(port, None)
-                say(f"port {port}: the server there refuses this build's key and is not shown to be one Poolhouse started; it is left alone")
+                say(f"port {port}: the server there refuses this build's key and is not shown to be one Poolhouse started; it is left alone"
+                    + (f" ({unshown})" if unshown else ""))
             elif not (why := _in_use(broker, port, entry)):
                 _stop(broker, port, entry)
                 say(f"port {port}: replaced the server (pid {pid}) an earlier session left up: it refuses this build's key, nothing holds it "
-                    "and no request is on it")
+                    "and no request is on it" + (f" ({unshown})" if unshown else ""))
             elif serves:
                 raise ServerFailed(f"port {port}: the server up there (pid {pid}) refuses this build's key, so nothing can be asked of it, "
-                                   f"and {why}. It is left running, and the next launch after that ends replaces it.")
+                                   f"and {why}. It is left running, and the next launch after that ends replaces it."
+                                   + (f" Its key was not sent: {unshown}." if unshown else ""))
 
 
 def _in_use(broker: Broker, port: int, entry: dict) -> str:

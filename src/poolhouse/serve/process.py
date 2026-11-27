@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import logging
 import math
@@ -168,17 +167,6 @@ def request_on(pid: int, port: int, *, samples: int = 5, apart_s: float = 0.2) -
         except (psutil.Error, OSError):
             return None
     return True
-
-
-def cmdline_digest(pid: int | None) -> str | None:
-    """A digest of ``pid``'s command line, or None when it is not running or will not say."""
-    if not pid_exists(pid):
-        return None
-    try:
-        argv = psutil.Process(pid).cmdline()
-    except psutil.Error:
-        return None
-    return hashlib.sha256("\0".join(argv).encode("utf-8", "replace")).hexdigest() if argv else None
 
 
 def self_or_ancestor(pid: int | None) -> bool:

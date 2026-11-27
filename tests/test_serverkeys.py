@@ -11,11 +11,12 @@ import pytest
 
 from poolhouse import home, secretpaths, serverkeys
 from poolhouse.http import build_request
+from poolhouse.ownership import cmdline_digest
 from poolhouse.serve import backend as be
 from poolhouse.serve.grant import broker_grant
 from poolhouse.serve.leases import lease_file
 from poolhouse.serve.policy import LocalPolicy
-from poolhouse.serve.process import cmdline_digest, started_at
+from poolhouse.serve.process import started_at
 from poolhouse.testing.registry import record_server
 
 

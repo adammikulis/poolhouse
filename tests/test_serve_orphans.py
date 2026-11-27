@@ -8,9 +8,10 @@ import time
 import psutil
 import pytest
 
+from poolhouse.ownership import cmdline_digest, same_process
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port
-from poolhouse.serve.leases import orphaned, same_process
-from poolhouse.serve.process import cmdline_digest, pid_exists, started_at
+from poolhouse.serve.leases import orphaned
+from poolhouse.serve.process import pid_exists, started_at
 from poolhouse.testing.canned import canned_binary
 
 pytest_plugins = ["serve_node"]

@@ -254,6 +254,9 @@ def _command(words: list[str], ground: Ground, here: str | None, depth: int) -> 
     if name == "find":
         yield from _find(rest, ground, here)
         return
+    if name == "gh" and (plain[1:2] == ["delete"] or (plain[:1] == ["api"] and "DELETE" in (word.rpartition("=")[2].removeprefix("-X").upper()
+                                                                                          for word in rest))):
+        yield Effect(wrote="gh-delete")
     targets = _targets(name, rest, plain)
     if fed and (targets or name in EVERY | OWNED | COPIES):
         yield Effect(f"{name} takes its targets from another command: it {UNREAD}", targets[0] if targets else name)
@@ -351,12 +354,15 @@ def _git(rest: list[str], ground: Ground, here: str | None) -> Iterator[Effect]:
     tree = _place(moved or ".", here, ground) or moved or ground.root
     if sub == "push" and (flags & {"--force", "--force-with-lease", "--force-if-includes", "--mirror", "--delete", "--prune"} or short & {"f", "d"}
                           or any(w.startswith(("+", ":")) for w in plain)):
-        yield Effect(f"git push {FORCE}")
+        yield Effect(f"git push {FORCE}", "git-push")
+        return
+    if sub == "push":   # whatever else refuses it, a push changes the remote
+        yield Effect(wrote="git-push")
         return
     if sub == "config":
         reading = flags & {"--get", "--get-all", "--get-regexp", "--list", "-l", "--show-origin"} or (len(plain) < 2 and not flags & {"--unset", "--unset-all"})
         if not reading and flags & {"--global", "--system"}:
-            yield Effect(f"git config {GLOBAL}", "git config")
+            yield Effect(f"git config {GLOBAL}", "git-config")
             return
         named = next((after[i + 1] for i, w in enumerate(after[:-1]) if w in ("-f", "--file")), "")
         if not reading and named:

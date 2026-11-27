@@ -20,10 +20,11 @@ from typing import Any
 
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import only_one
+from poolhouse.ownership import cmdline_digest
 from poolhouse.serve import admission
 from poolhouse.serve.backend import ServerInfo, ServerSpec
 from poolhouse.serve.leases import merge_state, recorded_servers
-from poolhouse.serve.process import cmdline_digest, started_at
+from poolhouse.serve.process import started_at
 
 __all__ = ["STATE_LOCK_S", "entry", "fits", "lock_file", "never_fits", "recorded", "reserving", "save", "taken"]
 

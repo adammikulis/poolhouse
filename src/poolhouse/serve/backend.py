@@ -19,7 +19,7 @@ from typing import Any
 
 from poolhouse import errors, home, serverkeys
 from poolhouse.client import families, wait_for_health
-from poolhouse.listening import listens_on
+from poolhouse.ownership import listens_on
 from poolhouse.platform import end_child, process_group_kwargs
 from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, startup
 from poolhouse.serve.binary import child_env, require_binary, vetted
