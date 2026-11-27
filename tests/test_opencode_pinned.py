@@ -230,6 +230,31 @@ def test_a_delegate_broken_off_on_the_pinned_release_takes_its_conversation_up_i
     assert any("interrupted from outside the task" in str(each["content"]) for each in last), last[-3:]
 
 
+def test_a_delegate_broken_off_twice_on_the_pinned_release_keeps_one_conversation(delegated, served, monkeypatch):
+    """The second continuation takes up a conversation last held in the first one's box, whose folder is gone with that box (the refusals are
+    PLUMBING, not a model)."""
+    heard, original, mends = delegate_confined.Hooks.heard, delegate_resume.waited, []
+
+    def broken(self, event, payload, said):
+        if event == "post" and "tool_use_id" in payload and len(mends) < 2:
+            served.refuse[canned.CHAT] = 400
+        heard(self, event, payload, said)
+
+    def mended(model, say):
+        mends.append(served.refuse.clear())
+        served.turns = turns([("glob", {"pattern": "*"})] if len(mends) < 2 else [])
+        return original(model, say)
+
+    monkeypatch.setattr(delegate_confined.Hooks, "heard", broken)
+    monkeypatch.setattr(delegate_resume, "waited", mended)
+    ran = delegated.run([("glob", {"pattern": "**/*"})], "--edit", resumes=2)
+    phases = store.graded(ran.name)["run"]["phases"]
+    assert [(each["attempt"], bool(each["interrupted"])) for each in phases] == [(0, True), (1, True), (2, False)], (phases, ran.log[-4000:])
+    assert ran.status == 0 and ran.row["state"] == "done", (ran.row, ran.log[-4000:])
+    assert "Location not found" not in ran.log and "DirectoryAccessDenied" not in ran.log, ran.log[-4000:]
+    assert [each["role"] for each in offered(served)[0][-1]["messages"]].count("tool") == 2, "both earlier calls are in the one conversation"
+
+
 def test_the_pinned_release_gives_up_on_a_replys_head_only_where_the_config_names_a_time(delegated, served, monkeypatch):
     """A request waits at the bridge for its turn with no head sent, and this release gives a head 300 s unless told otherwise. Here the config's
     switch is read: set to half a second against a server that answers after two (PLUMBING, not a model), the run gives up."""
