@@ -515,13 +515,72 @@ def test_the_smoke_screenshots_are_not_published():
     assert uploads and all(cleared < i for i in uploads)
 
 
-def test_a_development_push_does_not_run_the_full_suite():
-    """The shards, the required test check and the Windows job run on a pull request, the nightly schedule, a
-    dispatch and a push to main; a push to a development branch runs only the jobs without such a condition."""
-    for job in ("shards", "test", "windows"):
-        condition = CI["jobs"][job]["if"]
-        assert "github.event_name != 'push'" in condition and "refs/heads/main" in condition, (job, condition)
-    assert "if" not in CI["jobs"]["gates"] or "push" not in CI["jobs"]["gates"]["if"]
+def job_runs(job, event, ref, base=""):
+    """Whether the `if` of a ci.yml job holds, read with only the operators and functions those conditions use."""
+    condition = CI["jobs"][job].get("if")
+    if condition is None:
+        return True
+    source = condition
+    for name, plain in (("github.event_name", "event"), ("github.base_ref", "base"), ("github.ref", "ref")):
+        source = source.replace(name, plain)
+    source = source.replace("&&", " and ").replace("||", " or ")
+    names = {"event": event, "ref": ref, "base": base}
+    calls = {"always": lambda: True, "endsWith": lambda text, end: text.endswith(end)}
+
+    def value(node):
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.Name):
+            return names[node.id]
+        if isinstance(node, ast.Call):
+            return calls[node.func.id](*[value(one) for one in node.args])
+        if isinstance(node, ast.Compare) and len(node.ops) == 1 and isinstance(node.ops[0], (ast.Eq, ast.NotEq)):
+            same = value(node.left) == value(node.comparators[0])
+            return same if isinstance(node.ops[0], ast.Eq) else not same
+        if isinstance(node, ast.BoolOp):
+            found = (value(one) for one in node.values)
+            return all(found) if isinstance(node.op, ast.And) else any(found)
+        raise AssertionError(f"unsupported job condition: {condition}")
+
+    return bool(value(ast.parse(source.strip(), mode="eval").body))
+
+
+DEV_PULL = ("pull_request", "refs/pull/42/merge", "0.3dev")
+FULL_RUNS = [("pull_request", "refs/pull/42/merge", "main"), ("schedule", "refs/heads/main", ""),
+             ("workflow_dispatch", "refs/heads/0.3dev", ""), ("push", "refs/heads/main", "")]
+
+
+@pytest.mark.parametrize("job", ["shards", "test"])
+def test_the_full_suite_runs_for_main_the_schedule_and_a_dispatch_and_for_nothing_of_development(job):
+    """It is slow and may be red: a pull request into a development branch and a push of one never wait for it. A skipped job
+    still reports its check, so the check the repository requires is answered."""
+    assert all(job_runs(job, *run) for run in FULL_RUNS)
+    assert not job_runs(job, *DEV_PULL)
+    assert not job_runs(job, "push", "refs/heads/0.3dev")
+
+
+@pytest.mark.parametrize("job", ["gates", "privacy", "licenses"])
+def test_the_quick_required_checks_run_on_every_pull_request(job):
+    assert all(job_runs(job, *run) for run in [DEV_PULL, *FULL_RUNS, ("push", "refs/heads/0.3dev", "")])
+
+
+def test_the_affected_tests_run_on_a_development_pull_request_only():
+    assert job_runs("affected", *DEV_PULL)
+    assert not any(job_runs("affected", *run) for run in [*FULL_RUNS, ("push", "refs/heads/0.3dev", "")])
+
+
+def test_the_affected_tests_run_the_selection_of_the_pull_requests_changes_on_macos():
+    job = CI["jobs"]["affected"]
+    assert job["runs-on"].startswith("macos-") and job["timeout-minutes"] <= 45
+    checkout = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+    assert checkout["with"]["fetch-depth"] == 0, "a failure is run again on the base commit"
+    run = next(s["run"] for s in job["steps"] if "affected_push.py" in str(s.get("run", "")))
+    assert 'affected_push.py "$GITHUB_BASE_REF"' in run and "HEAD^1" in run
+
+
+@pytest.mark.parametrize("name", ["redteam.yml", "pool-check.yml", "release-dry-run.yml"])
+def test_a_long_workflow_waits_for_a_pull_request_into_main(name):
+    assert read(name)["on"]["pull_request"]["branches"] == ["main"]
 
 
 def test_ci_installs_browser_dependencies_before_the_slow_suites():

@@ -1,7 +1,8 @@
 #!/bin/sh
-# Development publication guards refs only. Validation and CI run separately. A push to main by an agent is the one merge: it is allowed
-# exactly when the rule the guards apply (poolhouse.workspace.release_check) allows it for the commit pushed, and refused at once with
-# its reason otherwise; nothing waits for anyone.
+# Publication guards refs only: an agent pushes branches forward, never a tag, a deletion or a rewrite. Validation and CI run separately,
+# and the development branch takes work by pull request (docs/landing.md), which GitHub's own rule enforces. A push to main by an agent is
+# the one merge: it is allowed exactly when the rule the guards apply (poolhouse.workspace.release_check) allows it for the commit
+# pushed, and refused at once with its reason otherwise; nothing waits for anyone.
 set -eu
 
 # This source-repository policy is opt-in local scope, never library-consumer policy.
@@ -29,7 +30,7 @@ zero=0000000000000000000000000000000000000000
 
 refuse() {
     echo "pre-push: refused: ${remote_ref:-malformed record} ($1)" >&2
-    echo "Push development with git push origin ${dev:-<development branch>}; release through refs/heads/promote/<date>." >&2
+    echo "Push your own branch and open a pull request into ${dev:-<development branch>}; release through refs/heads/promote/<date>." >&2
     exit 1
 }
 
@@ -50,15 +51,11 @@ while read -r local_ref local_sha remote_ref remote_sha extra ||
         [ -n "$remote_sha" ] && [ -z "$extra" ] || refuse "malformed record"
     [ "$local_sha" != "$zero" ] || refuse "deletions are not development pushes"
     merging=0
-    if [ "$remote_ref" = refs/heads/main ]; then
-        merging=1
-    else
-        [ -n "$dev" ] && [ "$dev" != main ] || refuse "no development branch"
-        case "$remote_ref" in
-            "refs/heads/$dev"|refs/heads/promote/?*) ;;
-            *) refuse "only development and promotion snapshots are allowed" ;;
-        esac
-    fi
+    case "$remote_ref" in
+        refs/heads/main) merging=1 ;;
+        refs/heads/?*) ;;
+        *) refuse "only branches are pushed: a tag or another ref is not" ;;
+    esac
     git check-ref-format "$remote_ref" >/dev/null 2>&1 || refuse "invalid destination ref"
     case "$local_sha$remote_sha" in *[!0-9a-f]*) refuse "invalid commit identifier" ;; esac
     [ "$(git --no-replace-objects cat-file -t "$local_sha" 2>/dev/null || true)" = commit ] ||

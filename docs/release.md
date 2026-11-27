@@ -2,7 +2,7 @@
 
 ## How a release is made
 
-1. Work lands on the development branch (`0.2dev`). A push to `main` is the owner's.
+1. Work lands on the development branch by pull request (docs/landing.md). A push to `main` is the owner's.
 2. A push to `main` runs `release-please.yml`, which opens or updates a release pull request from the
    `feat:` and `fix:` commit subjects. Merging that pull request tags `vX.Y.Z`.
 3. `release.yml` calls `release-build.yml`, which builds the wheel, a CycloneDX SBOM (`sbom.cdx.json`) and the macOS,

@@ -187,10 +187,10 @@ def check(dev: str, base: str, tip: str) -> int:
         head = lg.out(root, "rev-parse", "HEAD")
         if head != tip:
             return refuse(f"this checkout is at {head[:12]} and the push is of {tip[:12]}; the tests run on the checked-out tree, "
-                          "so push from a checkout of the commit", f"git push origin HEAD:refs/heads/{dev}")
+                          "so push from a checkout of the commit", "git push origin HEAD")
         if why := moved_on(root, base, tip):
             return refuse(f"{why}, so the remote will not take the push; no test is run for it",
-                          f"git fetch origin && git merge origin/{dev} && git push origin HEAD:refs/heads/{dev}")
+                          f"git fetch origin && git merge origin/{dev} && git push origin HEAD")
         files, notes, start = selected(root, dev, base, tip)
     except (RuntimeError, OSError, ValueError, SyntaxError, KeyError, ImportError) as exc:
         return refuse(f"the tests this push can break could not be selected ({type(exc).__name__}: {exc})", "python scripts/hooks/affected_push.py")

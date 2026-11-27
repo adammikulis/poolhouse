@@ -115,32 +115,25 @@ gate.
 
 - **Commit, merge and sync continuously.** Immediately after every completed bounded commit by named files, fetch
   `origin` and reconcile `origin/<dev>` in the agent's own claimed checkout at a safe boundary, before the next piece.
-  Hand the exact SHA, affected-check results and required independent security review to the shared development
-  branch's single coordinator immediately. The coordinator integrates and pushes each verified checkpoint after its
-  required combined gates, without waiting for session end, other workers, cleanup or unrelated work. Fetch before
-  integration and again before push and reconcile remote advancement; a push takes no claim and no lock. Managed
-  workers retain their assigned permissions and never race the coordinator to publish the shared branch. After
-  publication, promptly complete the merged branch's maintained worktree cleanup.
-- **Pull and push as work lands.** Fetch before preparing each integration batch and again immediately before
-  pushing. Reconcile upstream advancement, conflicts included, in an isolated integration worktree, review the
-  resulting changes and run the incremental affected gates before landing the exact tree; equivalent recovered
-  patches do not require repeated tests. Push the development branch normally after its batch gates pass; if another
-  device advances the remote before the push succeeds, fetch, reconcile and gate the new changes, then retry a normal
-  push. Every agent that starts a task, finishes a task or returns from a wait fetches and reconciles its own claimed
-  checkout first, so no one works on history another device has already moved. Keep local and upstream
-  development synchronized throughout landing batches and cleanup; report the resulting commit and final upstream
-  state.
-- **Keep landing short.** Throughput is limited by unlanded work, not typing speed. Branches are cut from
-  current development, stay under ten commits, and land the moment they are ready and verified: rebase, verify,
-  fast-forward and push straight away, with no other work in between. A ready branch never waits for a day, an hour
-  or another task. Land a stack bottom-up, one layer at a time. Past the branch notes (more than 30 commits ahead or 20
+  A ready branch is pushed under its own name and opened as a pull request at once, without waiting for session end,
+  other workers, cleanup or unrelated work (docs/landing.md). After the merge, promptly complete the branch's maintained
+  worktree cleanup.
+- **Pull as work lands.** Every agent that starts a task, finishes a task or returns from a wait fetches and reconciles
+  its own claimed checkout first, so no one works on history another device has already moved. Reconcile upstream
+  advancement, conflicts included, on the branch, review the resulting changes and run the incremental affected checks;
+  equivalent recovered patches do not require repeated tests. Keep local and upstream development synchronized
+  throughout merges and cleanup; report the resulting commit and final upstream state.
+- **Keep landing short.** Throughput is limited by unmerged work, not typing speed. Branches are cut from
+  current development, stay under ten commits, and become a pull request the moment they are ready and verified. A ready
+  pull request never waits for a day, an hour or another task: the agent that spawned its author reviews and merges it.
+  Land a stack bottom-up, one layer at a time. Past the branch notes (more than 30 commits ahead or 20
   behind development; `scripts/worktrees` `NOTE_AHEAD` = 30; AGENTS.md, "Branch hygiene and landing"), split a branch into
   separately landing batches instead of carrying it. Run `git cherry <dev> <branch>` before porting and
   drop equivalent patches. Record the tree hash a gate ran on; a tree already gated is not gated again. Finish before
   starting: no new branch while your own ready branches await landing; about ten open worktrees at most per lead.
-- **The coordinator lands each verified checkpoint with git:** fetch, merge `origin/<dev>`, check newly changed
-  surfaces where relevant, then `git push origin HEAD:refs/heads/<dev>` (never `main`, never forced). The mandatory push
-  hook guards refs only and runs no tests or builds; the coordinator keeps the primary checkout in sync (docs/landing.md).
+- **The reviewer merges each pull request:** `scripts/lead-review` on its head commit, then the `gh pr merge` command it
+  prints, once the required checks pass. No agent pushes the development branch or `main`; the pre-push hook guards refs
+  only and runs no tests or builds (docs/landing.md).
 - The primary development checkout may receive reviewed changes through a fast-forward merge or authorized direct
   edits and named-file commits; resolve conflicts in an isolated worktree. The retained primary checkout is never
   removed as temporary-worktree cleanup. Coding tasks own their worktree lifecycle: assignment reserves the path and
@@ -166,7 +159,7 @@ not proof that it is disposable.
   structural/security checks when the changed surface or a plan milestone requires them; reuse valid unchanged
   evidence through maintained checks. Documentation-only changes need consistency review, clean diffs and relevant
   targeted text checks. Fetches and pushes trigger no test campaign; the mandatory push hook guards refs only.
-  Broader verification belongs in CI on development pushes, pull requests, `main` and nightly schedules
+  Broader verification belongs in CI on pull requests, development pushes, `main` and nightly schedules
   (docs/landing.md, "The CI run"). A failure that also fails on the clean target is `baseline`, with evidence and an owner.
 - Known failures remain named tasks with evidence and ownership. A scoped pass is not a full-suite pass. Fix a known
   relevant regression before the affected change lands. A missing cold selector cache does not require a full suite

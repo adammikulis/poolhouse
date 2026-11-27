@@ -31,6 +31,14 @@ def test_turn_end_does_not_resolve_identity_or_change_task_state(tmp_path, monke
     assert {name: (tmp_path / name).read_bytes() for name in state} == state
 
 
+def test_the_unlanded_work_sentence_sends_the_subagent_to_a_pull_request_it_does_not_merge(monkeypatch):
+    monkeypatch.syspath_prepend(str(HOOKS))
+    module = runpy.run_path(str(HOOKS / 'stop_landed.py'))
+    said = module['reason']([module['Held']('work/change', '/x/tree', '1 commit not on origin/0.3dev')])
+    assert 'git push origin HEAD' in said and 'open a pull request into the development branch' in said
+    assert 'never merge it yourself' in said and 'refs/heads/<development branch>' not in said
+
+
 def test_malformed_turn_end_warns_without_a_block(monkeypatch, capsys):
     monkeypatch.syspath_prepend(str(HOOKS))
     hook = runpy.run_path(str(HOOKS / 'claude-subagent-stop'))

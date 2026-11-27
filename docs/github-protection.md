@@ -45,7 +45,7 @@ carry no right to change the server's rules. What the red-team pass found:
 ## Order of work
 
 The steps below configure optional separation through a repository App and release protection. They are not
-prerequisites for ordinary development pushes, which use the repository's existing configured Git authentication.
+prerequisites for ordinary branch pushes and pull requests, which use the repository's existing configured Git authentication.
 
 1. `scripts/agent-identity setup` ([Agent identity](#agent-identity)) gives agents their own identity; start the
    harness with the token `scripts/agent-identity token` prints.
@@ -150,10 +150,10 @@ Rollback: unset the variables; the harness falls back to the owner's `gh` login.
 
 ## Push credential
 
-Every working device may push its own completed development increments using the repository's existing configured
-Git authentication. A GitHub App, designated lander or holder on another device is not required. Use Git's configured
-helper without extracting, printing or copying credentials; retain synthetic agent authorship and push the explicit
-current development ref to the configured `origin`, fast-forward, with the maintained checks.
+Every working device may push its own work branches and open pull requests using the repository's existing configured
+Git and `gh` authentication. A GitHub App, designated lander or holder on another device is not required. Use Git's
+configured helper without extracting, printing or copying credentials; retain synthetic agent authorship and push your
+own branch to the configured `origin`, fast-forward, with the maintained checks (docs/landing.md).
 
 A scoped App remains available for stronger credential separation and its existing software-owned operations.
 Its setup, availability and diagnostic modes do not gate ordinary development synchronization. Release signing,
@@ -247,7 +247,7 @@ Rollback: `gh api -X DELETE repos/$R/rulesets/$(gh api repos/$R/rulesets --jq '.
 
 ### Development branch ruleset
 
-`0.2dev` and every `*dev` branch: agents push to it directly, so it only loses its deletion and history rewrites.
+`0.2dev` and every `*dev` branch: this ruleset takes away its deletion and history rewrites.
 
 ```sh
 gh api -X POST repos/$R/rulesets --input - <<'JSON'

@@ -93,9 +93,9 @@ not its own. The test is the one in the table above, against `origin/<developmen
 origin has none): a commit that branch lacks, a changed or untracked file, an unfinished merge or rebase, or a tree git
 cannot read. A subagent whose directory is already gone, or that stopped outside any checkout, is let through.
 
-The refusal is one sentence that names the tree and says to merge origin's development branch into it and push it, or, when the work is
+The refusal is one sentence that names the tree and says to merge origin's development branch into it, push its own branch and open a pull request, or, when the work is
 superseded, to run `scripts/worktrees close TREE --bundle` (`--abandon 'reason'` for uncommitted files).
 The second refusal of the same subagent also posts `announce blocked`; the third stop goes through, posts a milestone
 naming the branch and tree, and the tree stays as work for `scripts/worktrees` and its cleanup. That stop announces no
-`done` and does not retire the subagent: its identity and token stay, so the lead can resume it to claim and push. A stop that finds everything landed (or the tree closed or gone) forgets the count, posts its `done` for its subscribers
+`done` and does not retire the subagent: its identity and token stay, so the lead can resume it to claim, push and open its pull request. A stop that finds everything landed (or the tree closed or gone) forgets the count, posts its `done` for its subscribers
 and retires the subagent. The count lives in the hooks' state directory (`POOLHOUSE_HOOK_STATE`).

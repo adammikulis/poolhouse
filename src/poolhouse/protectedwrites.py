@@ -518,8 +518,8 @@ def _gh(args: list[str], shell: Shell) -> str:
     verbs = [a for a in args if not a.startswith("-")]
     head, rest = (verbs[0] if verbs else ""), verbs[1:2]
     if head == "pr" and rest == ["merge"] and (why := shell.released(str(shell.here))):
-        return ("`gh pr merge` merges into a protected branch: refused to an agent until the commit has a standing independent "
-                f"land-review accept (`poolhouse-workspace land-review`) and the checkout is clean; {why}.")
+        return ("`gh pr merge` is refused to an agent: into the development branch it needs a passed lead-review status on the head it names, elsewhere a "
+                f"standing independent land-review accept (`poolhouse-workspace land-review`) and a clean checkout; {why}.")
     if head == "workflow" and rest == ["run"] and not (verbs[2:] and verbs[2] in CHECK_WORKFLOWS):
         return ("`gh workflow run` of anything but a workflow that checks is refused to an agent, since another can publish; name one "
                 f"before any flag ({', '.join(sorted(CHECK_WORKFLOWS))}).")

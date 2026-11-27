@@ -2,11 +2,13 @@ name: release dry run
 
 # The bundles ordinary CI never builds: app/**, packaging/** and the packages a bundle
 # carries. release-please.yml calls release.yml the same way for the release branch;
-# this covers a development push and a pull request touching the same surface.
+# this covers a pull request into main touching the same surface, and the nightly schedule.
 on:
   schedule:
     - cron: "10 5 * * *"
+  # Into main only: the bundles take longer than a pull request into the development branch waits (docs/landing.md).
   pull_request:
+    branches: [main]
     paths:
       - "app/**"
       - "packaging/**"

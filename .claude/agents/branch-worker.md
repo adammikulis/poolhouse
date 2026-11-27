@@ -32,9 +32,11 @@ Rules:
 - Never `pip install -e`; run your tree's code with `PYTHONPATH=src`.
 - Add files by name; never `git add -A`, `.` or `-u`.
 - Never tag or touch `main`. Claim your worktree when you start (`poolhouse-workspace claim worktree PATH --agent
-  <your name>`). Commit named files on your branch, then push it yourself: fetch, merge
-  `origin/<dev>`, run the affected tests, then `git push origin HEAD:refs/heads/<dev>` (plain, never forced). Report
-  landed only when the push succeeds and the commit is on `origin/<dev>`.
+  <your name>`). Commit named files on your branch, then hand it over as a pull request: fetch, merge
+  `origin/<dev>`, run the affected tests, `git push origin HEAD` (your own branch, never forced, never `<dev>`), then
+  `gh pr create --base <dev>` with a description that ends in the line `Author-agent: <your name>`. Never review or
+  merge your own pull request: the agent that spawned you does (docs/landing.md). Report the pull request and its head
+  commit; a commit you add later is pushed the same way and reviewed again.
 - Test your own changes with reviewed explicit affected selectors through `scripts/test`.
   Report your results. The main agent handles shared gates, full end-to-end checks and
   background suites once per consolidated integration batch.

@@ -51,4 +51,5 @@ def test_the_shards_job_takes_no_test_file_out_and_runs_nightly_on_both_pythons(
     after = command.split(" pytest ", 1)[1]
     assert not {"--deselect", "--ignore", "-k", "-m"} & set(after.split()) and "--ignore=" not in after
     assert "schedule" in job["strategy"]["matrix"]["python"] and "3.14" in job["strategy"]["matrix"]["python"]
-    assert job["if"] == "github.event_name != 'push' || github.ref == 'refs/heads/main'"
+    assert workflows.job_runs("shards", "schedule", "refs/heads/main")
+    assert not workflows.job_runs("shards", "pull_request", "refs/pull/1/merge", "0.3dev")

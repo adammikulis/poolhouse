@@ -11,7 +11,9 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "17 5 * * 1"
+  # Into main only: a run takes longer than a pull request into the development branch waits (docs/landing.md).
   pull_request:
+    branches: [main]
     paths:
       - "src/poolhouse/**"
       - "tests/redteam*/**"
