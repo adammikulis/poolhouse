@@ -37,6 +37,7 @@ REASONS = {
     "environment": "a link to an environment folder of the project that the session removed or replaced, of which nothing is applied",
     "link": "a change of a link after which a link would lead out of the project, or to a path no change applies",
     "path": "a path of the checkout that goes through a link, or holds something else than the session started from, so it is not written",
+    "reached": "a file or link that a coding tool's settings or git read through a link or a gitdir file of the project, which no change applies",
     "spelling": "a change of a link whose name or target is not plain ASCII, which the launcher does not compare as this filesystem may",
     "collision": "a name that folds to the same name as another on this filesystem",
     "changed": "a file of the stage that was no longer the one read, so it was not applied",
@@ -201,43 +202,149 @@ def _ends(root: Path, path: str, target: str, changed: Mapping[str, tuple[str, s
                     todo.append((held, (*link.split("/"), *left[1:]), hops + 1, took))
 
 
-def _links(root: Path) -> Iterator[tuple[str, str]]:
-    """Every link of the checkout outside `.git`, with its target; no link is followed."""
+def _walk(root: Path) -> tuple[dict[str, str], tuple[str, ...]]:
+    """Every link of the checkout with its target, those inside `.git` too, and every gitdir file (a file, or a link to one, named `.git`); the
+    walk follows no link."""
+    links, pointers = {}, []
     for here, dirs, names in os.walk(root):
-        dirs[:] = [name for name in dirs if fold(name) != ".git"]
         for name in (*dirs, *names):
             path = Path(here, name).relative_to(root).as_posix()
             if (target := _target(root, path)) is not None:
-                yield path, target
+                links[path] = target
+            if name in names and fold(name) == ".git":
+                pointers.append(path)
+    return links, tuple(pointers)
 
 
-def _leading_out(basis: Basis, changes: Sequence[Change]) -> dict[str, str]:
-    """The paths of ``changes`` that add, change or remove a link and must not be made, each with its cause. ``spelling``: the path or the new
-    target is not plain ASCII, so whether another name reaches it is the filesystem's own answer. ``link``: in some outcome of this publication
-    the change would leave a link that leads out of the project or to a path no change applies, one of the new links or a link the checkout
-    holds that it reroutes. A change refused here is taken as not made and everything is followed again, until no further change is refused."""
-    candidates: dict[str, str | None] = {}
+def _tool(path: str) -> bool:
+    """Whether ``path`` is, or is inside, what a coding tool reads its settings from or git its repository."""
+    tools = {fold(name) for name in (*CONTROL_PREFIXES, *harnesses.settings())}
+    return _never(path) == "git" or bool(tools & set(fold(path).split("/")))
+
+
+def _under(path: str, places: Collection[str]) -> bool:
+    """Whether ``path`` is one of ``places`` (folded) or inside one; the empty place is the project itself."""
+    parts = fold(path).split("/")
+    return "" in places or any("/".join(parts[:count]) in places for count in range(1, len(parts) + 1))
+
+
+def _read_from(root: Path, start: str, target: str, changed: Mapping[str, tuple[str, str | None]], route: set[str]) -> set[str]:
+    """Every place of the project (folded) that a reader in the folder ``start`` opens by the path ``target``, over every outcome of the links of
+    ``changed`` (as in `_ends`), absolute targets and ways that leave the project and come back included; the paths of the project looked up on
+    the way are added to ``route``. A place that is the project or above it is the empty one."""
+    base = Path(os.path.realpath(root)).parts
+    folded = tuple(secretpaths.fold(part) for part in base)
+
+    def inside(parts: tuple[str, ...]) -> str | None:
+        return fold("/".join(parts[len(base):])) if tuple(secretpaths.fold(part) for part in parts[:len(base)]) == folded else None
+
+    todo = [((*base, *(part for part in start.split("/") if part)), Path(target).parts, 0)]
+    seen: set[tuple] = set()
+    places: set[str] = set()
+    while todo:
+        state = todo.pop()
+        if state in seen:
+            continue
+        seen.add(state)
+        if len(seen) > STEPS:
+            return places | {""}
+        held, left, hops = state
+        if not left:
+            place = inside(held)
+            if place is not None:
+                places.add(place)
+            elif folded[:len(held)] == tuple(secretpaths.fold(part) for part in held):
+                places.add("")
+        elif Path(left[0]).is_absolute():
+            todo.append(((left[0],), left[1:], hops))
+        elif left[0] == "..":
+            todo.append((held[:-1] or held, left[1:], hops))
+        else:
+            here = (*held, left[0])
+            relative = inside(here)
+            ways = [_target(Path(*here[:-1]), here[-1])]
+            if relative:
+                route.add(relative)
+                if found := changed.get(relative):
+                    ways.append(found[1])
+            for link in ways:
+                if link is None:
+                    todo.append((here, left[1:], hops))
+                elif hops < HOPS:
+                    todo.append((held, (*Path(link).parts, *left[1:]), hops + 1))
+    return places
+
+
+def _pointed(path: Path, label: str) -> str:
+    """What the gitdir or commondir file at ``path`` names after ``label``, or empty when it names nothing."""
+    found = _open(path.parent, path.name, 4096)
+    text = "" if found is None else os.fsdecode(found[0]).strip()
+    return text.removeprefix(label).strip() if text.startswith(label) else ""
+
+
+def _reached(root: Path, links: Mapping[str, str], pointers: Sequence[str], changed: Mapping[str, tuple[str, str | None]]) -> tuple[set[str], set[str]]:
+    """The places of the project (folded) that a coding tool or git reads through a link or a gitdir file of the checkout, through chains and
+    through the links and `commondir` files found inside what is reached: no change at or under one is applied. Beside them the paths looked up
+    on the way, where no link is added, changed or removed."""
+    places: set[str] = set()
+    route: set[str] = set()
+    waiting = dict(links)
+    todo = [(path.rpartition("/")[0], target) for path in pointers if (target := _pointed(Path(os.path.realpath(root / path)), "gitdir:"))]
+    todo += [(path.rpartition("/")[0], waiting.pop(path)) for path in tuple(waiting) if _tool(path)]
+    while todo:
+        found = _read_from(root, *todo.pop(), changed, route) - places
+        places |= found
+        todo += [(path.rpartition("/")[0], waiting.pop(path)) for path in tuple(waiting) if _under(path, places)]
+        todo += [(place, target) for place in found if (target := _pointed(root / place / "commondir", ""))]
+    return places, route
+
+
+def _link_changes(basis: Basis, changes: Sequence[Change]) -> dict[str, str | None]:
+    """The paths of ``changes`` that add, change or remove a link, each with the link it becomes, or ``None`` for no link."""
+    found: dict[str, str | None] = {}
     for change in changes:
         path = os.fsdecode(change.path)
         if LINK in (change.before_mode, change.after_mode) or (basis.project / path).is_symlink():
-            candidates[path] = _target(basis.result.directory, path) if change.after_mode == LINK else None
-    if not candidates:
-        return {}
-    checkout = tuple(_links(basis.project))
+            found[path] = _target(basis.result.directory, path) if change.after_mode == LINK else None
+    return found
+
+
+def _leading_out(root: Path, candidates: Mapping[str, str | None], links: Mapping[str, str], places: Collection[str]) -> dict[str, str]:
+    """The paths of ``candidates`` (`_link_changes`) that must not be made, each with its cause. ``spelling``: the path or the new target is not
+    plain ASCII, so whether another name reaches it is the filesystem's own answer. ``link``: in some outcome of this publication the change
+    would leave a link that leads out of the project, to a path no change applies or into ``places`` (`_reached`), one of the new links or a link
+    the checkout holds that it reroutes. A change refused here is taken as not made and everything is followed again, until no further change
+    is refused."""
+
+    def barred(place: str | None) -> bool:
+        return place is None or bool(_never(place)) or (bool(place) and _under(place, places))
+
     refused = {path: "spelling" for path, target in candidates.items() if not (path.isascii() and (target or "").isascii())}
     while True:
         changed = {fold(path): (path, target) for path, target in candidates.items() if path not in refused}
         bad: set[str] = set()
         for path, target in changed.values():
-            if target is not None and any(place is None or _never(place) for place, _ in _ends(basis.project, path, target, changed, frozenset({path}))):
+            if target is not None and any(barred(place) for place, _ in _ends(root, path, target, changed, frozenset({path}))):
                 bad.add(path)
-        for path, target in checkout:
-            for place, taken in _ends(basis.project, path, target, changed, frozenset()):
-                if taken and (place is None or _never(place)):
+        for path, target in links.items() if changed else ():
+            for place, taken in _ends(root, path, target, changed, frozenset()):
+                if taken and barred(place):
                     bad |= taken
         if not bad:
             return refused
         refused.update(dict.fromkeys(bad, "link"))
+
+
+def _protected(basis: Basis, changes: Sequence[Change]) -> dict[str, str]:
+    """The paths of ``changes`` refused for what the links of the checkout make of them, each with its cause."""
+    if not changes:
+        return {}
+    links, pointers = _walk(basis.project)
+    candidates = _link_changes(basis, changes)
+    places, route = _reached(basis.project, links, pointers, {fold(path): (path, target) for path, target in candidates.items()})
+    paths = (os.fsdecode(change.path) for change in changes)
+    out = {path: "reached" for path in paths if _under(path, places) or (path in candidates and fold(path) in route)}
+    return out | _leading_out(basis.project, {path: target for path, target in candidates.items() if path not in out}, links, places)
 
 
 def _edit(basis: Basis, change: Change, path: str, entry: CaptureEntry | None) -> Edit | None:
@@ -287,7 +394,7 @@ def decide(basis: Basis, changes: Sequence[Change], protected: Sequence[tuple[by
     left = [Refusal(os.fsdecode(name), why) for name, why in protected]
     gone = {os.fsdecode(change.path) for change in ordered if change.after is None}
     collide = colliding(set(entries) | gone)
-    out = _leading_out(basis, [change for change in ordered if not _never(path := os.fsdecode(change.path)) and path not in collide])
+    out = _protected(basis, [change for change in ordered if not _never(path := os.fsdecode(change.path)) and path not in collide])
     decided = [_one(basis, change, entries, out, collide) for change in ordered]
     edits = tuple(each for each in decided if isinstance(each, Edit))
     later = tuple((edit.path, why) for edit in edits if (why := _later(edit)))

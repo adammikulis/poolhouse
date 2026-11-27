@@ -306,7 +306,8 @@ poolhouse-delegate stop NAME
   `edit`, `write` and `shell` besides. When the run ends without an error, the launcher applies the agent's whole change to the project, so you
   read it in your diff; the result names, for information, the applied files of the kind that runs later (a build, package, CI, hook or
   instruction file, a program). Refused at once is only what would take effect unread or leave the project: anything in `.git`, a coding
-  tool's own settings (`.claude`, `.codex`, `.pi`, `.mcp.json`, `.opencode`, `opencode.json`, `opencode.jsonc`), a credential name, a special
+  tool's own settings (`.claude`, `.codex`, `.pi`, `.mcp.json`, `.opencode`, `opencode.json`, `opencode.jsonc`) and whatever they, or git, read
+  through a link or a gitdir file, a credential name, a special
   file, a link that leads out of the project or to one of those, and two names this filesystem cannot hold apart
   (docs/design-isolated-launcher.md, 4.4). Build junk (bytecode caches, `.DS_Store`, cache and dependency folders) is neither published nor
   reported, and the box sets `PYTHONDONTWRITEBYTECODE` so Python writes none. A refusal is kept as a patch under `~/.poolhouse/isolation/refused/NAME/` and the lead gets one `isolation.report` message
