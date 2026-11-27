@@ -305,10 +305,9 @@ def kept_note(prefix: Path, identity: str | None = None) -> str:
             return ""
     except OSError:
         return ""
-    again = (f"`{node_signing.ENABLE}` signs it again" if stable_requirement(requirement_of(bundle_path(identity)))
-             else "the next update tries again")
+    sooner = f", and `{node_signing.ENABLE}` tries now" if stable_requirement(requirement_of(bundle_path(identity))) else ""
     return (f"Poolhouse runs under the executable made from {row.get('interpreter')}, not from {base}, because signing a new one with "
-            f"the certificate, or handing it the encryption key, failed: {again}")
+            f"the certificate, or handing it the encryption key, failed: the next update tries again{sooner}")
 
 
 def unreadable_note() -> str:

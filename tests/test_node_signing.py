@@ -603,6 +603,7 @@ def test_a_kept_executable_is_in_the_outcome_the_deploy_record_and_setup(tmp_pat
     monkeypatch.setattr(runtime_identity, "digest", lambda files: "f" * 64)
     told = runtime_deploy._identity(chosen, runtime_deploy.Plan(tmp_path, chosen.commit, None))
     assert any("made from" in one and "certificate enable" in one for one in told)
+    assert any("failed: the next update tries again, and" in one for one in told), "no command is needed after an update"
     assert any("made from" in one for one in runtime_store.read_state()["identity_notices"])
     monkeypatch.setattr(setup.runtime, "selection_prefix", lambda: chosen.prefix)
     kept = [finding for finding in setup.signature_findings() if finding.name == "macOS executable"]
