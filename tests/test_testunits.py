@@ -48,6 +48,26 @@ def compiled(specimen, targets):
     return build, testunits.build(testnode.tool("cargo"), build.staged, targets, local, environment)
 
 
+@pytest.mark.parametrize("held, asked", [(True, [["--offline"]]), (False, [["--offline"], []])])
+def test_dependencies_the_cargo_home_lacks_are_fetched_at_the_locked_versions(tmp_path, monkeypatch, held, asked):
+    """Cargo is stood in for at the call: only which fetches are asked for is under test."""
+    ran = []
+
+    def cargo(argv, **options):
+        ran.append(argv)
+        return subprocess.CompletedProcess(argv, 0 if held or "--offline" not in argv else 101, "", "failed to download")
+
+    monkeypatch.setattr(testnode.subprocess, "run", cargo)
+    testnode.fetch("cargo", tmp_path, {})
+    assert ran == [["cargo", "fetch", "--locked", *extra] for extra in asked]
+
+
+def test_a_dependency_that_cannot_be_fetched_stops_the_build(tmp_path, monkeypatch):
+    monkeypatch.setattr(testnode.subprocess, "run", lambda argv, **options: subprocess.CompletedProcess(argv, 101, "", "no route"))
+    with pytest.raises(testnode.BuildError, match="no route"):
+        testnode.fetch("cargo", tmp_path, {})
+
+
 def test_each_requested_target_gets_its_own_executable_that_passes(specimen):
     _, made = compiled(specimen, ["alpha", "beta"])
     assert sorted(made) == ["alpha", "beta"] and made["alpha"] != made["beta"]
