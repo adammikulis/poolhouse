@@ -13,6 +13,7 @@ import errno
 import os
 import re
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -159,6 +160,17 @@ def reach(root: str) -> tuple[str, ...]:
         return (root,)
     libs = sorted(str(each) for each in base.glob("lib/python[0-9]*") if each.is_dir() and not each.is_symlink())
     return (str(base / "bin"), *libs)
+
+
+PROGRAMS = ("python3", "python", "node", "cargo")
+"""The programs the proof knows how to run with `--version`: an interpreter's, and those `MANAGERS` names."""
+
+
+def runnable(folders: Iterable[str]) -> tuple[str, ...]:
+    """The program the proof runs for each granted toolchain folder, the first of `PROGRAMS` in its ``bin``; none for a folder that holds none."""
+    first = (next((each for each in (Path(folder) / "bin" / name for name in PROGRAMS) if each.is_file() and os.access(each, os.X_OK)), None)
+             for folder in folders)
+    return tuple(str(each) for each in first if each is not None)
 
 
 def _system(path: Path) -> bool:

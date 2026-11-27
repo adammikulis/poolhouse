@@ -26,6 +26,7 @@ import pytest
 from poolhouse import coding_policy, isolation
 from poolhouse.isolation import confinement as launch
 from poolhouse.isolation.environment import allowed
+from poolhouse.isolation.grants import Grant
 from poolhouse.isolation.notices import Notice
 from poolhouse.isolation.proof import run as run_proof
 from poolhouse.isolation.refusals import SENTENCES, IsolationFailed, IsolationRefused
@@ -149,6 +150,16 @@ def test_the_environment_is_exactly_the_allow_list_and_holds_no_variable_of_the_
     seen = {line[4:].split("=", 1)[0] for line in out.decode().splitlines() if line.startswith("ENV ")}
     assert seen <= allowed("claude") | {"__CF_USER_TEXT_ENCODING", "PWD", "SHLVL", "_", "OLDPWD"}, seen
     assert "POOLHOUSE_TEST_CANARY" not in seen
+
+
+def test_a_launch_with_a_granted_toolchain_folder_runs_its_program_in_the_proof_and_starts(rig, tmp_path):
+    program = tmp_path / "toolchain" / "bin" / "node"
+    program.parent.mkdir(parents=True)
+    program.write_text("#!/bin/sh\necho v0 NOT NODE\n")
+    program.chmod(0o755)
+    grant = Grant("toolchain", str(tmp_path / "toolchain"), "this launch", "lead", "argument", "toolchain:test", "a toolchain for this test")
+    with isolation.prepare(plan(rig, hostile(rig, tmp_path), grants=(grant,))) as confinement:
+        assert confinement.popen().communicate(timeout=60)[0]
 
 
 def test_a_computer_that_cannot_confine_refuses_before_a_stage_a_service_or_a_harness_exists(rig, tmp_path, monkeypatch):
