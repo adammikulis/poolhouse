@@ -121,16 +121,24 @@ REFUSE = [
 
 
 def without_heredocs(command: str) -> str:
-    """Drop heredoc bodies, which are data being written rather than commands being run, as the shell reads them
-    (`poolhouse.protectedshell`): a `<<` inside quotes, a comment or arithmetic opens none. As written when the rules are not here.
+    """Drop heredoc bodies, which are data being written rather than commands being run.
 
     This guard blocked its own installation twice: the command wrote documentation *about*
     a forbidden shell into a file through a heredoc, and the pattern matched the prose. A
     rule that fires on text being written is a rule people learn to switch off -- and it
     cannot be repaired through the tool it guards, so it must not need repairing often.
     """
-    rules = rules_loader.load()
-    return rules.protected().without_heredocs(command) if rules else command
+    kept, lines, i = [], command.split("\n"), 0
+    while i < len(lines):
+        kept.append(lines[i])
+        opened = re.search(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?", lines[i])
+        if opened:
+            end = opened.group(1)
+            i += 1
+            while i < len(lines) and lines[i].strip() != end:
+                i += 1
+        i += 1
+    return "\n".join(kept)
 
 
 SEARCHERS = r"grep|egrep|fgrep|rg|ag|ack|awk|sed|comm|diff"
