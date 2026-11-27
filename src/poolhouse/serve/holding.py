@@ -193,9 +193,7 @@ def check_fits(spec: ServerSpec, *, budget: int | None = None, total: int | None
         lines.append("  the weights alone do not fit")
     installed = hub.total_memory() if total is None else total
     if installed and wanted <= installed * 0.9:
-        lines.append(f"  the limit can be raised by a person (never by an agent): "
-                     f"poolhouse-serve memory --for {ask or name} --ctx {int(spec.context)} "
-                     f"--apply")
+        lines.append("  a higher wired memory limit would hold it, and Poolhouse does not change that limit")
     raise Refusal(*lines)
 
 

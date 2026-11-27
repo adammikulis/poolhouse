@@ -184,8 +184,7 @@ def binary_for(name: str, *, pinned: bool = False) -> str:
     return ""
 
 def admitted(found: str, ctx: int, say: Callable[[str], None], *, plan: Callable[..., object] | None = None, kv: str = KV) -> bool:
-    """Whether the wired-memory limit now holds ``found`` at ``ctx``; when it does not, the
-    command a person runs to raise it is printed and nothing is raised here."""
+    """Whether the wired-memory limit now holds ``found`` at ``ctx``; when it does not, what it needs is said and the limit is left as it is."""
     try:
         got = (plan or wired.plan)(found, wired.Ask(context=ctx, kv=kv))
     except (OSError, ValueError):
@@ -193,9 +192,8 @@ def admitted(found: str, ctx: int, say: Callable[[str], None], *, plan: Callable
     if getattr(got, "enough_now", True):
         return True
     say(f"error: {Path(found).name} at {ctx:,} tokens needs a wiring limit of {got.needed_mb:,} MB "
-        f"and this machine's is {got.current_mb or got.default_mb:,} MB.\n"
-        f"  Raising it is for a person at their own terminal: "
-        f"poolhouse-serve memory --for {Path(found).name} --ctx {ctx} --kv {kv} --apply")
+        f"and this machine's is {got.current_mb or got.default_mb:,} MB. Poolhouse does not change it, so nothing was started; "
+        "a smaller --ctx or a smaller model needs less.")
     return False
 
 

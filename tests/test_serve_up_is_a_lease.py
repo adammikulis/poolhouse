@@ -107,15 +107,15 @@ def test_a_port_held_by_a_stranger_is_never_taken_the_broker_picks_another(
         stranger.close()
 
 
-def test_a_shape_that_cannot_fit_is_refused_with_the_reason_and_the_human_command(
+def test_a_shape_that_cannot_fit_is_refused_with_the_reason_and_what_would_hold_it(
         tmp_path, machine, capsys):
-    machine.budget = 256 * MIB
+    machine.budget, machine.total = 256 * MIB, 1024 * 1024 * MIB
     code, out, err = up(capsys, gguf(tmp_path, Q4_K_XL), "--context", "256k")
     text = out + err
     assert code == 2 and holding.holds() == []
     assert "refused:" in text and "this machine lets a model use 256" in text
-    assert "poolhouse-serve memory --for" in text and "--apply" in text
-    assert "never by an agent" in text
+    assert "a higher wired memory limit would hold it, and Poolhouse does not change that limit" in text
+    assert "--apply" not in text, "no command of Poolhouse raises it"
 
 
 def test_a_lease_queues_when_memory_is_short_and_starts_when_it_frees(

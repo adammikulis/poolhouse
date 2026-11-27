@@ -225,14 +225,15 @@ class TestSessionFiles:
 
 
 class TestAdmission:
-    def test_a_model_the_wiring_limit_cannot_hold_prints_the_command_and_is_not_raised(self):
+    def test_a_model_the_wiring_limit_cannot_hold_is_refused_with_what_is_needed_and_the_limit_is_left(self):
         said = []
 
         class Plan:
             enough_now, needed_mb, current_mb, default_mb = False, 120000, 98000, 98000
 
         assert harnessing.admitted("/m/big.gguf", 262144, said.append, plan=lambda *a: Plan()) is False
-        assert "poolhouse-serve memory --for big.gguf --ctx 262144 --kv q8_0 --apply" in said[0]
+        assert "120,000 MB" in said[0] and "98,000 MB" in said[0] and "does not change it" in said[0] and "smaller --ctx" in said[0]
+        assert "--apply" not in said[0] and "poolhouse-serve" not in said[0], "no command of Poolhouse raises it"
         assert harnessing.admitted("/m/big.gguf", 262144, said.append,
                                    plan=lambda *a: type("P", (), {"enough_now": True})()) is True
 
