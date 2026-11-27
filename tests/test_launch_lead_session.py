@@ -51,13 +51,14 @@ def test_a_subagent_launching_in_a_project_the_lead_has_no_session_on_is_refused
     assert not (node.state / "client" / board).exists() or not any((node.state / "client" / board).glob("*.token"))
 
 
-def test_a_caller_that_names_no_session_and_runs_in_none_is_still_refused_in_a_project_it_has_no_session_on(lead_node, tmp_path, monkeypatch):
-    node, _lead, _project = lead_node
-    fresh, _board = _fresh_project(node, tmp_path)
+def test_a_caller_that_names_no_session_and_runs_in_none_is_given_one_and_the_helper_is_made_under_it(lead_node, tmp_path, monkeypatch):
+    node, lead, _project = lead_node
+    fresh, board = _fresh_project(node, tmp_path)
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
     monkeypatch.chdir(fresh)
-    with pytest.raises(ValueError, match="started by a session"):
-        harnessid.invite("local-child", fresh, "", lambda _line: None)
+    made = harnessid.invite("local-child", fresh, "", lambda _line: None)
+    assert made.board == board and made.parent.name not in (lead.name, "")
+    assert [a.parent for a in made.parent.agents() if a.name == made.name] == [made.parent.name]
 
 
 def test_a_delegate_started_in_a_project_the_lead_has_no_session_on_is_made_under_the_leads_session_there(lead_node, detached, tmp_path, monkeypatch, capsys):

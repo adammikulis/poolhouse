@@ -45,7 +45,7 @@ SENTENCES: dict[str, str] = {
     "no_git": "Coding agents need git, and none was found that Poolhouse can trust.",
     "not_a_repository": "A coding agent works on a copy of a git project, and this folder is not one.",
     "on_not_loopback": "A coding agent can only use a model server on this computer; {url} is not.",
-    "interactive": "Interactive mode is not available yet; use the coding agent's print mode.",
+    "interactive": "A sandboxed coding agent runs in its print mode only; a launch without the sandbox is interactive.",
     "service_failed": "The coding agent's helper ({name}) could not start, so the agent was not started.",
     "proof_failed": ("Poolhouse could not confirm that the safety box holds on this computer (it allowed {attempt}), so the coding "
                      "agent was not started."),

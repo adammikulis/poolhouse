@@ -1,5 +1,6 @@
-"""A coding launch is admitted on a computer that can confine it, and refused at once, with the sentence of the first guarantee it cannot hold, on one
-that cannot (an unavailable backend injected at the engine's one seam). Nothing is leased, registered or started before the refusal."""
+"""A sandboxed coding launch is admitted on a computer that can confine it, and refused at once, with the sentence of the first guarantee it cannot hold,
+on one that cannot (an unavailable backend injected at the engine's one seam). Nothing is leased, registered or started before the refusal. A turn a
+person starts runs in place and needs no sandbox; the workspace's own coding workers do."""
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -51,7 +52,7 @@ def test_a_public_native_launch_on_a_computer_that_cannot_confine_is_refused_wit
     project = tmp_path / "repository"
     project.mkdir()
     name = adapter.__name__.rsplit(".", 1)[-1]
-    args = ["--project", str(project), "--permissions", policy.permissions, "--execution-mode", policy.execution_mode,
+    args = ["--sandbox", "--project", str(project), "--permissions", policy.permissions, "--execution-mode", policy.execution_mode,
             f"--{name}", str(tmp_path / "installed-runtime")]
     args += ["--on", "http://127.0.0.1:12345"] if attached else ["fixture-model.gguf"]
     args += ["--", *(["--print", "go"] if name != "codex" else ["exec", "go"])] if name != "pi" else []
@@ -63,19 +64,11 @@ def test_a_public_native_launch_on_a_computer_that_cannot_confine_is_refused_wit
     assert list(project.iterdir()) == []
 
 
-def test_the_manager_refuses_with_the_sentence_before_history_or_worker_start_and_admits_where_it_can_confine(monkeypatch):
-    manager = coding_turns.Manager(SimpleNamespace(get=forbidden, append=forbidden))
+def test_the_manager_starts_a_persons_turn_on_a_computer_that_cannot_confine(monkeypatch):
     monkeypatch.setattr(coding_turns, "worker", forbidden)
     without_a_sandbox(monkeypatch, AbsentBackend)
-    for _ in range(2):
-        with pytest.raises(IsolationRefused, match="built-in sandbox tool is missing"):
-            manager.start("coding-session", "inspect the selected repository")
-    assert manager.turns == {}
-    monkeypatch.undo()
-    reached = SimpleNamespace(get=forbidden, append=forbidden)
-    monkeypatch.setattr(coding_turns, "worker", forbidden)
     with pytest.raises(Reached):
-        coding_turns.Manager(reached).start("coding-session", "inspect the selected repository")
+        coding_turns.Manager(SimpleNamespace(get=forbidden, append=forbidden)).start("coding-session", "inspect the selected repository")
 
 
 def test_ordinary_chat_storage_remains_available_without_native_admission(tmp_path):

@@ -1,8 +1,9 @@
 """The entry the workspace runner calls to start a local-model coding agent.
 
 ``launch_coding_agent(model, policy, project)`` runs Pi (or another supported coding harness) on a model served through
-the broker's lease: a context selected for this device, explicit permissions and execution mode, a PreToolUse hook through the destructive-action classifier, and a workspace identity minted
-for the session, placed on the project's board and revoked when the session ends.
+the broker's lease: a context selected for this device, explicit permissions and execution mode, and a workspace identity minted
+for the session, placed on the project's board and revoked when the session ends. The harness works on the project folder itself with the person's
+own settings; ``sandbox=True`` confines it, with a PreToolUse hook through the destructive-action classifier.
 """
 
 from __future__ import annotations
@@ -22,18 +23,21 @@ def launch_coding_agent(model: str, policy: coding_policy.Policy, project: str |
                         **options: Any) -> int:
     """Run ``harness`` on ``model`` in ``project`` under ``policy``; returns the harness's exit code.
 
-    ``model`` "" takes the coding default. Options: ``name`` overrides the workspace identity
-    (``local-<model>-<harness>``); ``parent`` names the session that starts the agent (else the one of ``$POOLHOUSE_WORKSPACE_AGENT``); ``orders_from`` lists identities the agent obeys besides the
-    person and the lead; ``harness_args`` go to the harness after ``--``; ``say`` receives the
-    launcher's lines; ``run_pi``, ``run_codex``, ``run_claude`` or ``run_opencode`` is given the proved confinement (`poolhouse.isolation.Confinement`) and starts the
-    harness with its ``popen``, the only way a harness starts; ``extras`` (Claude Code and Codex) are the variables the caller sets for the harness.
-    A computer that cannot confine refuses before a model is leased, with the sentence of the first guarantee it cannot hold, and the return is 2.
+    ``model`` "" takes the coding default. Options: ``sandbox`` runs on a copy of the project in an operating-system sandbox; ``name`` overrides the
+    workspace identity (``local-<model>-<harness>``); ``parent`` names the session that starts the agent (else the one of
+    ``$POOLHOUSE_WORKSPACE_AGENT``); ``orders_from`` lists identities the agent obeys besides the person and the lead; ``harness_args`` go to the
+    harness after ``--``; ``say`` receives the launcher's lines; ``run_pi``, ``run_codex``, ``run_claude`` or ``run_opencode`` is given the run
+    (`poolhouse.inplace.Direct`, or the proved `poolhouse.isolation.Confinement` of a sandboxed one) and starts the harness with its ``popen``;
+    ``extras`` (Claude Code and Codex) are the variables the caller sets for the harness. A sandboxed launch on a computer that cannot confine is
+    refused before a model is leased, with the sentence of the first guarantee it cannot hold, and the return is 2.
     """
     say = options.pop("say", default_say)
     if harness not in HARNESSES:
         say(f"error: no harness {harness!r}: the harnesses are {', '.join(HARNESSES)}")
         return 2
     argv = [model or harnessing.default_model(), "--permissions", policy.permissions, "--execution-mode", policy.execution_mode, "--project", str(project)]
+    if options.pop("sandbox", False):
+        argv += ["--sandbox"]
     for path in options.pop("protected_paths", ()):
         argv += ["--protect", str(path)]
     if context := options.pop("context", 0):

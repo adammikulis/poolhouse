@@ -64,7 +64,7 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     def opened(*_args, **_kwargs):
         yield run
 
-    monkeypatch.setattr(opencode.harnessing, "binary_for", lambda _: str(binary))
+    monkeypatch.setattr(opencode.harnessing, "binary_for", lambda _, **__: str(binary))
     monkeypatch.setattr(opencode, "alias_of", lambda *_: "local-model")
     monkeypatch.setattr(opencode.harnessing, "window_of", lambda _: 49152)
     monkeypatch.setattr(opencode.harnessing, "opened", opened)
@@ -77,7 +77,7 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
         return 0
 
     said = []
-    assert opencode.launch(["--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append,
+    assert opencode.launch(["--sandbox", "--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append,
                            run_opencode=run_opencode) == 0, said
     sh, flag, script, name, program, port, *rest = seen["argv"]
     assert (sh, flag, name, program) == ("/bin/sh", "-c", "opencode", str(binary.resolve()))
@@ -279,7 +279,7 @@ def older_and_path_copies(tmp_path, monkeypatch):
 def test_exactly_the_pinned_release_and_its_ripgrep_are_fetched_once_and_no_other_copy_stands_in(releases, tmp_path, monkeypatch):
     assert opencode_install.VERSION == "v2.4.2"
     older_and_path_copies(tmp_path, monkeypatch)
-    assert opencode_install.kept() == "" and harnessing.binary_for("opencode") == ""
+    assert opencode_install.kept() == "" and harnessing.binary_for("opencode", pinned=True) == "", "a sandboxed run and a delegate"
     binary = Path(opencode_install.ensure())
     assert binary.name == "opencode" and binary.parts[-3:-1] == ("v2.4.2", "bin") and binary.stat().st_mode & 0o100
     assert subprocess.run([str(binary)], capture_output=True, text=True, check=True).stdout.startswith("2.4.2")
@@ -287,9 +287,9 @@ def test_exactly_the_pinned_release_and_its_ripgrep_are_fetched_once_and_no_othe
     asked = list(releases["asked"])
     assert asked[0] == "/oc/v2.4.2" and f"/rg/{opencode_install.RIPGREP}" in asked and not [each for each in asked if "per_page" in each]
     assert opencode_install.ensure() == str(binary) and releases["asked"] == asked, "a kept copy is taken without asking the network"
-    assert harnessing.binary_for("opencode") == str(binary)
+    assert harnessing.binary_for("opencode", pinned=True) == str(binary)
     monkeypatch.setattr(opencode_install, "VERSION", "v9.9.9")
-    assert harnessing.binary_for("opencode") == "" and Path(opencode_install.ensure()).parts[-3] == "v9.9.9", "a later pin takes effect"
+    assert harnessing.binary_for("opencode", pinned=True) == "" and Path(opencode_install.ensure()).parts[-3] == "v9.9.9", "a later pin takes effect"
 
 
 @pytest.mark.usefixtures("loopback_net")
@@ -328,12 +328,12 @@ def test_a_launch_whose_plugin_never_reported_publishes_nothing_and_says_so(monk
     def opened(*_args, **_kwargs):
         yield run
 
-    monkeypatch.setattr(opencode.harnessing, "binary_for", lambda _: str(binary.resolve()))
+    monkeypatch.setattr(opencode.harnessing, "binary_for", lambda _, **__: str(binary.resolve()))
     monkeypatch.setattr(opencode, "alias_of", lambda *_: "local-model")
     monkeypatch.setattr(opencode.harnessing, "window_of", lambda _: 49152)
     monkeypatch.setattr(opencode.harnessing, "opened", opened)
     said = []
-    assert opencode.launch(["--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append) == status, said
+    assert opencode.launch(["--sandbox", "--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append) == status, said
     assert (f"error: {opencode.UNGUARDED}" in said) is not hooked
     assert (project / "made.py").exists() is hooked, said
 

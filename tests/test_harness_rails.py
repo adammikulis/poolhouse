@@ -301,7 +301,7 @@ class TestLaunch:
             seen["writable"] = os.access(seen["path"], os.W_OK)
             return 0
 
-        assert claude.launch(["--claude", str(binary), "--permissions", "guarded", "--", "-p", "go"], say=lambda _: None,
+        assert claude.launch(["--sandbox", "--claude", str(binary), "--permissions", "guarded", "--", "-p", "go"], say=lambda _: None,
                              run_claude=run) == 0
         assert seen["model"] == harnessing.DEFAULT_MODEL and seen["want"].ctx == 0 and seen["want"].slots == 1
         assert seen["env"]["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "262144"
@@ -324,7 +324,7 @@ class TestLaunch:
             seen["home"] = confinement.home
             return 3
 
-        assert codex.launch(["qwen", "--codex", str(binary), "--", "exec", "fix it"], say=lambda _: None,
+        assert codex.launch(["qwen", "--sandbox", "--codex", str(binary), "--", "exec", "fix it"], say=lambda _: None,
                             run_codex=run) == 3
         assert seen["config"]["model_context_window"] == 262144
         bridge = seen["config"]["model_providers"]["poolhouse"]["base_url"]
@@ -401,11 +401,12 @@ class TestHarnessSession:
         assert session.flags() == ["--agent", session.name]
         assert credentials.load(kit.node.state, kit.node.board, session.name) == secret
 
-    def test_a_launcher_that_no_session_starts_is_refused_and_makes_no_session_under_the_person(self, kit):
-        before, said = set(self.agents(kit)), []
-        with pytest.raises(ValueError, match="started by a session"):
-            harnessid.invite("local-test-codex", kit.project, "", said.append)
-        assert set(self.agents(kit)) == before and said[0].startswith("workspace connection refused")
+    def test_a_launcher_that_no_session_starts_makes_one_for_its_terminal_and_never_under_the_person(self, kit):
+        persons = person.on(kit.node.client, kit.node.board)
+        made = harnessid.invite("local-test-codex", kit.project, "", lambda _: None)
+        rows = self.agents(kit)
+        assert made.parent.name != persons.name and rows[made.name].parent == made.parent.name
+        assert (rows[made.parent.name].harness, rows[made.parent.name].parent) == ("poolhouse-launch", "")
 
     def test_a_launcher_run_by_a_person_names_the_persons_session_as_its_parent(self, kit):
         persons = person.on(kit.node.client, kit.node.board)
@@ -463,7 +464,7 @@ class TestHarnessSession:
             assert credentials.load(kit.node.state, kit.node.board, seen["name"])
             return 0
 
-        assert codex.launch(["--codex", str(binary), "--project", str(kit.project), "--as", kit.lead.name, "--", "exec", "go"],
+        assert codex.launch(["--sandbox", "--codex", str(binary), "--project", str(kit.project), "--as", kit.lead.name, "--", "exec", "go"],
                             say=lambda _: None, run_codex=run) == 0
         assert self.agents(kit, retired=True)[seen["name"]].retired
         assert not (kit.node.state / "client" / kit.node.board / f"{seen['name']}.token").exists()
@@ -534,7 +535,7 @@ class TestCodingAgent:
 
         monkeypatch.setattr(codex.shutil, "which", lambda n: str(binary))
         assert coding.launch_coding_agent("", coding_policy.Policy("guarded"), tmp_path / "proj", harness="codex", orders_from=["reviewer"],
-                                          harness_args=["exec", "go"], say=lambda _: None, run_codex=run) == 0
+                                          harness_args=["exec", "go"], say=lambda _: None, run_codex=run, sandbox=True) == 0
         assert seen["model"] == harnessing.DEFAULT_MODEL == "Qwen3.8-27B-UD-Q4_K_XL.gguf"
         assert seen["name"] == "local-qwen-27b-codex" and seen["project"] == (tmp_path / "proj").resolve()
         assert seen["claim"] == ("qwen-27b", "codex")

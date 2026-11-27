@@ -1,4 +1,4 @@
-"""What `poolhouse-claude` and `poolhouse-codex` share: the served model, the session's files and the workspace join.
+"""What the coding launchers share: the command line, the served model, the session's files, the workspace join and the sandboxed run.
 
 A coding session is served at ``DEFAULT_CTX`` tokens with a q8_0 KV cache on one slot, so the
 harness's long prompt prefix is reused by every turn. The session's settings live in a directory
@@ -34,6 +34,7 @@ from poolhouse import (
     serverkeys,
 )
 from poolhouse.activity.source_snapshot import protected_roots, validate_storage
+from poolhouse.board.client import NodeError
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.client import is_healthy
 from poolhouse.errors import Denied
@@ -74,6 +75,7 @@ __all__ = [
     "serve_and_run",
     "serving",
     "session_files",
+    "stance",
     "window_of",
 ]
 
@@ -109,7 +111,8 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
         prog=f"poolhouse-{name}", allow_abbrev=False,
         description=f"{what} on a model this machine serves. Everything after `--` goes to {name}.",
         usage=f"poolhouse-{name} {{MODEL | --on URL}} [--port N] [--slots N] [--ctx N] [--permissions PROFILE] [--execution-mode MODE] [--name L] "
-              f"[--as AGENT] [--project DIR] [--orders-from AGENT] [--no-profile] [--draft HEAD] [--read DIR] [--toolchain DIR] [--publish FILE] [--{name} PATH] [-- {name} arguments]")
+              f"[--as AGENT] [--project DIR] [--orders-from AGENT] [--no-profile] [--draft HEAD] [--sandbox [--read DIR] [--toolchain DIR] [--publish FILE]] "
+              f"[--{name} PATH] [-- {name} arguments]")
     ap.add_argument("model", nargs="?", default="",
                     help=f"the model file or a name poolhouse-models finds (default: {PREFERRED_MODEL} when installed and it fits at "
                          f"{PREFERRED_WINDOW:,} tokens, else {DEFAULT_MODEL})")
@@ -121,18 +124,21 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
                     help="conversations the server holds at once (default: %(default)s)")
     ap.add_argument("--ctx", type=int, default=DEFAULT_CTX,
                     help="tokens served in all, split across slots (default: largest safe fit for this device and model)")
-    ap.add_argument("--permissions", choices=coding_policy.PERMISSIONS, default=coding_policy.GUARDED,
-                    help="coding changes allowed in the selected repository (default: %(default)s)")
+    ap.add_argument("--permissions", choices=coding_policy.PERMISSIONS, default=None,
+                    help=f"what the agent may do (default: {what}'s own settings; {coding_policy.GUARDED} in a sandbox)")
     ap.add_argument("--execution-mode", choices=coding_policy.EXECUTION_MODES, default=coding_policy.EXECUTE,
                     help="plan inspects without applying changes; execute uses the selected permissions")
-    ap.add_argument("--protect", action="append", default=[], help="additional launcher-owned paths tools cannot access")
-    ap.add_argument("--read", action="append", default=[], metavar="DIR", help="a folder the session may read and never change")
-    ap.add_argument("--toolchain", action="append", default=[], metavar="DIR", help="a folder of programs the session may run")
+    ap.add_argument("--sandbox", action="store_true",
+                    help="run on a copy of the git project inside an operating-system sandbox with no network but the model; changes are published "
+                         "when the turn ends (default: on the project folder itself, with your own settings and network)")
+    ap.add_argument("--protect", action="append", default=[], help="with --sandbox: additional launcher-owned paths tools cannot access")
+    ap.add_argument("--read", action="append", default=[], metavar="DIR", help="with --sandbox: a folder the session may read and never change")
+    ap.add_argument("--toolchain", action="append", default=[], metavar="DIR", help="with --sandbox: a folder of programs the session may run")
     ap.add_argument("--publish", action="append", default=[], metavar="FILE",
-                    help="a file of the project that is not plain source and whose change may be applied as the agent made it")
+                    help="with --sandbox: a file of the project that is not plain source and whose change may be applied as the agent made it")
     ap.add_argument("--name", default="", help="the workspace name to ask for (default: local-<model>)")
     ap.add_argument("--as", dest="parent", default=PARENT,
-                    help="the workspace session this one is a subagent of (default: the session of the command's environment; a launch with neither is refused)")
+                    help="the workspace session this one is a subagent of (default: the session of the command's environment, else one made for this terminal)")
     ap.add_argument("--project", default="", metavar="DIR",
                     help="the project directory the session works in (default: the current directory)")
     ap.add_argument("--orders-from", action="append", default=[], metavar="AGENT",
@@ -163,13 +169,16 @@ def window_of(base_url: str) -> int:
 
 
 
-def binary_for(name: str) -> str:
-    """The installed harness executable, including the maintained Claude SDK's bundled CLI. OpenCode is the pinned release this install keeps
-    (`opencode_install.VERSION`) and nothing on PATH."""
-    if name == "opencode":
+def binary_for(name: str, *, pinned: bool = False) -> str:
+    """The installed harness executable: the one on PATH, else the maintained Claude SDK's bundled CLI or the OpenCode release this install keeps
+    (`opencode_install.VERSION`). ``pinned`` (a sandboxed run and a delegate, whose files are written against that release) takes the kept
+    OpenCode and nothing on PATH."""
+    if name == "opencode" and pinned:
         return opencode_install.kept()
     if binary := shutil.which(name):
         return binary
+    if name == "opencode":
+        return opencode_install.kept()
     if name == "claude" and (spec := importlib.util.find_spec("claude_agent_sdk")) and spec.origin:
         binary = Path(spec.origin).parent / "_bundled" / ("claude.exe" if os.name == "nt" else "claude")
         if binary.is_file() and os.access(binary, os.X_OK):
@@ -360,24 +369,27 @@ class SessionFiles:
         shutil.rmtree(target)
 
 
-def session_files(cwd: Path) -> SessionFiles:
-    """A new private directory under the state root; refused when ``cwd`` is inside it."""
+def session_files(cwd: Path | None) -> SessionFiles:
+    """A new private directory under the state root; refused when ``cwd`` (the folder of a harness that must not reach it) overlaps it."""
     base = home.state("harness")
     base.mkdir(parents=True, exist_ok=True)
     base.chmod(stat.S_IRWXU)
     path = base / uuid.uuid4().hex[:12]
     path.mkdir(mode=stat.S_IRWXU)
-    if path in (cwd, *cwd.parents) or cwd in path.parents:
+    if cwd is not None and (path in (cwd, *cwd.parents) or cwd in path.parents):
         shutil.rmtree(path, ignore_errors=True)
         raise ValueError("the working directory and the session's settings directory overlap")
     return SessionFiles(path)
 
 
-def check_project(project: str) -> Path:
-    """Check the real coding root before admitting any model workload."""
+def check_project(project: str, *, sandbox: bool = True) -> Path:
+    """The coding root, checked before any model workload is admitted. A run in place works in any folder; a sandboxed one (and a delegate) only
+    in one that holds neither the state root, credentials nor Poolhouse's own runtime."""
     root = Path(project or Path.cwd()).resolve(strict=True)
     if not root.is_dir():
         raise ValueError("Choose an existing project directory")
+    if not sandbox:
+        return root
     if key := places.project_refusal(str(root)):
         raise isolation.IsolationRefused(sentence(key))
     root = validate_storage(root, protected_roots(dict(os.environ)))
@@ -401,17 +413,26 @@ def opened(args: argparse.Namespace, harness: str, served: tuple[str, str, int],
     """Open a harness session and remove its delegated session on exit."""
     base_url, alias, _window = served
     cwd = Path(args.project or Path.cwd()).resolve()
+    sandbox = getattr(args, "sandbox", True)
     session = None
     try:
         invite = getattr(args, "session_factory", None)
         identity = harnessid.agent_name(alias, harness, args.name)
-        session = invite(identity, cwd, args.parent, say) if invite else harnessid.invite(
-            identity, cwd, args.parent, say, claim=(alias, harness))
+        try:
+            session = invite(identity, cwd, args.parent, say) if invite else harnessid.invite(
+                identity, cwd, args.parent, say, claim=(alias, harness))
+        except (Denied, NodeError, OSError, RuntimeError, ValueError) as why:
+            if sandbox:
+                raise
+            say(f"no workspace session for this run ({why}); the agent runs without one")
+        if session is None:
+            yield Session(harnessid.HarnessSession(identity), cwd, "")
+            return
         if not session.record_model(alias, harness, base_url):
             say(f"the model of {session.name} ({alias}, {harness}) is not recorded: the serving endpoint and session identity must verify")
         starter = getattr(session, "parent", None)
         owner = starter.name if starter else args.parent
-        brief = harnessid.brief(session.name, alias, harness, owner, args.orders_from)
+        brief = (harnessid.brief if sandbox else harnessid.brief_in_place)(session.name, alias, harness, owner, args.orders_from)
         if session.managed_inbox:
             brief = REQUIRED_BRIEFING.format(owner=owner) + (f"Workspace identity: {session.name}. The parent worker has authenticated and read "
                      "the assigned inbox task. Perform only that task in this project; do not inspect "
@@ -466,31 +487,47 @@ def admit(args: argparse.Namespace, harness: str, asked_project: str, *, interac
 
 
 def checked(args: argparse.Namespace, name: str, say: Callable[[str], None], *, interactive: bool) -> bool:
-    """What every launcher decides before it leases anything: ``--on`` and a model are not both named, the permissions are known, the project is
-    one this launch may use and this computer can confine. False, after one sentence said, when any does not hold; ``args.project`` and ``args.launch`` are set."""
+    """What every launcher decides before it leases anything: ``--on`` and a model are not both named, the permissions are known and the project is
+    a folder; for ``--sandbox``, also that the launch may use it and this computer can confine. False, after one sentence said, when any does not
+    hold; ``args.project``, ``args.asked`` (the permissions the caller named, or empty) and, in a sandbox, ``args.launch`` are set."""
     if args.on and args.model:
         say("error: --on names a server already running; do not name a model as well")
         return False
+    args.asked, args.permissions = args.permissions or "", args.permissions or coding_policy.GUARDED
     try:
         coding_policy.Policy(args.permissions, args.execution_mode)
-        asked, args.project = args.project, str(check_project(args.project))
-        admit(args, name, asked, interactive=interactive)
+        asked, args.project = args.project, str(check_project(args.project, sandbox=args.sandbox))
+        if args.sandbox:
+            admit(args, name, asked, interactive=interactive)
+        elif reach := [f"--{each}" for each in ("read", "toolchain", "publish", "protect") if getattr(args, each)]:
+            say(f"{', '.join(reach)}: only a sandboxed run has a reach to set, so this run in place does not use it")
     except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")
         return False
     return True
 
 
+def stance(args: argparse.Namespace, *, printing: bool) -> str:
+    """What a harness's own permission rules are told for a run in place: ``plan``, ``read-only``, ``yolo``, ``edits`` (guarded was asked for and
+    the run answers once, with nobody to approve an edit) or empty, the person's own settings."""
+    if args.execution_mode == coding_policy.PLAN:
+        return coding_policy.PLAN
+    if args.permissions in (coding_policy.READ_ONLY, coding_policy.YOLO):
+        return args.permissions
+    return "edits" if args.asked == coding_policy.GUARDED and printing else ""
+
+
 def serve_and_run(args: argparse.Namespace, name: str, say: Callable[[str], None], alias_of: Callable[[str, str], str],
                   run: Callable[[tuple[str, str, int]], int]) -> int:
     """The model half of a launch: the server already up at ``--on``, else a lease for the model asked for (or the default), held for the run.
-    ``run((base_url, alias, window))`` proves the confinement and starts the harness."""
+    ``run((base_url, alias, window))`` starts the harness."""
     if args.on:
         base_url = args.on.rstrip("/")
         alias = alias_of(base_url, "")
         if not alias:
             say(f"error: {base_url} did not say what model it serves")
             return 2
+        say(f"{name} on {base_url} as {alias!r}; this server was already up and is left up")
         return run((base_url, alias, window_of(base_url)))
     began = time.time()
     try:
@@ -571,6 +608,9 @@ def confined(args: argparse.Namespace, run: Session, how: Harness,
             how.say(text)
 
 
-def terminal_runner(confinement: isolation.Confinement) -> int:
-    """The runner of a launch from a terminal: the harness gets pipes the launcher relays, never the terminal itself."""
+def terminal_runner(confinement: Any) -> int:
+    """The runner of a launch from a terminal. A run in place has this process's own streams; a sandboxed one gets pipes the launcher relays, never
+    the terminal itself."""
+    if confinement.config is None:
+        return confinement.run()
     return confinement.run(None if sys.stdin is None or sys.stdin.isatty() else sys.stdin.buffer)

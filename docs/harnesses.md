@@ -1,20 +1,42 @@
-# Claude Code and Codex on a local model
+# Claude Code, Codex and OpenCode on a local model
 
-`poolhouse-codex` and `poolhouse-claude` run the Codex and Claude Code command-line agents on a model
-this machine serves, with Poolhouse's rails around them: the served window, a pre-tool classifier
-hook under the coding permissions, an immediate allow or deny with the reason for every call, and a workspace identity of their own. Codex is
-the default coding harness (a lighter system prompt and tool list); Claude Code is there for when
-its richer hook gate matters.
+`poolhouse-codex`, `poolhouse-claude` and `poolhouse-opencode` run those command-line agents on a model this machine
+serves. A launch is the agent as the person has it: on the project folder itself, interactive or in print mode, with
+their own settings, MCP servers, programs and network, on macOS, Linux and Windows, in any folder. The launcher serves
+the model, points that one run at it and gives it a workspace session. `--sandbox` runs it instead on a copy of the
+project inside an operating-system sandbox with no network but the model. Codex is the default coding harness (a
+lighter system prompt and tool list).
 
 ```
-poolhouse-codex                                  # Qwen3.8-Flash-Next-UD-IQ2_XS if installed and it fits, else Qwen3.8-27B-UD-Q4_K_XL; permissions guarded, this directory
+poolhouse-codex                                  # Qwen3.8-Flash-Next-UD-IQ2_XS if installed and it fits, else Qwen3.8-27B-UD-Q4_K_XL; this directory, your own settings
 poolhouse-codex Qwen3.5-2B --permissions yolo --project ~/work/repo -- exec "fix the failing test"
 poolhouse-claude --on http://127.0.0.1:8080 --permissions read-only -- -p "explain this repo"
+poolhouse-claude --sandbox -- -p "fix the failing test"
 ```
 
+## In place
+
+Nothing of the person's or the project's configuration is written. What points a run at the model is on its command
+line or in its environment, and in a private folder under the state root that is removed when the harness exits
+(`poolhouse.inplace`):
+
+| harness | what points it at the model | `read-only` or plan | `yolo` | `guarded` asked for, one answer |
+| --- | --- | --- | --- | --- |
+| Claude Code | `--settings FILE` (its `env` block, over the person's), `--append-system-prompt-file`; their MCP servers stay | `--disallowed-tools` for the shell and editing (plan adds `--permission-mode plan`) | `--dangerously-skip-permissions` | `--permission-mode acceptEdits` |
+| Codex | `-c` overrides for the provider, model and window; `~/.codex` stays the home | `sandbox_mode="read-only"`, no approvals | `danger-full-access`, no approvals | `workspace-write`, no approvals |
+| OpenCode (the one on PATH, else the kept release) | `OPENCODE_CONFIG`, merged over their own, and `--model` | `edit`, `bash` and `shell` denied | everything allowed | their own settings |
+| Pi (`launch_coding_agent`) | an `--extension` that registers the provider | `--tools read,grep,find,ls` | their own settings | their own settings |
+
+With no `--permissions`, the person's own settings decide. No classifier hook of Poolhouse's judges a run in place.
+The harness's environment is the person's own, marked as an agent's (`POOLHOUSE_AGENT`) and naming its own workspace
+session, never the one the command was typed in. A server that has a key gives it to the harness. When no workspace
+session can be made, the launcher says so and the agent runs without one. `--read`, `--toolchain`, `--publish` and
+`--protect` set the reach of a sandboxed run, and a run in place says it does not use them.
+
 A program starts the same thing with `poolhouse.coding.launch_coding_agent(model, policy, project,
-harness="codex", **options)` (options: `name`, `orders_from`, `harness_args`, `say`,
-`run_codex` / `run_claude`, `context`); it returns the harness's exit code.
+harness="codex", **options)` (options: `sandbox`, `name`, `orders_from`, `harness_args`, `say`,
+`run_codex` / `run_claude`, `context`); it returns the harness's exit code. A turn started in the coding chat runs in
+place; the workspace's own coding workers run sandboxed.
 
 `poolhouse-agent "task" --model MODEL` (`poolhouse.harness.session`) runs one agentic task through the
 Claude Agent SDK on the same lease. Every full install and installed runtime carries the SDK (the `claude`
@@ -45,18 +67,17 @@ needs no install step; a missing SDK is reported as a defective install, never a
    `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (accepted from 100,000, capped at the model's window) are set to
    the served slot context. Codex: `model_context_window` and `model_auto_compact_token_limit`
    (90 percent of the window) in its generated config.
-3. **Writes the session's settings outside the working tree**: a private directory under the state
-   root (`harness/<id>`), the files read-only and, for Claude Code, the directory too. Nothing is
-   written to `~/.claude` or `~/.codex`: Claude Code gets `--settings FILE` and
+3. **Writes the run's settings outside the working tree** (above for a run in place). A sandboxed run
+   writes them read-only into a home of its own: Claude Code gets `--settings FILE` and
    `--append-system-prompt-file FILE`; Codex gets its own `CODEX_HOME` with `config.toml` and
-   `AGENTS.md`, no auth file and no API key in its environment. The directory is removed when the
-   harness exits.
-4. **Installs the hooks** (below).
+   `AGENTS.md`, no auth file and no API key in its environment. Nothing is written to `~/.claude` or
+   `~/.codex`.
+4. **Installs the hooks**, in a sandboxed run (below).
 5. **Registers a workspace session** and announces it (below).
 
-## The rails
+## The rails of a sandboxed run
 
-A harness in the isolated launcher (`poolhouse-claude`, `-codex`, `-pi`, `-opencode` and every delegate) writes
+Everything from here to "A delegate" describes `--sandbox`, except where it says otherwise. A harness in the isolated launcher (`poolhouse-claude`, `-codex`, `-pi`, `-opencode` and every delegate) writes
 its hook events from inside the box, so the launcher judges them by their text alone (`harnesshook.confined_pre`): it
 starts no program and looks at no path an event names. It refuses a call that names the session's files or the state
 root, and in `read-only` or plan mode an editing or sending tool. Every other call is allowed, shell commands
@@ -208,7 +229,7 @@ by `tool_timeout_sec`, OpenCode by the server's `timeout` (not checked against a
 its MCP client has been verified, so a Pi time limit shorter than the bound can still end a question.
 
 The launcher registers the session on the node as a subagent of the session that starts it (`--as AGENT`; by default
-the session named by the command's environment, else the person's own session). The node records the parent, names
+the session named by the command's environment, else a session it makes for the terminal, harness `poolhouse-launch`, never a person's). The node records the parent, names
 the session (the model family plus six characters; `--name`, or `local-<model>-<harness>`, only seeds its session
 id) and gives it a token, which the client keeps in a file readable by this user only: nothing is printed and no
 invitation is involved. The session starts with only what any session has: it reads and writes its own board, and a
@@ -229,8 +250,9 @@ poolhouse-opencode -- "fix the failing test in calc.py"        # opencode run ME
 poolhouse-opencode Qwen3.5-2B --permissions read-only --project ~/work/repo -- "explain this repo"
 ```
 
-`launch_coding_agent(model, policy, project, harness="opencode", harness_args=["MESSAGE"], run_opencode=...)` is the same for a program. A launch is
-`opencode run --format json --model poolhouse/ALIAS MESSAGE`: print mode only, until the relay of L6 (an interactive launch has no entry point).
+`launch_coding_agent(model, policy, project, harness="opencode", harness_args=["MESSAGE"], run_opencode=...)` is the same for a program. In place,
+`poolhouse-opencode` with no message opens OpenCode's own screen and a message runs `opencode run`. A sandboxed launch is
+`opencode run --format json --model poolhouse/ALIAS MESSAGE`, print mode only.
 It goes through the one door like the others (`isolation.prepare` then `Confinement.popen`; there is no second sandbox path), and its words are
 the same lease, window, permission profiles, workspace session and publication of the stage after each turn as Codex and Pi.
 
@@ -293,9 +315,19 @@ poolhouse-delegate stop NAME
   repository; a folder that is not the root of a git project is read from a copy), and two ways to the lead. It has no shell and no editing tool,
   and nothing it does is written to the folder. Its OpenCode permissions deny everything but its own tools: no web fetch or search, no subagent
   and no script tool.
-- **Confinement.** Read-only and editing delegates run the same path: a confined stage behind a Seatbelt profile proved before OpenCode starts
-  and attested on the live process, a closed environment and the model reached only through the parent's bridge ("What is not covered" below and
-  docs/design-isolated-launcher.md). A computer that cannot confine refuses a delegate of either kind at once, starts nothing and says why.
+- **Tiers.** `read-only` is the default; `--edit` is `guarded`; `--permissions read-only|guarded|yolo` names one.
+- **Sandboxed.** On a computer that can sandbox, every tier runs the same path: a confined stage behind a Seatbelt profile proved before OpenCode
+  starts and attested on the live process, a closed environment and the model reached only through the parent's bridge ("What is not covered" below
+  and docs/design-isolated-launcher.md).
+- **With no sandbox** (`poolhouse.delegate_unboxed`). A computer that cannot sandbox runs the delegate on the folder itself and says so; above
+  `read-only` it prints one warning naming the risk. OpenCode gets the tier's permission rules (`read-only`: no shell and no editing tool), a home
+  and configuration of its own, an environment with no key or login, and the model through the same loopback bridge behind a token of the run.
+  Before every tool call the parent's hook (`poolhouse.delegate_guard`) refuses, in every tier (`poolhouse.guard.unboxed`): the person folder,
+  session tokens, authority registry and guards; a force push and a remote deletion; a read of a credential store; a write outside the folder (its
+  own temporary folder aside); any write to the user's global configuration or install for the whole computer; and a recursive deletion outside the
+  folder. `guarded` adds the classifier's verdict (destructive and unreadable calls refused); `yolo` does not. These blocks are not a boundary: a
+  program the model writes or runs reaches whatever the account reaches, the network included, and only a sandbox stops that. Changes are made in the
+  folder at once, nothing is published or kept as a patch, and a run whose plugin never asked the hook is ended as failed.
 - **Editing (`--edit`).** The project is `--project DIR`, by default the git project the command runs in (which is the launcher's
   default reach: no widening is asked, so no gate applies); a folder named with `--project` must be one this lead may name. A
   refusal (a folder that is not a registered project, a folder that is not a git project) is immediate, starts nothing and says why. It has
@@ -347,9 +379,8 @@ poolhouse-delegate stop NAME
   environment is a closed list; nothing of the person's home, keystore, other repositories, network or other processes is reachable. After each
   turn the parent applies the plain source the stage holds and refuses everything else at once (a workflow, a hook, a build or package file, a
   program): it keeps the refusal as a patch, tells the launching session in the parent's own words, and the stage keeps the file as the agent made
-  it. A computer that cannot confine refuses the launch with one sentence and starts nothing: Linux, WSL and Windows refuse until their slices land,
-  and an interactive launch refuses until the pty relay of slice L6 (use the harness's print mode: `-- --print TEXT` for Claude Code, `-- exec TEXT`
-  for Codex). The hook is a gate on top of the boundary, not the boundary: it denies at once what the profile's role does not run, and a command
+  it. A computer that cannot confine refuses a sandboxed launch with one sentence and starts nothing (Linux, WSL and Windows among them), and a
+  sandboxed run is print mode only: `-- --print TEXT` for Claude Code, `-- exec TEXT` for Codex. The hook is a gate on top of the boundary, not the boundary: it denies at once what the profile's role does not run, and a command
   built to hide what it touches (an `eval` of a computed string) is `unsure` and is denied at once rather than being read.
 - A hook that cannot start (a missing interpreter) is a non-blocking error in both harnesses. The
   launcher writes the absolute interpreter that started it.

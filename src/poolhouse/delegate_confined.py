@@ -18,7 +18,7 @@ import argparse
 import contextlib
 import json
 import os
-import select
+import queue
 import subprocess
 import threading
 import time
@@ -45,7 +45,7 @@ from poolhouse.log import say as log
 from poolhouse.workspace import nudge_fence
 from poolhouse.worktreerules import CHANGES_THE_TREE
 
-__all__ = ["NO_PROGRESS_S", "Hooks", "Stream", "admit", "converse", "follow", "tools_of", "writes"]
+__all__ = ["NO_PROGRESS_S", "Hooks", "Stream", "admit", "converse", "follow", "tools_of", "unsandboxable", "writes"]
 
 READ_TOOLS = ("read", "glob", "grep")
 EDIT_TOOLS = ("edit", "write", "shell")
@@ -117,6 +117,12 @@ result, name every test you could not run and why.
 When your turn ends the plain source files you changed are applied to the project; a workflow, a hook, a build or package file or a program is
 refused and kept aside for {lead}.
 """
+UNSANDBOXED_WORK = """\
+shell runs in the folder itself, with no sandbox. A call that reads a credential, writes outside the folder, changes the user's global
+configuration, force-pushes or deletes something on a remote is refused. A command ends at its timeout ({default}s unless you give another as
+`timeout`, in milliseconds, at most {most}s) and never runs in the background. What you change is changed in the folder at once: change only what
+the task asks.
+"""
 READ_WORK = "You have no shell and no tool that changes a file, and nothing you do is written to the folder.\n"
 WEDGED = "this model's server could not be taken: its configuration exceeds this device's wired-memory limit"
 
@@ -138,7 +144,13 @@ def arguments(rec: store.Delegate) -> argparse.Namespace:
     subagent of, and the guarded profile for one that edits, the read-only one (whose stage nothing writes) for one that reads."""
     folder = str(Path(rec.workdir).resolve())
     return harnessing.parser("opencode", "OpenCode", claude.DEFAULT_PORT, claude.DEFAULT_SLOTS).parse_args(
-        ["--project", folder, "--as", rec.lead, "--name", rec.label, "--permissions", "guarded" if rec.edit else "read-only"])
+        ["--sandbox", "--project", folder, "--as", rec.lead, "--name", rec.label, "--permissions",
+         rec.permissions or ("guarded" if rec.edit else "read-only")])
+
+
+def unsandboxable(project: str) -> str:
+    """Why this computer cannot sandbox a delegate of ``project`` (empty: a folder of its own), as one sentence; empty when it can."""
+    return isolation.capability(isolation.Spec("opencode", "", "", "", 0, project=project)).enforcement_error
 
 
 def admit(rec: store.Delegate, asked: str) -> None:
@@ -271,6 +283,23 @@ class Stream:
         return harness.Answer(text="\n".join(self.texts if failed else self.last or self.texts), spent=spent, is_error=failed, why=why)
 
 
+def _chunks(pipe: int) -> queue.Queue[bytes]:
+    """What ``pipe`` says, read by a thread of its own (`select` takes no pipe on Windows); an empty chunk is its end."""
+    out: queue.Queue[bytes] = queue.Queue()
+
+    def drain() -> None:
+        chunk = b" "
+        while chunk:
+            try:
+                chunk = os.read(pipe, 65536)
+            except OSError:
+                chunk = b""
+            out.put(chunk)
+
+    threading.Thread(target=drain, daemon=True).start()
+    return out
+
+
 def follow(confinement: isolation.Confinement, process: subprocess.Popen[bytes], message: bytes, stream: Stream,
            watch: tuple[Callable[[], None], Callable[[], bool], Callable[[], str]]) -> None:
     """Hand the harness its task and read what it says until it has ended and its pipe is read out. ``watch`` is what is called after each event of the
@@ -289,17 +318,20 @@ def follow(confinement: isolation.Confinement, process: subprocess.Popen[bytes],
             raise RuntimeError(why)
 
     threading.Thread(target=feed, daemon=True).start()
-    pipe, held, ended = process.stdout.fileno(), bytearray(), False
+    chunks = _chunks(process.stdout.fileno())
+    held, ended = bytearray(), False
     moved = looked = time.monotonic()
     stalled = f"the run showed no progress for {NO_PROGRESS_S:.0f}s, with neither the model nor the lead holding the turn, so it was ended"
     while True:
-        ready = select.select([pipe], [], [], lead_bridge.POLL_S)[0]
+        try:
+            chunk, ready = chunks.get(timeout=lead_bridge.POLL_S), True
+        except queue.Empty:
+            chunk, ready = b"", False
         now = time.monotonic()
         with_model = confinement.waiting_for_model()
         stream.model_s += now - looked if with_model else 0.0
         looked = now
         if ready:
-            chunk = os.read(pipe, 65536)
             if not chunk:
                 break
             moved = now
@@ -344,9 +376,11 @@ def leased(model: str, say: Callable[[str], None]) -> Iterator[tuple[str, Any, s
 
 def brief_of(rec: store.Delegate) -> str:
     """The system prompt of ``rec``: the same for every delegate of one lead that does the same kind of work."""
-    work = SHELL_WORK.format(lead=rec.lead, default=int(SHELL_DEFAULT_S), most=int(SHELL_MAX_S)) if rec.edit else READ_WORK
+    shell = SHELL_WORK if rec.sandboxed else UNSANDBOXED_WORK
+    work = shell.format(lead=rec.lead, default=int(SHELL_DEFAULT_S), most=int(SHELL_MAX_S)) if rec.edit else READ_WORK
+    project = "a working copy of the project" if rec.sandboxed else "the project folder itself"
     return REQUIRED_BRIEFING.format(owner=rec.lead) + BRIEF.format(
-        lead=rec.lead, tools=", ".join(tools_of(rec.edit)), work=work, folder="a working copy of the project" if rec.source else "an empty folder",
+        lead=rec.lead, tools=", ".join(tools_of(rec.edit)), work=work, folder=project if rec.source else "an empty folder",
         did="did" if rec.edit else "found")
 
 
@@ -374,7 +408,7 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
     that failed publishes nothing more and keeps what it had changed as a patch. A stop ends the processes of the session and publishes nothing more.
     ``bridge`` has the two ways to the lead (`ask`, `note`), what the lead sent (`news`) and whether a question waits (`asking`); ``mine`` is the
     delegate's own session."""
-    binary = harnessing.binary_for("opencode") or opencode_install.ensure()
+    binary = harnessing.binary_for("opencode", pinned=True) or opencode_install.ensure()
     args = arguments(rec)
     args.launch = isolation.decide_launch(isolation.Arguments(), project=args.project)   # a folder the lead named had its widening decided at `start`
     store.set_status(rec.name, "loading", rec.model)

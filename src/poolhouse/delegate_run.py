@@ -1,7 +1,8 @@
 """The process behind one delegate: the model session on the lead's task and the two tools that reach the lead.
 
 ``python -m poolhouse.delegate_run NAME`` is what `poolhouse-delegate start` detaches. It hands the task to `poolhouse.delegate_confined` (OpenCode
-in the isolated launcher's confinement), writes the result and tells the lead on the board.
+in the isolated launcher's confinement), or on a computer that cannot sandbox it to `poolhouse.delegate_unboxed`, writes the result and tells the
+lead on the board.
 """
 
 from __future__ import annotations
@@ -12,7 +13,14 @@ import sys
 import time
 from typing import Any
 
-from poolhouse import delegate_confined, delegate_store as store, harness, lead_bridge, node_launch
+from poolhouse import (
+    delegate_confined,
+    delegate_store as store,
+    delegate_unboxed,
+    harness,
+    lead_bridge,
+    node_launch,
+)
 from poolhouse.board import credentials
 from poolhouse.board.client import Client, NodeError
 from poolhouse.board.session import Native, Session
@@ -24,8 +32,8 @@ from poolhouse.workspace.harness_session import HarnessSession
 __all__ = ["run"]
 
 def converse(rec: store.Delegate, bridge: lead_bridge.Bridge, mine: HarnessSession) -> harness.Answer:
-    """The task on the model, in the confinement (`delegate_confined`), read-only or editing as the lead asked."""
-    return delegate_confined.converse(rec, bridge, mine, say)
+    """The task on the model, in the tier the lead asked for: in the confinement (`delegate_confined`), else on the folder itself."""
+    return (delegate_confined if rec.sandboxed else delegate_unboxed).converse(rec, bridge, mine, say)
 
 
 def ended(answer: harness.Answer) -> str:

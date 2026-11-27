@@ -18,10 +18,11 @@ import json
 import socket
 import struct
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TextIO
 
-__all__ = ["Impostor", "call", "connect", "run"]
+__all__ = ["Impostor", "Streams", "call", "connect", "run", "serve", "tool"]
 
 SOL_LOCAL = 0
 LOCAL_PEERPID = 0x002
@@ -135,16 +136,16 @@ def _workspace(sock: socket.socket, verb: str, words: list[str], streams: Stream
     return 0
 
 
-def _mcp_tools(sock: socket.socket) -> list[dict[str, Any]]:
-    return [{"name": name, "description": each["help"],
-             "inputSchema": {"type": "object", "additionalProperties": False, "required": [each["argument"]],
-                             "properties": {each["argument"]: {"type": "string", "description": each["hint"]}}}}
-            for name, each in call(sock, {"verb": "tools"}).get("tools", {}).items()]
+def tool(name: str, description: str, argument: str, hint: str) -> dict[str, Any]:
+    """One tool of the server as an MCP client lists it: it takes the one text ``argument``."""
+    return {"name": name, "description": description,
+            "inputSchema": {"type": "object", "additionalProperties": False, "required": [argument],
+                            "properties": {argument: {"type": "string", "description": hint}}}}
 
 
-def _mcp_reply(path: str, pid: int, message: dict[str, Any]) -> dict[str, Any] | None:
-    """The answer to one message. Each request that reaches the bridge has a connection of its own (the bridge ends a connection that is silent
-    for its idle time, and a model is silent far longer than that between two calls)."""
+def _reply(message: dict[str, Any], listed: Callable[[], list[dict[str, Any]]],
+           called: Callable[[str, dict[str, Any]], tuple[bool, str]]) -> dict[str, Any] | None:
+    """The answer to one message of a server whose tools ``listed`` names and ``called`` runs, returning whether it ran and the words of its result."""
     method, ident, params = message.get("method", ""), message.get("id"), message.get("params") or {}
     if ident is None:
         return None
@@ -154,21 +155,33 @@ def _mcp_reply(path: str, pid: int, message: dict[str, Any]) -> dict[str, Any] |
     elif method == "ping":
         result = {}
     elif method == "tools/list":
-        with connect(path, pid) as sock:
-            result = {"tools": _mcp_tools(sock)}
+        result = {"tools": listed()}
     elif method == "tools/call":
-        with connect(path, pid) as sock:
-            answer = call(sock, {"verb": "workspace", "name": str(params.get("name", "")), "arguments": params.get("arguments") or {}})
-        said = answer["result"] if "result" in answer else answer.get("refused") or answer.get("error", "Refused.")
-        result = {"content": [{"type": "text", "text": said if isinstance(said, str) else json.dumps(said, indent=1, default=str)}],
-                      "isError": "result" not in answer}
+        ran, said = called(str(params.get("name", "")), params.get("arguments") or {})
+        result = {"content": [{"type": "text", "text": said}], "isError": not ran}
     else:
         return {"jsonrpc": "2.0", "id": ident, "error": {"code": -32601, "message": "no such method"}}
     return {"jsonrpc": "2.0", "id": ident, "result": result}
 
 
 def _mcp(path: str, pid: int, streams: Streams) -> int:
-    """The stdio MCP server: one JSON-RPC message per line in, one per line out, until standard input ends."""
+    """The server as the session bridge's client. Each request that reaches the bridge has a connection of its own (the bridge ends a connection
+    that is silent for its idle time, and a model is silent far longer than that between two calls)."""
+    def listed() -> list[dict[str, Any]]:
+        with connect(path, pid) as sock:
+            return [tool(name, each["help"], each["argument"], each["hint"]) for name, each in call(sock, {"verb": "tools"}).get("tools", {}).items()]
+
+    def called(name: str, arguments: dict[str, Any]) -> tuple[bool, str]:
+        with connect(path, pid) as sock:
+            answer = call(sock, {"verb": "workspace", "name": name, "arguments": arguments})
+        said = answer["result"] if "result" in answer else answer.get("refused") or answer.get("error", "Refused.")
+        return "result" in answer, said if isinstance(said, str) else json.dumps(said, indent=1, default=str)
+
+    return serve(streams, listed, called)
+
+
+def serve(streams: Streams, listed: Callable[[], list[dict[str, Any]]], called: Callable[[str, dict[str, Any]], tuple[bool, str]]) -> int:
+    """A stdio MCP server: one JSON-RPC message per line in, one per line out, until standard input ends."""
     if streams.inp.isatty():
         raise ValueError("standard input is a terminal, and no command here reads one")
     for line in streams.inp:
@@ -176,7 +189,7 @@ def _mcp(path: str, pid: int, streams: Streams) -> int:
             continue
         try:
             message = json.loads(line)
-            reply = _mcp_reply(path, pid, message if isinstance(message, dict) else {})
+            reply = _reply(message if isinstance(message, dict) else {}, listed, called)
         except ValueError:
             reply = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "parse error"}}
         except OSError as failure:

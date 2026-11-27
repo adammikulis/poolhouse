@@ -36,10 +36,14 @@ class Delegate:
     max_turns: int | None = None
     native: list[str] = field(default_factory=list)
     started: float = field(default_factory=time.time)
+    permissions: str = ""
+    """The tier the lead chose: `read-only`, `guarded` or `yolo`."""
+    sandboxed: bool = True
+    """Whether this computer sandboxes it; without a sandbox it works on the folder itself under its tier's rules."""
 
     def key(self) -> str:
-        """The same lead asking the same thing of the same folder is the same delegate."""
-        asked = "\0".join((self.lead, self.label, self.task, self.source, str(self.edit)))
+        """The same lead asking the same thing of the same folder, in the same tier, is the same delegate."""
+        asked = "\0".join((self.lead, self.label, self.task, self.source, str(self.edit), self.permissions))
         return hashlib.sha256(asked.encode()).hexdigest()[:16]
 
     def message(self) -> str:

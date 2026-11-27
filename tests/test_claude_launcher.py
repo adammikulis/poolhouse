@@ -66,7 +66,7 @@ def test_launch_leases_the_best_settings_and_runs_claude_inside_it(monkeypatch, 
         assert not seen.get("released"), "claude runs inside the lease"
         return 7
 
-    code = claude.launch(["kestrel", "--ctx", "32768", "--port", "8899", "--claude", str(binary), "--",
+    code = claude.launch(["kestrel", "--sandbox", "--ctx", "32768", "--port", "8899", "--claude", str(binary), "--",
                           "--print", "hello"], say=lambda _: None, run_claude=run_claude)
     assert code == 7
     assert seen["lease"]["port"] == 8899 and seen["lease"]["parallel"] == 1, "one conversation, one slot"
@@ -103,7 +103,7 @@ def test_slots_asked_for_reach_the_lease(monkeypatch, tmp_path):
     binary = tmp_path / "claude"
     binary.write_text("#!/bin/sh\nexit 0\n")
     binary.chmod(0o755)
-    started = ["kestrel", "--ctx", "262144", "--port", "8899", "--claude", str(binary), "--", "--print", "go"]
+    started = ["kestrel", "--sandbox", "--ctx", "262144", "--port", "8899", "--claude", str(binary), "--", "--print", "go"]
 
     claude.launch(started, say=lambda _: None, run_claude=lambda confinement: 0)
     assert (seen["lease"]["parallel"], seen["lease"]["context"]) == (1, 262144), \
@@ -159,7 +159,7 @@ class TestServingWithTheHead:
         binary.write_text("#!/bin/sh\nexit 0\n")
         binary.chmod(0o755)
         said: list[str] = []
-        claude.launch([*argv, "--ctx", "262144", "--claude", str(binary), "--", "--print", "go"], say=said.append,
+        claude.launch([*argv, "--sandbox", "--ctx", "262144", "--claude", str(binary), "--", "--print", "go"], say=said.append,
                       run_claude=lambda confinement: 0)
         return seen, said
 
@@ -231,7 +231,7 @@ class TestJoiningAServerAlreadyUp:
         binary.chmod(0o755)
         said: list[str] = []
         where: dict = {}
-        claude.launch(["quince-2b", "--ctx", "32768", "--port", "8123", "--claude", str(binary), "--", "--print", "go"],
+        claude.launch(["quince-2b", "--sandbox", "--ctx", "32768", "--port", "8123", "--claude", str(binary), "--", "--print", "go"],
                       say=said.append,
                       run_claude=lambda confinement: where.update(env=dict(confinement.env), upstream=confinement.plan.upstream) or 0)
         assert seen["model"] == "/models/quince-2b-Q4_K_M.gguf"
@@ -253,6 +253,6 @@ class TestJoiningAServerAlreadyUp:
         binary = tmp_path / "claude"
         binary.write_text("#!/bin/sh\nexit 0\n")
         binary.chmod(0o755)
-        claude.launch(["quince-2b", "--ctx", "262144", "--claude", str(binary), "--", "--print", "go"], say=lambda _: None,
+        claude.launch(["quince-2b", "--sandbox", "--ctx", "262144", "--claude", str(binary), "--", "--print", "go"], say=lambda _: None,
                       run_claude=lambda confinement: 0)
         assert "lease" in seen

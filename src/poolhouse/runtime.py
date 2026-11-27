@@ -192,7 +192,7 @@ def python() -> Path:
 
 
 ISOLATED_MODULES = frozenset({"poolhouse.harnesshook", "poolhouse.pi_tools", "poolhouse.workspace.notification_reader",
-                               "poolhouse.workspace.task_caps"})
+                               "poolhouse.workspace.task_caps", "poolhouse.delegate_guard", "poolhouse.lead_mcp"})
 
 
 def module_argv(module: str, selected_root: Path, *arguments: str) -> list[str]:

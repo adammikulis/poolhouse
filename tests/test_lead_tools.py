@@ -96,7 +96,8 @@ def launching(harness: str, tmp_path: Path, lead_node, port: int, run, *extra: s
     binary.write_text("#!/bin/sh\nexit 0\n")
     binary.chmod(0o755)
     module = {"claude": claude, "codex": codex, "pi": pi, "opencode": opencode}[harness]
-    words = ["--on", f"http://127.0.0.1:{port}", "--as", lead.name, "--project", str(project), f"--{harness}", str(binary), *extra, "--", *TASK[harness]]
+    words = ["--sandbox", "--on", f"http://127.0.0.1:{port}", "--as", lead.name, "--project", str(project), f"--{harness}", str(binary), *extra,
+             "--", *TASK[harness]]
     said: list[str] = []
     code = module.launch(words, say=said.append, **{RUNNER[harness]: run})
     assert code == 0, said

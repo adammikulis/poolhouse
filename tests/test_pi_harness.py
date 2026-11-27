@@ -42,7 +42,7 @@ def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_pat
         seen["models"] = json.loads((confinement.config / "models.json").read_text())["providers"]["poolhouse"]
         return 0
 
-    assert pi.launch(["--on", "http://127.0.0.1:8080", "--project", str(project)], say=lambda _: None, run_pi=run_pi) == 0
+    assert pi.launch(["--sandbox", "--on", "http://127.0.0.1:8080", "--project", str(project)], say=lambda _: None, run_pi=run_pi) == 0
     assert seen["command"][:5] == [str(binary.resolve()), "--provider", "poolhouse", "--model", "local-model"]
     assert seen["command"][seen["command"].index("--thinking") + 1] == "off"
     assert "--no-session" in seen["command"] and "--no-extensions" in seen["command"]

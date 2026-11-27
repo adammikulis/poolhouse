@@ -69,6 +69,9 @@ class TaskManager(Manager):
                     self.checkpoint({'summary': 'Native tool returned successfully',
                                      'progress': str(block.get('tool_use_id', ''))})
 
+    def _sandboxed(self) -> bool:
+        return True
+
     def _protected_paths(self, home: Path) -> tuple[str, ...]:
         return (str(home),)
 

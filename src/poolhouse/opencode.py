@@ -1,11 +1,13 @@
-"""OpenCode on a model this machine serves, in a proved confinement: ``poolhouse-opencode MODEL [-- message words]`` runs ``opencode run MESSAGE``.
+"""OpenCode on a model this machine serves: ``poolhouse-opencode MODEL`` opens it on the project folder, and ``-- message words`` runs ``opencode run``.
 
-The launcher leases the model, proves a confinement (`poolhouse.isolation`) and starts ``opencode run`` inside it with a config of its own in the
-agent home, so the person's ``~/.config/opencode`` is never read or changed. The provider is the bridge's OpenAI-compatible URL with the bridge's
-token (minted for the launch, never asked of a person); OpenCode's own network traffic (update checks, the model list, LSP downloads) is switched
-off. A plugin written read-only beside the config asks the parent's classifier over the session bridge before each tool call and after it, as
-Pi's extension does. OpenCode starts without a plugin it cannot load and says so only in its own log, so a run whose plugin never reported publishes
-nothing. The binary is the pinned release (`poolhouse.opencode_install`), fetched once.
+In place it is the ``opencode`` on PATH (else the kept release) with the person's own configuration and one config file of this run adding the served
+model; no configuration of the person's is written.
+
+With ``--sandbox``, which runs ``opencode run MESSAGE`` only, the launcher proves a confinement (`poolhouse.isolation`) and starts the pinned release
+(`poolhouse.opencode_install`) inside it with a config of its own in the agent home. The provider is the bridge's OpenAI-compatible URL with the
+bridge's token (minted for the launch, never asked of a person); OpenCode's own network traffic is switched off. A plugin written read-only beside
+the config asks the parent's classifier over the session bridge before each tool call and after it, as Pi's extension does. OpenCode starts without
+a plugin it cannot load and says so only in its own log, so a run whose plugin never reported publishes nothing.
 """
 
 from __future__ import annotations
@@ -18,7 +20,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import harness_js, harnessing, isolation, lead_bridge, opencode_install
+from poolhouse import (
+    coding_policy,
+    harness_js,
+    harnessing,
+    inplace,
+    isolation,
+    lead_bridge,
+    opencode_install,
+)
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.client import families
 from poolhouse.guard import harnesses
@@ -182,30 +192,59 @@ def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], 
     return isolation.Rendering(argv_of(binary, port, alias, extra), written, listen=(port,))
 
 
+OWN = ("$schema", "model", "small_model", "provider", "tool_output", "instructions")
+"""The keys of `config` a run in place adds to the person's own configuration: the served model and the workspace brief."""
+UNCHANGING = {"edit": "deny", "bash": "deny", "shell": "deny"}
+STANCES = {coding_policy.READ_ONLY: UNCHANGING, coding_policy.PLAN: UNCHANGING, coding_policy.YOLO: {"*": "allow"}}
+"""OpenCode's own permission rules for each `harnessing.stance` of a run in place that changes the person's."""
+
+
+def printing(extra: Sequence[str]) -> bool:
+    """Whether the arguments after ``--`` hold a message, which OpenCode answers once; otherwise it opens its own screen."""
+    return any(not word.startswith("-") for word in extra)
+
+
+def direct(context: inplace.Context, command: Sequence[str], stance: str, brief: str) -> inplace.Rendering:
+    """A run in place of ``command`` (the binary, then the words after ``--``): ``opencode``, or ``opencode run`` with a message, and one config
+    file naming the served model, merged over the person's own."""
+    binary, *extra = command
+    setup = Setup((context.base_url, context.alias, context.window), context.key, str(context.file(PLUGIN)), (),
+                  families.for_model_id(context.alias).think_kwargs(False), str(context.file(BRIEF)))
+    made = {key: value for key, value in json.loads(config(setup)).items() if key in OWN and (key != "instructions" or brief)}
+    env = {"OPENCODE_CONFIG": str(context.file(CONFIG))}
+    if rules := STANCES.get(stance):
+        made["permission"] = rules
+        env["OPENCODE_PERMISSION"] = json.dumps(rules)
+    files = {CONFIG: json.dumps(made, sort_keys=True, indent=1), **({BRIEF: brief} if brief else {})}
+    words = ["run"] if printing(extra) else []
+    rest = extra[1:] if extra[:1] == ["run"] else extra
+    return inplace.Rendering((binary, *words, "--model", f"{PROVIDER}/{context.alias}", *rest), files, env)
+
+
 def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = say,
-           run_opencode: Callable[[isolation.Confinement], int] | None = None, session_factory: Callable[..., Any] | None = None) -> int:
-    """Run ``opencode run`` against a leased local model inside a proved confinement; the words after ``--`` are the message and OpenCode's own run options."""
+           run_opencode: Callable[[Any], int] | None = None, session_factory: Callable[..., Any] | None = None) -> int:
+    """Run OpenCode against a leased local model; the words after ``--`` are the message and OpenCode's own run options."""
     words = list(sys.argv[1:] if argv is None else argv)
     ours, extra = (words[:words.index("--")], words[words.index("--") + 1:]) if "--" in words else (words, [])
     args = harnessing.parser("opencode", "OpenCode", DEFAULT_PORT, DEFAULT_SLOTS).parse_args(ours)
     provenance.told(args.lease_for)
     args.session_factory = session_factory
-    binary = args.opencode or harnessing.binary_for("opencode")
+    binary = args.opencode or harnessing.binary_for("opencode", pinned=args.sandbox)
     if not binary:
         try:
             binary = opencode_install.ensure()
         except opencode_install.InstallFailed as why:
             say(f"error: {why}")
             return 2
-    if not harnessing.checked(args, "opencode", say, interactive=False):
+    if not harnessing.checked(args, "opencode", say, interactive=not printing(extra)):
         return 2
     runner = run_opencode or harnessing.terminal_runner
     return harnessing.serve_and_run(args, "opencode", say, lambda *got: alias_of(*got), lambda served: _run(args, [binary, *extra], served, say, runner))
 
 
 def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, str, int], say: Callable[[str], None],
-         runner: Callable[[isolation.Confinement], int]) -> int:
-    """Prove a confinement for ``command`` (``opencode`` and the message) and hand it to the runner."""
+         runner: Callable[[Any], int]) -> int:
+    """Start ``command`` (``opencode`` and the message) in place or in a proved confinement and hand it to the runner."""
     window = served[2]
     reported: list[str] = []
     how = harnessing.Harness("opencode", command[0], served, say, observe=lambda event, _payload, _said: reported.append(event))
@@ -219,11 +258,12 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
     try:
         with harnessing.opened(args, "opencode", served, say) as run:
             opened.append(run)
-            with harnessing.confined(args, run, how, render) as confinement:
-                say(f"permissions {args.permissions}; mode {args.execution_mode}; working on a copy of {run.cwd}, in a box the operating system "
-                    "holds; OpenCode's tool calls pass through poolhouse's classifier")
+            def in_place(context: inplace.Context) -> inplace.Rendering:
+                return direct(context, command, harnessing.stance(args, printing=printing(command[1:])), opened[0].brief)
+
+            with inplace.started(args, run, how, (render, in_place)) as confinement:
                 status = int(runner(confinement))
-                if confinement.process is not None and not reported:
+                if args.sandbox and confinement.process is not None and not reported:
                     say(f"error: {UNGUARDED}")
                     confinement.close(publish=False, keep_patch=True)
                     return status or 2

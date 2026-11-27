@@ -1,9 +1,15 @@
 # Isolated launcher: enforced isolation for coding agents
 
-Design. Nothing in this document is built. Owner order: build the isolated launcher, so that `poolhouse-claude`, `poolhouse-codex`
-and `poolhouse.coding.launch_coding_agent` start again, with isolation the operating system enforces on macOS, Linux and WSL, and
-Windows; a platform that cannot enforce what is claimed refuses to start, with the exact reason, and never starts unisolated. The
-unconditional refusal `harnessing.require_isolated_execution` is replaced by a capability report and by the launch itself. The
+Design of the sandbox of a coding agent: isolation the operating system enforces on macOS, Linux and WSL, and Windows.
+
+**When it applies.** A launch the person runs (`poolhouse-claude`, `poolhouse-codex`, `poolhouse-opencode`,
+`poolhouse.coding.launch_coding_agent` and a turn of the coding chat) runs the harness on the project folder itself, with the
+person's own settings, MCP servers and network (docs/harnesses.md, "In place"), on every platform and in any folder. This design
+is what `--sandbox` (`sandbox=True`) asks for, what the workspace's own coding workers run in, and what a delegate runs in on a
+computer that can confine. A delegate on a computer that cannot runs on the folder itself in the tier its lead chose, `read-only`
+unless named, behind the blocks of docs/harnesses.md ("A delegate"), which are not a boundary. In the rest of this document a
+launch means a sandboxed one: a platform that cannot enforce what is claimed refuses it, with the exact reason, and no sandboxed
+run starts unisolated. The capability report and the launch itself say what a computer can confine. The
 non-author attack pass of AGENTS.md section 1 is `docs/design-isolated-launcher-breakit.md`; section 14.3 names the section that
 decides each of its findings, and the slices of section 15.1 carry them with their first red tests; the second pass, `docs/notes/attack-verdict-launcher-no-waiting.md`
 (AF1 to AF11), is decided in 14.3 the same way. Every question the design
@@ -43,13 +49,13 @@ agent's copy of the project and a private home; it reaches the model only throug
 (hooks and board) only through a second bridge. Nothing else exists for it: not the home directory, not other loopback
 services, not the network. After each turn and when the session ends the parent checks what the agent changed, applies the plain
 source to the person's project, and refuses everything else at once, keeps it as a patch the session can read and reports it to
-the launching session. A platform that cannot do this refuses to start, in one sentence, and nothing is started unisolated.
+the launching session. A platform that cannot do this refuses the sandboxed launch, in one sentence.
 
 ## 0. The decisions, one line each
 
 | # | Decision | Why |
 |---|---|---|
-| I1 | The harness process and everything it starts run inside one confinement the launcher builds; no code path starts a coding harness outside it. | The harness vendors' own sandboxes cover less (Claude Code's covers shell commands only; its file tools, MCP servers and hooks run outside it, and it does not run on native Windows: `code.claude.com/docs/en/sandboxing`) and cannot nest (VERIFIED: `sandbox_apply: Operation not permitted` inside a Seatbelt run). |
+| I1 | The sandboxed harness process and everything it starts run inside one confinement the launcher builds; no code path of a sandboxed run starts a harness outside it. | The harness vendors' own sandboxes cover less (Claude Code's covers shell commands only; its file tools, MCP servers and hooks run outside it, and it does not run on native Windows: `code.claude.com/docs/en/sandboxing`) and cannot nest (VERIFIED: `sandbox_apply: Operation not permitted` inside a Seatbelt run). |
 | I2 | One choke point: `isolation.prepare(spec)` returns a `Confinement`; a launcher's runner starts the harness only through `Confinement.popen`. `harnessing.require_isolated_execution` and its 14 call sites are deleted. | A refusal at 14 places is a policy nobody can prove complete; one place that builds the only argv that exists is. |
 | I3 | Default reach: the stage (read, write), a private agent home (read, write), the harness's own install tree and the system toolchain (read, execute), one directory of its own refused patches (read only, 4.2 item 2), and one model bridge. Nothing else: no home directory, keystore, other repository, other loopback service, LAN, internet, unix socket, GPU, other process or machine identifier. | The owner's decision. |
 | I4 | The parent-owned workspace is the project the agent sees. The agent never writes the person's checkout; the parent publishes verified changes after each completed assistant turn. Publication is deny by default: only plain source is applied, and every other change (build, CI, hook, package-manager, wrapper, lockfile, configuration, agent-instruction and review-governance files, programs, binaries, anything unrecognized) is not applied: it is refused at once with a reason the parent writes, kept as a patch under the state root that the session can read, and reported to the launching session by an `isolation.report` message the launcher posts under its own identity, whichever tool wrote it. Nothing waits and nothing is asked. A `publish` rule names exact files and never a governing file (8.2). Carries N3, N4, N5 (A11), AF1, AF2, AF4, AF6, AF8; the red tests assert the property (a non-plain change never reaches the checkout without a rule naming that exact file, and a governing file never reaches it by any rule), not any step by a person. | A confinement bounds what the agent can reach; it cannot bound what the agent leaves behind for the person's tools to run. Only the parent, comparing bytes, can, and a list of names that run later is always behind the tools that read them. |

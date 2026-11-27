@@ -59,11 +59,15 @@ def test_a_harness_started_from_a_session_with_no_agent_variable_is_its_subagent
     assert [a.parent for a in node.session(lead).agents() if a.name == made.name] == [lead.name]
 
 
-def test_a_command_run_in_no_session_is_refused_at_once_and_names_the_flag(lead_node, monkeypatch):
-    node, _lead, _project = lead_node
+def test_a_command_run_in_no_session_makes_one_for_its_terminal_and_a_named_session_that_is_not_live_is_refused(lead_node, monkeypatch):
+    node, lead, _project = lead_node
     monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")
-    with pytest.raises(ValueError, match="--as"):
-        harnessid.launcher(node.client, node.board, "")
+    made = harnessid.launcher(node.client, node.board, "")
+    assert made.name != lead.name and harnessid.launcher(node.client, node.board, "").name == made.name, "one session a terminal"
+    [row] = [a for a in node.session(lead).agents() if a.name == made.name]
+    assert (row.harness, row.parent) == ("poolhouse-launch", ""), "an agent session of its own, never the person's"
+    with pytest.raises(ValueError, match="not live"):
+        harnessid.launcher(node.client, node.board, "no-such-session")
 
 
 def test_start_registers_the_agent_as_a_subagent_of_the_lead_and_detaches_its_run(lead_node, detached, capsys):

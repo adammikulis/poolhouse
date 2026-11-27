@@ -1,13 +1,15 @@
 """``poolhouse-delegate``: hand a task to a local coding agent on the model this machine serves and read what it sends back.
 
-    poolhouse-delegate start --task TEXT [--project DIR] [--name N] [--edit]
+    poolhouse-delegate start --task TEXT [--project DIR] [--name N] [--edit] [--permissions TIER]
     poolhouse-delegate status [NAME]     poolhouse-delegate result NAME     poolhouse-delegate stop NAME
 
 The agent is a session of its own on the lead's board, registered as a subagent of the session that starts it. It is
-OpenCode in the isolated launcher's confinement (`poolhouse.delegate_confined`). It reads and searches a read-only copy of
-its folder, with no shell, and reaches the lead through two tools. With `--edit` it also changes the project and runs a
-shell in the confinement: the plain source it changed is published into the project when it ends and anything else is
-refused at once and kept as a patch. Nothing here waits on a person: a refusal is immediate and says why.
+OpenCode, in the `read-only` tier unless the lead chooses another: it reads and searches its folder, with no shell, and
+reaches the lead through two tools. With `--edit` (the `guarded` tier) or `--permissions` it also changes the project and
+runs a shell. A computer that can sandbox runs it in the isolated launcher's confinement (`poolhouse.delegate_confined`):
+the plain source it changed is published into the project when it ends and anything else is refused at once and kept as a
+patch. One that cannot runs it on the folder itself under its tier's rules, with a warning
+(`poolhouse.delegate_unboxed`). Nothing here waits on a person: a refusal is immediate and says why.
 """
 
 from __future__ import annotations
@@ -24,9 +26,11 @@ from pathlib import Path
 
 from poolhouse import (
     authority,
+    coding_policy,
     delegate_confined,
     delegate_run,
     delegate_store as store,
+    delegate_unboxed,
     harnessid,
     harnessing,
     jobs,
@@ -75,6 +79,13 @@ def _running(asked: store.Delegate) -> str:
     return ""
 
 
+def tier_of(edit: bool, permissions: str) -> str:
+    """The tier a delegate runs in: ``permissions`` when named, `guarded` for ``--edit``, else `read-only`."""
+    if edit and permissions == coding_policy.READ_ONLY:
+        raise ValueError("--edit changes files and --permissions read-only does not: give one of them")
+    return permissions or (coding_policy.GUARDED if edit else coding_policy.READ_ONLY)
+
+
 def _folder(source: str, edit: bool) -> str:
     """The folder a delegate is confined to a stage of: its project, or, for one with none or one that only reads a folder that is no git project's
     root, a git repository of its own under the temporary folder, holding a copy of that folder (links are copied as links). A confinement stages
@@ -99,38 +110,50 @@ def _folder(source: str, edit: bool) -> str:
     flag("--as", dest="parent", default="", metavar="AGENT", help="the session it is a subagent of (default: the session this command runs in)"),
     option("model", help="the model (default: the one served on this machine now)"),
     flag("--max-turns", type=int, default=None),
-    flag("--edit", action="store_true", help="let it change the project, in a confinement: plain source is published when it ends, the rest refused")])
+    flag("--edit", action="store_true", help="let it change the project (the guarded tier); in a sandbox plain source is published when it ends, the rest refused"),
+    flag("--permissions", default="", choices=("", *coding_policy.PERMISSIONS),
+         help="what it may do (default: read-only; --edit is guarded). A computer that cannot sandbox runs a higher tier on the folder itself, with a warning")])
 def start(args: argparse.Namespace) -> int:
     """Register the agent as a subagent of the calling session, then run it detached; prints its name."""
     authority.require("workspace.agents", "start a delegate")
     if not args.task.strip():
         raise ValueError("give the task as text: --task TEXT")
-    source = str(harnessing.check_project(args.project)) if args.project or args.edit else ""   # an editing delegate works on the project this runs in by default
+    tier = tier_of(args.edit, args.permissions)
+    edit = tier != coding_policy.READ_ONLY
+    source = str(harnessing.check_project(args.project)) if args.project or edit else ""   # an editing delegate works on the project this runs in by default
     client = Client(node_launch.default_state())
     board = place.at_path(client, Path.cwd())
     lead = harnessid.launcher(client, board, args.parent).name
     model = standing_model(args.model)
-    asked = store.Delegate("", lead, board, args.task, "", model, args.name, source, args.edit)
+    asked = store.Delegate("", lead, board, args.task, "", model, args.name, source, edit, permissions=tier)
     if same := _running(asked):
         say(f"{same} is already running that task; `poolhouse-delegate status {same}`")
         return 0
-    workdir = _folder(source, args.edit)
-    try:   # the folder, the gate and this computer's confinement, decided now: a refusal is at once and starts nothing
-        delegate_confined.admit(replace(asked, workdir=workdir), args.project if workdir == source else "")
-    except (Denied, OSError, RuntimeError, ValueError):
-        if workdir != source:
-            shutil.rmtree(workdir, ignore_errors=True)
-        raise
+    copied = bool(source) and not edit and not os.path.lexists(Path(source) / ".git")
+    why = delegate_confined.unsandboxable("" if copied else source)
+    if why:   # on the folder itself, or an empty one of its own
+        workdir = source or tempfile.mkdtemp(prefix="poolhouse-delegate-")
+    else:
+        workdir = _folder(source, edit)
+        try:   # the folder and the gate of a sandboxed delegate, decided now: a refusal is at once and starts nothing
+            delegate_confined.admit(replace(asked, workdir=workdir), args.project if workdir == source else "")
+        except (Denied, OSError, RuntimeError, ValueError):
+            if workdir != source:
+                shutil.rmtree(workdir, ignore_errors=True)
+            raise
     made = harnessid.invite(harnessid.agent_name(model, "delegate", args.name), Path.cwd(), lead, say, claim=("", "poolhouse-agent"))
     if made.native is None:
         raise ValueError("the agent's session carries no native identity to run under")
-    rec = store.Delegate(made.name, lead, board, args.task, workdir, model, args.name, source, args.edit, args.max_turns,
-                         [made.native.model, made.native.harness, made.native.id])
+    rec = store.Delegate(made.name, lead, board, args.task, workdir, model, args.name, source, edit, args.max_turns,
+                         [made.native.model, made.native.harness, made.native.id], permissions=tier, sandboxed=not why)
     store.save(rec)
     job = jobs.detach(delegate_run.__name__, [rec.name], log=store.log_file(rec.name), kind=JOB,
                       home=store.folder(rec.name), same_interpreter=True)
     store.set_status(rec.name, "starting", "")
-    mode = "edits the project in a confinement" if args.edit else "reads only"
+    mode = "edits the project in a confinement" if edit else "reads only"
+    if why:
+        say(delegate_unboxed.warning(tier, why))
+        mode = f"{tier}, with no sandbox,"
     say(f"started {rec.name} (pid {job.pid}) for {lead} on {Path(model).name}: {mode} in {workdir}")
     say(f"it asks you with a message from {rec.name}: read `poolhouse-workspace inbox`, answer with `poolhouse-workspace send {rec.name} answer TEXT`")
     say(f"poolhouse-delegate status {rec.name} | result {rec.name} | stop {rec.name}")
@@ -146,7 +169,7 @@ WARM_TASK = "Reply with the single word ready. Use no tools."
     flag("--edit", action="store_true", help="warm the prompt of a delegate that edits the project (its tools differ)")])
 def warm(args: argparse.Namespace) -> int:
     """Run a delegate on a trivial task: the server is leased and stays up, and its prompt cache holds the part every delegate shares."""
-    return start(argparse.Namespace(task=WARM_TASK, project="", name="warm", parent="", model=args.model, max_turns=1, edit=args.edit))
+    return start(argparse.Namespace(task=WARM_TASK, project="", name="warm", parent="", model=args.model, max_turns=1, edit=args.edit, permissions=""))
 
 
 def _view(name: str) -> tuple[str, str]:

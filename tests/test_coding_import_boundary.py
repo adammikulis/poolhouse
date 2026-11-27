@@ -141,7 +141,7 @@ def test_runtime_overlap_is_refused_before_native_model_admission(tmp_path, monk
     monkeypatch.setattr(harnessing, "binary_for", lambda _: str(binary))
     monkeypatch.setattr(harnessing, "serving", lambda *_args, **_options: pytest.fail("model admitted"))
     root = Path(runtime.__file__).resolve().parent.parent
-    assert pi.launch(["--project", str(root)], say=lambda _line: None) == 2
+    assert pi.launch(["--sandbox", "--project", str(root)], say=lambda _line: None) == 2
 
 
 def test_actual_task_admission_helper_ignores_repository_imports_and_python_environment(hostile):

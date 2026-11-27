@@ -39,9 +39,8 @@ from poolhouse import (
 from poolhouse.board import place
 from poolhouse.isolation import confinement as choke_point, session_verbs
 from poolhouse.isolation.bounds import PASSED
-from poolhouse.isolation.refusals import SENTENCES, IsolationRefused
+from poolhouse.isolation.refusals import IsolationRefused
 from tests import isolation_kit as kit
-from tests.sandbox_kit import AbsentBackend
 
 pytest_plugins = ["node_kit", "delegate_kit", "tests.confined_kit"]
 CANNED = "[CANNED RESPONSE, NOT A MODEL]"
@@ -307,7 +306,7 @@ def editing(lead_node, detached, confinable, from_a_terminal, monkeypatch, tmp_p
         yield f"http://127.0.0.1:{server.server_port}", SimpleNamespace(serving=SimpleNamespace(slot_context=8192)), "canned.gguf"
 
     monkeypatch.setattr(delegate_confined, "leased", leased)
-    monkeypatch.setattr(delegate_confined.harnessing, "binary_for", lambda _name: str(script.resolve()))
+    monkeypatch.setattr(delegate_confined.harnessing, "binary_for", lambda _name, **_: str(script.resolve()))
     monkeypatch.setattr(delegate_confined.claude, "alias_of", lambda _url, _model: kit.MODEL)
     monkeypatch.setattr(lead_bridge, "POLL_S", 0.05)
     before = signal.getsignal(signal.SIGTERM)
@@ -442,20 +441,6 @@ def test_start_edit_without_a_project_edits_the_project_the_command_runs_in_and_
     assert started("--task", "edit things", "--edit") == 0
     [name] = agent_names(node, lead)
     assert store.load(name).source == str(project.resolve()) and asked == [""], "the default reach asks for no widening"
-
-
-@pytest.mark.parametrize("words", [["--edit"], []])
-def test_start_on_a_computer_that_cannot_confine_is_refused_at_once_with_the_sentence(lead_node, detached, from_a_terminal, monkeypatch, capsys, words):  # noqa: PLR0913
-    node, lead, project = lead_node
-    kit.without_a_sandbox(monkeypatch, AbsentBackend)
-    scratch = []
-    made = delegate.tempfile.mkdtemp
-    monkeypatch.setattr(delegate.tempfile, "mkdtemp", lambda **named: scratch.append(made(**named)) or scratch[-1])
-    assert started("--task", "do things", "--project", str(project), *words) == 2
-    assert started("--task", "do things with no folder") == 2
-    assert SENTENCES["no_sandbox_tool"] in said(capsys)
-    assert detached == [] and agent_names(node, lead) == [], "no agent is registered and nothing runs"
-    assert not [each for each in scratch if "poolhouse-delegate-" in each and Path(each).exists()], "the scratch folder of a refused start is removed"
 
 
 def test_start_edit_on_a_folder_the_gate_refuses_is_refused_at_once_with_its_reason(lead_node, detached, monkeypatch, capsys):
