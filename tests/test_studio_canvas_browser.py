@@ -11,10 +11,15 @@ import pytest
 from browser_expect import expect
 from studio_commands import studio_command, workflow_picker
 from test_fleet_ui import Serving
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: a real daemon reads this test's own node)
+    alone,
+    unfounded_node,
+)
 from web_assets import SimulatedDaemon, canned
 
-from poolhouse.fleet import studio_service
+from poolhouse.fleet import studio_service, tls
 
+pytest_plugins = ('testfarm_kit',)  # the `node_binary` fixture
 pytestmark = pytest.mark.slow
 
 SPECS = [
@@ -123,6 +128,17 @@ def saving_studio_page(tmp_path, studio_browser):
             yield journey
     finally:
         served.close()
+
+
+def studio_daemon(tmp_path):
+    """A real daemon, for a journey that tests the page and the server together, with a service identity under the test's folder
+    (a node's state under /tmp is reached through a link on macOS, which an identity is refused through)."""
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    served.ui.root = tmp_path / 'traind'
+    identity = tls.identity(tmp_path / 'tls-studio', 'studio')
+    served.ui.studio_identity = lambda: identity
+    return served
 
 
 def add(page, title):
@@ -254,11 +270,9 @@ def make_prompt_group(page):
     page.locator('.studio-group-back').click()
 
 
-def test_actual_catalogue_template_run_and_package_round_trip(tmp_path, studio_browser):
+def test_actual_catalogue_template_run_and_package_round_trip(tmp_path, studio_browser, alone):  # noqa: F811
     pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     served.files.joinpath('examples.jsonl').write_text('{"prompt":"Example","response":"Answer"}\n')
     try:
         with studio_browser() as page:
@@ -312,11 +326,9 @@ def hold_next_save(page):
     return pending, hold
 
 
-def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path, studio_browser):
+def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path, studio_browser, alone):  # noqa: F811
     pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     try:
         with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
@@ -357,11 +369,9 @@ def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path, studio_
         served.close()
 
 
-def test_actual_new_waits_for_pending_workflow_save(tmp_path, studio_browser):
+def test_actual_new_waits_for_pending_workflow_save(tmp_path, studio_browser, alone):  # noqa: F811
     pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     try:
         with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
@@ -425,11 +435,9 @@ def test_subtype_port_suggestions_and_inspector_connections(studio_page):
     assert not errors
 
 
-def test_actual_sweep_controls_save_typed_choices(tmp_path, studio_browser):
+def test_actual_sweep_controls_save_typed_choices(tmp_path, studio_browser, alone):  # noqa: F811
     pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     try:
         with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
@@ -470,11 +478,9 @@ def seed_report_artifact(served, source_id):
     })
 
 
-def test_actual_run_logs_and_declared_artifact_download(tmp_path, studio_browser):
+def test_actual_run_logs_and_declared_artifact_download(tmp_path, studio_browser, alone):  # noqa: F811
     pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     try:
         with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
