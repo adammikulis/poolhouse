@@ -73,6 +73,8 @@ def scene(tmp_path, workspace_node, monkeypatch):
     monkeypatch.setenv("POOLHOUSE_DEV_BRANCH", DEV)
     world = World(tmp_path, workspace_node)
     lead = workspace_node.member("sess1")
+    workspace_node.client.call("project_add", "", lead.token, id=workspace_node.board, kind="git",
+                               path=str(world.proj.root))   # a hook acts only in a project the node already knows
     tree = world.proj.branch(f"agent-{AGENT}", {"docs/a.md": "changed\n"})
     monkeypatch.chdir(tmp_path)
     return Scene(world, lead, tree)
