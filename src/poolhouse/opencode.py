@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -48,6 +49,7 @@ PROVIDER = "poolhouse"
 AGENT = "poolhouse"
 """The agent of a run that brings its own (`Setup.agent`)."""
 CONFIG = "opencode.json"
+SESSION_ID = re.compile(r"[A-Za-z0-9_-]+")
 PLUGIN = "bin/poolhouse-plugin"
 """The plugin's folder in the agent home: OpenCode loads a configured plugin only from a folder (a path to a file is dropped with a warning), and
 reads its `ENTRY`. It lies under ``bin``, which the box holds read-only as a whole, so a run cannot put a second entry beside ours."""
@@ -76,7 +78,8 @@ class Setup:
 def config(setup: Setup) -> str:
     """The ``opencode.json`` of one run: the provider, the one model with its window, the plugin, no sharing and no update, a tool's output cut at as
     many bytes as the window holds tokens (a quarter of it, so one call cannot fill it), and permissions that never ask (the classifier and the mount
-    decide)."""
+    decide). A reply's head is waited for as long as it takes: a request may wait its turn for a slot, and a long prompt is read for minutes, while
+    the release's own limit (300 s) would give both up."""
     base_url, alias, window = setup.served
     model: dict[str, Any] = {"name": alias, "tool_call": True, "limit": {"context": window, "output": min(window, 32768)}}
     if setup.thinking:
@@ -86,7 +89,8 @@ def config(setup: Setup) -> str:
                                                                                   "timeout": int(lead_bridge.tool_timeout() * 1000)}},
         "model": f"{setup.provider}/{alias}", "small_model": f"{setup.provider}/{alias}",
         "provider": {setup.provider: {"npm": "@ai-sdk/openai-compatible", "name": "poolhouse",
-                                      "options": {"baseURL": base_url.rstrip("/") + "/v1", "apiKey": setup.token}, "models": {alias: model}}},
+                                      "options": {"baseURL": base_url.rstrip("/") + "/v1", "apiKey": setup.token, "headerTimeout": False},
+                                      "models": {alias: model}}},
         "enabled_providers": [setup.provider], "plugins": [setup.plugin], "share": "disabled", "autoupdate": False}   # a path, to a folder
     if window:
         made["tool_output"] = {"max_bytes": window, "max_lines": window}
@@ -207,8 +211,19 @@ until [ "$(printf 'user = "opencode:%s"\\n' "$OPENCODE_PASSWORD" |
   if [ "$tries" -gt 300 ]; then echo "poolhouse: the OpenCode server did not start" >&2; kill "$server" 2>/dev/null; exit 1; fi
   sleep 0.1
 done
-binary=$1 port=$2
-shift 4
+binary=$1 port=$2 socket=$3 session=$5 body=$6
+shift 6
+if [ -n "$session" ]; then
+  # A conversation names the folder of the box it was held in, which this box may not read: it is moved to this one before `run` takes it up.
+  # One this server does not hold (404) is one `run` makes.
+  code=$(printf 'user = "opencode:%s"\\n' "$OPENCODE_PASSWORD" |
+    /usr/bin/curl -q -s -o /dev/null -w '%{http_code}' --noproxy '*' ${socket:+--unix-socket "$socket"} --max-time 180 -K - \\
+      -H 'content-type: application/json' --data "$body" "http://127.0.0.1:$port/api/session/$session/move")
+  case $code in
+    2??|404) ;;
+    *) echo "poolhouse: the conversation could not be moved to this copy of the project (HTTP $code)" >&2 ;;
+  esac
+fi
 "$binary" run --server "http://127.0.0.1:$port" "$@"
 status=$?
 kill "$server" 2>/dev/null
@@ -216,14 +231,26 @@ exit "$status"
 """
 
 
-def argv_of(binary: str, alias: str, extra: Sequence[str], socket: str = "", preload: str = "") -> tuple[str, ...]:
+def taken_up(extra: Sequence[str]) -> str:
+    """The id of the conversation the words of ``run`` take up, empty when they name none, or one that is no id (it goes into the server's path)."""
+    words = iter(extra)
+    for word in words:
+        flag, joined, value = word.partition("=")
+        if flag in ("--session", "-s"):
+            value = value if joined else next(words, "")
+            return value if SESSION_ID.fullmatch(value) else ""
+    return ""
+
+
+def argv_of(binary: str, alias: str, extra: Sequence[str], directory: str, through: tuple[str, str] = ("", "")) -> tuple[str, ...]:
     """The command line of one run. ``opencode run`` has no mode without a server, and its own private one (`--standalone`) listens on a port the
     operating system picks, which the box cannot grant. So the confined process starts ``opencode serve`` on `SERVER_PORT` and runs ``opencode run
-    --server`` against it, behind the password the bridge token gives both; with ``socket`` and ``preload`` (the file of `through_socket`) the two
-    meet on that Unix socket and no port is bound. The binary's own folder leads ``PATH``: the ripgrep kept beside it is the one the search tools
-    run."""
-    return ("/bin/sh", "-c", SERVE, "opencode", binary, str(SERVER_PORT), socket, preload, "--format", "json", "--model", f"{PROVIDER}/{alias}",
-            *extra)
+    --server`` against it, behind the password the bridge token gives both; with ``through`` (a Unix socket, and the file of `through_socket` for it)
+    the two meet on that socket and no port is bound. The binary's own folder leads ``PATH``: the ripgrep kept beside it is the one the search tools
+    run. A conversation ``extra`` takes up (`taken_up`) is first moved to ``directory``, this box's copy of the project: it was held in another
+    box's, which this one may not read."""
+    return ("/bin/sh", "-c", SERVE, "opencode", binary, str(SERVER_PORT), *through, taken_up(extra), json.dumps({"directory": directory}),
+            "--format", "json", "--model", f"{PROVIDER}/{alias}", *extra)
 
 
 def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], settings: Mapping[str, Any],
@@ -236,17 +263,17 @@ def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], 
                  [server["command"], *server["args"]], families.for_model_id(alias).think_kwargs(False), setup.brief, setup.agent)
     written = {f".opencode-config/{CONFIG}": config(made),
                f"{PLUGIN}/{ENTRY}": plugin({"hook": context.client_argv("hook"), "root": context.stage, **settings}), **files}
-    preload = ""
+    through = ("", "")
     if context.server_socket:
         written[SOCKET_PRELOAD] = through_socket(context.server_socket)
-        preload = str(context.file(SOCKET_PRELOAD))
+        through = (context.server_socket, str(context.file(SOCKET_PRELOAD)))
 
     def noted(lacks: str) -> dict[str, str]:
         """The config again, with what the box lacks at the end of the agent's own system prompt."""
         agent = {**made.agent, "system": f"{made.agent['system']}{lacks}\n"}
         return {f".opencode-config/{CONFIG}": config(replace(made, agent=agent))}
 
-    return isolation.Rendering(argv_of(binary, alias, extra, context.server_socket, preload), written, serves=True,
+    return isolation.Rendering(argv_of(binary, alias, extra, context.stage, through), written, serves=True,
                                noted=noted if made.agent else None)
 
 

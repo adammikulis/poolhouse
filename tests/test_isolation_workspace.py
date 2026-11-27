@@ -7,8 +7,10 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import textwrap
 import time
+from pathlib import Path
 
 import pytest
 
@@ -234,6 +236,28 @@ def test_the_restore_directory_is_in_no_grant_of_the_launchers_profile(project, 
     restored = str(session.restores.directory)
     assert session.patches in granted, "the session reads its refused patches"
     assert not [path for path in granted if restored == path or restored.startswith(path.rstrip("/") + "/") or path.startswith(restored)], "and never the kept versions"
+
+
+COMMAND_LINE_PYTHON = Path("/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/Current")
+"""Apple's own framework build of Python, which the command-line developer tools install."""
+
+
+def test_the_proof_passes_with_a_framework_interpreter_outside_the_system_trees(tmp_path, monkeypatch, seatbelt):  # noqa: F811
+    """A framework build's `python` hands on to the app binary beside it, as the Python of python.org's installer and of a CI runner does. The one
+    used here is Apple's, with the system toolchain taken out of the profile, so only the interpreter's own grants reach it."""
+    from poolhouse.isolation import profile, proof
+    from tests.isolation_kit import world
+
+    if not COMMAND_LINE_PYTHON.is_dir():
+        pytest.skip("this computer has no command-line developer tools with a framework build of Python")
+    version = os.path.realpath(COMMAND_LINE_PYTHON)
+    for name, value in (("executable", f"{version}/bin/python3"), ("prefix", version), ("base_prefix", version)):
+        monkeypatch.setattr(sys, name, value)
+    monkeypatch.setattr(profile, "system_toolchain", lambda: ())
+    monkeypatch.setattr(tempfile, "tempdir", None)   # the proof's socket needs a shorter path than this module's private storage
+    with world(tmp_path) as w:
+        done = proof.run(w.profile, w.services, lan=False)
+    assert all(line.ok for line in done.lines), done
 
 
 def test_the_refused_patch_directory_and_the_environment_links_are_read_only_to_the_session_in_the_stage_mode_and_across_epoch_rotation_under_the_real_seatbelt(project, tmp_path, seatbelt):  # noqa: F811

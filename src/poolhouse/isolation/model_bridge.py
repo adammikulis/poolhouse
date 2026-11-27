@@ -4,11 +4,13 @@ A parent-run HTTP/1.1 service on a loopback port of its own, one per session. It
 every other path 404 itself, so llama-server's slot, props, tool, metrics and adapter routes are not reachable; it reads the request with
 the strict reader of `wire` and writes the request upstream itself, so the session's bytes are never the server's; it pins the model to
 the leased alias; and it swaps the session's token for the server's key, which never leaves the parent. The server's own port is in no
-profile. Responses pass through as bytes, never parsed for anything but their framing.
+profile. Responses pass through as bytes, never parsed for anything but their framing. No more requests are with the server than it has slots:
+the others wait their turn, each for as long as its client stays, and a client that goes away leaves the line or frees its slot at once.
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -19,7 +21,7 @@ import socket
 import threading
 import time
 import traceback
-from collections import Counter
+from collections import Counter, deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import urlsplit
@@ -52,10 +54,8 @@ MEDIA = frozenset({"image_url", "image", "input_image", "input_audio", "audio", 
 """The content parts that carry a picture, a sound, a video or a file: each is read for a place the server could fetch from."""
 LOCATIONS = ("image_url", "audio_url", "video_url", "file_url", "url")
 DEPTH = 24
-SLOT_WAIT_SECONDS = 2.0
-"""How long a request waits for a slot before it is answered 429 with `Retry-After`: the time one parallel request of a harness may overlap another's
-end. A bounded wait on the server's own capacity, never on a person."""
-RETRY_AFTER = 2
+LEFT = 499
+"""The status counted for a request whose client went away before it was answered; nothing is written to it."""
 ANSWERED = ("content-type", "content-length", "cache-control")
 """The response fields passed on; the transfer coding is passed on only as `chunked`."""
 BEARER = re.compile(r"[Bb][Ee][Aa][Rr][Ee][Rr] +(\S+)")
@@ -67,7 +67,6 @@ MESSAGES = {
     "type": "The body must be sent as application/json.",
     "auth": "The token is not this session's.",
     "route": "No such route.",
-    "busy": "The model is answering as many requests as it has room for; ask again in a moment.",
     "remote": "A picture, a sound or a file must be sent as its own bytes (a data: URL), never as an address.",
     "down": "The model server did not answer.",
     "length": "A request with a body states its length.",
@@ -159,6 +158,61 @@ class Totals:
     seconds: float = 0.0
 
 
+class _Turns:
+    """The model server's slots, handed to requests in the order they asked for one. A request waits for its turn for as long as its client stays:
+    nothing else ends the wait but the bridge's stop, and the server is never asked for more than it has slots."""
+
+    def __init__(self, slots: int) -> None:
+        self._free, self._closed = max(1, slots), False
+        self._line: deque[socket.socket] = deque()
+        """For each request that waits, the oldest first, the socket a byte written to ends its wait."""
+        self._lock = threading.Lock()
+
+    def take(self, client: socket.socket) -> bool:
+        """Wait for a slot; False when ``client`` has gone, or the bridge has stopped, before there was one for it."""
+        with self._lock:
+            if self._closed:
+                return False
+            if self._free:
+                self._free -= 1
+                return True
+            woken, wake = socket.socketpair()
+            self._line.append(wake)
+        with woken, wake:
+            stayed = False
+            try:
+                stayed = _next(client, woken) is not None
+            finally:
+                given = self._leave(wake, stayed)
+        return given
+
+    def _leave(self, wake: socket.socket, stayed: bool) -> bool:
+        """Take one request out of the wait; whether it goes on with a slot. One given a slot as its client went hands it on."""
+        with self._lock:
+            if wake in self._line:
+                self._line.remove(wake)
+                return False
+            if self._closed:
+                return False
+        if not stayed:
+            self.release()
+        return stayed
+
+    def release(self) -> None:
+        with self._lock:
+            if self._line:
+                self._line.popleft().send(b"1")
+            else:
+                self._free += 1
+
+    def close(self) -> None:
+        """End every wait, with no slot."""
+        with self._lock:
+            self._closed = True
+            while self._line:
+                self._line.popleft().send(b"0")
+
+
 class ModelBridge:
     """The bridge of one session: ``start()`` binds a loopback port and ``token`` is what the harness holds; the server's key stays here."""
 
@@ -170,10 +224,12 @@ class ModelBridge:
         self.alias, self.window, self.limit, self.idle, self.events = lease.alias, int(lease.window), int(lease.window) * 4, idle, events
         self.token = secrets.token_urlsafe(32)
         self._key = key
-        self._slots = threading.BoundedSemaphore(max(1, int(lease.slots)))
+        self._turns = _Turns(int(lease.slots))
         self._totals = Totals(Counter(), Counter())
         self._lock = threading.Lock()
         self._busy = 0
+        self._upstreams: set[socket.socket] = set()
+        self._stopped = False
         self._server = Server(socket.AF_INET, ("127.0.0.1", 0), self._connection,
                               stopped=lambda: tell(self.events, "model-bridge", "isolation.service_stopped"))
         self.port = 0
@@ -187,6 +243,13 @@ class ModelBridge:
         return self.port
 
     def stop(self) -> None:
+        """End every wait for a slot and every request that is with the server, and stop serving."""
+        self._turns.close()
+        with self._lock:
+            self._stopped = True
+            for upstream in self._upstreams:
+                with contextlib.suppress(OSError):
+                    upstream.shutdown(socket.SHUT_RDWR)
         self._server.stop()
 
     def busy(self) -> int:
@@ -251,12 +314,12 @@ class ModelBridge:
         with self._lock:
             self._busy += 1
         try:
-            if not self._slots.acquire(timeout=min(self.idle, SLOT_WAIT_SECONDS)):
-                raise wire.Refusal(429, MESSAGES["busy"], (("Retry-After", str(RETRY_AFTER)),))
+            if not self._turns.take(sock):
+                return LEFT, 0
             try:
                 return self._relay(sock, head, path, body)
             finally:
-                self._slots.release()
+                self._turns.release()
         finally:
             with self._lock:
                 self._busy -= 1
@@ -293,19 +356,30 @@ class ModelBridge:
         except OSError:
             raise wire.Refusal(502, MESSAGES["down"]) from None
         with upstream:
-            upstream.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1") + body)
-            upstream.settimeout(None)
-            return self._pass(client, upstream)
+            with self._lock:
+                if self._stopped:
+                    return LEFT, 0
+                self._upstreams.add(upstream)
+            try:
+                upstream.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1") + body)
+                upstream.settimeout(None)
+                return self._pass(client, upstream)
+            finally:
+                with self._lock:
+                    self._upstreams.discard(upstream)
 
     def _pass(self, client: socket.socket, upstream: socket.socket) -> tuple[int, int]:
-        raw, ended = bytearray(), False
+        """Pass the server's answer on as it comes. The client is watched from the first byte awaited, which for a long prompt is minutes: once it
+        has gone the connection to the server is closed, so the server stops working for it and the slot is free."""
+        raw = bytearray()
         while (end := raw.find(b"\r\n\r\n")) < 0:
-            if len(raw) > wire.MAX_HEAD or not (more := upstream.recv(65536)):
-                ended = True
-                break
+            if len(raw) > wire.MAX_HEAD:
+                raise wire.Refusal(502, MESSAGES["down"])
+            if (more := _next(client, upstream)) is None:
+                return LEFT, 0
+            if not more:
+                raise wire.Refusal(502, MESSAGES["down"])
             raw.extend(more)
-        if ended:
-            raise wire.Refusal(502, MESSAGES["down"])
         status, fields = _answer_head(bytes(raw[:end]))
         rest = bytes(raw[end + 4:])
         sent = wire.send(client, _compose(status, fields))
@@ -317,18 +391,8 @@ class ModelBridge:
                 if not wire.send(client, rest):
                     break
                 sent += len(rest)
-            if remaining == 0:
+            if remaining == 0 or not (rest := _next(client, upstream)):
                 break
-            with selectors.DefaultSelector() as watch:
-                watch.register(upstream, selectors.EVENT_READ)
-                watch.register(client, selectors.EVENT_READ)
-                ready = {key.fileobj for key, _ in watch.select()}
-            if client in ready and not _discard(client):
-                break
-            if upstream in ready:
-                rest = upstream.recv(65536)
-                if not rest:
-                    break
         return status, sent
 
 
@@ -353,6 +417,19 @@ def _compose(status: int, fields: dict[str, str]) -> bytes:
     lines = [f"HTTP/1.1 {status} {wire.reason(status)}", "Connection: close"]
     lines += [f"{name.title()}: {value}" for name, value in fields.items()]
     return ("\r\n".join(lines) + "\r\n\r\n").encode("latin-1")
+
+
+def _next(client: socket.socket, source: socket.socket) -> bytes | None:
+    """What ``source`` says next (empty at its end), waited for as long as ``client`` stays; None once the client has gone."""
+    with selectors.DefaultSelector() as watch:
+        watch.register(source, selectors.EVENT_READ)
+        watch.register(client, selectors.EVENT_READ)
+        while True:
+            ready = {key.fileobj for key, _ in watch.select()}
+            if client in ready and not _discard(client):
+                return None
+            if source in ready:
+                return source.recv(65536)
 
 
 def _discard(sock: socket.socket) -> bool:
