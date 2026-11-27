@@ -154,11 +154,10 @@ class TestHook:
                      env={"POOLHOUSE_ROLE": "guarded", "POOLHOUSE_GUARD": "off"})
         assert _verdict(done)["permissionDecision"] == "deny"
 
-    def test_a_hook_that_fails_blocks_the_call(self):
+    def test_a_hook_that_fails_internally_does_not_block_the_call_and_logs_it(self):
         done = _hook("pre", "not json", "--permissions", "guarded")
-        assert done.returncode == 2
-        assert _verdict(done)["permissionDecision"] == "deny"
-        assert "diagnostic=" in done.stdout
+        assert (done.returncode, done.stdout) == (0, "")
+        assert "did not block the call" in done.stderr and "diagnostic=" in done.stderr
 
     def test_the_post_hook_warns_without_blocking_when_nudge_is_missing(self, monkeypatch):
         monkeypatch.setenv("PATH", "/nonexistent")
