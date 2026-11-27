@@ -128,7 +128,8 @@ def test_guarded_numeric_loopback_has_no_ambient_proxy(monkeypatch, host, direct
     url = f'https://{host}:16443/status'
     http._open(http.build_request(url), 1, lambda value: guarded.append(value) or value)
     proxy = [handler for handler in seen if isinstance(handler, urllib.request.ProxyHandler)]
-    assert bool(proxy) is direct
+    # every name of this computer goes straight there, `localhost` and the short spelling too; the guard is asked early only for a numeric one
+    assert bool(proxy) is (direct or host in ('localhost', '127.1'))
     assert not proxy or proxy[0].proxies == {}
     assert guarded == ([url] if direct else [])
 

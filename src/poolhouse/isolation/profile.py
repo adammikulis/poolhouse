@@ -18,6 +18,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from poolhouse import secretpaths
 from poolhouse.coding_workspace_state import CONTROL_PREFIXES
 from poolhouse.isolation import toolchain
 from poolhouse.isolation.grants import Grant
@@ -49,6 +50,21 @@ class Profile:
     harness: str = ""
     interactive: bool = False
     read_only: bool = False
+
+    def refuses_write(self, path: str) -> bool:
+        """Whether this profile lets nothing write ``path`` (absolute): it is in no tree a session writes, or in one the profile freezes there.
+        Links are followed, as the box follows them; a device is nobody's file."""
+        real = os.path.realpath(path)
+        if real.startswith("/dev/"):
+            return False
+
+        def folded(each: str) -> tuple[str, ...]:
+            return tuple(secretpaths.fold(part) for part in Path(each).parts)
+
+        def within(trees: Sequence[str]) -> bool:
+            return any(folded(real)[:len(root)] == root for root in (folded(os.path.realpath(tree)) for tree in trees))
+
+        return within(self.policy.deny_write) or not within(self.policy.write)
 
 
 def interpreter_reads() -> tuple[str, ...]:

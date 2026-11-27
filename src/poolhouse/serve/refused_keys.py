@@ -14,11 +14,12 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from poolhouse.client.health import refuses_key
+from poolhouse.listening import listens_on
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.leases import recorded_servers, same_process
 from poolhouse.serve.matching import model_matches
 from poolhouse.serve.ports import DEFAULT_HOST
-from poolhouse.serve.process import kill_process_tree, listens_on, pid_exists, request_on
+from poolhouse.serve.process import kill_process_tree, pid_exists, request_on
 
 if TYPE_CHECKING:
     from poolhouse.serve.broker import Broker

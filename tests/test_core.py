@@ -18,6 +18,7 @@ import pytest
 from poolhouse import core, serverkeys
 from poolhouse.client.health import is_healthy
 from poolhouse.files import sha256_file
+from poolhouse.listening import listens_on
 from poolhouse.serve import admission, backend as backend_module, binary as binary_module
 from poolhouse.serve.backend import Lease, LlamaServerBackend, ServerSpec
 from poolhouse.serve.binary import BinaryTampered
@@ -25,7 +26,7 @@ from poolhouse.serve.build_paths import BuildFailed
 from poolhouse.serve.grant import NoGrant
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.policy import LocalPolicy
-from poolhouse.serve.process import listens_on, pid_exists
+from poolhouse.serve.process import pid_exists
 from poolhouse.testing.canned import CANNED_MODEL_ID, canned_binary
 from tests.binary_fetch_guard import no_build_is_made_or_fetched  # noqa: F401  (an autouse fixture)
 

@@ -15,6 +15,7 @@ import secrets
 import signal
 import subprocess
 import threading
+import urllib.parse
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -127,6 +128,8 @@ def run(how: harnessing.Harness, session: harnessing.Session, render: Callable[[
             files.write(name, text)
         helper = session.session
         env = environment(os.environ, helper.name if getattr(helper, "minted", False) else "", made, how.extras)
+        if urllib.parse.urlsplit(base_url).hostname in serverkeys.LOOPBACK:
+            env.update(serverkeys.unproxied(env.get("NO_PROXY", ""), env.get("no_proxy", "")))
         direct = Direct(made.argv, env, session.cwd)
         try:
             yield direct

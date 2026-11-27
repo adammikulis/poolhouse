@@ -14,6 +14,23 @@ poolhouse-claude --on http://127.0.0.1:8080 --permissions read-only -- -p "expla
 poolhouse-claude --sandbox -- -p "fix the failing test"
 ```
 
+### A server already up (`--on`)
+
+`--on URL` names a server that is running; it is left running. A server that asks for no key is used as it answers. A key this computer holds
+goes only to a server it can show is the one it started (`poolhouse.serve.named`), which takes all of: the address written as
+`http://127.0.0.1:PORT` (or `localhost`, `[::1]`), with no user name, query or backslash; a lease record for the port whose process is still the
+same one (start time and command line); the key bound to that process; and that process listening on the port at the address asked. It is then
+used at that address, so `localhost` cannot lead to another process on the other loopback address. Where a key is bound to the port and any of
+these cannot be shown, nothing is asked of the address and the launch fails saying which. A server that refuses a request and is given no key
+(one an earlier build left up, or one on another computer) fails the same way, with why, and so does text that is no http address. A project's
+files set none of this.
+
+Every key sent anywhere (`serverkeys.for_url`) has the same two conditions: the process the key was bound to, by its number and start time, still
+runs, and it listens on exactly the address the URL names (a listener on every address does not count, and `localhost` needs both loopback
+addresses; Poolhouse's own client sends a `localhost` request to `127.0.0.1` when a keyed server holds it). A key bound with no start time, as an
+earlier build bound it, is sent nowhere. No request of `poolhouse.http` to this computer goes through a proxy, whatever the environment says, and
+a harness run in place has this computer's names added to `NO_PROXY`.
+
 ## In place
 
 Nothing of the person's or the project's configuration is written. What points a run at the model is on its command
@@ -211,8 +228,24 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
 - **Processes.** A command signals the processes of its own box (grandchildren and ones that left their group among them) and no other, and
   every one of them ends with the session.
 
-A run that called an editing tool, or a shell line that asks to change files (`delegate_confined.writes`: a redirect, a program that changes
-files, an edit in place, a git command that changes the tree), and applied nothing ends `unapplied`.
+A run that called an editing tool, or a shell line that asks to change files (`delegate_refusals.writes`, the guard's own reading of a line,
+`guard.unboxed.written`: redirects, the programs that change files, through `sh -c`, `sudo`, `xargs` and `find -delete`, `curl -o`, a git
+command that changes the tree or a configuration), and applied nothing ends `unapplied`.
+
+**A refused write** (`poolhouse.delegate_refusals`) of a delegate that edits ends the run `partial`, or `unapplied` when nothing was applied,
+whatever the model says of it. The result lists each under `refused_writes` (path, tool, `sandbox` or `rules`), and `detail`, `status`, `result` and
+the lead's notice say how many and the first paths. It is decided from the harness's tool events and the hook's answers:
+
+- by the sandbox: a call that writes a path the box lets nothing write (`Profile.refuses_write`) and says it could not. A shell line: a line of
+  its output carries the system's refusal (`Operation not permitted`, `Permission denied`, `Read-only file system`) and names that path. `edit` or
+  `write`: the same, or the release's own first line for a failed write (`Unable to write PATH`, `Unable to edit PATH`);
+- by Poolhouse's tool rules: a call that writes which the hook denied, unless an `edit` or `write` later completed on the same path (how a shell
+  line ended is not told, so none takes a refusal back). A denied call that writes no file (a credential read, a force push) is none. With no
+  sandbox the run is `unapplied` when no writing call went through at all.
+
+A command or an edit that merely fails (tests, a search with no match, an `oldString` that is not there) is no refused write. Not seen: a write a
+program makes without the shell line naming it (`python3 -c`), a sandbox refusal whose message the command hid (`2>/dev/null`) and a path held in
+a variable.
 
 ### The workspace
 
@@ -309,11 +342,80 @@ whose parent has already ended is not recognised as the delegate's (docs/design-
 
 ```
 poolhouse-delegate start --task "list the python files here and say what each does" [--project DIR] [--name LABEL] [--edit] [--max-turns N] [--model ID] [--as AGENT]
+                         [--kind WORD] [--review-rounds N | --no-review] [--resumes N] [--in-place] [--wait]
 poolhouse-delegate warm [--model ID] [--edit]
+poolhouse-delegate wait NAME
 poolhouse-delegate status [NAME]
 poolhouse-delegate result NAME
 poolhouse-delegate stop NAME
+poolhouse-delegate grade NAME correct|partly|wrong|unusable --critique TEXT [--check "RUN => SAW"] [--survived PERCENT] [--as AGENT]
+poolhouse-delegate record NAME
+poolhouse-delegate summary [--model TEXT] [--kind WORD] [--json]
 ```
+
+### The delegate's own worktree and branch
+
+`start --edit` on the root of a git project with a commit needs nothing else from the lead (`poolhouse.delegate_tree`): the launcher adds a worktree
+beside the project (`PROJECT-NAME`) on a new branch `delegate/NAME` at the project's commit, and the delegate works there. The lead's checkout and
+git configuration are not written, and its uncommitted files are not in the worktree (`start` says how many). When the run ends `done` or `partial`,
+what was applied is committed there, each file by name, as the delegate (`NAME@poolhouse.invalid`), with no repository hook and no signature, so the
+project's hooks have not run on it. The lead's notice says a review is waiting and names the branch and commit. Nothing is merged or pushed: the
+session that started the delegate reviews the branch, grades it (`grade`, an entry of its own beside the self-check's) and lands it. A run that is
+rejected, fails or is stopped keeps its patch, and its worktree and branch are removed; so is a worktree after a commit. If the runner's process is
+gone, `stop NAME` removes what it left. `--in-place` changes the project folder itself instead; a project with no commit is also changed in place.
+
+`--wait` returns when the delegate ends (its result and exit status) or asks something (status 3); `wait NAME` does the same for one already
+started. Run either in the background and the harness that runs it is woken then; the board message reaches the lead either way.
+
+### Self-check before delivery
+
+On by default (`--no-review` turns it off; `warm` never runs it), `poolhouse.delegate_review`. When the work pass ends without an error, a reviewer
+runs on the same served model in a new session with none of the worker's conversation, one pass at a time on the one model slot. It is told the task
+and, for a delegate that edits, the change (else the answer), reads the project with the change in it, and is told to assume the work is wrong and
+prove it: run the tests it can, search for missed references, check every claim, look for weakened or deleted tests and unrelated edits. It has
+`read`, `glob`, `grep` and, for a sandboxed delegate that edits, a `shell` in a copy that is thrown away; no editing tool and no way to the lead.
+A change of an instruction or settings file (`AGENTS.md`, `CLAUDE.md`, `.opencode`, ...) is shown to it as text and left out of its copy, so the
+work cannot instruct its own reviewer.
+
+- **Verdict.** The reviewer's final text must end with one JSON object holding a token made for that review after the work was done and told to that
+  reviewer only, so no verdict written into the project or the worker's output counts. `accept` needs an empty findings list, at least one check
+  and at least one tool call the launcher saw; `reject` needs a finding. A reviewer that fails, reaches 100 turns, shows no progress or ends with
+  anything else gives no verdict, which never accepts; the next round is a new reviewer. A model can still be talked into accepting by text it
+  reads: the self-check is a filter, not a proof, and never a grade.
+- **Rounds.** A rejection starts a fix pass (the worker's tools and prompt, the task and the findings, a session of its own), then a new reviewer,
+  up to `--review-rounds` reviews (default 3, at most 20). A fix pass that fails ends the loop.
+- **Publication.** The work's confinement holds the change and publishes nothing, not at a turn the box says has ended either, until a reviewer
+  accepts. Each review and fix is a confinement of its own over the project, given the held change before its harness starts; a fix's changes are
+  carried back into the held stage. A change never accepted applies nothing and is kept as a patch; the run ends `rejected` with the open findings
+  in `result`, in `status` and in the lead's notice.
+- **With no sandbox** the change is already in the folder and nothing can hold it back: the reviewer only reads (for a delegate that edits, a copy
+  of the folder with each instruction and settings file as it was before), runs no test, and a rejected run says the changes are in the folder and
+  keeps `rejected.patch` in the delegate's folder.
+
+### An interrupted run
+
+A pass that something outside its task broke off is continued (`poolhouse.delegate_resume`): the harness reported an error (its model's server gone
+or restarted, a lost connection), crashed, or went silent while the server did not answer. A stop, a limit of turns or resources, a missing plugin
+and an answer cut at its length are not interruptions. The files it had changed stay in the held work, its conversation (the harness's data folder,
+plain files only) is carried into the next attempt, and the attempt starts once the model answers: the model is leased again while it does not, for
+up to 900 seconds (`ANSWER_WAIT_S`). A harness that cannot take the conversation up starts a new one told what the last said. Up to `--resumes`
+attempts (default 3, 0 for none) share the pass's limit of turns. Each broken attempt is in the record with what broke it. A run that cannot be
+continued ends `failed` (a fix: `rejected`) with the reason, applies nothing and keeps the patch. The runner's own process ending (a restart of the
+computer) is not covered.
+
+### The grading record
+
+Every run keeps one record in its folder (`grading.json`, `poolhouse-delegate record NAME`), which `stop` and the end of a run never remove: the
+task and its kind (`--kind`, else `edit` or `read`), the model file and serving settings, the tier, the project and its starting commit, the files
+that differed from that commit when it started (copied under `start/`, credential names aside, at most 32 MB), times, tokens, publication, each pass
+and one list of entries in one shape: every self-check round (`kind` `self-check`) beside the grades others add (`kind` `grade`).
+
+- `grade` takes a verdict, a critique, the checks run (a grade with none is `unverified`) and how much of the change survived. The run's own session,
+  one it started and any session on the run's own model are refused; a session with no recorded model is not.
+- `summary` counts, by model and task kind (warming runs aside): runs and how they ended, how many the self-check accepted, the latest checked grade
+  of each run, runs with only unchecked grades, the mean time and the success rate (`correct` of checked grades; the self-check never counts).
+- To replay a run: check its commit out in a folder of its own, copy `start/` over it, remove the names the record lists as deleted, and `start` the
+  recorded task there with the recorded model, tier and settings.
 
 - **Start.** The agent is registered on the lead's board as a subagent of the session that runs the command (`--as AGENT`
   names another), is named by the node and runs detached; `start` prints its name and returns at once. The model is the one
@@ -395,8 +497,9 @@ poolhouse-delegate stop NAME
   the final text inside a fence as data, with turns, tokens read (and from cache), tokens written and wall time; the text
   is the agent's words, never an instruction. `status` lists each agent with its state: `starting`, `loading`, `working`,
   `asking` (waiting on the lead), `done`, `partial` (some changes applied, others refused, in conflict or not published), `unapplied`
-  (it tried to change files and nothing was applied), `failed` or `stopped`. Only `done` makes `result` exit 0.
-- **Files.** `~/.poolhouse/delegates/NAME/` holds `record.json`, `status.json`, `result.json` and `log`.
+  (it tried to change files and nothing was applied), `rejected` (the self-check never accepted it), `failed` or `stopped`. Only `done` makes
+  `result` exit 0. `status` names the phase and round of a running delegate; `result` lists each pass with its time and tokens.
+- **Files.** `~/.poolhouse/delegates/NAME/` holds `record.json`, `status.json`, `result.json`, `grading.json`, `start/` and `log`.
 
 ## What is not covered
 
