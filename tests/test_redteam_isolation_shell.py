@@ -27,7 +27,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import coding_policy, harnesshook, isolation, opencode, sandbox
-from poolhouse.isolation import history
+from poolhouse.isolation import history, toolchain
 from poolhouse.isolation.notices import Notice
 from poolhouse.isolation.reports import Reporter
 from tests.isolation_kit import MODEL, Canned
@@ -454,6 +454,30 @@ def test_the_box_looks_up_its_user_and_groups_and_reaches_no_other_directory_ser
     assert "OPEN " not in out and out.count("shut ") == 5, out
 
 
+def test_apples_git_runs_for_every_program_of_the_box_whatever_environment_it_is_given(box):
+    """A program that names `/usr/bin/git`, or runs `git` with its own short `PATH` or no environment at all, as a test suite does: Apple's
+    selector finds the command-line developer tools, with nothing set for it."""
+    python = shlex.quote(os.path.realpath(sys.executable))
+    out, _, confinement = shelled(box, f"""\
+        /usr/bin/env -i /usr/bin/git init -q "$TMPDIR/made" && echo "absolute path runs"
+        /usr/bin/env -i PATH=/usr/bin:/bin git -C "$TMPDIR/made" status --short && echo "short path runs"
+        {python} -I -c 'import os, subprocess; subprocess.run(["git", "--version"], env={{"PATH": os.defpath}}, check=True)' && echo "subprocess runs"
+        /usr/bin/xcrun --find git
+        tried selected 'ls /var/db/xcode_select_link/usr'
+        tried write-selection 'ln -sfh /tmp /var/db/xcode_select_link'
+        """)
+    assert all(each in out for each in ("absolute path runs", "short path runs", "subprocess runs", "git version")), out
+    assert "/Library/Developer/CommandLineTools/usr/bin/git" in out and "shut write-selection" in out, out
+    assert confinement.said() == [], confinement.said()
+
+
+def test_the_preflight_finds_a_git_that_a_program_with_no_environment_cannot_run(box, monkeypatch):
+    monkeypatch.setattr(toolchain, "developer_selection", lambda: ())
+    _, _, confinement = shelled(box, "true\n")
+    said = " ".join(confinement.said())
+    assert "git does not show the project" in said and "env -i" in said and "xcode-select" in said, said
+
+
 def test_what_the_box_has_of_the_systems_programs(box):
     out, _, _ = shelled(box, """\
         tried system-python '/usr/bin/python3 -c pass'
@@ -464,6 +488,7 @@ def test_what_the_box_has_of_the_systems_programs(box):
         git init -q probe && git -C probe status >/dev/null && echo "git runs"
         """)
     assert "git runs" in out and "OPEN zsh" in out and "OPEN python3" in out and "quiet-shell=[ok]" in out, out
-    assert "shut system-python" in out, f"Apple's /usr/bin/python3 is a shim that does not run in the box (docs/design-isolated-launcher.md): {out}"
+    selected = Path("/Library/Developer/CommandLineTools/usr/bin/python3").is_file()
+    assert ("OPEN system-python" in out) == selected, f"Apple's /usr/bin/python3 runs the command-line tools' own (docs/design-isolated-launcher.md): {out}"
     if Path("/opt/homebrew/bin/python3").exists():
         assert "python3=/opt/homebrew/bin/python3" in out, out

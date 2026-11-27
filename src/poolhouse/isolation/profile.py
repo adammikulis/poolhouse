@@ -75,7 +75,7 @@ def interpreter_reads() -> tuple[str, ...]:
 
 
 def _git_directory() -> tuple[str, ...]:
-    """The directory of a git a confined shell can run: not Apple's `/usr/bin/git`, a shim that asks a service the profile refuses."""
+    """The directory of a git a confined shell runs first: not Apple's `/usr/bin/git`, a selector that only hands on to another one."""
     found = shutil.which("git")
     real = os.path.realpath(found) if found else ""
     return (str(Path(real).parent),) if real and real != "/usr/bin/git" else ()
@@ -88,6 +88,7 @@ def _digest(policy: Policy, grants: Sequence[Grant], spec: Spec) -> str:
             "net": [policy.net.mode.value, policy.net.ports, policy.net.listen, policy.net.accept], "env": sorted(policy.env), "strict": policy.strict,
             "preferences": policy.preferences, "user_records": policy.user_records,
             "deny_write": policy.deny_write, "unix_sockets": policy.unix_sockets, "signal_children": policy.signal_children,
+            "read_metadata": policy.read_metadata,
             "limits": [policy.limits.processes, policy.limits.wall_seconds, policy.limits.cpu_seconds, policy.limits.file_bytes,
                        policy.limits.open_files], "gpu": policy.gpu,
             "grants": sorted(f"{grant.kind}:{grant.subject}:{grant.fingerprint}" for grant in grants)}
@@ -110,6 +111,7 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
                                               *_git_directory(), *spec.environments, *own])),
                     net=Net.only(*ports, listen=spec.listen, accept=spec.window), env=dict(env or {}), strict=True, signal_children=True, preferences=PREFERENCES.get(spec.harness, ()), user_records=True,
                     unix_sockets=tuple(each for each in (spec.session_socket, spec.window_socket) if each),
+                    read_metadata=toolchain.developer_selection(),
                     deny_write=(*(str(Path(spec.stage) / name) for name in (*CONTROL_PREFIXES, GIT_DIRECTORY)), *spec.frozen),
                     limits=limits or Limits(wall_seconds=None, output_bytes=None, processes=fair_share()))
     return Profile(policy, spec.stage, spec.home, search_path(spec, grants), tuple(grants), _digest(policy, grants, spec), spec.harness,
@@ -117,9 +119,9 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
 
 
 def search_path(spec: Spec, grants: Sequence[Grant] = ()) -> tuple[str, ...]:
-    """The directories of ``PATH`` a session runs with: the agent home's shims, the programs of the project's environments, the git it can run,
-    the programs of Homebrew and `/usr/local`, those of Apple's command-line tools (ahead of `/usr/bin`, whose `python3` and `git` are shims that
-    ask a service the profile refuses), the system, and each granted toolchain."""
+    """The directories of ``PATH`` a session runs with: the agent home's shims, the programs of the project's environments, the git it runs,
+    the programs of Homebrew and `/usr/local`, those of Apple's command-line tools (ahead of `/usr/bin`, whose `python3` and `git` only select
+    theirs, `toolchain.developer_selection`), the system, and each granted toolchain."""
     own = (Path(each) / (".bin" if Path(each).name == "node_modules" else "bin") for each in spec.environments)
     trees = system_toolchain()
     local = (*(each for each in trees if each.endswith("/bin")), *(f"{each}/usr/bin" for each in trees if each == toolchain.COMMAND_LINE_TOOLS))

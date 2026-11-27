@@ -28,6 +28,8 @@ SNAPSHOT = ('t=$(mktemp -d "${TMPDIR:-/tmp}/snapshot.XXXXXX") && git init -q --b
             'git --git-dir="$t" --work-tree=. write-tree >/dev/null; s=$?; rm -rf "$t"; exit $s')
 """Writes the tree of a copy of the stage's index in a repository of its own that borrows the stage's objects, as a tool's snapshot of the
 working copy does: every object the index names must be there (`isolation.history`). Neither status nor diff reads them all."""
+BARE = "/usr/bin/env -i PATH=/usr/bin:/bin git --version >/dev/null"
+"""git as a program of the project may run it: with no variable of the box's and only the system's `PATH`, which on macOS finds Apple's shim."""
 SAID = 300
 """The characters of a failed check's own last words a finding repeats."""
 
@@ -98,5 +100,5 @@ def run(profile: Profile, committed: bool) -> Findings:
     checked for git alone."""
     stage = Path(profile.stage)
     untested = [] if profile.read_only else [why for _, command in checks(stage) if (why := _failed(profile, command))]
-    git = [why for command in (HISTORY if committed else GIT, SNAPSHOT) if (why := _failed(profile, command))]
+    git = [why for command in (HISTORY if committed else GIT, SNAPSHOT, BARE) if (why := _failed(profile, command))]
     return Findings("; ".join(untested), "; ".join(git))

@@ -343,10 +343,14 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
   refusal; probe P-codex) and the permission profile is enforced by the mount (I13, 8.1). The hook is the gate for what the
   boundary cannot express.
 - Claude Code's built-in sandbox is off in the launcher's settings (it is today); `claude` is never given `sandbox.enabled`.
-- A shell inside the confinement needs a real `git`: Apple's `/usr/bin/git` is a shim that asks `xcode-select` through a Mach
-  service the profile refuses. `PATH` puts the resolved git first; with only Apple's command-line developer tools installed, the profile reads and executes
-  `/Library/Developer/CommandLineTools/usr` (a system tree). `/usr/bin/python3` is a shim of the same kind and does not run; the
-  command-line tools' `usr/bin` precedes `/usr/bin` on `PATH`.
+- A shell inside the confinement has a `git` for every program: `PATH` puts the resolved git first, and Apple's `/usr/bin/git`,
+  which a program reaches by its path or with the system's `PATH` and no environment, runs too. The shim reads where
+  `/private/var/db/xcode_select_link` points and ends at once when it may not, so the profile lets a session look at that link
+  (`toolchain.developer_selection`, metadata only; the folder it names gains no grant, and one the session cannot read is passed
+  over for `/Library/Developer/CommandLineTools`, a system tree). `/usr/bin/python3`, a shim of the same kind, runs the
+  command-line tools' own; their `usr/bin` precedes `/usr/bin` on `PATH`. A shim run with no `TMPDIR` says on its error output
+  that it could not keep its cache, and works. With Xcode installed and no command-line tools, the shim finds nothing the box
+  reads (verified on a Mac with both; the Xcode-only case is not verified).
 - **The stage's `.git` is read-only** (`profile.GIT_DIRECTORY`, a frozen name like the control names, with every ancestor): the
   launcher reads its index after the run, so the box cannot write, remove, rename, link or redirect it. `git status` and
   `git diff` work; a commit fails.

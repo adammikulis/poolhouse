@@ -130,6 +130,17 @@ def system_toolchain() -> tuple[str, ...]:
     return tuple(os.path.realpath(path) for path in found if Path(path).is_dir() and os.path.realpath(path) == path)
 
 
+DEVELOPER_LINK = "/private/var/db/xcode_select_link"
+"""The link `xcode-select` keeps to the developer folder the machine has selected."""
+
+
+def developer_selection() -> tuple[str, ...]:
+    """The link a session may look at, never what it names: Apple's `/usr/bin/git` (and every shim like it) reads where it points and ends at
+    once when it may not, so a program that names the shim, or a `PATH` that finds it first, had no git. A folder it names that the session
+    cannot read is passed over for the command-line tools (`system_toolchain`)."""
+    return (DEVELOPER_LINK,) if sys.platform == "darwin" and Path(DEVELOPER_LINK).is_symlink() else ()
+
+
 VERSION_FOLDERS = (".pyenv/versions", ".local/share/uv/python")
 """Where the person's own version managers keep one folder per interpreter, under the home folder (each manager's documented layout)."""
 SYSTEM_VERSION_FOLDERS = ("/Library/Frameworks/Python.framework/Versions",)
