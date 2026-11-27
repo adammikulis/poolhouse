@@ -8,7 +8,9 @@ disk through a hard-linked view instead of holding it, and decodes as the reside
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,14 +19,16 @@ pytest.importorskip("mlx_vlm.models.qwen4_exp", reason="poolhouse[spec]")
 pytest.importorskip("tokenizers", reason="pip install tokenizers")
 
 import mlx.nn as nn  # noqa: E402
+import numpy as np  # noqa: E402
 from mlx.utils import tree_flatten  # noqa: E402
-from mlx_vlm.models.qwen4_exp import Model, ModelConfig  # noqa: E402
+from mlx_vlm.models.qwen4_exp import Model, ModelConfig, ple_storage  # noqa: E402
 from mlx_vlm.utils import load_model  # noqa: E402
 from test_spec_qwen4 import plain_greedy, tiny_flash  # noqa: E402
 from tokenizers import Tokenizer, decoders, models, pre_tokenizers  # noqa: E402
 
 from poolhouse.serve.backend import ServerSpec  # noqa: E402
 from poolhouse.serve.mlx_tree import report_for  # noqa: E402
+from poolhouse.spec import ple  # noqa: E402
 from poolhouse.spec.decode import Asked, decode  # noqa: E402
 from poolhouse.spec.engine import Engine, EngineConfig, load_target  # noqa: E402
 
@@ -83,6 +87,9 @@ def test_the_loaded_model_reads_its_ngram_table_from_disk_and_decodes_as_the_res
     text = model.language_model
     table = text.model.layers[1].ple.ple_embedding.ngram_embedding
     assert not any(PLE in name for name, _ in tree_flatten(text.parameters()))
+    assert type(table) is ple.ReadAhead
+    # stored one record a row wherever the disk has room for it
+    assert table._interleaved is not None or shutil.disk_usage(cache_home).free < ple.SPARE
     prompt = [(7 * i + 2) % 90 for i in range(24)]
     assert table(mx.array([[3, 5]])).shape == (1, 2, 32)
     assert plain_greedy(text, prompt, 24) == plain_greedy(resident, prompt, 24)
@@ -104,3 +111,163 @@ def test_the_fit_charges_the_weights_a_load_holds_and_not_the_mapped_table(
                if PLE not in k)
     assert report.ok
     assert report.weights_bytes == held
+
+
+# The n-gram table's rewrite and read-ahead gather, through mlx-vlm's own storage class.
+# PLUMBING ONLY: the table is a few thousand rows of random bytes. It says nothing about a model
+# and times no disk; the measured costs are in docs/serving.md.
+
+SHARDS, ROWS, WIDTH = 3, 1500, 64
+
+
+@pytest.fixture
+def source(tmp_path: Path) -> Path:
+    where = tmp_path / "plumbing-only-table"
+    where.mkdir()
+    rng = np.random.default_rng(3)
+    tensors = {}
+    for shard in range(SHARDS):
+        key = f"model{PLE}shards.{shard}"
+        words = rng.integers(0, 2**32, (ROWS, WIDTH // 8), dtype=np.uint32)
+        tensors[f"{key}.weight"] = mx.array(words)
+        for name in ("scales", "biases"):
+            values = rng.random((ROWS, WIDTH // 32)).astype(np.float32)
+            tensors[f"{key}.{name}"] = mx.array(values).astype(mx.bfloat16)
+    mx.save_safetensors(str(where / "model.safetensors"), tensors)
+    (where / "model.safetensors.index.json").write_text(json.dumps(
+        {"weight_map": dict.fromkeys(tensors, "model.safetensors")}))
+    (where / "config.json").write_text(json.dumps(
+        {"quantization": {"bits": 4, "group_size": 32, "mode": "affine"}}))
+    return where
+
+
+@pytest.fixture
+def view(source: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setattr(ple, "SPARE", 0)
+    where = tmp_path / "view"
+    ple_storage.build_quantized_ple_manifest(source, where / ple.MANIFEST)
+    return where
+
+
+def opened(view: Path, cache_rows: int = 0) -> ple_storage.QuantizedMMapNGramEmbedding:
+    return ple_storage.QuantizedMMapNGramEmbedding(view / ple.MANIFEST, cache_rows=cache_rows)
+
+
+def wanted() -> mx.array:
+    """More than `ple.FEW` distinct rows from every shard, the edges and repeats among them."""
+    ids = np.random.default_rng(11).integers(0, SHARDS * ROWS, 4 * ple.FEW)
+    edges = [0, ROWS - 1, ROWS, 2 * ROWS - 1, 2 * ROWS, SHARDS * ROWS - 1]
+    return mx.array(np.concatenate([ids, edges, ids[:40]]).reshape(-1, 2))
+
+
+def same(a: mx.array, b: mx.array) -> bool:
+    return a.shape == b.shape and bool(mx.array_equal(a, b))
+
+
+@pytest.mark.parametrize("layout", ["ranges", "interleaved"])
+def test_the_read_ahead_table_returns_what_the_plain_one_returns(
+        source: Path, view: Path, layout: str) -> None:
+    plain = opened(view)(wanted())
+    if layout == "interleaved":
+        assert ple.interleave(source, view)
+    assert same(ple.ReadAhead.of(opened(view))(wanted()), plain)
+
+
+@pytest.mark.parametrize("layout", ["ranges", "interleaved"])
+def test_every_wanted_row_is_touched_before_the_gather_and_none_outside_the_table(
+        source: Path, view: Path, layout: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    if layout == "interleaved":
+        assert ple.interleave(source, view)
+    table = ple.ReadAhead.of(opened(view))
+    touched: list[int] = []
+    order: list[str] = []
+    real_touch, real_rows = table._touch, ple_storage.QuantizedMMapNGramEmbedding._read_rows
+
+    def touch(ids: np.ndarray) -> None:
+        real_touch(ids)  # raises if a shard is indexed outside itself
+        touched.extend(ids.tolist())
+        order.append("touch")
+
+    def rows(self: object, ids: np.ndarray) -> object:
+        order.append("gather")
+        return real_rows(self, ids)
+
+    monkeypatch.setattr(table, "_touch", touch)
+    monkeypatch.setattr(ple_storage.QuantizedMMapNGramEmbedding, "_read_rows", rows)
+    table(wanted())
+    assert sorted(touched) == np.unique(np.asarray(wanted())).tolist()
+    assert order[-1] == "gather" and order.count("gather") == 1 and "touch" in order
+
+
+def test_a_few_rows_are_gathered_on_the_calling_thread(
+        view: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    table = ple.ReadAhead.of(opened(view))
+    monkeypatch.setattr(table, "_touch", lambda ids: pytest.fail("read ahead for a few rows"))
+    assert same(table(mx.array([[1, ROWS + 2]])), opened(view)(mx.array([[1, ROWS + 2]])))
+
+
+def test_it_keeps_the_row_cache_the_table_was_opened_with(view: Path) -> None:
+    table = ple.ReadAhead.of(opened(view, cache_rows=10_000))
+    table(wanted())
+    table(wanted())
+    distinct = np.unique(np.asarray(wanted())).size
+    assert table.cache_rows == 10_000 and table.stats.cache_misses == distinct
+
+
+def test_a_row_outside_the_table_is_still_refused(view: Path) -> None:
+    with pytest.raises(IndexError):
+        ple.ReadAhead.of(opened(view))(mx.array([SHARDS * ROWS]))
+
+
+def test_a_table_with_room_is_rewritten_once_as_one_record_a_row(source: Path, view: Path) -> None:
+    assert ple.interleave(source, view)
+    manifest = json.loads((view / ple.MANIFEST).read_text())
+    assert manifest["layout"] == "interleaved_q4" and manifest["data_file"] == ple.ROWS_FILE
+    stride = WIDTH // 2 + 2 * (WIDTH // 32) * 2
+    assert (view / ple.ROWS_FILE).stat().st_size == SHARDS * ROWS * stride
+    before = (view / ple.ROWS_FILE).stat().st_mtime_ns
+    assert ple.interleave(source, view)
+    assert (view / ple.ROWS_FILE).stat().st_mtime_ns == before
+
+
+def test_a_full_disk_keeps_the_checkpoint_layout_and_still_reads(
+        source: Path, view: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(shutil, "disk_usage", lambda _p: SimpleNamespace(free=1000))
+    assert not ple.interleave(source, view)
+    assert not (view / ple.ROWS_FILE).exists()
+    assert json.loads((view / ple.MANIFEST).read_text())["layout"] == "safetensors_ranges"
+    assert opened(view)(mx.array([3])).shape == (1, WIDTH)
+
+
+def test_a_rows_file_an_interrupted_rewrite_left_is_written_again(
+        source: Path, view: Path) -> None:
+    plain = opened(view)(wanted())
+    (view / ple.ROWS_FILE).write_bytes(b"half a table")
+    assert ple.interleave(source, view)
+    assert same(opened(view)(wanted()), plain)
+
+
+def test_a_view_without_a_table_manifest_is_left_alone(source: Path, tmp_path: Path) -> None:
+    empty = tmp_path / "no-table"
+    empty.mkdir()
+    assert not ple.interleave(source, empty)
+    assert not list(empty.iterdir())
+
+
+def test_only_mapped_tables_in_a_model_are_given_the_read_ahead(view: Path) -> None:
+    class Holder(nn.Module):
+        def __init__(self, table: object) -> None:
+            super().__init__()
+            self.ngram_embedding = table
+
+    class Two(nn.Module):
+        def __init__(self) -> None:
+            super().__init__()
+            self.mapped = Holder(opened(view))
+            self.resident = Holder(nn.Embedding(8, 4))
+
+    model = Two()
+    assert ple.read_ahead(model) == 1
+    assert type(model.mapped.ngram_embedding) is ple.ReadAhead
+    assert isinstance(model.resident.ngram_embedding, nn.Embedding)
+    assert ple.read_ahead(model) == 0

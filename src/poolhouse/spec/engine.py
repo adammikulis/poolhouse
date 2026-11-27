@@ -21,7 +21,7 @@ from mlx_vlm.utils import load_model
 
 from poolhouse import home, hub
 from poolhouse.kvtype import DEFAULT_KV_BITS
-from poolhouse.spec import LAYOUTS, attention
+from poolhouse.spec import LAYOUTS, attention, ple
 from poolhouse.spec.accept import Rule
 from poolhouse.spec.cost import load_curve
 from poolhouse.spec.decode import Asked, Decoded, Pass, Session, decode
@@ -50,7 +50,8 @@ def weights(name: str | Path) -> Path:
 
 
 def external_ple(path: Path) -> Path:
-    """``path``, or a hard-linked view of it whose PLE n-gram table is memory-mapped."""
+    """``path``, or a hard-linked view of it whose PLE n-gram table is memory-mapped, stored
+    one record a row when the disk has room (`ple.interleave`)."""
     index = path / "model.safetensors.index.json"
     if not index.is_file() or PLE_MARKER not in index.read_text(encoding="utf-8"):
         return path
@@ -59,6 +60,7 @@ def external_ple(path: Path) -> Path:
         shutil.rmtree(view, ignore_errors=True)
         view.parent.mkdir(parents=True, exist_ok=True)
         prepare_external_ple_model(path, view)
+    ple.interleave(path, view)
     return view
 
 
@@ -72,8 +74,9 @@ def load_target(path: Path) -> tuple[nn.Module, Any]:
     if LAYOUTS[kind][0] == "mlx_lm":
         loaded = load(str(path))
         return loaded[0], loaded[1]
-    return (load_model(external_ple(path)),
-            load_tokenizer(path, eos_token_ids=config.get("eos_token_id")))
+    model = load_model(external_ple(path))
+    ple.read_ahead(model)
+    return model, load_tokenizer(path, eos_token_ids=config.get("eos_token_id"))
 
 
 @dataclass(frozen=True)
