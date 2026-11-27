@@ -52,6 +52,8 @@ TYPED = {"new signing key: ": PASSPHRASE, "signing key passphrase: ": PASSPHRASE
 
 def runner_binary() -> Path:
     """The node binary the runner built before this run (``scripts/testnode.py``); a run the runner did not start has none."""
+    if why := os.environ.get(testnode.UNBUILT):
+        pytest.skip(why)
     named = os.environ.get(testnode.ENV, "")
     if not named or not Path(named).is_file():
         pytest.fail(f"the node binary is built by the runner before a run, and {testnode.ENV} names none ({named or 'unset'}): "

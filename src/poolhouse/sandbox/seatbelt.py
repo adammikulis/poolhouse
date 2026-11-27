@@ -65,7 +65,9 @@ EXPOSURES = (PROCESS_LIST, MACHINE_CLASS)
 readable outside them is a deviation (docs/design-isolated-launcher.md, 5.7). The serial number, hardware UUID and provisioning UDID are not
 among them (G13)."""
 
-MACH_SERVICES = ("com.apple.system.opendirectoryd.libinfo", "com.apple.logd",
+USER_RECORDS = "com.apple.system.opendirectoryd.libinfo"
+"""The service that answers a lookup of a user or a group."""
+MACH_SERVICES = (USER_RECORDS, "com.apple.logd",
                  "com.apple.system.logger", "com.apple.system.notification_center",
                  "com.apple.distributed_notifications@Uv3", "com.apple.bsd.dirhelper")
 
@@ -166,11 +168,13 @@ def profile(policy: Policy, program: str, tag: str) -> str:
             + [f"(sysctl-name-prefix {quote(s)})" for each in EXPOSURES for s in each.sysctl_prefixes]) + ")",
         *([] if policy.strict else ["(allow mach-lookup " + " ".join(f"(global-name {quote(s)})" for s in MACH_SERVICES) + ")"]),
     ]
+    if policy.user_records:
+        out.append(f"(allow mach-lookup (global-name {quote(USER_RECORDS)}))")
     if policy.preferences:
         out += [f'(allow user-preference-read {" ".join(f"(preference-domain {quote(each)})" for each in policy.preferences)})',
                 '(allow ipc-posix-shm-read-data (ipc-posix-name-prefix "apple.cfprefs."))',
                 '(allow mach-lookup (global-name "com.apple.cfprefsd.daemon") (global-name "com.apple.cfprefsd.agent") '
-                '(global-name "com.apple.system.opendirectoryd.libinfo"))',
+                f'(global-name {quote(USER_RECORDS)}))',
                 '(allow file-read* (literal "/private/etc/passwd"))']
     if policy.read_files:
         if policy.strict:
@@ -217,7 +221,22 @@ def _network(policy: Policy) -> list[str]:
     return [*(f'(allow network-outbound (remote ip "localhost:{p}"))' for p in net.ports),
             *(rule for p in net.listen for rule in (f'(allow network-outbound (remote ip "localhost:{p}"))',
                                                     f'(allow network-bind (local ip "localhost:{p}"))',
-                                                    f'(allow network-inbound (local ip "localhost:{p}"))'))]
+                                                    f'(allow network-inbound (local ip "localhost:{p}"))')),
+            *_accepted(net.accept)]
+
+
+def _accepted(ports: Sequence[int]) -> list[str]:
+    """TCP to ``ports`` of this machine and serving on a socket handed in, with every bind of them refused: Seatbelt's `localhost` matches the
+    wildcard and the machine's network address too, so a rule that allowed a bind would allow a listener the network reaches. The refusal follows
+    the inbound rule, which would otherwise carry the bind with it. UDP is left refused: it receives on a port its sender names."""
+    if not ports:
+        return []
+
+    def each(side: str, kind: str) -> str:
+        return " ".join(f'({side} {kind} "localhost:{port}")' for port in ports)
+
+    return [f"(allow network-outbound {each('remote', 'tcp')})", f"(allow network-inbound {each('local', 'tcp')})",
+            f"(deny network-bind {each('local', 'ip')})"]
 
 
 def _gpu() -> list[str]:

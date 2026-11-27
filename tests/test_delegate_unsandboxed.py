@@ -144,7 +144,7 @@ def unsandboxed(lead_node, detached, tmp_path, monkeypatch):
 
     monkeypatch.setattr(delegate_confined, "leased", leased)
     monkeypatch.setattr(delegate_run.delegate_unboxed.harnessing, "binary_for", lambda _name, **_: str(script))
-    monkeypatch.setattr(delegate_run.delegate_unboxed.claude, "alias_of", lambda _url, _model: kit.MODEL)
+    monkeypatch.setattr(delegate_confined.claude, "alias_of", lambda _url, _model: kit.MODEL)
     monkeypatch.setattr(lead_bridge, "POLL_S", 0.05)
     monkeypatch.setenv("POOLHOUSE_HOME", str(node.state.parent))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "a-hosted-key")
