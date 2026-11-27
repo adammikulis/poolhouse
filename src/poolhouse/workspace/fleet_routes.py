@@ -8,7 +8,7 @@ from poolhouse.fleet.same_page import checked
 from poolhouse.workspace import boardroute
 
 
-def _connect(request, root, audit):
+def _connect(request, session, audit):
     """Register the person's session on the project's board; it is the only thing a page can ask for here."""
     length = request.header('Content-Length', '0')
     if not length.isascii() or not length.isdigit() or len(length) > 8 or int(length) > 1024:
@@ -19,7 +19,7 @@ def _connect(request, root, audit):
     body = json.loads(request.handler.rfile.read(int(length)))
     if not isinstance(body, dict) or body:
         raise ValueError('joining accepts an empty JSON object')
-    name = person.session(Path(root)).name
+    name = session().name
     if audit:
         audit(name)
     request.send(200, {'connected': True, 'name': name})
@@ -30,7 +30,9 @@ def route(request, *, root=None, prefix="/ui/board/", audit=None) -> bool:
     ``audit(name)`` is told when the person's session is registered."""
     if not request.path.startswith(prefix):
         return False
-    where = Path(root) if root else Path.cwd()
+    def theirs():
+        return person.session(Path(root) if root else Path.cwd(), chosen=bool(root))
+
     headers = {key.lower(): value for key, value in request.handler.headers.items()}
     if request.path == prefix + "connect":
         refused = checked(request.method, headers, request.handler.server.server_address[1], writes=True)
@@ -38,7 +40,7 @@ def route(request, *, root=None, prefix="/ui/board/", audit=None) -> bool:
             request.send(403, {'error': 'the person request must come from this page'})
             return True
         try:
-            _connect(request, where, audit)
+            _connect(request, theirs, audit)
         except (ValueError, UnicodeError) as error:
             request.send(400, {'error': str(error)})
         except client.Denied as error:
@@ -59,7 +61,7 @@ def route(request, *, root=None, prefix="/ui/board/", audit=None) -> bool:
     call = boardroute.Request(
         request.method, request.handler.path.replace(prefix, "/board/", 1),
         headers, request.handler.server.server_address[1], True, raw)
-    status, extra, body = boardroute.respond(lambda: person.session(where), call)
+    status, extra, body = boardroute.respond(theirs, call)
     request.handler.send_response(status)
     for key, value in extra.items():
         request.handler.send_header(key, value)

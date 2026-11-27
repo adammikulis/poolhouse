@@ -50,7 +50,7 @@ def route(request, *, prefix="/ui/tasks", root=None, project=None) -> bool:
         request.send(refused[0], json.loads(refused[2]))
         return True
     try:
-        session = person.session(Path(root) if root else Path.cwd())
+        session = person.session(Path(root) if root else Path.cwd(), chosen=bool(root))
         if request.method == 'GET':
             ident = request.asked('id', '')
             result = Tasks(session).get(ident) if ident else Tasks(session).list()

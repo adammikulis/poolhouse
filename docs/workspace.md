@@ -33,7 +33,8 @@ A person runs nothing to connect a coding agent: nobody mints, copies or pastes 
    does not hold it, with no step for anyone; `poolhouse-workspace project list` shows the projects of this computer and
    `project remove PROJECT` (the project's id, or a folder of it, one that no longer exists too) forgets one at once, for the
    same callers. A delegate, a local agent of a board and what the process table shows below either do neither
-   (docs/design-isolated-launcher.md, 8.3, which names what that check does not see).
+   (docs/design-isolated-launcher.md, 8.3, which names what that check does not see). A project the person chose or shared in the
+   app is registered the same way when they open its Tasks or Board page, if it is a git repository.
 
 The token is a bearer secret kept in `<state>/client/<board>/<name>.token` (mode 0600 in a 0700 directory; the node
 state is `~/.poolhouse/node`, moved by `POOLHOUSE_HOME`). The node knows a process by the lineage that registered

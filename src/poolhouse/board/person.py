@@ -30,14 +30,16 @@ def native_id() -> str:
     return f"{NATIVE_ID}-{terminal_id()}"
 
 
-def session(root: str | Path, client: Client | None = None, board: str = "") -> sessions.Session:
+def session(root: str | Path, client: Client | None = None, board: str = "", *, chosen: bool = False) -> sessions.Session:
     """The person's session on ``board``, else on the board of the project at ``root``, registered the first time.
 
-    `Denied` when ``root`` is not part of a project the node can place.
+    `Denied` when ``root`` is not part of a project the node can place. A ``chosen`` project is one the person picked in
+    the app, which alone holds it until they open its board: the node takes it then, if it is a git repository.
     """
     state = node_launch.default_state()
     node = client or Client(state, person=person_key.provider(state))
-    return on(node, place.existing(node, Path(root), board))
+    placed = place.resolve if chosen else place.existing
+    return on(node, placed(node, Path(root), board))
 
 
 def acting(state: Path) -> Callable[[str], tuple[str, str]]:

@@ -1,9 +1,11 @@
 """Human-authorized task controls use the selected project's board on the node."""
 
-import pytest
-from person_kit import OTHER, PROJECT
+from pathlib import Path
 
-from poolhouse.board import person
+import pytest
+from person_kit import OTHER, PROJECT, _repo
+
+from poolhouse.board import person, place
 from poolhouse.board.tasks import Tasks
 
 pytest_plugins = ["node_kit", "person_kit"]
@@ -53,6 +55,29 @@ def test_person_task_create_names_the_project(project_tasks):
     call, _, _ = project_tasks
     status, task = call(method='POST', body={'spec': {'title': 'Replay', 'acceptance': ['Replay passes']}})
     assert status == 200 and task['project']['key'] == PROJECT
+
+
+def test_a_project_only_the_app_holds_is_registered_when_its_person_opens_it(project_tasks, tmp_path):
+    """Choosing or sharing a project in the app registers it with the app alone; its board must still open."""
+    call, node, projects = project_tasks
+    root = _repo(tmp_path / 'chosen')
+    projects[PROJECT].root = str(root)
+    status, result = call()
+    assert status == 200, result
+    assert result['tasks'] == []
+    status, made = call(method='POST', body={'spec': {'title': 'First', 'acceptance': ['Done']}})
+    assert status == 200, made
+    held = person.session(root, node.client)
+    assert held.board == place.at_path(node.client, Path(root))
+    assert [task['id'] for task in Tasks(held).list()['tasks']] == [made['id']]
+
+
+def test_a_refused_request_registers_no_project(project_tasks, tmp_path):
+    call, node, projects = project_tasks
+    before = node.client.call('project_list')
+    projects[PROJECT].root = str(_repo(tmp_path / 'unasked'))
+    assert call(cookie='forged')[0] == 403
+    assert node.client.call('project_list') == before
 
 
 def test_a_directory_that_is_no_project_is_refused_not_given_another_projects_tasks(project_tasks, tmp_path):
