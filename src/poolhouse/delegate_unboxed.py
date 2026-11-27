@@ -16,7 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +25,7 @@ from poolhouse import (
     coding_policy,
     delegate_confined,
     delegate_guard,
+    delegate_refusals,
     delegate_store as store,
     harness,
     harnessing,
@@ -133,12 +134,19 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
 
 def _followed(rec: store.Delegate, binary: str, own: Path, model: tuple[Callable[[], int], str], say: Callable[[str], None]) -> harness.Answer:
     busy, alias = model
-    stream = delegate_confined.Stream()
+    seen = delegate_refusals.Writes(rec.workdir)
+    seen.within(rec.workdir, home=str(home.user_home()))
+
+    def ran(part: Mapping[str, Any]) -> None:
+        drain()   # the hook recorded the call before the harness could say how it ended
+        seen.ran(part)
+
+    stream = delegate_confined.Stream(ran)
 
     def progress() -> None:
         store.set_progress(rec.name, stream.turns, nudge_fence.clean(hooks.tool or stream.tool))
 
-    hooks = delegate_confined.Hooks(progress)
+    hooks = delegate_confined.Hooks(progress, seen.asked)
     drain = _heard(own / "calls.jsonl", hooks)
 
     def moved() -> None:
@@ -170,17 +178,18 @@ def _followed(rec: store.Delegate, binary: str, own: Path, model: tuple[Callable
         why = f"{type(error).__name__}: {error}"
         say(why)
     except (SystemExit, KeyboardInterrupt) as stop:
-        raise delegate_confined.Stopped(_came_to(rec, stream.answer(status, delegate_confined.STOPPED_WHY))) from stop
+        raise delegate_confined.Stopped(_came_to(rec, stream.answer(status, delegate_confined.STOPPED_WHY), seen)) from stop
     finally:
         running.close()
     drain()
     answer = stream.answer(status, why)
     answer.tried = hooks.tried
-    return _came_to(rec, answer)
+    return _came_to(rec, answer, seen)
 
 
-def _came_to(rec: store.Delegate, answer: harness.Answer) -> harness.Answer:
-    """``answer`` with where the changes of a run with no sandbox are."""
+def _came_to(rec: store.Delegate, answer: harness.Answer, seen: delegate_refusals.Writes) -> harness.Answer:
+    """``answer`` with where the changes of a run with no sandbox are, and the writes it was refused."""
     if rec.edit:
+        answer.refused_writes, answer.wrote = seen.refused(), seen.wrote
         answer.text += f"\n\nThis run had no sandbox: whatever it changed is in {nudge_fence.clean(rec.workdir)} itself."
     return answer

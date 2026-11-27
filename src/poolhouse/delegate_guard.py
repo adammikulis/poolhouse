@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import IO, Any
 
-from poolhouse import coding_policy, harnesspolicy, home
+from poolhouse import coding_policy, harnesspolicy, home, safetext
 from poolhouse.errors import Denied
 from poolhouse.guard import unboxed
 from poolhouse.interventions import Call
@@ -43,7 +43,7 @@ def run(argv: Sequence[str] | None = None, stdin: IO[str] | None = None, stdout:
     try:
         given, event = dict(zip(words[:-1:2], words[1:-1:2], strict=True)), words[-1]
         os.environ.update(HOME=given["--home"], POOLHOUSE_HOME=given["--state"])   # the rules read the user's own places, not the delegate's home
-        payload = json.loads((stdin or sys.stdin).read() or "{}")
+        payload = safetext.utf8(json.loads((stdin or sys.stdin).read() or "{}"))
         said: dict[str, Any] = {}
         if event == "pre":
             ground = unboxed.Ground(given["--root"], given["--home"], given["--state"], given["--scratch"])

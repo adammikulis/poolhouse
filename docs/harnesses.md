@@ -14,6 +14,23 @@ poolhouse-claude --on http://127.0.0.1:8080 --permissions read-only -- -p "expla
 poolhouse-claude --sandbox -- -p "fix the failing test"
 ```
 
+### A server already up (`--on`)
+
+`--on URL` names a server that is running; it is left running. A server that asks for no key is used as it answers. A key this computer holds
+goes only to a server it can show is the one it started (`poolhouse.serve.named`), which takes all of: the address written as
+`http://127.0.0.1:PORT` (or `localhost`, `[::1]`), with no user name, query or backslash; a lease record for the port whose process is still the
+same one (start time and command line); the key bound to that process; and that process listening on the port at the address asked. It is then
+used at that address, so `localhost` cannot lead to another process on the other loopback address. Where a key is bound to the port and any of
+these cannot be shown, nothing is asked of the address and the launch fails saying which. A server that refuses a request and is given no key
+(one an earlier build left up, or one on another computer) fails the same way, with why, and so does text that is no http address. A project's
+files set none of this.
+
+Every key sent anywhere (`serverkeys.for_url`) has the same two conditions: the process the key was bound to, by its number and start time, still
+runs, and it listens on exactly the address the URL names (a listener on every address does not count, and `localhost` needs both loopback
+addresses; Poolhouse's own client sends a `localhost` request to `127.0.0.1` when a keyed server holds it). A key bound with no start time, as an
+earlier build bound it, is sent nowhere. No request of `poolhouse.http` to this computer goes through a proxy, whatever the environment says, and
+a harness run in place has this computer's names added to `NO_PROXY`.
+
 ## In place
 
 Nothing of the person's or the project's configuration is written. What points a run at the model is on its command
@@ -203,8 +220,24 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
 - **Processes.** A command signals the processes of its own box (grandchildren and ones that left their group among them) and no other, and
   every one of them ends with the session.
 
-A run that called an editing tool, or a shell line that asks to change files (`delegate_confined.writes`: a redirect, a program that changes
-files, an edit in place, a git command that changes the tree), and applied nothing ends `unapplied`.
+A run that called an editing tool, or a shell line that asks to change files (`delegate_refusals.writes`, the guard's own reading of a line,
+`guard.unboxed.written`: redirects, the programs that change files, through `sh -c`, `sudo`, `xargs` and `find -delete`, `curl -o`, a git
+command that changes the tree or a configuration), and applied nothing ends `unapplied`.
+
+**A refused write** (`poolhouse.delegate_refusals`) of a delegate that edits ends the run `partial`, or `unapplied` when nothing was applied,
+whatever the model says of it. The result lists each under `refused_writes` (path, tool, `sandbox` or `rules`), and `detail`, `status`, `result` and
+the lead's notice say how many and the first paths. It is decided from the harness's tool events and the hook's answers:
+
+- by the sandbox: a call that writes a path the box lets nothing write (`Profile.refuses_write`) and says it could not. A shell line: a line of
+  its output carries the system's refusal (`Operation not permitted`, `Permission denied`, `Read-only file system`) and names that path. `edit` or
+  `write`: the same, or the release's own first line for a failed write (`Unable to write PATH`, `Unable to edit PATH`);
+- by Poolhouse's tool rules: a call that writes which the hook denied, unless an `edit` or `write` later completed on the same path (how a shell
+  line ended is not told, so none takes a refusal back). A denied call that writes no file (a credential read, a force push) is none. With no
+  sandbox the run is `unapplied` when no writing call went through at all.
+
+A command or an edit that merely fails (tests, a search with no match, an `oldString` that is not there) is no refused write. Not seen: a write a
+program makes without the shell line naming it (`python3 -c`), a sandbox refusal whose message the command hid (`2>/dev/null`) and a path held in
+a variable.
 
 ### The workspace
 

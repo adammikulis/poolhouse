@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home
+from poolhouse import home, safetext
 from poolhouse.board.names import valid_name
 from poolhouse.files import read_json, write_json
 
@@ -98,17 +98,17 @@ def status(name: str) -> dict[str, Any]:
 def set_status(name: str, state: str, detail: str = "") -> None:
     with _STATUS:
         progress = {key: value for key, value in status(name).items() if key in ("turns", "tool")}
-        write_json(folder(name) / "status.json", {**progress, "state": state, "detail": detail, "beat": time.time()})
+        write_json(folder(name) / "status.json", safetext.utf8({**progress, "state": state, "detail": detail, "beat": time.time()}))
 
 
 def set_progress(name: str, turns: int, tool: str) -> None:
     """The turns a run has taken and the last tool it called; its state stays as it is."""
     with _STATUS:
-        write_json(folder(name) / "status.json", {**status(name), "turns": turns, "tool": tool, "beat": time.time()})
+        write_json(folder(name) / "status.json", safetext.utf8({**status(name), "turns": turns, "tool": tool, "beat": time.time()}))
 
 
 def save_result(name: str, row: dict[str, Any]) -> None:
-    write_json(folder(name) / "result.json", row)
+    write_json(folder(name) / "result.json", safetext.utf8(row))
 
 
 def result(name: str) -> dict[str, Any]:

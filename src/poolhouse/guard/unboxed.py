@@ -3,13 +3,15 @@
 Refused: the person folder, the session tokens, the authority registry and the guards (`poolhouse.protectedwrites`); a force push and a remote
 deletion; a read of a credential store; a write outside the project, any write to the user's global configuration and a recursive deletion outside
 the project. These are not a boundary: a program the model writes, or one it runs, reaches whatever the account reaches, and only a sandbox stops that.
+
+One reading of a call gives both what refuses it (`refusal`) and what it writes or removes (`written`), blocked or not.
 """
 
 from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Any
@@ -17,7 +19,7 @@ from typing import Any
 from poolhouse import protectedwrites, secretpaths, worktreerules
 from poolhouse.guard import shellscan
 
-__all__ = ["Ground", "refusal"]
+__all__ = ["Effect", "Ground", "effects", "refusal", "written"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,9 +32,20 @@ class Ground:
     scratch: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class Effect:
+    """One thing a call would do that the blocks look at: why it is refused (empty when no block applies) and what it writes or removes (a path
+    where one can be told, else the word that names it; empty for what writes nothing)."""
+
+    why: str = ""
+    wrote: str = ""
+
+
 READS = {"Read": ("file_path", "path"), "Glob": ("path", "pattern"), "Grep": ("path", "glob"), "LS": ("path",)}
 WRITES = ("Edit", "Write", "MultiEdit", "NotebookEdit", "apply_patch", "patch")
 SHELL = ("Bash", "PowerShell")
+UNDONE = frozenset({"patch", "ruby", "unzip"})
+"""Programs that change files in the folder they run in, which no block reads the targets of."""
 LEAD = ("mcp__lead__ask", "mcp__lead__note")
 NOWHERE = frozenset({"/dev/null", "/dev/stdout", "/dev/stderr", "/dev/tty", "nul"})
 OUTSIDE = "writes outside the project folder"
@@ -76,33 +89,51 @@ DEPTH = 3
 
 def refusal(name: str, args: Mapping[str, Any], ground: Ground) -> str:
     """Why the tool call ``name`` with ``args`` is refused, empty when no block applies; a tool a delegate is not given is refused."""
+    return next((each.why for each in effects(name, args, ground) if each.why), "")
+
+
+def written(name: str, args: Mapping[str, Any], ground: Ground) -> list[str]:
+    """What the call would write or remove, whether or not a block refuses it; empty for one that only reads and for what the line does not say
+    (a program's own writes)."""
+    if name in SHELL:
+        here = _place(str(args["workdir"]), ground.root, ground) if args.get("workdir") else ground.root
+        found = _line(str(args.get("command") or ""), ground, here, 0)
+    else:
+        found = effects(name, args, ground) if name in WRITES else iter(())
+    return list(dict.fromkeys(each.wrote for each in found if each.wrote))
+
+
+def effects(name: str, args: Mapping[str, Any], ground: Ground) -> Iterator[Effect]:
+    """The effects of one call, in the order the blocks are asked."""
     if name in LEAD:
-        return ""
+        return
     environ = {"HOME": ground.home, "POOLHOUSE_HOME": ground.state}
     if name in SHELL:
         line = str(args.get("command") or "")
-        return protectedwrites.refusal(line, ground.root, lambda _cwd: "an unattended delegate never publishes", environ) or _line(line, ground, ground.root, 0)
+        yield Effect(protectedwrites.refusal(line, ground.root, lambda _cwd: "an unattended delegate never publishes", environ))
+        yield from _line(line, ground, ground.root, 0)
+        return
     if name not in READS and name not in WRITES:
-        return f"{name} is not one of a delegate's tools"
-    if why := protectedwrites.tool_refusal(name, args, cwd=ground.root, environ=environ):
-        return why
+        yield Effect(f"{name} is not one of a delegate's tools")
+        return
+    yield Effect(protectedwrites.tool_refusal(name, args, cwd=ground.root, environ=environ))
     if name in READS:
-        return next((f"{text} {CREDENTIAL}" for key in READS[name] if (text := str(args.get(key) or "")) and _secret(text, ground.root, ground)), "")
+        yield from (Effect(f"{text} {CREDENTIAL}") for key in READS[name] if (text := str(args.get(key) or "")) and _secret(text, ground.root, ground))
+        return
     paths = [str(args[key]) for key in ("file_path", "path", "filePath", "notebook_path") if args.get(key)]
     for value in args.values():
         if isinstance(value, str) and "*** Begin Patch" in value:
             paths += worktreerules.patch_paths(value)
     if not paths:
-        return f"{name} names no file the blocks can check"
+        yield Effect(f"{name} names no file the blocks can check")
     for text in paths:
         place = _place(text, ground.root, ground)
         if place is None:
-            return f"{text} {UNREAD}"
-        if protectedwrites.guarded(place, environ) or protectedwrites.secret(place, environ):
-            return f"{text} is a guard, a hook setting, the person folder or the authority registry"
-        if not _inside(place, ground):
-            return f"{text} {OUTSIDE}"
-    return ""
+            yield Effect(f"{text} {UNREAD}", text)
+        elif protectedwrites.guarded(place, environ) or protectedwrites.secret(place, environ):
+            yield Effect(f"{text} is a guard, a hook setting, the person folder or the authority registry", place)
+        else:
+            yield Effect("" if _inside(place, ground) else f"{text} {OUTSIDE}", place)
 
 
 def _expanded(text: str, ground: Ground) -> str:
@@ -117,7 +148,10 @@ def _place(text: str, here: str | None, ground: Ground) -> str | None:
         return None
     if here is None and not PurePath(named).is_absolute():
         return None
-    return os.path.realpath(PurePath(here or ground.root) / named)
+    try:
+        return os.path.realpath(PurePath(here or ground.root) / named)
+    except ValueError:   # text no file system takes as a name
+        return None
 
 
 def _under(place: str, folder: str) -> bool:
@@ -136,25 +170,24 @@ def _secret(text: str, here: str | None, ground: Ground) -> bool:
     return shellscan.has_glob(named) and secretpaths.glob_hit(named, base) is not None
 
 
-def _line(line: str, ground: Ground, here: str | None, depth: int) -> str:
-    """Why the shell line ``line``, run from ``here`` (None once a `cd` cannot be told), is refused."""
+def _line(line: str, ground: Ground, here: str | None, depth: int) -> Iterator[Effect]:
+    """The effects of the shell line ``line``, run from ``here`` (None once a `cd` cannot be told)."""
     if depth > DEPTH:
-        return "nests commands too deeply for the blocks to read"
+        yield Effect("nests commands too deeply for the blocks to read")
+        return
     text = protectedwrites.without_heredocs(line)
     for found in SUBSTITUTION.finditer(text):
-        if why := _line(found.group(1) or found.group(2) or "", ground, here, depth + 1):
-            return why
+        yield from _line(found.group(1) or found.group(2) or "", ground, here, depth + 1)
     found_segments, problems = shellscan.segments(SUBSTITUTION.sub(" $SUBSTITUTED ", text))
     if text.strip() and not found_segments:
-        return f"cannot be read by the blocks: {problems[0].reason if problems else 'no command in it'}"
+        yield Effect(f"cannot be read by the blocks: {problems[0].reason if problems else 'no command in it'}")
     for segment in found_segments:
         for operator, target in segment.redirects:
             reads = "<" in operator and ">" not in operator
             if reads and _secret(target, here, ground):
-                return f"{target} {CREDENTIAL}"
-            writes = not reads and target not in NOWHERE and not target.lstrip("&").isdigit() and target != "-"
-            if writes and (why := _written(target, here, ground)):
-                return why
+                yield Effect(f"{target} {CREDENTIAL}")
+            if not reads and target not in NOWHERE and not target.lstrip("&").isdigit() and target != "-":
+                yield _written(target, here, ground)
         words = list(segment.argv)
         while words and re.match(r"\w+=", words[0]):
             words.pop(0)
@@ -163,68 +196,81 @@ def _line(line: str, ground: Ground, here: str | None, depth: int) -> str:
         if _program(words[0]) in ("cd", "pushd"):
             here = _place(next((w for w in words[1:] if not w.startswith("-")), ground.home), here, ground)
             continue
-        if why := _command(words, ground, here, depth):
-            return why
-    return ""
+        yield from _command(words, ground, here, depth)
 
 
 def _program(word: str) -> str:
     return PurePath(word.replace("\\", "/")).name.lower().removesuffix(".exe")
 
 
-def _written(target: str, here: str | None, ground: Ground, why: str = OUTSIDE) -> str:
-    """Why ``target`` may not be written: it cannot be told, or it is outside the project."""
+def _written(target: str, here: str | None, ground: Ground, why: str = OUTSIDE) -> Effect:
+    """The write of ``target``, refused when it cannot be told or is outside the project."""
     if target.lower() in NOWHERE:
-        return ""
+        return Effect()
     fixed = re.split(r"[*?\[{]", target)[0] if shellscan.has_glob(target) else target
     place = _place(fixed or ".", here, ground)
     if place is None:
-        return f"{target} {UNREAD}"
-    return "" if _inside(place, ground) else f"{target} {why}"
+        return Effect(f"{target} {UNREAD}", target)
+    return Effect("" if _inside(place, ground) else f"{target} {why}", place)
 
 
-def _command(words: list[str], ground: Ground, here: str | None, depth: int) -> str:
-    """Why one command is refused."""
+def _command(words: list[str], ground: Ground, here: str | None, depth: int) -> Iterator[Effect]:
+    """The effects of one command."""
     name, rest, fed = _program(words[0]), words[1:], False
     while name in LAUNCHERS:
         fed = fed or name == "xargs"
         while rest and (rest[0].startswith("-") or re.match(r"(\w+=|\d+(\.\d+)?[smhd]?$)", rest[0])):
             rest = rest[1:]
         if not rest:
-            return ""
+            return
         words, name, rest = rest, _program(rest[0]), rest[1:]
     if name in AS_ANOTHER:
-        return f"{name} {GLOBAL}"
+        inner = list(rest)
+        while inner and inner[0].startswith("-"):
+            inner = inner[1:]
+        theirs = [each.wrote for each in _command(inner, ground, here, depth) if each.wrote] if inner and depth < DEPTH else []
+        yield from (Effect(f"{name} {GLOBAL}", each) for each in theirs or [name])
+        return
     if name in SHELLS or name == "eval":
         inline = " ".join(rest) if name == "eval" else next((rest[i + 1] for i, w in enumerate(rest[:-1]) if re.fullmatch(r"-[a-z]*c", w)), "")
-        return _line(inline, ground, here, depth + 1) if inline else ""
+        if inline:
+            yield from _line(inline, ground, here, depth + 1)
+        return
     plain = [w for w in rest if not w.startswith("-")]
     lowered = [w.lower() for w in plain]
     for path in (part for w in words for part in (w, w.split("=", 1)[-1], w.lstrip("@")) if part):
         if ("/" in path or path.startswith((".", "~", "$HOME"))) and _secret(path, here, ground):
-            return f"{path} {CREDENTIAL}"
+            yield Effect(f"{path} {CREDENTIAL}")
+            return
     if any(all(each in [w.lower() for w in rest] for each in form) for form in CREDENTIAL_COMMANDS.get(name, ())):
-        return f"{name} {CREDENTIAL}"
+        yield Effect(f"{name} {CREDENTIAL}")
+        return
     if why := _global((words[0], *rest), lowered, here, ground):
-        return why
+        yield Effect(why, name)
+        return
     if name == "git":
-        return _git(rest, ground, here)
+        yield from _git(rest, ground, here)
+        return
     if name == "find":
-        return _find(rest, ground, here)
+        yield from _find(rest, ground, here)
+        return
     targets = _targets(name, rest, plain)
     if fed and (targets or name in EVERY | OWNED | COPIES):
-        return f"{name} takes its targets from another command: it {UNREAD}"
+        yield Effect(f"{name} takes its targets from another command: it {UNREAD}", targets[0] if targets else name)
+        return
     recursive = any(w == "--recursive" or re.fullmatch(r"-[A-Za-z]*[rR][A-Za-z]*", w) for w in rest) or (name in ("rd", "rmdir") and "/s" in lowered)
     for target in targets:
         if name in ("rm", "rd", "rmdir", "del", "remove-item") and recursive:
             place = _place(re.split(r"[*?\[{]", target)[0] or ".", here, ground)
             if place is None:
-                return f"{target} {UNREAD}"
-            if not _inside(place, ground) or place == os.path.realpath(ground.root):
-                return f"{target} {DELETES}"
-        elif why := _written(target, here, ground):
-            return why
-    return ""
+                yield Effect(f"{target} {UNREAD}", target)
+            else:
+                spared = _inside(place, ground) and place != os.path.realpath(ground.root)
+                yield Effect("" if spared else f"{target} {DELETES}", place)
+        else:
+            yield _written(target, here, ground)
+    if name in UNDONE and not targets and (name == "patch" or (name == "unzip" and plain) or any(w.startswith(("-i", "-pi")) for w in rest)):
+        yield Effect(wrote=here or ground.root)
 
 
 def _targets(name: str, rest: list[str], plain: list[str]) -> list[str]:
@@ -287,7 +333,7 @@ def _global(words: tuple[str, ...], plain: list[str], here: str | None, ground: 
     return ""
 
 
-def _git(rest: list[str], ground: Ground, here: str | None) -> str:
+def _git(rest: list[str], ground: Ground, here: str | None) -> Iterator[Effect]:
     sub, after, moved = "", [], ""
     at = 0
     while at < len(rest):
@@ -302,28 +348,38 @@ def _git(rest: list[str], ground: Ground, here: str | None) -> str:
     flags = {w.split("=", 1)[0] for w in after if w.startswith("-")}
     short = {c for w in flags if re.fullmatch(r"-[A-Za-z]+", w) for c in w[1:]}
     plain = [w for w in after if not w.startswith("-")]
+    tree = _place(moved or ".", here, ground) or moved or ground.root
     if sub == "push" and (flags & {"--force", "--force-with-lease", "--force-if-includes", "--mirror", "--delete", "--prune"} or short & {"f", "d"}
                           or any(w.startswith(("+", ":")) for w in plain)):
-        return f"git push {FORCE}"
+        yield Effect(f"git push {FORCE}")
+        return
     if sub == "config":
         reading = flags & {"--get", "--get-all", "--get-regexp", "--list", "-l", "--show-origin"} or (len(plain) < 2 and not flags & {"--unset", "--unset-all"})
         if not reading and flags & {"--global", "--system"}:
-            return f"git config {GLOBAL}"
+            yield Effect(f"git config {GLOBAL}", "git config")
+            return
         named = next((after[i + 1] for i, w in enumerate(after[:-1]) if w in ("-f", "--file")), "")
         if not reading and named:
-            return _written(named, here, ground)
-    if moved and sub in GIT_WRITES and (why := _written(moved, here, ground)):
-        return why
+            yield _written(named, here, ground)
+            return
+        if not reading:
+            yield Effect(wrote=str(PurePath(tree) / ".git"))
+    if moved and sub in GIT_WRITES and (effect := _written(moved, here, ground)).why:
+        yield effect
+        return
     if sub in ("clone", "init") and len(plain) > (1 if sub == "clone" else 0):
-        return _written(plain[-1], here, ground)
-    if sub == "worktree" and plain[:1] == ["add"] and len(plain) > 1:
-        return _written(plain[1], here, ground)
-    if sub == "clean":
-        return next((why for w in plain if (why := _written(w, _place(moved or ".", here, ground), ground, DELETES))), "")
-    return ""
+        yield _written(plain[-1], here, ground)
+    elif sub == "worktree" and plain[:1] == ["add"] and len(plain) > 1:
+        yield _written(plain[1], here, ground)
+    elif sub == "clean":
+        yield from (_written(w, _place(moved or ".", here, ground), ground, DELETES) for w in plain)
+        yield Effect(wrote=tree)
+    elif sub in worktreerules.CHANGES_THE_TREE and not (sub == "stash" and plain[:1] in (["list"], ["show"])):
+        # `apply` changes files of the tree; every other of these writes the repository too
+        yield Effect(wrote=tree if sub == "apply" else str(PurePath(tree) / ".git"))
 
 
-def _find(rest: list[str], ground: Ground, here: str | None) -> str:
+def _find(rest: list[str], ground: Ground, here: str | None) -> Iterator[Effect]:
     starts = []
     for word in rest:
         if word.startswith("-") or word in ("(", "!"):
@@ -331,6 +387,5 @@ def _find(rest: list[str], ground: Ground, here: str | None) -> str:
         starts.append(word)
     acts = "-delete" in rest or any(w in ("-exec", "-execdir", "-ok", "-okdir") and i + 1 < len(rest)
                                     and _program(rest[i + 1]) in EVERY | OWNED | COPIES for i, w in enumerate(rest))
-    if not acts:
-        return ""
-    return next((why for start in (starts or ["."]) if (why := _written(start, here, ground, DELETES))), "")
+    if acts:
+        yield from (_written(start, here, ground, DELETES) for start in (starts or ["."]))
