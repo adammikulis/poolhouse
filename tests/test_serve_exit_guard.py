@@ -171,7 +171,7 @@ model.write_bytes(b"GGUF" + b"\\x00" * 64)
 sentinel.default().manifest.pin(model, "model", source="approved")
 manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(root)),
                         state_file=root / "servers.json", stop_on_exit={stop})
-info = manager.lease(ServerSpec(model=model, port=free_port()), roam=False, timeout=30.0,
+info = manager.lease(ServerSpec(context=4096, model=model, port=free_port()), roam=False, timeout=30.0,
                      check_flags=False, preflight=False, warmup_request=False)
 print(info.pid, flush=True)
 time.sleep(120)
