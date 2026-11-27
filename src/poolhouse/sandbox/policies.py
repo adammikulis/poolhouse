@@ -30,8 +30,9 @@ def system_env(**extra: str) -> dict[str, str]:
 
 
 def local_net() -> Net:
-    """The network a tool gets when its caller names none: the host's loopback where the platform can scope it (macOS), none where it
-    cannot (Linux gives a process the host's whole network or none of it, so a service on the loopback is named with `Net.only`)."""
+    """The network a tool gets when its caller names none: to reach the host's loopback, and to listen on nothing, where the platform can scope it
+    (macOS); none where it cannot (Linux gives a process the host's whole network or none of it, so a service on the loopback is named with
+    `Net.only`)."""
     return Net.loopback() if sys.platform == "darwin" else Net.deny()
 
 
@@ -79,8 +80,9 @@ def mcp_server(command: str, project: str | os.PathLike[str],  # noqa: PLR0913
 
 def model_server(binary: str | os.PathLike[str], model_dir: str | os.PathLike[str], *,
                  cache: str | os.PathLike[str] | None = None, gpu: bool = True) -> Policy:
-    """A model server: reads its binary's install tree (its directory, or the prefix above a ``bin``) and the model directory, the
-    loopback where the platform can scope it (`local_net`), the GPU when ``gpu``."""
+    """A model server: reads its binary's install tree (its directory, or the prefix above a ``bin``) and the model directory, reaches the
+    loopback where the platform can scope it (`local_net`), the GPU when ``gpu``. A server that is to be asked is started by
+    `serve.confined`, which has it listen on a Unix socket."""
     real = os.path.realpath(binary)
     home = Path(real).parent
     install = home.parent if home.name == "bin" else home

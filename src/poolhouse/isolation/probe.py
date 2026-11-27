@@ -115,16 +115,30 @@ def p08():
     return {"outcome": seen(lambda: connect(host, port))[0]}
 
 
+def refused(call):
+    """``"denied"`` only when the sandbox refused ``call``: another error (a port already held) means the system took it up."""
+    state, why = seen(call)
+    return "denied" if state == "denied" and why in ("EPERM", "EACCES") else "allowed"
+
+
 def p09():
+    """No datagram leaves for a port nobody granted, and no address is bound or listened on: not on loopback, and not on the wildcard, for no port
+    the system picks and for none the profile names."""
     def send():
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.sendto(b"x", ("127.0.0.1", PLAN["udp_port"]))
 
-    def bind(kind):
-        with socket.socket(socket.AF_INET, kind) as sock:
-            sock.bind(("127.0.0.1", 0))
+    def bind(kind, host, port):
+        with socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET, kind) as sock:
+            sock.bind((host, port))
 
-    states = [seen(send)[0], seen(lambda: bind(socket.SOCK_DGRAM))[0], seen(lambda: bind(socket.SOCK_STREAM))[0]]
+    def listen():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.listen(1)
+
+    states = [seen(send)[0], refused(listen),
+              *(refused(lambda kind=kind, host=host, port=port: bind(kind, host, port)) for port in (0, *PLAN["named_ports"])
+                for host in ("127.0.0.1", "0.0.0.0", "::") for kind in (socket.SOCK_DGRAM, socket.SOCK_STREAM))]  # noqa: S104 - must be refused
     return {"outcome": "allowed" if "allowed" in states else "denied", "states": states}
 
 

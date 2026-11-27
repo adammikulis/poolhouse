@@ -128,10 +128,10 @@ def test_network_rules_follow_the_mode(tree):
     base = Policy("p")
     assert "network" not in profile(base.validated(), "/bin/echo", "t")
     loop = profile(Policy("p", net=Net.loopback()).validated(), "/bin/echo", "t")
-    assert '(remote ip "localhost:*")' in loop
+    assert '(remote ip "localhost:*")' in loop and "network-bind" not in loop and "network-inbound" not in loop
     ports = profile(Policy("p", net=Net.only(8123, 8124)).validated(), "/bin/echo", "t")
     assert '(remote ip "localhost:8123")' in ports and '"localhost:*"' not in ports
-    assert "network-bind" not in ports
+    assert "network-bind" not in ports and "network-inbound" not in ports
 
 
 def test_the_gpu_rules_are_added_only_when_asked(tree):

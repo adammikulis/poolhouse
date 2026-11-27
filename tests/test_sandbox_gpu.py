@@ -21,6 +21,7 @@ from poolhouse import sandbox
 from poolhouse.client import wait_for_health
 from poolhouse.sandbox import policies
 from poolhouse.serve import free_port
+from poolhouse.serve.confined import confine
 from poolhouse.serve.process import pid_exists
 
 pytest_plugins = ["tests.sandbox_kit", "real_model"]
@@ -51,17 +52,11 @@ def test_a_confined_server_answers_with_the_model_on_the_gpu(real, request):
 def test_every_layer_is_offloaded_to_the_gpu_inside_the_profile(real, request, tmp_path):
     binary, model = metal_box(real, request)
     port = free_port()
-    policy = replace(policies.model_server(binary, model.parent, gpu=True),
-                     read=(*policies.model_server(binary, model.parent).read,
-                           str(Path(os.path.realpath(model)).parent)))
-    argv, _tag, _chosen = sandbox.wrapped(
-        [str(binary), "-m", str(model), "--host", "127.0.0.1", "--port", str(port), "-ngl", "99",
-         "-c", "512", "--no-warmup", "-lv", "4"], policy)
+    held = confine([str(binary), "-m", str(model), "--host", "127.0.0.1", "--port", str(port), "-ngl", "99",
+                    "-c", "512", "--no-warmup", "-lv", "4"], {}, Path(binary))
     log = tmp_path / "server.log"
     with log.open("wb") as sink:
-        process = subprocess.Popen(argv, stdout=sink, stderr=subprocess.STDOUT, env=dict(policy.env),
-                                   cwd=str(Path(os.path.realpath(binary)).parent),
-                                   start_new_session=True)
+        process = subprocess.Popen(held.argv, stdout=sink, stderr=subprocess.STDOUT, env=held.env, cwd=held.cwd, start_new_session=True)
     try:
         assert wait_for_health(f"http://127.0.0.1:{port}", timeout=120,
                                is_alive=lambda: process.poll() is None)

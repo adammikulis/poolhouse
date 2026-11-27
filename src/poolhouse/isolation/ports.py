@@ -113,6 +113,7 @@ class PortBridge:
             return
         with held:
             socket.send_fds(connection, [json.dumps({"port": held.getsockname()[1]}).encode()], [held.fileno()])
+            connection.recv(1)   # the box says it has it: macOS can break a socket still in flight when its sender closes it
 
     def _bound(self, family: int, wanted: int, reuse: bool) -> socket.socket:
         """A socket bound to loopback on ``wanted``, or on the next free port of the window for 0; `OSError` for a port outside the window."""

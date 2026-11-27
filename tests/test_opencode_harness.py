@@ -34,8 +34,13 @@ from poolhouse.http import Server
 pytest_plugins = ["tests.confined_kit"]
 
 SERVING = '''
-    held = socket.socket()
-    held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
+    preload = os.environ.get("BUN_INSPECT_PRELOAD")
+    if preload:   # the box binds no address: the server listens where the preload's first line puts OpenCode's own
+        held = socket.socket(socket.AF_UNIX)
+        held.bind(open(preload).readline().split('"')[1])
+    else:
+        held = socket.socket()
+        held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
     held.listen()
     asked = 0
     while True:
@@ -51,7 +56,8 @@ SERVING = '''
 """What a stand-in's `serve` does, as OpenCode 2.4.2 starts: it listens at once, answers 503 ``starting`` times and 200 from then on."""
 
 HARNESS = '''#!{python}
-# NOT A MODEL and NOT OPENCODE: it holds the port as `serve`; as `run` it writes one file and, only when `hooked`, calls the parent as the plugin does.
+# NOT A MODEL and NOT OPENCODE: as `serve` it listens where OpenCode's server would; as `run` it writes one file and, only when `hooked`, calls the
+# parent as the plugin does.
 import json, os, socket, subprocess, sys
 args = sys.argv[1:]
 if args[0] == "serve":
@@ -85,7 +91,8 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
 
     def run_opencode(confinement):
         seen["argv"], seen["env"] = list(confinement.argv), dict(confinement.env)
-        seen["net"] = confinement.profile.policy.net
+        seen["net"], seen["sockets"] = confinement.profile.policy.net, confinement.profile.policy.unix_namespaces
+        seen["through"] = Path(seen["argv"][7]).read_text()
         seen["config"] = json.loads(Path(seen["env"]["OPENCODE_CONFIG"]).read_text())
         [folder] = seen["config"]["plugins"]
         seen["folder"] = (Path(folder).relative_to(seen["env"]["HOME"]).as_posix(), sorted(each.name for each in Path(folder).iterdir()))
@@ -95,12 +102,14 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     said = []
     assert opencode.launch(["--sandbox", "--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append,
                            run_opencode=run_opencode) == 0, said
-    sh, flag, script, name, program, port, *rest = seen["argv"]
+    sh, flag, script, name, program, port, server, preload, *rest = seen["argv"]
     assert (sh, flag, name, program) == ("/bin/sh", "-c", "opencode", str(binary.resolve()))
     assert rest == ["--format", "json", "--model", "poolhouse/local-model", "fix it"]
     assert '"$1" serve --print-logs --log-level warn --hostname 127.0.0.1 --port "$2" >&2 &' in script
     assert 'run --server "http://127.0.0.1:$port"' in script and "--standalone" not in script
-    assert seen["net"].listen == (int(port),) and len(seen["net"].ports) == 1, "the model bridge and the server the launcher chose, no other port"
+    assert len(seen["net"].ports) == 1 and int(port) not in seen["net"].ports, "the model bridge's port and no other: the server's is only a name"
+    assert seen["sockets"] == (str(Path(server).parent),) and preload == str(Path(seen["env"]["HOME"]) / "bin" / "poolhouse-server.js")
+    assert seen["through"].startswith(f"const socket = {json.dumps(server)};\nconst port = {port};\n")
     assert seen["env"]["OPENCODE_PASSWORD"] == provider_key(seen), "the server answers only to the bridge token"
     assert seen["env"]["OPENCODE_DISABLE_AUTOUPDATE"] == "true" and seen["env"]["OPENCODE_DISABLE_MODELS_FETCH"] == "true"
     assert seen["env"]["OPENCODE_DISABLE_PROJECT_CONFIG"] == "true", "a project's own config replaces neither the permissions nor the plugin"
@@ -115,7 +124,7 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     assert seen["folder"] == ("bin/poolhouse-plugin", ["index.js"]), "OpenCode loads a configured plugin only from a folder, and the box holds bin whole"
 
 
-# NOT A MODEL and NOT OPENCODE: as `serve` it says a marked line on each of its outputs and holds the port; as `run` it tries to change the plugin.
+# NOT A MODEL and NOT OPENCODE: as `serve` it says a marked line on each of its outputs and listens; as `run` it tries to change the plugin.
 MEDDLER = '''#!{python}
 import json, os, socket, subprocess, sys
 args = sys.argv[1:]
