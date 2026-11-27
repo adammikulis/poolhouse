@@ -1,0 +1,178 @@
+<style>
+delegates-view { display:contents; }
+delegates-view .delegates-heading { margin-bottom:18px; }
+delegates-view .delegates-heading h1 { margin:0 0 8px; } delegates-view .delegates-heading p { margin:0; }
+delegates-view .delegate-layout { display:grid; grid-template-columns:minmax(240px,340px) minmax(0,1fr); gap:20px; align-items:start; }
+delegates-view .delegate-list { display:grid; gap:10px; min-width:0; }
+delegates-view .delegate-run { display:block; width:100%; text-align:left; margin:0; padding:calc(14px * var(--ui-density,1)); background:var(--bg-raised); color:var(--text); border:1px solid var(--line); border-radius:12px; overflow-wrap:anywhere; }
+delegates-view .delegate-run[aria-pressed=true] { border-color:var(--poolhouse-yellow-ink,var(--poolhouse-navy)); box-shadow:0 0 0 1px var(--poolhouse-navy); }
+delegates-view .delegate-run small { display:block; color:var(--muted); margin-top:6px; font-size:0.857rem; }
+delegates-view .delegate-top { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+delegates-view .delegate-state { font-size:0.786rem; padding:2px 8px; border-radius:20px; border:1px solid var(--line); background:var(--bg-sunken); }
+delegates-view .delegate-state[data-live=true] { background:var(--poolhouse-yellow); color:var(--poolhouse-yellow-ink,var(--poolhouse-navy)); border-color:transparent; }
+delegates-view .delegate-state[data-bad=true] { border-color:var(--bad); color:var(--bad); }
+delegates-view .delegate-detail { min-width:0; }
+delegates-view .delegate-detail h2 { margin:0; overflow-wrap:anywhere; }
+delegates-view .delegate-now { margin:14px 0 4px; font-size:1.143rem; font-weight:650; overflow-wrap:anywhere; }
+delegates-view .delegate-tests { margin:0 0 12px; color:var(--muted); overflow-wrap:anywhere; }
+delegates-view .delegate-why { margin:0 0 12px; overflow-wrap:anywhere; white-space:pre-wrap; }
+delegates-view .delegate-empty { color:var(--muted); }
+delegates-view .delegate-detail dl { display:grid; grid-template-columns:110px minmax(0,1fr); gap:6px 8px; font-size:0.929rem; margin:12px 0; }
+delegates-view .delegate-detail dt { color:var(--muted); } delegates-view .delegate-detail dd { margin:0; overflow-wrap:anywhere; white-space:pre-wrap; }
+delegates-view .delegate-timeline { list-style:none; margin:16px 0 0; padding:0; }
+delegates-view .delegate-event { display:grid; grid-template-columns:88px minmax(0,1fr); gap:10px; border-top:1px solid var(--line); padding:9px 0; }
+delegates-view .delegate-event time { color:var(--muted); font-size:0.857rem; font-variant-numeric:tabular-nums; }
+delegates-view .delegate-event div { min-width:0; overflow-wrap:anywhere; }
+delegates-view .delegate-event[data-tone=bad] .delegate-head { color:var(--bad); font-weight:650; }
+delegates-view .delegate-event[data-tone=warn] .delegate-head { color:var(--warn); font-weight:650; }
+delegates-view .delegate-event[data-tone=good] .delegate-head { color:var(--good); font-weight:650; }
+delegates-view .delegate-event[data-tone=quiet] { color:var(--muted); font-size:0.929rem; }
+delegates-view .delegate-event code { display:block; margin-top:4px; white-space:pre-wrap; font-size:0.857rem; }
+delegates-view .delegate-event pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:320px; overflow:auto; background:var(--bg); padding:10px; border-radius:8px; margin:6px 0 0; font-size:0.857rem; }
+delegates-view .delegate-event summary { cursor:pointer; color:var(--muted); font-size:0.857rem; margin-top:4px; }
+@media(max-width:900px) { delegates-view .delegate-layout { grid-template-columns:1fr; } delegates-view .delegate-event { grid-template-columns:1fr; gap:2px; } }
+</style>
+<template>
+<section class="workspace page-shell" hidden>
+  <header class="delegates-heading page-heading"><div><h1>Delegates</h1><p class="intro">Tasks handed to a local model on this computer: what each is doing now and everything it has done.</p></div></header>
+  <p class="status" id="delegates-status" role="status">Loading delegate runs…</p>
+  <div class="delegate-layout">
+    <div class="delegate-list" id="delegate-list" aria-label="Delegate runs"></div>
+    <article class="workspace-card delegate-detail" id="delegate-detail" aria-label="Delegate run" hidden>
+      <div class="delegate-top"><h2 id="delegate-name"></h2><span class="delegate-state" id="delegate-state"></span></div>
+      <p class="delegate-now" id="delegate-now"></p>
+      <p class="delegate-tests" id="delegate-tests"></p>
+      <p class="delegate-why" id="delegate-why" hidden></p>
+      <details id="delegate-about"><summary>Task and settings</summary><dl id="delegate-facts"></dl></details>
+      <h3>Timeline</h3>
+      <p class="delegate-empty" id="delegate-empty" hidden></p>
+      <ol class="delegate-timeline" id="delegate-timeline"></ol>
+    </article>
+  </div>
+</section>
+</template>
+<script>
+(function(){
+ const M=window.fleetModel,W=window.workspaceModel,E=M.el;
+ const BAD=['failed','rejected','unapplied'];
+ const clock=at=>new Date(at*1000).toLocaleTimeString();
+ const span=seconds=>{const s=Math.max(Math.round(seconds||0),0);return s<60?`${s}s`:s<3600?`${Math.floor(s/60)}m ${s%60}s`:`${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`;};
+ const counts=e=>{const found=['passed','failed','errors','skipped'].filter(k=>Number.isInteger(e[k])&&(e[k]||k==='passed'||k==='failed')).map(k=>`${e[k]} ${k}`);return found.join(', ')||(e.ok?'ended well, with no counts':`failed with no counts (exit ${e.exit})`);};
+ const named=e=>`${e.phase} pass${e.round?' '+e.round:''}, attempt ${e.attempt}`;
+ /** Each kind of event as [tone, head, command or file, output or message, whether that is shown open]. Every value is text, never markup. */
+ const SAID={
+  run:e=>['quiet',`Run started for ${e.lead} on ${e.model} (${e.tier})`,'',e.task,false],
+  state:e=>['quiet',`State: ${e.state}${e.detail?' · '+e.detail:''}`],
+  model:e=>['quiet',`Model leased: ${e.file}, window ${e.window}`],
+  preflight:e=>e.ok?['quiet','Preflight passed','',e.lacks,false]:['bad','Preflight failed','',e.lacks||e.untested,true],
+  attempt:e=>e.attempt?['warn',`Restart: ${named(e)}`]:['',`Started: ${named(e)}`],
+  step:e=>['quiet',`Step ${e.turn}`],
+  text:e=>['','The model says','',e.text,true],
+  call:e=>[e.denied?'bad':'',`${e.denied?'Denied':'Call'}: ${e.tool}`,e.command||e.file||e.about],
+  result:e=>{const failed=e.status==='error'||(e.exit!==null&&e.exit!==undefined&&e.exit!==0);
+   return [failed?'warn':'',`${e.tool} ${e.exit!==null&&e.exit!==undefined?'exit '+e.exit:e.status}${typeof e.seconds==='number'?' after '+span(e.seconds):''}`,e.command||e.file||e.about,e.output,failed];},
+  test:e=>[e.ok?'good':'bad',`Tests ${e.ok?'passed':'failed'}: ${counts(e)}${e.setup?' · looks like setup':''}`,e.command,e.setup,true],
+  usage:e=>['quiet',`Step ${e.turn} ended (${e.reason}): ${e.input_tokens} read, ${e.cache_read_tokens} from cache, ${e.output_tokens} written, ${e.model_seconds}s on the model${e.tokens_per_second!=null?`, ${e.tokens_per_second} tokens/s`:''}${e.reuse_percent!=null?`, ${e.reuse_percent}% of the prompt reused`:''}`],
+  error:e=>['bad','Error','',e.why,true],
+  attempt_end:e=>{const why=e.interrupted||e.why;return [why?'bad':'good',`Ended: ${named(e)} after ${span(e.seconds)}, ${e.turns} turn(s)${e.interrupted?' · interrupted':why?' · error':''}`,'',why,true];},
+  notice:e=>['warn',`${e.delivered?'Told the lead':'Could not tell the lead'}: ${e.about}`,'',e.why,false],
+  end:e=>[e.state==='done'?'good':BAD.includes(e.state)?'bad':'warn',`Run ended ${e.state} after ${span(e.seconds)}`,'',e.detail,true],
+ };
+ class DelegatesView extends HTMLElement {
+  connectedCallback(){
+   if(this.wired)return;this.wired=true;
+   const find=id=>this.querySelector('#'+id);
+   this.host=this.querySelector('section');this.note=find('delegates-status');this.list=find('delegate-list');this.card=find('delegate-detail');
+   this.heading=find('delegate-name');this.badge=find('delegate-state');this.now=find('delegate-now');this.tests=find('delegate-tests');
+   this.facts=find('delegate-facts');this.timeline=find('delegate-timeline');this.buttons=new Map();this.selected='';this.next=0;
+   this.why=find('delegate-why');this.empty=find('delegate-empty');this.about=find('delegate-about');
+   W.route(this.host,'delegates',()=>this.load());
+   this.timer=setInterval(()=>{if(!this.host.hidden&&!document.hidden)this.load();},2000);
+  }
+  disconnectedCallback(){clearInterval(this.timer);}
+  async load(){
+   if(this.loading){this.again=true;return;}this.loading=true;
+   try{
+    const found=await W.api('/ui/delegates');this.paintList(found.runs||[]);
+    if(!this.selected&&found.runs?.length)this.choose(found.runs[0].name);
+    await this.follow();
+    this.note.textContent=found.runs?.length?'':'No delegate has run on this computer yet.';
+   }catch(error){W.status(this.note,error);}
+   finally{this.loading=false;if(this.again){this.again=false;this.load();}}
+  }
+  badged(node,run){node.textContent=run.state;node.dataset.live=String(!!run.live);node.dataset.bad=String(BAD.includes(run.state));}
+  paintList(runs){
+   const seen=new Set(runs.map(run=>run.name));
+   for(const [name,button] of this.buttons)if(!seen.has(name)){button.node.remove();this.buttons.delete(name);}
+   runs.forEach((run,index)=>{
+    let held=this.buttons.get(run.name);
+    if(!held){
+     const state=E('span',{class:'delegate-state'}),task=E('small'),doing=E('small'),tests=E('small');
+     const node=E('button',{type:'button',class:'delegate-run',onclick:()=>{this.choose(run.name);this.load();}},E('span',{class:'delegate-top'},E('strong',{},run.name),state),task,doing,tests);
+     held={node,state,task,doing,tests};this.buttons.set(run.name,held);
+    }
+    this.badged(held.state,run);
+    held.task.textContent=run.task.length>120?run.task.slice(0,120)+'…':run.task;
+    const outcome=run.tests_said||(run.live||run.state==='done'?'':run.detail.length>160?run.detail.slice(0,160)+'…':run.detail);
+    held.doing.textContent=run.doing;held.tests.textContent=outcome;held.tests.hidden=!outcome;
+    held.node.setAttribute('aria-pressed',String(run.name===this.selected));
+    if(this.list.children[index]!==held.node)this.list.insertBefore(held.node,this.list.children[index]||null);
+   });
+  }
+  choose(name){
+   if(name===this.selected)return;
+   this.selected=name;this.next=0;this.timeline.replaceChildren();this.card.hidden=true;this.factsKey='';
+   this.empty.hidden=true;this.about.open=false;this.unrecorded=false;
+   for(const [each,button] of this.buttons)button.node.setAttribute('aria-pressed',String(each===name));
+  }
+  async follow(){
+   let more=true;
+   while(more&&this.selected){
+    const name=this.selected,after=this.next;
+    const found=await W.api(`/ui/delegates/${encodeURIComponent(name)}?after=${after}`);
+    if(name!==this.selected||after!==this.next)return;
+    this.paintRun(found.run);
+    const atEnd=this.next>0&&window.innerHeight+window.scrollY>=document.documentElement.scrollHeight-40;
+    this.timeline.append(...found.events.map(event=>this.row(event)));
+    this.next=found.next;more=found.more;
+    if(atEnd&&found.events.length)this.timeline.lastElementChild?.scrollIntoView({block:'end'});
+    if(!more)this.paintEmpty(found.run);
+   }
+  }
+  /** A run with no step to show says why, and opens what it did leave, once. */
+  paintEmpty(run){
+   const none=!this.timeline.childElementCount;this.empty.hidden=!none;
+   if(!none)return;
+   this.empty.textContent=run.live?'Nothing is recorded yet.':'No steps are recorded for this run. Its task, outcome and answer are under Task and settings.';
+   if(!run.live&&!this.unrecorded){this.unrecorded=true;this.about.open=true;}
+  }
+  paintRun(run){
+   this.card.hidden=false;this.heading.textContent=run.name;this.badged(this.badge,run);
+   this.now.textContent=run.live?`Now: ${run.doing}`:`${run.doing.charAt(0).toUpperCase()}${run.doing.slice(1)}, after ${span(run.seconds)}`;
+   this.tests.textContent=run.tests_said||(run.live?'No test run yet.':'No test run recorded.');
+   const why=run.state==='working'?'':run.detail;this.why.textContent=why;this.why.hidden=!why;
+   const spent=run.spent||{},prompt=(spent.input_tokens||0)+(spent.cache_read_tokens||0);
+   const values={Task:run.task,Lead:run.lead,Model:run.model,Permissions:run.tier,Branch:run.branch,Started:new Date(run.started*1000).toLocaleString(),
+    'Time':span(run.seconds),Turns:run.turns||'',Tokens:prompt?`${spent.input_tokens||0} read, ${spent.cache_read_tokens||0} from cache, ${spent.output_tokens||0} written`:'',
+    'Prompt reuse':prompt?`${Math.round(100*(spent.cache_read_tokens||0)/prompt)}%`:'',Speed:spent.model_seconds>=0.5&&spent.output_tokens?`${(spent.output_tokens/spent.model_seconds).toFixed(1)} tokens/s of model time`:'',
+    Answer:run.answer};
+   const key=JSON.stringify(values);if(key===this.factsKey)return;this.factsKey=key;
+   this.facts.replaceChildren(...Object.entries(values).filter(([,value])=>value!==''&&value!=null).flatMap(([name,value])=>[E('dt',{},name),E('dd',{},String(value))]));
+  }
+  row(event){
+   const say=SAID[event.kind]||(e=>['quiet',String(e.kind)]);
+   const [tone,head,what,body,open]=say(event);
+   const time=new Date((event.at||0)*1000);
+   const inside=E('div',{},E('span',{class:'delegate-head'},head));
+   if(what)inside.append(E('code',{},String(what)));
+   if(body){
+    const text=E('pre',{},String(body));
+    if(event.kind==='text')inside.append(text);
+    else inside.append(E('details',{open:!!open},E('summary',{},event.kind==='result'?'End of the output':'Details'),text));
+   }
+   return E('li',{class:'delegate-event','data-tone':tone,'data-kind':event.kind},E('time',{datetime:time.toISOString()},clock(event.at)),inside);
+  }
+ }
+ customElements.define('delegates-view',DelegatesView);
+})();
+</script>

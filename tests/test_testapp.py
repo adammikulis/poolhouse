@@ -19,8 +19,10 @@ def preparation(tmp_path, monkeypatch):
     monkeypatch.setattr(testapp.testnode, 'shared_build', lambda root, **_kwargs: build)
     monkeypatch.setattr(testapp.testnode, 'account', lambda: tmp_path / 'toolchain')
     monkeypatch.setattr(testapp.testnode, 'tool', lambda name: name)
-    calls = []
+    calls, fetched = [], []
+    monkeypatch.setattr(testapp.testnode, 'fetch', lambda cargo, work, env: fetched.append((work, env['CARGO_HOME'])))
     def compile(argv, work, env):
+        assert fetched[-1] == (work, env['CARGO_HOME']), 'what the offline build needs is fetched first'
         assert '--no-run' in argv and '--offline' in argv and '--locked' in argv
         assert env['HOME'] != str(tmp_path / 'toolchain')
         made = target / 'debug' / 'deps' / 'poolhouse_app-fixed'

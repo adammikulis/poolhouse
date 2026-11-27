@@ -45,13 +45,13 @@ def common_path(tree) -> Path:
 
 
 def push(world, tree, sha: str, env) -> subprocess.CompletedProcess[str]:
-    """``git push`` of ``sha`` to the development branch as an agent, through the installed hook."""
+    """``git push`` of ``sha`` to the development branch as an agent, with the push check run as its hook."""
     return subprocess.run(["git", "push", "origin", f"{sha}:refs/heads/{DEV}"], cwd=tree, capture_output=True, text=True, check=False,
                           env={**world.env(world.pusher), **AGENT_PUSH, **env})
 
 
 def test_python_that_does_not_parse_is_found_under_a_name_git_would_quote(world):
-    world.install_hook()
+    world.install_push_check()
     tree, sha = world.start("quoted", {"tests/test_caf\u00e9.py": "def (:\n"})
     refused = push(world, tree, sha, {})
     assert refused.returncode != 0 and "does not parse" in refused.stderr and "no-data-files" not in refused.stderr, refused.stderr
@@ -59,7 +59,7 @@ def test_python_that_does_not_parse_is_found_under_a_name_git_would_quote(world)
 
 
 def test_a_file_under_a_name_git_would_quote_is_pushed_when_it_is_ordinary_and_refused_when_it_is_data(world):
-    world.install_hook()
+    world.install_push_check()
     tree, sha = world.start("quoted-data", {"docs/donn\u00e9es.csv": "a,b\n"})
     refused = push(world, tree, sha, {})
     assert refused.returncode != 0 and "docs/donn\u00e9es.csv: a .csv file is data or weights" in refused.stderr, refused.stderr
@@ -104,7 +104,7 @@ def reject(world, name: str, sha: str, verdict: str = "reject") -> None:
 
 
 def test_a_standing_reject_of_a_pushed_commit_refuses_the_push_until_the_reviewer_replaces_it(world):
-    world.install_hook()
+    world.install_push_check()
     tree, sha = world.start("rejected", {"docs/a.md": "changed\n"})
     reject(world, "rejected", sha)
     refused = push(world, tree, sha, {})
@@ -117,7 +117,7 @@ def test_a_standing_reject_of_a_pushed_commit_refuses_the_push_until_the_reviewe
 
 
 def test_a_reject_of_an_earlier_new_commit_refuses_a_push_whose_tip_is_another_commit(world):
-    world.install_hook()
+    world.install_push_check()
     tree, first = world.start("series", {"docs/a.md": "first\n"})
     world.proj.write(tree, "docs/b.md", "second\n")
     tip = world.proj.commit(tree, "feat: second")
@@ -128,7 +128,7 @@ def test_a_reject_of_an_earlier_new_commit_refuses_a_push_whose_tip_is_another_c
 
 
 def test_an_accept_a_review_of_another_commit_and_no_review_never_stop_a_push(world):
-    world.install_hook()
+    world.install_push_check()
     tree, sha = world.start("fine", {"docs/a.md": "changed\n"})
     _, other = world.start("elsewhere", {"docs/c.md": "other\n"})
     reject(world, "elsewhere", other)
@@ -277,7 +277,7 @@ def test_a_push_with_no_session_to_ask_as_says_so_on_stderr_and_goes_on(world, h
 
 
 def test_the_message_for_a_standing_reject_says_how_to_clear_it(world):
-    world.install_hook()
+    world.install_push_check()
     tree, sha = world.start("worded", {"docs/a.md": "changed\n"})
     reject(world, "worded", sha)
     refused = push(world, tree, sha, {})

@@ -20,7 +20,6 @@ RUST_ROOT = "app"
 
 LAN = {
     "src/poolhouse/fleet/daemon.py": "LAN mode of the pool daemon, behind lan.allowed()",
-    "src/poolhouse/fleet/onboard/cli.py": "add-device listens for a join because the person ran it",
     "src/poolhouse/fleet/onboard/share_cli.py": "share serves a folder to the LAN because the person ran it",
     "tests/pool_check/device.py": "a container listens in a network namespace of its own; a CI runner's node on its own",
     "app/poolhouse-node/src/main.rs": "--lan: the node's own listener and beacon",

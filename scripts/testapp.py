@@ -100,6 +100,7 @@ def ensure(root, *, admit=contextlib.nullcontext, say=lambda text: None):
             environment.update(HOME=str(isolated), TMPDIR=str(temporary), POOLHOUSE_HOME=str(temporary / 'state'),
                                RUSTUP_HOME=str(account / '.rustup'), CARGO_HOME=str(account / '.cargo'),
                                CARGO_TARGET_DIR=str(build.target), CARGO_BUILD_JOBS='1')
+            testnode.fetch(testnode.tool('cargo'), build.staged, environment)
             argv = [testnode.tool('cargo'), 'test', '--no-run', '--locked', '--offline',
                     '-p', 'poolhouse-app', '--bin', 'poolhouse-app', '--message-format=json']
             made = executable(run(argv, build.staged, environment), build.target)

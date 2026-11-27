@@ -11,9 +11,11 @@ import subprocess
 import sys
 import textwrap
 import threading
+import time
 
 import pytest
 
+from poolhouse import lock
 from poolhouse.lock import Busy, held, held_by, only_one, pid_alive, release, take
 
 
@@ -140,6 +142,29 @@ def test_asking_who_holds_it_neither_waits_nor_blanks_the_record(tmp_path):
         assert held_by(path) == f"pid {os.getpid()}"
         assert held_by(path) == f"pid {os.getpid()}", "asking twice must not blank it"
     assert held_by(path) == ""
+
+
+def test_somebody_asking_who_holds_a_free_lock_never_refuses_an_attempt_that_does_not_wait(tmp_path, monkeypatch):
+    path = tmp_path / "cutover.lock"
+    with only_one(path, wait=False):
+        pass
+    asking, answer, said = threading.Event(), lock.release, []
+
+    def slowly(handle):
+        """The asker keeps what it took for a moment, as a process the scheduler set aside would."""
+        if threading.current_thread().name == "asker":
+            asking.set()
+            time.sleep(0.02)
+        answer(handle)
+
+    monkeypatch.setattr(lock, "release", slowly)
+    asker = threading.Thread(target=lambda: said.append(held_by(path)), name="asker")
+    asker.start()
+    assert asking.wait(5), "the asker holds the lock now"
+    with only_one(path, wait=False):
+        pass
+    asker.join(5)
+    assert said == [""]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="symlinks are POSIX")

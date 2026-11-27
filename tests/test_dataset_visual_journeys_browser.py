@@ -1,6 +1,7 @@
 """Dataset journeys use the real local routes and isolated Hub metadata."""
 import pytest
 from browser_expect import expect
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_dataset_catalogue import REPO, remote  # noqa: F401
 from test_dataset_import_browser import configure
 from test_dataset_imports import served  # noqa: F401

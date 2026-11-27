@@ -81,6 +81,9 @@ class Context:
     window: int
     token: str = ""
     """The bridge token the harness holds, for a harness that reads its key from a file and not from a variable (Pi). Never printed, never logged."""
+    server_socket: str = ""
+    """Where a harness's own server listens on macOS, whose box binds no address: a Unix socket in a private folder of this launch, granted to a
+    rendering that says it `Rendering.serves`. Empty where the box has a loopback of its own (Linux)."""
 
     def client_argv(self, *words: str) -> list[str]:
         """The command a confined process runs to reach the session bridge: ``words`` are the client's own (`hook pre`, `workspace inbox`, `mcp`)."""
@@ -113,8 +116,9 @@ class Rendering:
 
     argv: tuple[str, ...]
     files: Mapping[str, str] = field(default_factory=dict)
-    listen: tuple[int, ...] = ()
-    """Loopback ports the harness's own server binds and is reached on (OpenCode's), chosen by the launcher: the profile opens these and no other."""
+    serves: bool = False
+    """Whether the harness runs a server of its own (OpenCode's), on `Context.server_socket` where there is one: the profile then lets the session
+    serve on that socket's folder."""
     noted: Callable[[str], Mapping[str, str]] | None = None
     """The files to write again when the box lacks something, given the sentence the harness's brief is to say; ``None`` where it has no brief."""
 
@@ -402,6 +406,16 @@ def _abandon(session: Session, stack: list[Any], scratch: list[str]) -> None:
         shutil.rmtree(path, ignore_errors=True)
 
 
+def _server_folder(parts: Parts) -> str:
+    """A short private folder for the socket of a harness's own server (a Unix socket's path has a small limit), removed when the launch ends; ''
+    on a system whose box has a loopback of its own."""
+    if sys.platform != "darwin":
+        return ""
+    root = os.path.realpath(tempfile.mkdtemp(prefix="pp-", dir="/tmp"))
+    parts.scratch.append(root)
+    return root
+
+
 def _window(plan: Plan, parts: Parts, taken: tuple[int, ...]) -> PortBridge | None:
     """The window of loopback ports of an editing session on macOS, served until the launch ends; None for a session that only reads, on another
     system, and where none could be opened (a program that serves on loopback is then refused, as the box refuses every bind)."""
@@ -441,10 +455,12 @@ def prepare(plan: Plan) -> Confinement:
         client = agent_home / "bin" / CLIENT
         _write(client, Path(client_module.__file__).read_text(encoding="utf-8"))
         stage = str(session.stage.physical)
+        server = _server_folder(parts)
         context = Context(agent_home, agent_home / HARNESS_DIRECTORIES[plan.harness], stage, os.path.realpath(sys.executable), str(client), bridge.path,
-                          os.getpid(), f"http://127.0.0.1:{model.port}", plan.lease.alias, plan.lease.window, model.token)
+                          os.getpid(), f"http://127.0.0.1:{model.port}", plan.lease.alias, plan.lease.window, model.token,
+                          f"{server}/server" if server else "")
         rendering = plan.render(context)
-        window = _window(plan, parts, (model.port, *rendering.listen))
+        window = _window(plan, parts, (model.port,))
         shims: tuple[str, ...] = ()
         if window is not None:
             _write(agent_home / "lib" / "sitecustomize.py", Path(loopback_window.__file__).read_text(encoding="utf-8"))
@@ -455,7 +471,7 @@ def prepare(plan: Plan) -> Confinement:
             _write(agent_home / name, text)
             frozen.append(str(agent_home / name))
         spec = Spec(plan.harness, stage, str(agent_home), install_tree(plan.binary), model.port, bridge.path, 0, session.patches, plan.project,
-                    plan.policy, plan.interactive, tuple(frozen), rendering.listen, session.reads,
+                    plan.policy, plan.interactive, tuple(frozen), server if rendering.serves else "", session.reads,
                     tuple(window.ports) if window else (), window.path if window else "")
         env = environment(Inputs(plan.harness, str(agent_home), search_path(spec, plan.grants), context.base_url, model.token, plan.lease.alias,
                                  plan.lease.window, plan.interactive, {}, plan.extras, (*shims, *session.sources),

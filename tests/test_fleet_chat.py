@@ -15,6 +15,7 @@ import time
 
 import pytest
 from launch_support import browser
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_fleet_ui import Serving as UIServing
 
 from poolhouse.fleet import chat_routes
@@ -234,7 +235,7 @@ class TestChattingThroughTheInterface:
         spread = arrived[-1][0] - arrived[0][0]
         assert spread > 0.05, f"every piece arrived at once ({spread:.3f}s apart)"
 
-    def test_what_was_said_is_kept(self, bare, tmp_path):
+    def test_what_was_said_is_kept(self, studio_node, bare, tmp_path):  # noqa: F811 - a conversation is bound to the pool its node reports
         from poolhouse.fleet.conversations import Conversations
 
         ui, cookie = bare
@@ -254,7 +255,7 @@ class TestChattingThroughTheInterface:
         assert kept.messages[1].content == marked("".join(PIECES))
         assert kept.title == "hi"
 
-    def test_chats_are_listed_and_searchable_over_the_interface(self, bare, tmp_path):
+    def test_chats_are_listed_and_searchable_over_the_interface(self, studio_node, bare, tmp_path):  # noqa: F811
         from poolhouse.fleet.conversations import Conversations
 
         ui, cookie = bare

@@ -55,9 +55,14 @@ import json, os, socket, subprocess, sys, time
 CANNED = "[CANNED RESPONSE, NOT A MODEL]"
 args = sys.argv[1:]
 if args[0] == "serve":
-    held = socket.socket()
-    held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
+    preload = os.environ.get("BUN_INSPECT_PRELOAD")
+    if preload:   # the box binds no address: the server listens where the preload's first line puts OpenCode's own
+        held = socket.socket(socket.AF_UNIX)
+        held.bind(open(preload).readline().split('"')[1])
+    else:
+        held = socket.socket()
+        held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
     held.listen()
     while True:
         connection = held.accept()[0]

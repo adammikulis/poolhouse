@@ -66,7 +66,7 @@ def test_every_id_a_screen_uses_is_in_the_catalogue():
     seen = set(BUILT)
     for source in [*(WEB / "components").glob("*.html"), WEB / "shell.html"]:
         seen |= set(USED.findall(source.read_text(encoding="utf-8")))
-    assert {"nav.settings", "wizard.summary", "dev.vocab"} <= seen
+    assert {"nav.settings", "devices.title", "dev.vocab"} <= seen
     assert sorted(seen - set(CATALOGUE)) == []
 
 

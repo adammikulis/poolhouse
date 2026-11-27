@@ -232,6 +232,7 @@ def _plan(profile: Profile, services: Services, held: Canaries) -> dict[str, obj
             "person_home": str(home.user_home()), "stage": profile.stage, "home": profile.home, "control_variants": _variants(),
             "loopback_port": held.tcp.getsockname()[1], "udp_port": held.udp.getsockname()[1], "lan": list(lan) if lan else None,
             "unix_socket": held.unix.getsockname(), "model_port": services.model_port, "session_socket": services.session_socket,
+            "named_ports": sorted({*profile.policy.net.ports, *profile.policy.net.accept[:1], *profile.policy.net.accept[-1:]}),
             "launcher": os.getpid(), "bystander": held.bystander.pid, "marker": held.marker, "terminal": held.terminal, "program": held.program,
             "readable_file": os.path.realpath(sys.executable),
             "stage_controls": [name for name in CONTROL_PREFIXES if os.path.lexists(Path(profile.stage) / name)],
