@@ -6,7 +6,8 @@ record it, prepare the result beside it, exchange the two names in one operation
 either unlink it (it equals the base) or exchange back and keep the agent's version. A file that nothing else can give back (an `Edit` with
 `kept_first`) has the bytes it displaces copied, through the held descriptor, into a read-only file named by their digest before anything is
 changed. A record of the intended writes is written first, so a crash leaves a state `recover` completes or rolls back by the same
-verification. Nothing here classifies a file: what may be applied is decided before, by `guard.runs_later`, and arrives as `Edit`s.
+verification. A symbolic link is a version like a file's: what it holds is its target, read without following it. Nothing here decides what
+may be applied: that is decided before, by `isolation.publication`, and arrives as `Edit`s.
 """
 
 from __future__ import annotations
@@ -33,9 +34,11 @@ NO_EXCHANGE = (errno.ENOTSUP, errno.EINVAL, errno.ENOSYS)
 
 @dataclass(frozen=True, slots=True)
 class Edit:
-    """One path of the change set: the digest of the base (``None`` when the path was absent), the result bytes (``None`` to delete) and its mode.
-    ``link`` makes the edit a new relative symbolic link to that target, which is only ever installed where nothing is. ``kept_first`` says that
-    nothing but this call can give back the version an overwrite or a deletion displaces, so it is kept first, and the change stops where it cannot be."""
+    """One path of the change set: the digest of the base (``None`` when the path was absent), the result bytes and mode, or ``link``, the target
+    of the relative symbolic link the result is; both ``None`` to delete. ``was_link`` says the base is a link, whose digest is that of its
+    target: a link found where the base is not one is refused. ``base_mode`` is the mode of the base file: a person who changed since whether
+    it runs keeps their version. ``kept_first`` says that nothing but this call can give back the version an
+    overwrite or a deletion displaces, so it is kept first, and the change stops where it cannot be."""
 
     path: str
     base: str | None
@@ -43,6 +46,13 @@ class Edit:
     mode: int = 0o644
     link: str | None = None
     kept_first: bool = False
+    was_link: bool = False
+    base_mode: int | None = None
+
+    @property
+    def result(self) -> str | None:
+        """The digest of what the path is to hold: the bytes, or the link's target; ``None`` for a deletion."""
+        return digest(self.data if self.link is None else os.fsencode(self.link))
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +60,8 @@ class Outcome:
     """What became of one path: ``applied``, ``unchanged`` (the live file already equalled the result), ``conflict`` (the person's version stays
     and the agent's is kept at ``kept``, and ``beside`` names the person's displaced version when two saves raced), ``refused`` (a link in the
     live path) or ``unkept`` (the displaced version could not be kept first, so nothing was changed); ``method`` says which of the exchange, the
-    claim, the creation or the deletion was used, and ``restored`` the name an applied path's displaced version was kept under."""
+    claim, the creation or the deletion was used, and ``restored`` the name an applied path's displaced version was kept under. ``refused``
+    also covers a path that holds neither a file nor a link."""
 
     path: str
     state: str
@@ -88,11 +99,16 @@ class Target:
 
 @dataclass(frozen=True, slots=True)
 class Held:
-    """The live file as step 1 held it: the descriptor kept to the end, the digest read through it and the identity recorded."""
+    """The live version as step 1 held it: for a file the descriptor kept to the end (``None`` for a link, which has none), the digest read and
+    the identity recorded."""
 
-    descriptor: int
+    descriptor: int | None
     digest: str
     identity: tuple[int, ...]
+
+    @property
+    def link(self) -> bool:
+        return self.descriptor is None
 
 
 def digest(data: bytes | None) -> str | None:
@@ -111,6 +127,40 @@ def _read(descriptor: int, sink: Callable[[bytes], object] | None = None) -> tup
             sink(block)
     info = os.fstat(descriptor)
     return hasher.hexdigest(), (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_mode)
+
+
+def _look(parent: int, name: str, sink: Callable[[bytes], object] | None = None) -> tuple[str, tuple[int, ...]]:
+    """`_read` for the link at ``name``: the digest of its target and its identity, never following it. ``OSError`` when it is not a link."""
+    value = os.fsencode(os.readlink(name, dir_fd=parent))
+    info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    if sink is not None:
+        sink(value)
+    return hashlib.sha256(value).hexdigest(), (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_mode)
+
+
+def _hold(parent: int, name: str) -> Held | None:
+    """The version at ``name``, held; ``None`` when nothing is there, ``OSError`` when it is neither a regular file nor a link."""
+    try:
+        info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(info.st_mode):
+        return Held(None, *_look(parent, name))
+    if not stat.S_ISREG(info.st_mode):
+        raise OSError(errno.EINVAL, "neither a file nor a link")
+    descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+    return Held(descriptor, *_read(descriptor))
+
+
+def _again(parent: int, held: Held, name: str, sink: Callable[[bytes], object] | None = None) -> tuple[str, tuple[int, ...]] | None:
+    """The held version read once more: a file through its descriptor, a link, which has none, at the ``name`` that holds it now (``None``
+    when no link is there)."""
+    if held.descriptor is not None:
+        return _read(held.descriptor, sink)
+    try:
+        return _look(parent, name, sink)
+    except OSError:
+        return None
 
 
 def _directory(project: Path, parts: Sequence[str], *, create: bool = False) -> int:
@@ -146,12 +196,16 @@ def _note(log: Path, record: dict) -> None:
         os.fsync(stream.fileno())
 
 
-def _prepare(target: Target) -> tuple[str, tuple[int, int]]:
+def _prepare(target: Target, mode: int) -> tuple[str, tuple[int, int]]:
     name = f"{TEMP}{uuid.uuid4().hex}"
+    if target.edit.link is not None:
+        os.symlink(target.edit.link, name, dir_fd=target.parent)
+        info = os.stat(name, dir_fd=target.parent, follow_symlinks=False)
+        return name, (info.st_dev, info.st_ino)
     descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=target.parent)
     try:
         os.write(descriptor, target.edit.data or b"")
-        os.fchmod(descriptor, target.edit.mode & 0o755)
+        os.fchmod(descriptor, mode)
         os.fsync(descriptor)
         info = os.fstat(descriptor)
     finally:
@@ -186,7 +240,7 @@ def _save(target: Target, held: Held) -> Outcome | None:
     directory, temp = target.restore, f"{TEMP}{uuid.uuid4().hex}"
     try:
         with os.fdopen(os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o400, dir_fd=directory), "wb") as stream:
-            same = _read(held.descriptor, stream.write) == (held.digest, held.identity)
+            same = _again(target.parent, held, target.name, stream.write) == (held.digest, held.identity)
             stream.flush()
             os.fsync(stream.fileno())
         if same:
@@ -207,7 +261,7 @@ def _save(target: Target, held: Held) -> Outcome | None:
 def _one(project: Path, edit: Edit, places: Places) -> Outcome:
     parts = Path(edit.path).parts
     try:
-        parent = _directory(project, parts[:-1], create=edit.base is None and (edit.data is not None or edit.link is not None))
+        parent = _directory(project, parts[:-1], create=edit.base is None and edit.result is not None)
     except OSError:
         return Outcome(edit.path, "refused")
     try:
@@ -216,30 +270,56 @@ def _one(project: Path, edit: Edit, places: Places) -> Outcome:
         os.close(parent)
 
 
+def _mode(held: Held | None, edit: Edit) -> int:
+    """The permission bits the result gets: those of the file it replaces, so what the person set stays, with the right to run it added or
+    removed only where the edit says otherwise; the edit's own for a new file."""
+    if held is None or held.link:
+        return edit.mode & 0o755
+    live, runs = held.identity[4] & 0o777, bool(edit.mode & 0o111)
+    if runs == bool(live & 0o111):
+        return live
+    return live | (live & 0o444) >> 2 if runs else live & ~0o111
+
+
+def _same(held: Held | None, edit: Edit) -> bool:
+    """Whether the live path already is the result: the same kind, the same bytes or target, and for a file the same say on running it."""
+    if held is None:
+        return edit.result is None
+    if held.digest != edit.result or held.link != (edit.link is not None):
+        return False
+    return held.link or _mode(held, edit) == held.identity[4] & 0o777
+
+
+def _moved(held: Held | None, edit: Edit) -> bool:
+    """Whether the live path is no longer the version the edit starts from: its bytes or target, its kind, or whether the file runs."""
+    if (held.digest if held else None) != edit.base:
+        return True
+    if held is None:
+        return False
+    ran = edit.base_mode is not None and bool(held.identity[4] & 0o111) != bool(edit.base_mode & 0o111)
+    return held.link != edit.was_link or (ran and not held.link)
+
+
 def _apply(target: Target) -> Outcome:
-    edit, result = target.edit, digest(target.edit.data)
+    edit = target.edit
     try:
-        descriptor = os.open(target.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=target.parent)
-    except FileNotFoundError:
-        descriptor = None
+        held = _hold(target.parent, target.name)
     except OSError:
         return Outcome(edit.path, "refused")
     try:
-        held = Held(descriptor, *_read(descriptor)) if descriptor is not None else None
         target.after(edit.path, "held")
-        if edit.link is not None:
-            return _link(target, held)
-        live = held.digest if held else None
-        if live == result:
+        if _same(held, edit):
             return Outcome(edit.path, "unchanged")
-        if live != edit.base or (held and not stat.S_ISREG(held.identity[4])):
+        if held is not None and held.link and not edit.was_link:
+            return Outcome(edit.path, "refused")
+        if _moved(held, edit):
             return Outcome(edit.path, "conflict", kept=_keep(target))
         if held is not None and edit.kept_first and (stopped := _save(target, held)):
             return stopped
-        if edit.data is None:
+        if edit.result is None:
             return _delete(target, held)
-        temp, ours = _prepare(target)
-        _note(target.log, {"path": edit.path, "step": "prepared", "temp": temp, "base": edit.base, "result": result})
+        temp, ours = _prepare(target, _mode(held, edit))
+        _note(target.log, {"path": edit.path, "step": "prepared", "temp": temp, "base": edit.base, "result": edit.result})
         target.after(edit.path, "prepared")
         if held is None:
             return _create(target, temp)
@@ -248,18 +328,18 @@ def _apply(target: Target) -> Outcome:
         except FileNotFoundError:
             os.unlink(temp, dir_fd=target.parent)
             return Outcome(edit.path, "conflict", kept=_keep(target))
-        _note(target.log, {"path": edit.path, "step": "swapped", "temp": temp, "base": edit.base, "result": result})
+        _note(target.log, {"path": edit.path, "step": "swapped", "temp": temp, "base": edit.base, "result": edit.result})
         target.after(edit.path, "swapped")
         return _finish(target, held, temp, ours, method)
     finally:
-        if descriptor is not None:
-            os.close(descriptor)
+        if held is not None and held.descriptor is not None:
+            os.close(held.descriptor)
 
 
 def _finish(target: Target, held: Held, temp: str, ours: tuple[int, int], method: str) -> Outcome:
-    """Steps 4 and 5: the displaced version, read through the descriptor held since step 1, must be what step 1 recorded."""
+    """Steps 4 and 5: the displaced version, read again (`_again`), must be what step 1 recorded."""
     edit, parent = target.edit, target.parent
-    now = _read(held.descriptor)
+    now = _again(parent, held, temp)
     at_temp = os.stat(temp, dir_fd=parent, follow_symlinks=False)
     if now == (held.digest, held.identity) and (at_temp.st_dev, at_temp.st_ino) == held.identity[:2]:
         os.unlink(temp, dir_fd=parent)
@@ -275,24 +355,6 @@ def _finish(target: Target, held: Held, temp: str, ours: tuple[int, int], method
     files.promote_new(temp, aside, source_fd=parent, target_fd=parent)
     _note(target.log, {"path": edit.path, "step": "conflict", "beside": aside})
     return Outcome(edit.path, "conflict", method, kept=_keep(target), beside=Path(aside))
-
-
-def _link(target: Target, held: Held | None) -> Outcome:
-    """Install a new symbolic link with a rename that never replaces: anything the person put at the name stays, and the link is kept instead."""
-    edit, parent = target.edit, target.parent
-    if held is not None or edit.base is not None:
-        return Outcome(edit.path, "conflict", "link", kept=_keep(target))
-    temp = f"{TEMP}{uuid.uuid4().hex}"
-    os.symlink(edit.link, temp, dir_fd=parent)
-    _note(target.log, {"path": edit.path, "step": "prepared", "temp": temp, "base": None, "result": None})
-    target.after(edit.path, "prepared")
-    try:
-        files.promote_new(temp, target.name, source_fd=parent, target_fd=parent)
-    except FileExistsError:
-        os.unlink(temp, dir_fd=parent)
-        return Outcome(edit.path, "conflict", "link", kept=_keep(target))
-    _note(target.log, {"path": edit.path, "step": "done"})
-    return Outcome(edit.path, "applied", "link")
 
 
 def _create(target: Target, temp: str) -> Outcome:
@@ -313,7 +375,7 @@ def _delete(target: Target, held: Held | None) -> Outcome:
     files.promote_new(target.name, claimed, source_fd=parent, target_fd=parent)
     _note(target.log, {"path": edit.path, "step": "claimed", "temp": claimed, "base": edit.base, "result": None})
     target.after(edit.path, "claimed")
-    if _read(held.descriptor) == (held.digest, held.identity):
+    if _again(parent, held, claimed) == (held.digest, held.identity):
         os.unlink(claimed, dir_fd=parent)
         _note(target.log, {"path": edit.path, "step": "done"})
         return Outcome(edit.path, "applied", "delete", restored=held.digest if edit.kept_first else "")
@@ -330,7 +392,7 @@ def apply(project: str | os.PathLike[str], edits: Sequence[Edit], places: Places
     """Apply ``edits`` to ``project`` one path at a time and say what became of each; the intent record is written before the first write."""
     root, log = Path(os.path.realpath(project)), places.log
     log.parent.mkdir(parents=True, exist_ok=True)
-    _note(log, {"step": "intent", "paths": [{"path": e.path, "base": e.base, "result": digest(e.data)} for e in edits]})
+    _note(log, {"step": "intent", "paths": [{"path": e.path, "base": e.base, "result": e.result} for e in edits]})
     outcomes = [_one(root, edit, places) for edit in edits]
     _note(log, {"step": "finished"})
     return outcomes
@@ -365,16 +427,14 @@ def recover(project: str | os.PathLike[str], log: Path) -> list[Outcome]:
 def _recover_one(parent: int, name: str, record: dict, path: str) -> Outcome:
     temp = record.get("temp", "")
     try:
-        if stat.S_ISLNK(os.stat(temp, dir_fd=parent, follow_symlinks=False).st_mode):
-            os.unlink(temp, dir_fd=parent)
-            return Outcome(path, "unchanged", "recovered")
-        descriptor = os.open(temp, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+        found = _hold(parent, temp)
     except OSError:
         return Outcome(path, "unchanged")
-    try:
-        held = _read(descriptor)[0]
-    finally:
-        os.close(descriptor)
+    if found is None:
+        return Outcome(path, "unchanged")
+    held = found.digest
+    if found.descriptor is not None:
+        os.close(found.descriptor)
     if record["step"] == "prepared":
         os.unlink(temp, dir_fd=parent)
         return Outcome(path, "unchanged", "recovered")

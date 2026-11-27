@@ -111,7 +111,7 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
         prog=f"poolhouse-{name}", allow_abbrev=False,
         description=f"{what} on a model this machine serves. Everything after `--` goes to {name}.",
         usage=f"poolhouse-{name} {{MODEL | --on URL}} [--port N] [--slots N] [--ctx N] [--permissions PROFILE] [--execution-mode MODE] [--name L] "
-              f"[--as AGENT] [--project DIR] [--orders-from AGENT] [--no-profile] [--draft HEAD] [--sandbox [--read DIR] [--toolchain DIR] [--publish FILE]] "
+              f"[--as AGENT] [--project DIR] [--orders-from AGENT] [--no-profile] [--draft HEAD] [--sandbox [--read DIR] [--toolchain DIR]] "
               f"[--{name} PATH] [-- {name} arguments]")
     ap.add_argument("model", nargs="?", default="",
                     help=f"the model file or a name poolhouse-models finds (default: {PREFERRED_MODEL} when installed and it fits at "
@@ -134,8 +134,6 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
     ap.add_argument("--protect", action="append", default=[], help="with --sandbox: additional launcher-owned paths tools cannot access")
     ap.add_argument("--read", action="append", default=[], metavar="DIR", help="with --sandbox: a folder the session may read and never change")
     ap.add_argument("--toolchain", action="append", default=[], metavar="DIR", help="with --sandbox: a folder of programs the session may run")
-    ap.add_argument("--publish", action="append", default=[], metavar="FILE",
-                    help="with --sandbox: a file of the project that is not plain source and whose change may be applied as the agent made it")
     ap.add_argument("--name", default="", help="the workspace name to ask for (default: local-<model>)")
     ap.add_argument("--as", dest="parent", default=PARENT,
                     help="the workspace session this one is a subagent of (default: the session of the command's environment, else one made for this terminal)")
@@ -474,7 +472,7 @@ def decided(args: argparse.Namespace, asked_project: str) -> isolation.Launch:
     """Every widening of this launch decided at once, from the arguments the person or the launching session gave (8.3): a refusal raises with its
     reason, and the grants it returns are scoped to this one launch."""
     return isolation.decide_launch(
-        isolation.Arguments(read=tuple(args.read), toolchain=tuple(args.toolchain), publish=tuple(args.publish), project=asked_project,
+        isolation.Arguments(read=tuple(args.read), toolchain=tuple(args.toolchain), project=asked_project,
                             protect=tuple(args.protect), on=args.on, parent=args.parent),
         project=args.project)
 
@@ -499,7 +497,7 @@ def checked(args: argparse.Namespace, name: str, say: Callable[[str], None], *, 
         asked, args.project = args.project, str(check_project(args.project, sandbox=args.sandbox))
         if args.sandbox:
             admit(args, name, asked, interactive=interactive)
-        elif reach := [f"--{each}" for each in ("read", "toolchain", "publish", "protect") if getattr(args, each)]:
+        elif reach := [f"--{each}" for each in ("read", "toolchain", "protect") if getattr(args, each)]:
             say(f"{', '.join(reach)}: only a sandboxed run has a reach to set, so this run in place does not use it")
     except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")

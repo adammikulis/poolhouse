@@ -38,7 +38,7 @@ __all__ = ["GRANT_REFUSAL", "Handlers", "SessionBridge", "Terms"]
 
 GRANT_REFUSAL = "Grants are launch arguments; none is decided here."
 """The one answer to a `grant` frame: it names nothing the session asked and nothing the launch rule holds (AF2, AF5)."""
-KINDS = ("read", "toolchain", "net", "publish", "in-place")
+KINDS = ("read", "toolchain", "net", "in-place")
 EVENTS = ("pre", "post", "stop")
 FRAMES = {"hook": {"verb", "event", "payload"}, "workspace": {"verb", "name", "arguments"}, "tools": {"verb"}}
 FAILURES = (Error, OSError, ValueError, LookupError, RuntimeError, TypeError, EOFError, AttributeError, ImportError, ArithmeticError)

@@ -30,7 +30,7 @@ from poolhouse.serve import provenance
 __all__ = ["FLAGS", "INSTRUCTIONS", "STANCES", "config_toml", "launch", "overrides", "printing"]
 
 INSTRUCTIONS = harnesses.RECORDS["codex"]
-"""The instruction and settings names Codex reads from a project; `guard.runs_later` refuses a change to one at any depth."""
+"""The instruction and settings names Codex reads from a project (`guard.harnesses`)."""
 PROVIDER = "poolhouse"
 KEY_ENV = "POOLHOUSE_API_KEY"
 COMPACT_SHARE = 0.9

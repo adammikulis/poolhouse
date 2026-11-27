@@ -145,19 +145,71 @@ def test_a_save_that_keeps_the_size_and_the_modification_time_is_found_by_the_di
     assert left_over(project) == []
 
 
-def test_a_new_link_is_installed_where_nothing_is_and_never_replaces_a_file_or_a_link(world):
+def test_a_new_link_is_installed_where_nothing_is_and_never_replaces_a_file_or_a_link_the_session_did_not_start_from(world):
     project, log, keep = world
     (project / "src" / "real.py").write_bytes(BASE)
     [made] = apply(project, [Edit("src/alias.py", None, None, link="real.py")], log=log, keep=keep)
-    assert (made.state, made.method) == ("applied", "link") and (project / "src" / "alias.py").readlink() == Path("real.py") and left_over(project) == []
-    [again] = apply(project, [Edit("src/alias.py", None, None, link="real.py")], log=log, keep=keep)
-    assert again.state == "refused", "a link already there is not opened, so it is not replaced"
+    assert (made.state, made.method) == ("applied", "create") and (project / "src" / "alias.py").readlink() == Path("real.py") and left_over(project) == []
+    [same, other] = apply(project, [Edit("src/alias.py", None, None, link="real.py"), Edit("src/alias.py", None, None, link="app.py")], log=log, keep=keep)
+    assert (same.state, other.state) == ("unchanged", "refused") and (project / "src" / "alias.py").readlink() == Path("real.py")
     (project / "src" / "file.py").write_bytes(PERSON)
     [raced] = apply(project, [Edit("src/file.py", None, None, link="real.py")], log=log, keep=keep)
     assert raced.state == "conflict" and (project / "src" / "file.py").read_bytes() == PERSON and raced.kept.read_text() == "real.py"
     appears = lambda path, step: (project / path).write_bytes(PERSON) if step == "prepared" else None  # noqa: E731
     [late] = apply(project, [Edit("src/late.py", None, None, link="real.py")], log=log, keep=keep, after=appears)
     assert late.state == "conflict" and (project / "src" / "late.py").read_bytes() == PERSON and left_over(project) == []
+
+
+def linked(project: Path, name: str, target: str) -> str:
+    """A link of the person's at ``name``, and the digest of its target, as the base of an edit."""
+    (project / name).symlink_to(target)
+    return digest(target.encode())
+
+
+def test_a_link_is_retargeted_deleted_and_exchanged_with_a_file_only_while_it_is_the_one_the_session_started_from(world):
+    project, log, keep = world
+    old = linked(project, "src/a", "app.py")
+    linked(project, "src/b", "app.py")
+    linked(project, "src/c", "app.py")
+    done = apply(project, [Edit("src/a", old, None, link="new.py", was_link=True, kept_first=True), Edit("src/b", old, None, was_link=True),
+                           Edit("src/c", old, RESULT, was_link=True), Edit("src/app.py", digest(BASE), None, link="a")], log=log, keep=keep)
+    assert [each.state for each in done] == ["applied"] * 4 and left_over(project) == []
+    assert (project / "src" / "a").readlink() == Path("new.py") and not os.path.lexists(project / "src" / "b")
+    assert (project / "src" / "c").read_bytes() == RESULT and not (project / "src" / "c").is_symlink() and (project / "src" / "app.py").readlink() == Path("a")
+    assert done[0].restored == old and restored(keep) == {old: b"app.py"}, "the target a link git does not hold named is kept first"
+    [moved] = apply(project, [Edit("src/a", old, None, link="third.py", was_link=True)], log=log, keep=keep)
+    assert moved.state == "conflict" and (project / "src" / "a").readlink() == Path("new.py")
+
+
+@pytest.mark.parametrize("data, step", [(None, "prepared"), (None, "swapped"), (RESULT, "prepared"), (None, "held")])
+def test_a_link_the_person_changes_while_it_is_applied_stays(world, data, step):
+    project, log, keep = world
+    old = linked(project, "src/a", "app.py")
+
+    def after(path: str, at: str) -> None:
+        if at == step:
+            (project / path).unlink()
+            (project / path).symlink_to("the-persons.py")
+
+    edit_ = Edit("src/a", old, data, link=None if data else "new.py", was_link=True)
+    [done] = apply(project, [edit_], log=log, keep=keep, after=after)
+    assert (project / "src" / "a").readlink() == Path("the-persons.py") or step == "swapped", done
+    assert done.state == ("applied" if step == "swapped" else "conflict")
+    assert not [name for name in left_over(project) if name.startswith(apply_module.TEMP)]
+
+
+def test_a_crash_after_a_link_was_swapped_is_completed(world):
+    project, log, keep = world
+    old = linked(project, "src/a", "app.py")
+
+    def crash(path: str, step: str) -> None:
+        if step == "swapped":
+            raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        apply(project, [Edit("src/a", old, None, link="new.py", was_link=True)], log=log, keep=keep, after=crash)
+    [back] = recover(project, log)
+    assert back.state == "applied" and (project / "src" / "a").readlink() == Path("new.py") and left_over(project) == []
 
 
 def test_an_exchange_the_filesystem_cannot_do_is_a_claim_that_never_replaces(world, monkeypatch):

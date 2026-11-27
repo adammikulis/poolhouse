@@ -40,7 +40,7 @@ from poolhouse.serve.ports import free_port
 __all__ = ["AGENT", "INSTRUCTIONS", "UNGUARDED", "Setup", "config", "launch", "plugin", "rendering"]
 
 INSTRUCTIONS = harnesses.RECORDS["opencode"]
-"""The instruction and settings names OpenCode reads from a project; `guard.runs_later` refuses a change to one at any depth."""
+"""The instruction and settings names OpenCode reads from a project (`guard.harnesses`)."""
 PROVIDER = "poolhouse"
 AGENT = "poolhouse"
 """The agent of a run that brings its own (`Setup.agent`)."""

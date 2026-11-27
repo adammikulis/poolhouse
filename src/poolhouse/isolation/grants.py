@@ -1,8 +1,7 @@
-"""Grants: the five kinds of widening of a coding session, and the one function that decides each at once.
+"""Grants: the four kinds of widening of a coding session, and the one function that decides each at once.
 
 `decide(request, rule)` returns a `Decision` that is granted or refused and nothing else: nothing waits, nothing is asked and nothing is
-queued (docs/design-isolated-launcher.md, 8.2 and 8.3). The caps hold for every caller and every source: a governing file is never
-published, the project is never changed in place together with a network host, a host is only one the registry names with its source and
+queued (docs/design-isolated-launcher.md, 8.2 and 8.3). The caps hold for every caller and every source: the project is never changed in place together with a network host, a host is only one the registry names with its source and
 its measured bound, and a folder is never a credential location or an ancestor of the state root or of the person's home. The decision
 is scoped to the one session it names and issues no token.
 """
@@ -17,7 +16,7 @@ from pathlib import Path
 
 from poolhouse import secretpaths
 from poolhouse.contracts.loader import ContractError
-from poolhouse.isolation import egress, places, publish, toolchain
+from poolhouse.isolation import egress, places, toolchain
 from poolhouse.isolation.policy import ProjectPolicy
 from poolhouse.isolation.refusals import DECISION_LINES, KIND_PHRASES, refusal_line, sentence
 
@@ -64,7 +63,7 @@ class Grant:
     source: str
     fingerprint: str
     line: str
-    held: toolchain.Resolved | publish.PublishRule | None = None
+    held: toolchain.Resolved | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,7 +89,7 @@ def _refused(request: Request, cause: str) -> Decision:
                     cause)
 
 
-def _granted(request: Request, rule: Rule, subject: str, held: toolchain.Resolved | publish.PublishRule | None = None) -> Decision:
+def _granted(request: Request, rule: Rule, subject: str, held: toolchain.Resolved | None = None) -> Decision:
     line = DECISION_LINES[request.kind].format(subject=subject)
     return Decision(True, line, "granted", Grant(request.kind, subject, rule.scope, request.issuer, request.source, fingerprint(request),
                                                  line, held))
@@ -114,16 +113,6 @@ def _folder(request: Request, rule: Rule, *, program: bool) -> Decision:
     return _granted(request, rule, held.path, held)
 
 
-def _file(request: Request, rule: Rule) -> Decision:
-    try:
-        bound = publish.bind(rule.project, request.subject)
-    except publish.NotPublishable as why:
-        return _refused(request, str(why))
-    except OSError:
-        return _refused(request, "the file cannot be read")
-    return _granted(request, rule, bound.relpath, bound)
-
-
 def _decided(request: Request, rule: Rule) -> Decision:
     kinds = {each.kind for each in rule.launch}
     if request.kind == "in-place":
@@ -135,8 +124,6 @@ def _decided(request: Request, rule: Rule) -> Decision:
         if not egress.valid_name(request.subject) or request.subject not in listed:
             return _refused(request, "not on the registry list")
         return _granted(request, rule, request.subject)
-    if request.kind == "publish":
-        return _file(request, rule)
     return _folder(request, rule, program=request.kind == "toolchain")
 
 

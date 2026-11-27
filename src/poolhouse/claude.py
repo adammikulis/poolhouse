@@ -20,7 +20,7 @@ from poolhouse.serve import provenance
 __all__ = ["INSTRUCTIONS", "STANCES", "environment", "launch", "main", "settings"]
 
 INSTRUCTIONS = harnesses.RECORDS["claude"]
-"""The instruction and settings names Claude Code reads from a project; `guard.runs_later` refuses a change to one at any depth."""
+"""The instruction and settings names Claude Code reads from a project (`guard.harnesses`)."""
 DEFAULT_PORT = 8080
 
 DEFAULT_SLOTS = 1      # one conversation, one slot, the whole measured cache

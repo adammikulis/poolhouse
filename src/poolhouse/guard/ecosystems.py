@@ -2,7 +2,7 @@
 
 A name is here because the tool reads it without being told to (`tests/test_publication_oracle.py` runs the real tool on every candidate
 and fails a name that runs and is not here), or because a lockfile or wrapper decides what an install or a build runs. `guard.runs_later`
-reads these records beside the language registry snapshot (docs/design-isolated-launcher.md, 4.4.2); nothing else keeps a list of names.
+reads these records beside the language registry snapshot (docs/design-isolated-launcher.md, 4.4.1); nothing else keeps a list of names.
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ from functools import cache
 __all__ = [
     "BUILD",
     "CI",
-    "DOCUMENTS",
     "ECOSYSTEMS",
     "HOOKS",
     "INSTALL",
@@ -27,7 +26,6 @@ __all__ = [
     "folders",
     "names",
     "patterns",
-    "source_extensions",
     "suffixes",
 ]
 
@@ -43,23 +41,19 @@ LOGIN = "can start a program for the person"
 GIT = "sets commands git runs on its own"
 ENVIRONMENT = "runs when a shell enters the folder"
 PROGRAM = "is a program in a folder of programs"
-DOCUMENTS = frozenset({".md", ".markdown", ".rst", ".adoc", ".txt"})
-"""Extensions a tool reads as prose and never runs, though a registry claimant types them as a programming language (`.md` is also a machine
-description language): a file with one that a runner names is named and taints nothing it names in turn."""
 PROGRAM_FOLDERS = frozenset({"scripts", "bin", "sbin", "libexec", "hooks"})
 """Folders whose files without an extension are programs: the layout of the filesystem hierarchy and of every project that keeps scripts."""
 
 
 @dataclass(frozen=True, slots=True)
 class Ecosystem:
-    """One toolchain's record: base names (case folded), suffixes, name patterns, folder names and the extensions it reads as source."""
+    """One toolchain's record: base names (case folded), suffixes, name patterns and folder names."""
 
     tool: str
     names: dict[str, str] = field(default_factory=dict)
     suffixes: dict[str, str] = field(default_factory=dict)
     patterns: tuple[tuple[str, str], ...] = ()
     folders: dict[str, str] = field(default_factory=dict)
-    source: tuple[str, ...] = ()
 
 
 def _each(role: str, *words: str) -> dict[str, str]:
@@ -70,8 +64,8 @@ ECOSYSTEMS = (
     Ecosystem("python", {**_each(BUILD, "conftest.py", "setup.py", "setup.cfg", "pyproject.toml", "tox.ini", "noxfile.py", "pytest.ini"),
                          **_each(PYTHON_START, "sitecustomize.py", "usercustomize.py")}, {".pth": PYTHON_START}),
     Ecosystem("javascript", _each(BUILD, "package.json", ".npmrc", ".yarnrc", ".yarnrc.yml", ".pnpmfile.cjs", "gruntfile.js", "gulpfile.js", "gulpfile.ts"),
-              patterns=((r".+\.config\.(?:js|mjs|cjs|ts|mts|cts)", BUILD), (r"\.(?:eslintrc|babelrc)\.(?:js|cjs)", BUILD)), source=(".ts", ".tsx")),
-    Ecosystem("rust", _each(BUILD, "cargo.toml", "build.rs"), source=(".rs",)),
+              patterns=((r".+\.config\.(?:js|mjs|cjs|ts|mts|cts)", BUILD), (r"\.(?:eslintrc|babelrc)\.(?:js|cjs)", BUILD))),
+    Ecosystem("rust", _each(BUILD, "cargo.toml", "build.rs")),
     Ecosystem("jvm", {**_each(BUILD, "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts", "gradle.properties", "pom.xml"),
                       **_each(WRAPPER, "gradlew", "gradlew.bat", "mvnw", "mvnw.cmd")}, {".gemspec": BUILD, ".jar": WRAPPER}),
     Ecosystem("make", {**_each(BUILD, "makefile", "gnumakefile", "justfile", "taskfile.yml", "taskfile.yaml", "cmakelists.txt", "procfile",
@@ -89,7 +83,6 @@ ECOSYSTEMS = (
               {".plist": "can start a program when launchd loads it", ".service": "can start a program when systemd loads it",
                ".timer": "can start a program when systemd loads it"},
               folders={"launchagents": "runs at login", "launchdaemons": "runs at startup"}),
-    Ecosystem("text", source=(".txt",)),
 )
 
 
@@ -112,9 +105,3 @@ def folders() -> dict[str, str]:
 @cache
 def patterns() -> tuple[tuple[re.Pattern[str], str], ...]:
     return tuple((re.compile(pattern, re.IGNORECASE), role) for each in ECOSYSTEMS for pattern, role in each.patterns)
-
-
-@cache
-def source_extensions() -> frozenset[str]:
-    """Extensions the language registry shares with a data language that a toolchain reads as source: `.rs`, `.ts`, `.tsx`, `.txt`."""
-    return frozenset(extension for each in ECOSYSTEMS for extension in each.source)

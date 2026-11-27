@@ -6,10 +6,11 @@
 The agent is a session of its own on the lead's board, registered as a subagent of the session that starts it. It is
 OpenCode, in the `read-only` tier unless the lead chooses another: it reads and searches its folder, with no shell, and
 reaches the lead through two tools. With `--edit` (the `guarded` tier) or `--permissions` it also changes the project and
-runs a shell. A computer that can sandbox runs it in the isolated launcher's confinement (`poolhouse.delegate_confined`):
-the plain source it changed is published into the project when it ends and anything else is refused at once and kept as a
-patch. One that cannot runs it on the folder itself under its tier's rules, with a warning
-(`poolhouse.delegate_unboxed`). Nothing here waits on a person: a refusal is immediate and says why.
+runs a shell. It runs in the isolated launcher's confinement (`poolhouse.delegate_confined`): its whole change is published
+into the project when it ends, except `.git`, coding tools' settings, credentials and links that lead out, which are
+refused at once and kept as a patch. On a platform that has no sandbox it runs on the folder itself under its tier's
+rules, with a warning (`poolhouse.delegate_unboxed`); a computer whose sandbox cannot be used refuses it with the reason.
+Nothing here waits on a person: a refusal is immediate and says why.
 """
 
 from __future__ import annotations
@@ -110,9 +111,9 @@ def _folder(source: str, edit: bool) -> str:
     flag("--as", dest="parent", default="", metavar="AGENT", help="the session it is a subagent of (default: the session this command runs in)"),
     option("model", help="the model (default: the one served on this machine now)"),
     flag("--max-turns", type=int, default=None),
-    flag("--edit", action="store_true", help="let it change the project (the guarded tier); in a sandbox plain source is published when it ends, the rest refused"),
+    flag("--edit", action="store_true", help="let it change the project (the guarded tier); in a sandbox its change is published into the project when it ends"),
     flag("--permissions", default="", choices=("", *coding_policy.PERMISSIONS),
-         help="what it may do (default: read-only; --edit is guarded). A computer that cannot sandbox runs a higher tier on the folder itself, with a warning")])
+         help="what it may do (default: read-only; --edit is guarded). A platform with no sandbox runs a higher tier on the folder itself, with a warning")])
 def start(args: argparse.Namespace) -> int:
     """Register the agent as a subagent of the calling session, then run it detached; prints its name."""
     authority.require("workspace.agents", "start a delegate")

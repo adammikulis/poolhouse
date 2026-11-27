@@ -24,12 +24,12 @@ def test_every_decision_is_logged_with_its_issuer_and_the_source_it_claimed_and_
     person_home(tmp_path, monkeypatch)
     monkeypatch.setenv("POOLHOUSE_HOME", str(workspace_node.state.parent))
     project = registered_project(tmp_path, workspace_node)
-    launch = decide_launch(Arguments(allow_net=("evil.example",), publish=("src/app.py",)), project=project)
+    launch = decide_launch(Arguments(allow_net=("evil.example", "pypi.org")), project=project)
     assert [each.granted for each in launch.decisions] == [False, True]
     rows = [row for row in entries() if row.kind == "isolation.grant"]
     assert [row.outcome for row in rows] == ["refused", "granted"]
     assert all(row.meta["issuer"].startswith("user ") and row.meta["source"] == "task" for row in rows)
-    assert all(":" in row.subject and "evil.example" not in row.subject and "src/app.py" not in row.subject for row in rows)
+    assert all(":" in row.subject and "evil.example" not in row.subject and "pypi.org" not in row.subject for row in rows)
     assert rows[0].meta["line"] == launch.decisions[0].line and rows[0].meta["cause"] == "not on the registry list"
 
 

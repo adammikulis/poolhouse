@@ -2,8 +2,8 @@
 
 `Session.begin` stages the person's project (or takes the stage an earlier launch of the same conversation kept), links the person's environment
 folders into it, and opens the directory of this session's refused patches. `publish_turn` captures the stage, decides every change with
-`isolation.publication`, applies the plain ones with `coding_apply` (which keeps first, under the state root and out of the session's reach, the
-version of a file git does not hold that an edit displaces) and refuses the rest at once: a patch kept for the session to read, and one report to
+`isolation.publication`, applies them with `coding_apply` (which keeps first, under the state root and out of the session's reach, the
+version of a file git does not hold that an edit displaces) and refuses at once the few `publication` does not apply: a patch kept for the session to read, and one report to
 the launching session in the parent's words. The base advances to what was published, so each turn compares against the last one.
 `finish` ends every process of the session first (`sandbox.process_tree.end`), and publishes only when none is left. Nothing here asks a question,
 holds a change for an answer or waits for a person.
@@ -27,7 +27,6 @@ from poolhouse.coding_workspace_state import CONTROL_PREFIXES
 from poolhouse.isolation import places, publication, toolchain
 from poolhouse.isolation.notices import HEAD, Directory, Kept, Notice, Patch, Reports, Result, words
 from poolhouse.isolation.publication import Refusal, fold
-from poolhouse.isolation.publish import PublishRule
 from poolhouse.sandbox import process_tree
 
 __all__ = ["ENVIRONMENT_LINKS", "PATCHES_AT", "Launch", "Published", "Session", "Turn", "binds", "tally"]
@@ -48,14 +47,13 @@ UNREAD = "The run failed and the stage could not be read, so nothing more was pu
 @dataclass(frozen=True, slots=True)
 class Launch:
     """What one launch tells the workspace: the person's project, the state root, the session's name (the parent's own), the conversation whose kept
-    stage a re-launch reuses, the `publish` rules decided for this launch, where reports go and the activity log."""
+    stage a re-launch reuses, where reports go and the activity log."""
 
     project: str
     state: str
     session: str
     notice: Notice
     conversation: str = ""
-    rules: tuple[PublishRule, ...] = ()
     log: Log = activity.record
 
 
@@ -75,6 +73,8 @@ class Turn:
     restored: tuple[tuple[str, str], ...] = ()
     withheld: tuple[str, ...] = ()
     """The paths a failed session had changed and nothing published; ``patch`` keeps them."""
+    runs_later: tuple[tuple[str, str], ...] = ()
+    """The applied paths of the kind that runs later, each with why, for information: nothing of it was held back."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +88,8 @@ class Published:
     withheld: tuple[str, ...] = ()
     deferred: str = ""
     patches: tuple[str, ...] = ()
+    runs_later: tuple[str, ...] = ()
+    """The applied paths of the kind that runs later."""
 
 
 def tally(turns: Sequence[Turn]) -> Published:
@@ -98,7 +100,9 @@ def tally(turns: Sequence[Turn]) -> Published:
                              ("conflicts", turn.conflicts), ("withheld", turn.withheld)):
             where.update(dict.fromkeys(paths, state))
     held = {state: tuple(sorted(path for path, found in where.items() if found == state)) for state in ("applied", "refused", "conflicts", "withheld")}
-    return Published(**held, deferred=turns[-1].deferred if turns else "", patches=tuple(turn.patch.path for turn in turns if turn.patch))
+    later = {path for turn in turns for path, _ in turn.runs_later}
+    return Published(**held, deferred=turns[-1].deferred if turns else "", patches=tuple(turn.patch.path for turn in turns if turn.patch),
+                     runs_later=tuple(path for path in held["applied"] if path in later))
 
 
 def _digest(value: str | bytes) -> str:
@@ -252,7 +256,7 @@ class Session:
         return fresh
 
     def publish_turn(self) -> Turn:
-        """Publish what the stage holds now: apply the plain changes, refuse the rest at once, report once. Safe to call at every turn."""
+        """Publish what the stage holds now: apply the changes, refuse at once what is never applied, report once. Safe to call at every turn."""
         with self.workspace.lock:
             return self._turn()
 
@@ -262,7 +266,7 @@ class Session:
         except (RuntimeError, TimeoutError):
             return Turn(deferred=DEFERRED, text=DEFERRED)
         changes = tuple(each for each in between(self.base, captured) if self.decided.get(each.path) != (each.after, each.after_mode))
-        basis = publication.Basis(self.root, captured, self.tracked, self.launch.rules)
+        basis = publication.Basis(self.root, captured, self.tracked)
         decision = publication.decide(basis, changes, self._news(captured, made))
         places = coding_apply.Places(self.state / "applying" / f"{_digest(str(self.root))}.log", self.kept.directory / "kept", self.restores.descriptor)
         done = coding_apply.apply(self.root, decision.edits, places) if decision.edits else []
@@ -279,14 +283,17 @@ class Session:
         patch = self.kept.write(publication.patch_text(basis, refused)) if refused else None
         applied = tuple(each.path for each in done if each.state == "applied")
         named = self.held | {name for name, _ in self.links}   # an environment link's name is the launcher's own (`ENVIRONMENT_LINKS`)
-        text = words(Result(len(applied), refused, patch, conflicts, restored, str(self.restores.directory)), named) if applied or refused or conflicts else ""
+        later = tuple((path, why) for path, why in decision.later if path in applied)
+        result = Result(len(applied), refused, patch, conflicts, restored, str(self.restores.directory), later)
+        text = words(result, named) if applied or refused or conflicts else ""
         pending = [*refused, *(Refusal(path, "conflict") for path in conflicts)]
         status = self.reports.send(pending, text) if pending else ""
         self.launch.log("isolation.publication", subject=self.launch.session, outcome="refused" if pending else "applied" if applied else "unchanged",
                         meta={"applied": [_digest(path) for path in applied], "refused": [_digest(each.path) for each in refused],
                               "conflicts": [_digest(path) for path in conflicts], "restored": [name for _, name in restored],
                               "patch": patch.digest if patch else "", "report": status})
-        return Turn(applied, tuple(refused), tuple(conflicts), patch, text, status, restored=tuple((each.path, name) for each, name in restored))
+        return Turn(applied, tuple(refused), tuple(conflicts), patch, text, status, restored=tuple((each.path, name) for each, name in restored),
+                    runs_later=later)
 
     def _advance(self, captured: Capture, settled: set[bytes]) -> None:
         """The base moves to what was published: the settled paths take the stage's entry (or leave the base when the stage deleted them), and the
@@ -346,7 +353,7 @@ class Session:
         except (RuntimeError, TimeoutError):
             return Turn(deferred=UNREAD, text=UNREAD)
         changes = tuple(each for each in between(self.base, captured) if self.decided.get(each.path) != (each.after, each.after_mode))
-        basis = publication.Basis(self.root, captured, self.tracked, self.launch.rules)
+        basis = publication.Basis(self.root, captured, self.tracked)
         decision = publication.decide(basis, changes, self._news(captured, made))
         sizes = {os.fsdecode(each.path): each.size for each in captured.entries}
         kept = [*decision.refused, *(Refusal(each.path, "withheld", sizes.get(each.path, 0)) for each in decision.edits)]

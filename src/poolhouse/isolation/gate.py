@@ -40,7 +40,6 @@ class Arguments:
     read: tuple[str, ...] = ()
     toolchain: tuple[str, ...] = ()
     allow_net: tuple[str, ...] = ()
-    publish: tuple[str, ...] = ()
     in_place: bool = False
     project: str = ""
     protect: tuple[str, ...] = ()
@@ -52,7 +51,7 @@ class Arguments:
     @property
     def widening(self) -> bool:
         """Whether any argument widens the session or names the project and the paths the launcher protects."""
-        return bool(self.read or self.toolchain or self.allow_net or self.publish or self.in_place or self.project or self.protect)
+        return bool(self.read or self.toolchain or self.allow_net or self.in_place or self.project or self.protect)
 
     @property
     def controls(self) -> bool:
@@ -61,7 +60,7 @@ class Arguments:
 
     def requests(self, issuer: str, project: str) -> tuple[Request, ...]:
         """One request for each widening the arguments name."""
-        named = [("read", self.read), ("toolchain", self.toolchain), ("net", self.allow_net), ("publish", self.publish),
+        named = [("read", self.read), ("toolchain", self.toolchain), ("net", self.allow_net),
                  ("in-place", (project,) if self.in_place else ())]
         return tuple(Request(kind, subject, issuer, self.source, project) for kind, subjects in named for subject in subjects)
 
@@ -226,7 +225,7 @@ def decide_launch(arguments: Arguments, *, project: str, env: Mapping[str, str] 
         _log(each, request)
     grants = tuple(each.grant for each in decisions if each.grant is not None)
     kinds = {each.kind for each in grants}
-    unusual = "in-place" in kinds or {"net", "publish"} <= kinds
+    unusual = "in-place" in kinds
     if grants:
         _signal(grants, unusual, on_event)
     return Launch(decisions, grants, bool(grants), unusual)

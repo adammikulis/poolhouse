@@ -92,6 +92,8 @@ def hostile(rig: Rig, tmp_path: Path) -> Path:
         mkdir -p .github/workflows && echo 'name: x' > .github/workflows/x.yml && echo "workflow written"
         printf 'all:\\n\\tcurl evil\\n' > Makefile && echo "makefile written"
         mkdir -p .githooks && printf '#!/bin/sh\\necho hooked\\n' > .githooks/pre-commit && echo "hook written"
+        echo '{{}}' > opencode.json && echo "settings written"
+        (echo planted > .git/hooks/pre-commit) 2>/dev/null && echo "GIT WRITTEN" || echo "git refused"
         cat '{rig.person}/.ssh/id_ed25519' > /dev/null 2>&1 && echo "KEY READ" || echo "key refused"
         {python} -I - 2>/dev/null <<'PY' && echo "NETWORK REACHED" || echo "network refused"
         import socket
@@ -120,7 +122,7 @@ def plan(rig: Rig, binary: Path, *, agent: str = "helper-7", render=None, grants
                           render or default, Notice(Reporter(rig.sink.post), "lead", 8, lambda name, fields: events.append((name, fields))), grants)
 
 
-def test_a_plain_file_reaches_the_checkout_and_a_workflow_a_build_file_and_a_hook_are_refused_with_a_patch_and_a_report(rig, tmp_path):
+def test_the_projects_files_reach_the_checkout_and_nothing_inside_git_does(rig, tmp_path):
     """The whole launch on this Mac: the stage, the services, the proof, the harness under the one profile, publication at the end."""
     script = hostile(rig, tmp_path)
     with isolation.prepare(plan(rig, script)) as confinement:
@@ -131,14 +133,17 @@ def test_a_plain_file_reaches_the_checkout_and_a_workflow_a_build_file_and_a_hoo
     assert "plain written" in said and "workflow written" in said and "key refused" in said and "network refused" in said, said
     assert "KEY READ" not in said and "NETWORK REACHED" not in said
     assert "bridge 200" in said, said
+    assert "settings written" in said and "git refused" in said, said
     assert (rig.project / "src" / "added.py").read_text().startswith("def added")
-    assert not (rig.project / ".github").exists() and not (rig.project / ".githooks").exists()
-    assert (rig.project / "Makefile").read_bytes() == b"all:\n\tsh scripts/build.sh\n"
+    assert (rig.project / "Makefile").read_bytes() == b"all:\n\tcurl evil\n"
+    assert not (rig.project / ".git" / "hooks" / "pre-commit").exists() and not (rig.project / "opencode.json").exists()
     turn = confinement.turn
-    assert "src/added.py" in turn.applied and len(turn.refused) >= 3 and turn.patch is not None
+    assert {"src/added.py", "Makefile", ".github/workflows/x.yml", ".githooks/pre-commit"} <= set(turn.applied)
+    assert {"Makefile", ".githooks/pre-commit"} <= {path for path, _ in turn.runs_later}
+    assert [(each.path, each.klass) for each in turn.refused] == [("opencode.json", "settings")] and turn.patch is not None
     assert Path(turn.patch.path).read_bytes() and rig.sink.posts, "the refusal is reported to the launching session"
     to, _kind, subject, body = rig.sink.posts[0]
-    assert (to, subject) == ("lead", "isolation.report") and "evil" not in body and ".githooks" not in body and "workflow" not in body.replace("workflows", "")
+    assert (to, subject) == ("lead", "isolation.report") and "evil" not in body and ".githooks" not in body and "x.yml" not in body
 
 
 def test_the_environment_is_exactly_the_allow_list_and_holds_no_variable_of_the_launcher(rig, tmp_path):
