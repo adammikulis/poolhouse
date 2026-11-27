@@ -220,26 +220,28 @@ def report(findings: list[str]) -> int:
     return ALLOWED
 
 
-def check(tool: str, given: dict) -> list[str]:
-    """What the merge gates would find in the file as the edit leaves it."""
+def check(tool: str, given: dict, findings: list[str]) -> None:
+    """Add to ``findings`` what the merge gates would find in the file as the edit leaves it; what is there already is kept if a
+    later check breaks."""
     path = Path(given.get("file_path") or "")
     limits = line_limits()
     if path.suffix not in limits:
-        return []
+        return
     root = library_root(path)
     if root is None:
-        return []
+        return
     here = "/".join(path.parts[len(root.parts):])
     current = path.read_text(encoding="utf-8") if path.exists() else ""
     proposed = proposed_text(tool, given, current)
     if proposed is None or proposed == current:
-        return []
+        return
 
     outgrown = too_long(here, current, proposed, limits)
-    findings = [outgrown] if outgrown else []
+    if outgrown:
+        findings.append(outgrown)
 
     if path.suffix != ".py" or path.name.startswith("test_"):
-        return findings
+        return
 
     dup = load_duplicates()
     known = index_for(root, dup)
@@ -263,7 +265,7 @@ def check(tool: str, given: dict) -> list[str]:
     try:
         tree = ast.parse(proposed)
     except SyntaxError:
-        return findings
+        return
     spans = changed_ranges(current, proposed)
     imports = dup.module_imports(tree)
 
@@ -297,7 +299,6 @@ def check(tool: str, given: dict) -> list[str]:
     if "ArgumentParser(" in fresh and "ArgumentParser(" not in current and current:
         findings.append(f"{here} is gaining an ArgumentParser it did not have. A command "
                         f"belongs in its package's cli module, reached from poolhouse.cli.")
-    return findings
 
 
 PERSON_STORE = re.compile(r"(^|/)\.poolhouse/person(/|$)")
@@ -339,11 +340,12 @@ def main() -> int:
             return refuse(why)
     if tool == "NotebookEdit":
         return ALLOWED
+    findings: list[str] = []
     try:
-        return report(check(tool, given))
+        check(tool, given, findings)
     except Exception as bad:
-        print(f"note: claude-edit-guard did not run ({bad.__class__.__name__}: {bad})")
-        return ALLOWED
+        findings.append(f"claude-edit-guard did not run to the end ({bad.__class__.__name__}: {bad})")
+    return report(findings)
 
 
 if __name__ == "__main__":

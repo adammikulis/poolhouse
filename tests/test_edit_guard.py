@@ -185,6 +185,49 @@ def test_a_guard_that_cannot_run_does_not_stop_the_work(tree, tmp_path):
     assert "claude-edit-guard did not run" in said
 
 
+def test_a_guard_that_cannot_run_says_so_where_the_agent_reads_it(tree, tmp_path):
+    alone = tmp_path / "elsewhere" / "hooks"
+    alone.mkdir(parents=True)
+    shutil.copy2(GUARD, alone / GUARD.name)
+    shutil.copy2(GUARD.parent / "rules_loader.py", alone / "rules_loader.py")
+    done = subprocess.run([str(alone / GUARD.name)], text=True, capture_output=True,
+                          env={**os.environ, "POOLHOUSE_GUARD_CACHE": str(tmp_path / "cache")},
+                          input=json.dumps({"tool_name": "Write", "tool_input": write(tree, "three.py", RENAMED)}))
+    said = json.loads(done.stdout)["hookSpecificOutput"]
+    assert done.returncode == ALLOWED and "claude-edit-guard did not run" in said["additionalContext"]
+
+
+def test_what_was_found_before_a_check_broke_is_still_reported(tree, tmp_path):
+    """The duplicate detector is missing beside this copy, after the line limit has been read and counted."""
+    copy = tmp_path / "copy"
+    shutil.copytree(REPO / "scripts" / "hooks", copy / "hooks")
+    shutil.copytree(REPO / "scripts" / "gates", copy / "gates", ignore=shutil.ignore_patterns("duplicates.py", "__pycache__"))
+    code, said = run(write(tree, "long.py", lines(FILE_LIMIT + 1)), cache=tmp_path / "cache", guard=copy / "hooks" / GUARD.name)
+    assert code == ALLOWED
+    assert f"the limit is {FILE_LIMIT}" in said and "claude-edit-guard did not run" in said
+
+
+def checkout(where: Path, branch: str) -> Path:
+    (where / "scripts" / "hooks").mkdir(parents=True)
+    (where / "src" / "poolhouse").mkdir(parents=True)
+    (where / "scripts" / "hooks" / "primary-only").write_text("x\n")
+    (where / "src" / "poolhouse" / "one.py").write_text("x = 1\n")
+    subprocess.run(["git", "init", "-q", "-b", branch], cwd=where, check=True)
+    return where
+
+
+@pytest.mark.redteam
+def test_a_link_from_a_development_checkout_into_main_does_not_take_a_write(tmp_path):
+    held, working = checkout(tmp_path / "held", "main"), checkout(tmp_path / "working", "dev")
+    (working / "src" / "poolhouse" / "link.py").symlink_to(held / "src" / "poolhouse" / "one.py")
+    (working / "src" / "poolhouse" / "folder").symlink_to(held / "src" / "poolhouse")
+    for name in ("link.py", "folder/two.py"):
+        code, said = run({"file_path": str(working / "src" / "poolhouse" / name), "content": "x = 2\n"}, cache=tmp_path / "cache")
+        assert code == BLOCKED and "is on main" in said, (name, said)
+    assert run({"file_path": str(working / "src" / "poolhouse" / "one.py"), "content": "x = 2\n"},
+               cache=tmp_path / "cache")[0] == ALLOWED
+
+
 def test_only_the_writing_tools_are_guarded(tree, tmp_path):
     done = subprocess.run(
         [str(GUARD)], text=True, capture_output=True,
