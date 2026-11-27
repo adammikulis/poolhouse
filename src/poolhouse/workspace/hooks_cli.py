@@ -6,12 +6,11 @@ import argparse
 
 from poolhouse import agent_hooks, authority, home
 from poolhouse.command import flag
-from poolhouse.log import say
+from poolhouse.log import say, warn
 from poolhouse.workspace import onboard
 
 SNIPPET = [flag("tool", choices=agent_hooks.AGENTS)]
-INSTALL = [flag("--settings", default="", help="the Claude Code settings file (default: the user's)"),
-           flag("--codex-config", default="", help="the Codex config file (default: the user's)"),
+INSTALL = [flag("--project", required=True, help="the project folder whose own local settings get the hooks"),
            flag("--only", action="append", default=[], choices=agent_hooks.AGENTS,
                 help="write one agent's hooks only")]
 
@@ -23,12 +22,15 @@ def snippet(args: argparse.Namespace) -> int:
 
 
 def install(args: argparse.Namespace) -> int:
-    """Write the nudge hooks into each agent's settings; exit 1 when no agent was found."""
+    """Write the nudge hooks into one project's own settings; exit 1 when a file is not the project's own or cannot be read."""
     authority.require("workspace.setup", "workspace install-hooks")
-    where = {agent: home.expand(given) for agent, given in
-             (("claude-code", args.settings), ("codex", args.codex_config)) if given}
-    only = tuple(args.only) or agent_hooks.AGENTS
-    done = agent_hooks.install(only, where)
-    for agent, events in done.items():
-        say(f"{agent}: {', '.join(events)} written to {where.get(agent) or agent_hooks.paths()[agent]}")
-    return 0 if done else 1
+    try:
+        done = agent_hooks.install(home.expand(args.project), tuple(args.only) or agent_hooks.AGENTS)
+    except (OSError, ValueError) as err:
+        warn(f"the hooks were not written: {err}")
+        return 1
+    for agent, (path, events) in done.items():
+        say(f"{agent}: {', '.join(events)} written to {path}")
+    if "codex" in done:
+        say("codex reads a project's .codex/config.toml only for a project it trusts")
+    return 0

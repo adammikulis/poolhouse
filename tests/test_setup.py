@@ -36,7 +36,7 @@ def test_setup_diagnostics_never_install_optional_agent_hooks(tmp_path, monkeypa
     monkeypatch.setenv('HOME', str(isolated))
     monkeypatch.setenv('CODEX_HOME', str(isolated / '.codex'))
     monkeypatch.setattr(setup, 'look', lambda: [Finding(name='runtime', good=True, said='ready')])
-    monkeypatch.setattr(agent_hooks, 'install_report', lambda: pytest.fail('changed optional agent settings'))
+    monkeypatch.setattr(agent_hooks, 'install', lambda *a, **k: pytest.fail('changed optional agent settings'))
     assert setup.main(arguments) == 0
     assert list(isolated.iterdir()) == []
 
@@ -44,7 +44,7 @@ def test_setup_diagnostics_never_install_optional_agent_hooks(tmp_path, monkeypa
 def test_runtime_readiness_never_requires_optional_agent_hook_settings(monkeypatch):
     from poolhouse import agent_hooks
 
-    monkeypatch.setattr(agent_hooks, 'findings', lambda: pytest.fail('optional harness became required readiness'))
+    monkeypatch.setattr(agent_hooks, 'targets', lambda *a, **k: pytest.fail('optional harness became required readiness'))
     findings = look()
     assert findings and all(isinstance(row, Finding) for row in findings)
 

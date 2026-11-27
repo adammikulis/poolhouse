@@ -80,7 +80,7 @@ for _name, _help, _options, _handler in (
         ("snippet", "print the paste block for AGENT (no secret in it)", [flag("name")], cli_setup.snippet),
         ("hook-snippet", "print the setting that makes a tool run `nudge` after each step; writes nothing",
          hooks_cli.SNIPPET, hooks_cli.snippet),
-        ("install-hooks", "write the nudge hooks (post tool, prompt, stop) into Claude Code's and Codex's settings",
+        ("install-hooks", "write the nudge hooks (post tool, prompt, stop) into one project's own Claude Code and Codex settings",
          hooks_cli.INSTALL, hooks_cli.install),
         ("board-serve", "serve the Board page on a loopback port; the person's identity, no token in the page",
          [flag("--port", type=int, default=0)], _board_serve),

@@ -255,7 +255,7 @@ def start(argv: list[str], *, executable: str | None = None) -> int:
                 arguments[index] = name + "=" + value
             else:
                 arguments[index + 1] = value
-    windows_firewall.ensure()
+    windows_firewall.check()
     local_ui, bridge = _bridges(executable, arguments)
     if bridge:
         environment.append(wsl_network.ENV + "=" + bridge.config)

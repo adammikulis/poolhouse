@@ -132,3 +132,10 @@ def test_an_offline_install_takes_its_extras_from_wheels_on_the_disk(script):
     body = script.read_text(encoding="utf-8")
     assert "--no-index" in body and "--find-links" in body
     assert "poolhouse.installed" in body
+
+
+def test_no_installer_changes_path_or_a_shell_file():
+    for script in (PS1, PACKAGING / "install.sh"):
+        text = script.read_text(encoding="utf-8")
+        assert "SetEnvironmentVariable" not in text and "setx " not in text, script.name
+        assert not [line for line in text.splitlines() if ">>" in line and any(rc in line for rc in ("bashrc", "zshrc", "profile"))], script.name

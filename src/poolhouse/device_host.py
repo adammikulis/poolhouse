@@ -1,4 +1,4 @@
-"""What setting a device up does to the machine it runs on: Windows firewall rules, the WSL config, WSL restart, Rust.
+"""What setting a device up does to the machine it runs on: Windows firewall rules and the WSL restart; the WSL config is only read.
 
 `device_setup` decides; this acts. Windows things go through PowerShell (from WSL, the Windows `powershell.exe`).
 Nothing here opens a socket or prints a secret.
@@ -6,7 +6,6 @@ Nothing here opens a socket or prints a secret.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -17,7 +16,6 @@ from poolhouse.node_join import DEFAULT_BEACON_PORT, DEFAULT_PORT
 HYPERV_ID = "{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}"
 RULES = (("Poolhouse node", "TCP", DEFAULT_PORT), ("Poolhouse node discovery", "UDP", DEFAULT_BEACON_PORT))
 POWERSHELL = "powershell.exe"
-RUSTUP_URL = "https://sh.rustup.rs"
 TIMEOUT = 600
 
 NOT_ELEVATED = ("the Windows firewall rules need an administrator's PowerShell, and nothing in Poolhouse asks for one: run this from an administrator "
@@ -85,12 +83,3 @@ def wslconfig_path(kind: str) -> Path:
 def restart_wsl() -> None:
     """`wsl --shutdown`: ends this session when it runs from inside WSL."""
     subprocess.run(["wsl.exe", "--shutdown"], timeout=TIMEOUT, check=False)
-
-
-def install_rust(kind: str) -> None:
-    """Install Rust with the standard installer (rustup's script; winget's Rustup on Windows) and put cargo on this process's PATH."""
-    if kind == "windows":
-        subprocess.run(["winget", "install", "--id", "Rustlang.Rustup", "-e", "--accept-package-agreements", "--accept-source-agreements"], timeout=TIMEOUT, check=True)
-    else:
-        subprocess.run(["sh", "-c", f"curl --proto '=https' --tlsv1.2 -sSf {RUSTUP_URL} | sh -s -- -y --profile minimal"], timeout=TIMEOUT, check=True)
-    os.environ["PATH"] = f"{user_home() / '.cargo' / 'bin'}{os.pathsep}{os.environ['PATH']}"

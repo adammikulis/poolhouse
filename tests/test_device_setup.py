@@ -13,36 +13,21 @@ from poolhouse.api import pool
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize("old, expected", [
-    ("", "[wsl2]\nnetworkingMode=mirrored\n"),
-    ("[wsl2]\nmemory=8GB\n", "[wsl2]\nnetworkingMode=mirrored\nmemory=8GB\n"),
-    ("[wsl2]\nnetworkingMode=NAT\nmemory=8GB\n", "[wsl2]\nnetworkingMode=mirrored\nmemory=8GB\n"),
-    ("[experimental]\nx=1\n", "[experimental]\nx=1\n\n[wsl2]\nnetworkingMode=mirrored\n"),
-    ("[wsl2]\nmemory=8GB\n[experimental]\nnetworkingMode=nat\n", "[wsl2]\nnetworkingMode=mirrored\nmemory=8GB\n[experimental]\nnetworkingMode=nat\n"),
+@pytest.mark.parametrize("text, mirrored", [
+    ("", False),
+    ("[wsl2]\nmemory=8GB\n", False),
+    ("[wsl2]\nnetworkingMode=NAT\n", False),
+    ("[wsl2]\nmemory=8GB\n[experimental]\nnetworkingMode=mirrored\n", False),
+    ("[WSL2]\n networkingmode = Mirrored \n", True),
 ])
-def test_wslconfig_gets_mirrored_networking_and_nothing_else_moves(old, expected):
-    new, changed = device_setup.mirrored_config(old)
-    assert (new, changed) == (expected, True)
-    assert device_setup.mirrored_config(new) == (new, False)
-
-
-def test_writing_the_config_keeps_the_old_file_and_a_second_run_changes_nothing(tmp_path):
-    config = tmp_path / ".wslconfig"
-    config.write_text("[wsl2]\nmemory=8GB\n", encoding="utf-8")
-    kept = device_setup.write_config(config, now=0)
-    assert (tmp_path / kept).read_text(encoding="utf-8") == "[wsl2]\nmemory=8GB\n"
-    assert "networkingMode=mirrored" in config.read_text(encoding="utf-8")
-    assert device_setup.write_config(config) == "unchanged"
-    assert len(list(tmp_path.iterdir())) == 2
-    absent = tmp_path / "new" / ".wslconfig"
-    absent.parent.mkdir()
-    assert device_setup.write_config(absent) == "created"
+def test_the_wslconfig_is_read_for_mirrored_networking_under_wsl2_only(text, mirrored):
+    assert device_setup.is_mirrored(text) is mirrored
 
 
 def test_the_node_comes_from_the_runtime_then_a_binary_in_the_repository_then_cargo_then_rust(tmp_path):
     runtime_prefix = tmp_path / "rt"
     repo = tmp_path / "repo"
-    assert device_setup.node_source(repo, selected=None, cargo=None) == device_setup.Source("rustup")
+    assert device_setup.node_source(repo, selected=None, cargo=None) == device_setup.Source("missing")
     assert device_setup.node_source(repo, selected=None, cargo="/bin/cargo") == device_setup.Source("build")
     built = repo / "app" / "target" / "release" / node_binary.name()
     built.parent.mkdir(parents=True)
@@ -55,33 +40,29 @@ def test_the_node_comes_from_the_runtime_then_a_binary_in_the_repository_then_ca
 
 
 def needs(**over):
-    base = {"kind": "mac", "mode": "mirrored", "config_change": False, "firewall_missing": False, "source": device_setup.Source("found", "/n")}
+    base = {"kind": "mac", "mode": "mirrored", "mirrored_set": False, "firewall_missing": False, "source": device_setup.Source("found", "/n")}
     return device_setup.Needs(**{**base, **over})
 
 
 def test_the_plan_lists_only_what_will_change_and_always_the_node_and_the_check():
     nothing = device_setup.plan(needs())
     assert len(nothing) == 2 and "/n" in nothing[0] and "join check" in nothing[1]
-    windows = "\n".join(device_setup.plan(needs(kind="windows", firewall_missing=True, source=device_setup.Source("rustup"))))
+    windows = "\n".join(device_setup.plan(needs(kind="windows", firewall_missing=True, source=device_setup.Source("missing"))))
     assert "firewall" not in windows and "inbound allow rules" in windows and "Rust" in windows
     assert "wslconfig" not in windows
     assert str(node_join.DEFAULT_PORT) in windows and str(node_join.DEFAULT_BEACON_PORT) in windows
 
 
-def test_wsl_in_nat_mode_or_with_an_unmirrored_config_ends_the_plan_at_a_restart():
-    for wsl in (needs(kind="wsl", mode="nat"), needs(kind="wsl", config_change=True)):
-        steps = device_setup.plan(wsl)
-        assert wsl.restart_wsl and "restart WSL" in steps[-1] and "join check" not in "\n".join(steps)
+def test_wsl_in_nat_mode_restarts_only_where_the_person_already_set_mirrored_networking():
+    ready = needs(kind="wsl", mode="nat", mirrored_set=True)
+    steps = device_setup.plan(ready)
+    assert ready.restart_wsl and "restart WSL" in steps[-1] and "join check" not in "\n".join(steps)
+    lacking = needs(kind="wsl", mode="nat")
+    steps = device_setup.plan(lacking)
+    assert not lacking.restart_wsl and steps[-1] == f"stop: {device_setup.WSL_FIX}"
+    assert "never writes" in steps[-1] and "networkingMode=mirrored" in steps[-1]
     assert not needs(kind="wsl").restart_wsl and not needs(kind="windows", mode="nat").restart_wsl
-    assert any(".wslconfig" in s for s in device_setup.plan(needs(kind="wsl", config_change=True)))
-    assert not any(".wslconfig" in s for s in device_setup.plan(needs(kind="mac", config_change=True)))
-
-
-def test_the_wsl_plan_says_mirrored_is_the_recommended_setting_and_why():
-    text = "\n".join(device_setup.plan(needs(kind="wsl", mode="nat", config_change=True)))
-    assert "recommended" in text and "shares the Windows network" in text and "reach it directly" in text and "hear its beacons" in text
-    assert "mirrored networking takes effect" in text
-    assert "recommended" not in "\n".join(device_setup.plan(needs(kind="windows", firewall_missing=True)))
+    assert ".wslconfig" not in "\n".join(device_setup.plan(needs(kind="mac", mode="nat")))
 
 
 @pytest.mark.parametrize("platform, version, kind", [
@@ -115,17 +96,38 @@ def test_no_flag_is_needed_to_make_the_changes_and_nothing_is_asked(monkeypatch,
         device_setup.main(["--yes"])
 
 
-def test_wsl_that_needs_mirroring_writes_the_config_and_restarts_before_anything_else(monkeypatch, tmp_path):
+def test_wsl_that_lacks_mirroring_is_told_what_to_add_and_the_users_wslconfig_is_not_written(monkeypatch, tmp_path, capsys):
     config = tmp_path / ".wslconfig"
     config.write_text("[wsl2]\nmemory=8GB\n", encoding="utf-8")
-    calls = []
-    monkeypatch.setattr(device_setup, "survey", lambda repo: needs(kind="wsl", mode="nat", config_change=True))
+    monkeypatch.setattr(device_host, "current_kind", lambda: "wsl")
+    monkeypatch.setattr(device_host, "firewall_missing", lambda: False)
+    monkeypatch.setattr(device_host, "add_firewall", lambda: pytest.fail("no rule was missing"))
     monkeypatch.setattr(device_host, "wslconfig_path", lambda kind: config)
+    monkeypatch.setattr(device_setup.node_join_check, "route_address", lambda: "172.20.144.1")
+    monkeypatch.setattr(device_setup.node_join_check, "wsl_mode", lambda address: "nat")
+    monkeypatch.setattr(device_setup.runtime, "selection_prefix", lambda: None)
+    monkeypatch.setattr(device_host, "restart_wsl", lambda: pytest.fail("restarted WSL with nothing changed"))
+    monkeypatch.setattr(device_setup, "binary_of", lambda *a: pytest.fail("started the node on a device that is not ready"))
+    assert device_setup.main([]) == 1
+    assert config.read_text(encoding="utf-8") == "[wsl2]\nmemory=8GB\n" and list(tmp_path.iterdir()) == [config]
+    said = capsys.readouterr().err
+    assert "NOT READY" in said and device_setup.WSL_FIX in said
+
+
+def test_wsl_with_mirroring_set_but_still_nat_restarts_before_anything_else(monkeypatch):
+    calls = []
+    monkeypatch.setattr(device_setup, "survey", lambda repo: needs(kind="wsl", mode="nat", mirrored_set=True))
     monkeypatch.setattr(device_host, "restart_wsl", lambda: calls.append("restart"))
     monkeypatch.setattr(device_setup, "binary_of", lambda *a: pytest.fail("started the node before the restart"))
     assert device_setup.main([]) == 0
-    assert calls == ["restart"] and "networkingMode=mirrored" in config.read_text(encoding="utf-8")
-    assert any(p.name.startswith(".wslconfig.poolhouse-backup") for p in tmp_path.iterdir())
+    assert calls == ["restart"]
+
+
+def test_a_device_without_rust_is_told_to_install_it_and_nothing_installs_a_toolchain(monkeypatch, tmp_path):
+    calls = _recorded(monkeypatch)
+    with pytest.raises(node_join.PoolError, match="never installs it"):
+        device_setup.binary_of(needs(source=device_setup.Source("missing")), tmp_path)
+    assert calls == []
 
 
 def test_a_firewall_rule_that_could_not_be_added_is_not_ready_with_the_reason(monkeypatch, capsys):
@@ -168,13 +170,8 @@ def test_every_command_the_host_runs_is_a_fixed_argv_with_no_input_from_outside(
     calls = _recorded(monkeypatch)
     device_host.restart_wsl()
     device_host.firewall_missing()
-    device_host.install_rust("windows")
-    device_host.install_rust("linux")
-    argvs = [argv for argv, _ in calls]
-    assert argvs[0] == ["wsl.exe", "--shutdown"]
-    assert argvs[-1][:2] == ["sh", "-c"] and device_host.RUSTUP_URL in argvs[-1][2] and "--proto '=https'" in argvs[-1][2]
-    assert argvs[-2][0] == "winget"
-    assert all(not kwargs.get("shell") for _, kwargs in calls)
+    assert calls[0][0] == ["wsl.exe", "--shutdown"]
+    assert all(isinstance(argv, list) and not kwargs.get("shell") for argv, kwargs in calls)
 
 
 def test_the_firewall_rules_are_added_where_the_shell_is_an_administrators_and_refused_at_once_with_the_reason_where_it_is_not(monkeypatch):

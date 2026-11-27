@@ -1,5 +1,9 @@
-"""The message-board nudge hooks written into each coding agent's own settings, a check of them, and the removal of hook entries
-whose absolute executable path no longer exists (a changed settings file keeps a backup and is written atomically)."""
+"""The message-board nudge hooks of one project, written only when asked and only into that project's own settings.
+
+Poolhouse never writes a user's global settings: not ``~/.claude``, not ``~/.codex`` and not the folders ``CLAUDE_CONFIG_DIR`` and
+``CODEX_HOME`` name. `install` takes a project folder and writes ``.claude/settings.local.json`` and ``.codex/config.toml`` inside
+it. Only `poolhouse-workspace install-hooks --project DIR` calls it, and nothing checks that the hooks are there.
+"""
 
 from __future__ import annotations
 
@@ -7,56 +11,65 @@ import json
 import os
 import re
 import shlex
-import shutil
-import time
 import tomllib
-from collections.abc import Callable
 from pathlib import Path
 
 from poolhouse import home
-from poolhouse.checks import Finding
 from poolhouse.files import write_text
 
-__all__ = ["AGENTS", "codex_hooks", "findings", "install", "install_report", "is_stale", "paths", "remove_stale", "removed_lines", "stale_in", "strip_stale"]
+__all__ = ["AGENTS", "codex_hooks", "install", "targets"]
 
 AGENTS = ("claude-code", "codex")
-IDS = {"claude-code": "claude", "codex": "codex"}
+FILES = {"claude-code": (".claude", "settings.local.json"), "codex": (".codex", "config.toml")}
 BINARY = "poolhouse-workspace"
 CLAUDE_EVENTS = (("PostToolUse", "post", "*"), ("Stop", "stop", ""), ("UserPromptSubmit", "prompt", ""))
 CODEX_EVENTS = tuple((event, event, ".*" if event not in ("Stop", "UserPromptSubmit") else "")
                      for event in ("SessionStart", "SubagentStart", "SubagentStop", "SessionEnd",
                                    "PostToolUse", "Stop", "UserPromptSubmit"))
-FIX = f"{BINARY} install-hooks"
 BEGIN = "# >>> poolhouse nudge hooks (managed) >>>"
 END = "# <<< poolhouse nudge hooks <<<"
-CODEX_OTHER_POST = "poolhouse.harnesshook post"
 _MANAGED = re.compile(rf"\n*{re.escape(BEGIN)}.*?{re.escape(END)}\n?", re.S)
-_NOTIFY = re.compile(r"(?m)^notify[ \t]*=[^\n]*(?:\n|$)")
 _FEATURES = re.compile(r"(?m)^\[features\][^\n]*\n")
 _TABLE = re.compile(r"(?m)^\[")
-_HEADER = re.compile(r"(?m)^\[\[?([^\]\n]+)\]\]?[ \t]*(?:#.*)?$")
-_COMMAND = re.compile(r'(?m)^\s*command\s*=\s*"((?:[^"\\]|\\.)*)"')
-_STALE_NOTIFY = re.compile(r"(?m)^notify\s*=\s*\[[^\]\n]*\]\s*\n")
 
 
 def command(agent: str, hook: str) -> str:
     """The command an ``agent``'s ``hook`` event runs."""
     if agent == "codex":
-        return "poolhouse-workspace codex-hook"
+        return f"{BINARY} codex-hook"
     return f"{BINARY} nudge --agent {agent} --hook {hook}"
 
 
-def paths() -> dict[str, Path]:
-    """Where each agent keeps the settings the hooks are written to."""
-    claude = os.environ.get("CLAUDE_CONFIG_DIR")
-    codex = os.environ.get("CODEX_HOME")
-    return {"claude-code": (Path(claude) if claude else home.user_home() / ".claude") / "settings.json",
-            "codex": (Path(codex) if codex else home.user_home() / ".codex") / "config.toml"}
+def _same(one: Path, other: Path) -> bool:
+    """Whether two paths are one folder, however each is spelled."""
+    return one == other or (one.exists() and other.exists() and one.samefile(other))
 
 
-def present(agent: str, path: Path) -> bool:
-    """Whether ``agent`` is on this machine: its settings folder exists or its command is on PATH."""
-    return path.parent.is_dir() or shutil.which(agent.split("-")[0]) is not None
+def _user_folders() -> list[Path]:
+    """The folders that hold the user's own settings of each agent."""
+    user = home.user_home()
+    named = [home.expand(value) for key in ("CLAUDE_CONFIG_DIR", "CODEX_HOME") if (value := os.environ.get(key))]
+    return [Path(os.path.realpath(folder)) for folder in (user / ".claude", user / ".codex", *named)]
+
+
+def targets(project: Path, only: tuple[str, ...] = AGENTS) -> dict[str, Path]:
+    """The settings file of each of ``only`` inside ``project``; ValueError unless every one is the project's own."""
+    root = Path(os.path.realpath(project))
+    if not root.is_dir():
+        raise ValueError(f"{project} is not a folder")
+    user = Path(os.path.realpath(home.user_home()))
+    if any(_same(root, folder) for folder in (user, *user.parents)):
+        raise ValueError(f"{project} is the home folder or holds it, not a project: the user's own settings are never written")
+    folders = _user_folders()
+    out = {}
+    for agent in only:
+        path = Path(os.path.realpath(root.joinpath(*FILES[agent])))
+        if not path.is_relative_to(root):
+            raise ValueError(f"{root.joinpath(*FILES[agent])} is a link that leaves the project, so it is not written")
+        if any(_same(parent, folder) for parent in path.parents for folder in folders):
+            raise ValueError(f"{path} is among the user's own settings, which are never written")
+        out[agent] = path
+    return out
 
 
 def _own(command_line: str) -> bool:
@@ -69,7 +82,7 @@ def _own(command_line: str) -> bool:
         return False
     if len(words) < 2 or words[0] != BINARY:
         return False
-    options = {"nudge": {"--agent", "--hook"}, "codex-hook": {"--assigned"}, "codex-stop": {"--assigned"}}
+    options = {"nudge": {"--agent", "--hook"}, "codex-hook": {"--assigned"}}
     allowed = options.get(words[1])
     tail = words[2:]
     return (allowed is not None and (words[1] != "nudge" or bool(tail))
@@ -79,19 +92,9 @@ def _own(command_line: str) -> bool:
                     for key, value in zip(tail[::2], tail[1::2], strict=True)))
 
 
-def _owned_notify(match: re.Match) -> str:
-    try:
-        argv = tomllib.loads(match.group(0)).get("notify")
-    except ValueError:
-        return match.group(0)
-    return "" if (isinstance(argv, list) and all(isinstance(word, str) for word in argv)
-                  and _own(shlex.join(argv))) else match.group(0)
-
-
-def install_claude(settings: Path) -> list[str]:
-    """Write the PostToolUse, Stop and UserPromptSubmit nudge hooks into Claude Code's ``settings``,
-    replacing earlier nudge hooks and keeping every other setting; returns the events written."""
-    data = json.loads(settings.read_text()) if settings.exists() else {}
+def _claude_text(text: str) -> str:
+    """Claude Code settings ``text`` with the nudge hooks, earlier nudge hooks replaced and every other setting kept."""
+    data = json.loads(text) if text else {}
     hooks = data.setdefault("hooks", {})
     for event, hook, matcher in CLAUDE_EVENTS:
         groups = []
@@ -100,13 +103,9 @@ def install_claude(settings: Path) -> list[str]:
             if kept:
                 groups.append({**group, "hooks": kept})
         groups.append({**({"matcher": matcher} if matcher else {}),
-                       "hooks": [{"type": "command", "command": command(IDS["claude-code"], hook)}]})
+                       "hooks": [{"type": "command", "command": command("claude", hook)}]})
         hooks[event] = groups
-    text = json.dumps(data, indent=2) + "\n"
-    if not settings.exists() or settings.read_text() != text:
-        settings.parent.mkdir(parents=True, exist_ok=True)
-        settings.write_text(text)
-    return [event for event, _, _ in CLAUDE_EVENTS]
+    return json.dumps(data, indent=2) + "\n"
 
 
 def _enable_hooks(text: str) -> tuple[str, bool]:
@@ -123,6 +122,7 @@ def _enable_hooks(text: str) -> tuple[str, bool]:
 
 
 def codex_hooks(with_post: bool = True, with_features: bool = False, assigned: str = "") -> str:
+    """The managed block of Codex lifecycle hooks as TOML."""
     out = [BEGIN]
     if with_features:
         out += ["[features]", "hooks = true", ""]
@@ -138,202 +138,26 @@ def codex_hooks(with_post: bool = True, with_features: bool = False, assigned: s
     return "\n".join([*out[:-1], END]) + "\n"
 
 
-
-def _owned_codex_post(line: str) -> bool:
-    if any(char in line for char in ';|&<>$`'):
-        return False
-    try:
-        words = shlex.split(line)
-    except ValueError:
-        return False
-    if len(words) < 4 or not re.fullmatch(r'python(?:3(?:\.\d+)?)?', Path(words[0]).name):
-        return False
-    if words[1:4] != ['-m', *CODEX_OTHER_POST.split()]:
-        return False
-    tail = words[4:]
-    return len(tail) % 2 == 0 and all(key in ('--role', '--agent', '--root', '--protect', '--wait') for key in tail[::2])
-
-def install_codex(config: Path) -> list[str]:
-    """Write native lifecycle hooks, replacing Poolhouse notifications and preserving other settings."""
-    text = config.read_text() if config.exists() else ""
-    base = _MANAGED.sub("\n", text)
-    table = _TABLE.search(base)
-    end = table.start() if table else len(base)
-    base = (_NOTIFY.sub(_owned_notify, base[:end]) + base[end:]).rstrip("\n")
-    base, with_features = _enable_hooks(base)
-    base, _ = _stale_codex(base, _owned_codex_post, "PostToolUse")
+def _codex_text(text: str) -> str:
+    """Codex config ``text`` with the managed hook block replaced and every other setting kept."""
+    base, with_features = _enable_hooks(_MANAGED.sub("\n", text).rstrip("\n"))
     new = (base + "\n\n" if base else "") + codex_hooks(True, with_features)
     tomllib.loads(new)
-    if new != text:
-        config.parent.mkdir(parents=True, exist_ok=True)
-        config.write_text(new)
-    return [event for event, _, _ in CODEX_EVENTS]
+    return new
 
 
+def install(project: Path, only: tuple[str, ...] = AGENTS) -> dict[str, tuple[Path, list[str]]]:
+    """Write the nudge hooks of each of ``only`` into ``project``; returns each agent's file and the events written.
 
-def is_stale(command_line: str) -> bool:
-    """Whether a hook names an absolute executable path that is no longer present."""
-    try:
-        words = shlex.split(command_line)
-    except ValueError:
-        words = command_line.split()
-    if not words:
-        return False
-    program = words[0]
-    return program.startswith(("/", "~")) and not home.expand(program).exists()
-
-
-def _stale_claude(text: str) -> tuple[str, list[str]]:
-    data = json.loads(text)
-    hooks = data.get("hooks")
-    removed: list[str] = []
-    if not isinstance(hooks, dict):
-        return text, removed
-    for event in list(hooks):
-        groups = []
-        for group in hooks[event] if isinstance(hooks[event], list) else []:
-            inner = group.get("hooks", []) if isinstance(group, dict) else []
-            kept = [h for h in inner if not (isinstance(h, dict) and is_stale(h.get("command", "")))]
-            removed += [h["command"] for h in inner if h not in kept]
-            if kept:
-                groups.append({**group, "hooks": kept})
-        if groups:
-            hooks[event] = groups
-        else:
-            del hooks[event]
-    return (json.dumps(data, indent=2) + "\n") if removed else text, removed
-
-
-def _stale_codex(text: str, predicate: Callable[[str], bool] = is_stale, event: str = "") -> tuple[str, list[str]]:
-    """Drop each ``[[hooks.EVENT.hooks]]`` table with a stale command, then each ``[[hooks.EVENT]]``
-    table left with none, and a ``notify`` line that names a stale command."""
-    marks = list(_HEADER.finditer(text))
-    spans = [(m.group(1).strip(), m.start(), marks[i + 1].start() if i + 1 < len(marks) else len(text))
-             for i, m in enumerate(marks)]
-    drop: set[int] = set()
-    removed: list[str] = []
-    for i, (name, start, end) in enumerate(spans):
-        if name.startswith("hooks.") and name.endswith(".hooks") and (not event or name == f"hooks.{event}.hooks"):
-            command = _COMMAND.search(text[start:end])
-            value = tomllib.loads('command = "' + command.group(1) + '"')["command"] if command else ""
-            if command and predicate(value):
-                drop.add(i)
-                removed.append(command.group(1))
-    for i, (name, _start, _end) in enumerate(spans):
-        if name.startswith("hooks.") and name.count(".") == 1:
-            kids = []
-            for j in range(i + 1, len(spans)):
-                if spans[j][0] != name + ".hooks":
-                    break
-                kids.append(j)
-            if kids and all(k in drop for k in kids):
-                drop.add(i)
-    out = (text[:spans[0][1]] if spans else text) + "".join(
-        text[s:e] for k, (_n, s, e) in enumerate(spans) if k not in drop)
-    for match in _STALE_NOTIFY.finditer(out) if not event else ():
-        argv = re.findall(r'"([^"]*)"', match.group(0))
-        if argv and predicate(" ".join(shlex.quote(a) for a in argv)):
-            removed.append(match.group(0).strip())
-            out = out.replace(match.group(0), "", 1)
-    if removed:
-        tomllib.loads(out)
-    return out, removed
-
-
-def stale_in(agent: str, path: Path) -> list[str]:
-    """The stale commands in ``path``, an ``agent``'s settings file; none when it is absent."""
-    if not path.exists():
-        return []
-    return (_stale_claude if agent == "claude-code" else _stale_codex)(path.read_text())[1]
-
-
-def strip_stale(agent: str, path: Path) -> list[str]:
-    """Take every stale hook out of ``path``; returns their commands. A changed file is backed up beside
-    itself first and written atomically."""
-    if not path.exists():
-        return []
-    text = path.read_text()
-    new, removed = (_stale_claude if agent == "claude-code" else _stale_codex)(text)
-    if removed:
-        write_text(path.with_name(f"{path.name}.bak-{time.strftime('%Y%m%dT%H%M%S')}"), text)
-        write_text(path, new)
-    return removed
-
-
-def install(only: tuple[str, ...] = AGENTS, where: dict[str, Path] | None = None) -> dict[str, list[str]]:
-    """Write the nudge hooks for each of ``only`` that is on this machine (or named in ``where``);
-    returns the events written by agent."""
-    found = {**paths(), **(where or {})}
-    writers = {"claude-code": install_claude, "codex": install_codex}
-    return {agent: writers[agent](found[agent]) for agent in only
-            if agent in (where or {}) or present(agent, found[agent])}
-
-
-def remove_stale(only: tuple[str, ...] = AGENTS, where: dict[str, Path] | None = None) -> dict[str, list[str]]:
-    """Take the hooks that can no longer run (an old-name command, a program that is gone) out of each of
-    ``only``'s settings that is on this machine or named in ``where``; returns the commands removed by agent."""
-    found = {**paths(), **(where or {})}
-    removed = {agent: strip_stale(agent, found[agent]) for agent in only
-               if agent in (where or {}) or present(agent, found[agent])}
-    return {agent: commands for agent, commands in removed.items() if commands}
-
-
-def removed_lines(removed: dict[str, list[str]], where: dict[str, Path] | None = None) -> list[str]:
-    """What `remove_stale` removed, as the lines to show."""
-    found = {**paths(), **(where or {})}
-    return [f"{agent}: removed the hook {command!r} from {found[agent]} (a backup sits beside it)"
-            for agent, commands in removed.items() for command in commands]
-
-
-def install_report() -> list[str]:
-    """`install` for every agent on this machine, as the lines to show; a refusal is a line, not an error."""
-    try:
-        done = install()
-    except (OSError, ValueError) as err:
-        return [f"message-board hooks were not written: {err}"]
-    return [f"{agent}: message-board hooks ({', '.join(events)}) are in {paths()[agent]}"
-                   for agent, events in done.items()]
-
-
-def _commands(groups: object) -> list[str]:
-    return [h.get("command", "") for g in groups or [] if isinstance(g, dict)
-            for h in g.get("hooks", []) if isinstance(h, dict)]
-
-
-def _problems(agent: str, data: dict, events: tuple[tuple[str, str, str], ...]) -> list[str]:
-    hooks = data.get("hooks") if isinstance(data.get("hooks"), dict) else {}
-    out = []
-    for event, hook, _ in events:
-        have = [c for c in _commands(hooks.get(event)) if _own(c)]
-        if not have:
-            out.append(f"{event} missing")
-        elif have != [command(IDS[agent], hook)]:
-            out.append(f"{event} stale")
-    if agent == "codex" and (data.get("features") or {}).get("hooks") is not True:
-        out.append("the hooks feature is off")
-    return out
-
-
-def findings(where: dict[str, Path] | None = None) -> list[Finding]:
-    """One finding per agent on this machine: whether its nudge hooks are all present and current."""
-    found = {**paths(), **(where or {})}
-    events = {"claude-code": CLAUDE_EVENTS, "codex": CODEX_EVENTS}
-    out = []
-    for agent in AGENTS:
-        path = found[agent]
-        if agent not in (where or {}) and not present(agent, path):
-            continue
-        try:
-            data = (json.loads(path.read_text()) if agent == "claude-code" else tomllib.loads(path.read_text())) \
-                if path.exists() else {}
-            problems = _problems(agent, data, events[agent])
-            problems += [f"{command!r} is a missing program, so it fails on every event"
-                         for command in stale_in(agent, path) if _own(command)]
-        except (OSError, ValueError) as err:
-            problems = [f"{path} cannot be read ({err})"]
-        if shutil.which(BINARY) is None:
-            problems.append(f"{BINARY} is not on PATH")
-        out.append(Finding(name=f"{agent}: message-board hooks", good=not problems,
-                           said="installed in " + str(path) if not problems else "; ".join(problems),
-                           fix=FIX.split() if problems else []))
-    return out
+    Every file is read and checked before the first one is written.
+    """
+    rendered = {"claude-code": (_claude_text, [event for event, _, _ in CLAUDE_EVENTS]),
+                "codex": (_codex_text, [event for event, _, _ in CODEX_EVENTS])}
+    planned = []
+    for agent, path in targets(project, only).items():
+        old = path.read_text(encoding="utf-8") if path.exists() else ""
+        planned.append((agent, path, old, rendered[agent][0](old)))
+    for _agent, path, old, new in planned:
+        if new != old:
+            write_text(path, new)
+    return {agent: (path, rendered[agent][1]) for agent, path, _old, _new in planned}

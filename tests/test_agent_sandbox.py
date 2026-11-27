@@ -5,7 +5,6 @@ from __future__ import annotations
 import errno
 import json
 import os
-import shlex
 import socket
 import subprocess
 import sys
@@ -206,28 +205,11 @@ def test_prepare_stages_files_with_matching_digests(layout):
     assert manifest["expires"] == 1000.0 + stage.LIFETIME
     for item in manifest["files"]:
         assert stage.digest((target / item["name"]).read_bytes()) == item["sha256"]
-    assert {item["destination"] for item in manifest["files"]} >= {
-        "/Library/Application Support/ClaudeCode/managed-settings.json"}
+    assert all(sorted(item) == ["name", "sha256"] for item in manifest["files"])
 
 
-def test_install_command_is_one_sudo_line_carrying_the_digests(layout):
-    stage.prepare(layout, "device-1")
-    command = stage.install_command(layout.state)
-    assert command.startswith("sudo sh -c ") and "\n" not in command
-    for item in stage.load(layout.state)["files"]:
-        assert item["sha256"] in command
-    assert "install -m 644" in command
-
-
-def test_installed_reports_absent_match_and_differs(layout, tmp_path, monkeypatch):
-    destination = tmp_path / "managed-settings.json"
-    monkeypatch.setitem(stage.DESTINATIONS["darwin"], "claude-managed-settings.json", str(destination))
-    target = stage.prepare(layout, "device-1")
-    assert (str(destination), "absent") in stage.installed(layout.state)
-    destination.write_bytes((target / "claude-managed-settings.json").read_bytes())
-    assert (str(destination), "match") in stage.installed(layout.state)
-    destination.write_text("{}")
-    assert (str(destination), "differs") in stage.installed(layout.state)
+def test_nothing_can_install_the_staged_files_over_a_harnesss_own_settings():
+    assert [name for name in ("DESTINATIONS", "install_command", "installed") if hasattr(stage, name)] == []
 
 
 def test_staged_files_expire(layout):
@@ -237,7 +219,7 @@ def test_staged_files_expire(layout):
     assert not stage.expired(layout.state / "elsewhere")
 
 
-def test_command_line_prepares_and_reports_without_touching_destinations(tmp_path):
+def test_command_line_prepares_and_reports_and_prints_no_command_that_writes_global_settings(tmp_path):
     base = [sys.executable, str(ROOT / "scripts" / "agent-sandbox"),
             "--home", str(tmp_path / "home"), "--state", str(tmp_path / "state")]
     env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
@@ -245,11 +227,11 @@ def test_command_line_prepares_and_reports_without_touching_destinations(tmp_pat
     prepared = subprocess.run([*base, "prepare"], capture_output=True, text=True, env=env, check=False,
                               cwd=ROOT)
     assert prepared.returncode == 0, prepared.stderr
-    assert "sudo sh -c" in prepared.stdout
+    assert "sudo" not in prepared.stdout and "/etc/" not in prepared.stdout and "/Library/" not in prepared.stdout
     reported = subprocess.run([*base, "status"], capture_output=True, text=True, env=env, check=False,
                               cwd=ROOT)
     assert reported.returncode == 0
-    assert "managed-settings.json" in reported.stdout
+    assert "claude-managed-settings.json" in reported.stdout and "/Library/" not in reported.stdout and "/etc/" not in reported.stdout
     refused = subprocess.run([*base, "install"], capture_output=True, text=True, env=env, check=False,
                              cwd=ROOT)
     assert refused.returncode != 0
@@ -336,16 +318,6 @@ def test_inside_needs_a_refusal_and_no_open_line():
     assert not probe.inside([item for item in passed if item.name != probe.PLATFORM_CHECKS["darwin"]], "darwin"), "the platform check is required"
     assert not probe.inside(passed, "linux"), "another platform's check proves nothing here"
     assert probe.render(passed).startswith("PASS  ")
-
-
-def test_the_install_command_installs_the_staged_files_when_run_without_sudo(layout, tmp_path, monkeypatch):
-    places = {name: str(tmp_path / "root" / name) for name in stage.DESTINATIONS["darwin"]}
-    monkeypatch.setitem(stage.DESTINATIONS, "darwin", places)
-    stage.prepare(layout, "device-1")
-    argv = shlex.split(stage.install_command(layout.state))[1:]
-    done = subprocess.run(argv, capture_output=True, text=True, check=False)
-    assert done.returncode == 0, done.stderr
-    assert all(state == "match" for _, state in stage.installed(layout.state))
 
 
 def covered(path, roots):

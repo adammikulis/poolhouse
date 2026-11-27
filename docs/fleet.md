@@ -168,7 +168,7 @@ scripts/test all tests/test_x.py tests/test_y.py --on NAME --split     divide th
 ```
 
 A member takes tests from the pool's other members once the node authorizes the compute service for it (docs/test-farm.md). It runs them on
-its own Python 3.13 that imports pytest: the one `scripts/setup-wsl-dev` makes (`~/.venvs/poolhouse-dev`), else
+its own Python 3.13 that imports pytest: the one `scripts/setup-wsl-dev` makes (`~/.poolhouse/wsl-dev-venv`), else
 the Python the node recorded when shards were turned on (docs/test-farm.md); with none it says so and what to run. A job on a member records the
 device that asked and the agent behind the request (`GET /jobs`, the `by` field), and the reuse record, the exit status and the printed
 report are those of a run on the node's pool. A member that stops answering while its tests run ends the run with a message that says its

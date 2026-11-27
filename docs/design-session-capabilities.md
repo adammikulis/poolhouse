@@ -368,9 +368,9 @@ No new step for a person. Nothing is installed, typed, pasted or approved.
 - The hook credential is made by the node at first start, like `node.sock`, and read by tools that already run as the person.
   The evidence anchor needs no visit: a person's own terminal is the anchor of the root a `claude` started in it registers.
 - Claude Code: the SessionStart, SubagentStart and Bash PreToolUse hooks do the work. `claude-bash-guard` and the two start hooks
-  are wired in this repository's `.claude/settings.json`; for other projects `agent_hooks.install_claude` writes only PostToolUse,
-  Stop and UserPromptSubmit today, so S4 adds the three events to what the installer writes, run by the same automatic path
-  (`install-hooks`, `doctor`) as now. **Probe P3:** which hook set a project outside this repository gets.
+  are wired in this repository's `.claude/settings.json`; for another project `install-hooks --project DIR` writes only
+  PostToolUse, Stop and UserPromptSubmit into that project's `.claude/settings.local.json`, so S4 adds the three events to what
+  it writes. Nothing runs it unasked and nothing writes global settings. **Probe P3:** which hook set another project gets.
 - Codex: the existing SessionStart and SubagentStart hooks; no new event.
 - Launchers: the launching session passes the voucher; the person starts `poolhouse-claude` or an agent as now.
 - A person's terminal, an unknown harness without hooks, a script: the CLI registers a session with the root key and keeps it.
@@ -508,7 +508,7 @@ reads as the worse case):
   synthetic target. This is not a test of the installed Claude or Codex wrappers, or of every alias.
   Resolve the process-environment and alias channels and verify the actual wrapper before relying on S0 or starting S4.
 - **P3** Which hooks a project outside this repository gets from `install-hooks`, and whether a SessionStart hook exists there.
-  On 2026-11-06, running `agent_hooks.install_claude` against a fresh temporary project settings file wrote only
+  On 2026-11-06, running the Claude Code installer against a fresh temporary project settings file wrote only
   `PostToolUse`, `Stop` and `UserPromptSubmit`; it wrote no `SessionStart`, `SubagentStart` or `PreToolUse`. This
   probes the installer function, not a running external Claude session. S4 must install its required events and verify
   them in an actual external project.

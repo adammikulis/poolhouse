@@ -1,10 +1,10 @@
 {
- "surfaces": 880,
+ "surfaces": 878,
  "by_status": {
-  "covered": 561,
-  "partial": 180,
+  "covered": 559,
+  "partial": 181,
   "uncovered": 51,
-  "n/a": 88,
+  "n/a": 87,
   "unmapped": 0
  },
  "by_kind": {
@@ -33,7 +33,7 @@
    "covered": 1,
    "partial": 0,
    "uncovered": 0,
-   "n/a": 7,
+   "n/a": 6,
    "unmapped": 0
   },
   "egress": {
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 57,
+   "covered": 56,
    "partial": 0,
    "uncovered": 0,
    "n/a": 1,
@@ -100,8 +100,8 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 103,
-   "partial": 61,
+   "covered": 102,
+   "partial": 62,
    "uncovered": 0,
    "n/a": 4,
    "unmapped": 0
@@ -1261,16 +1261,6 @@
     "tests/test_studio_native_picker.py"
    ],
    "note": "compiled Tauri authority grants only the daemon's own origin and port, rejects foreign origins, ports and windows, shell execution and filesystem reads; the window stays on its own origin; the daemon is recognised only by a proof from a secret its user alone can read"
-  },
-  {
-   "id": "desktop:fleet/autostart.py:_windows_install",
-   "kind": "desktop",
-   "source": "fleet/autostart.py:_windows_install",
-   "trust": "names of members, sessions, files",
-   "attacker": "attacker text reaches a dialog, notification or shell command",
-   "status": "n/a",
-   "tests": [],
-   "note": "fixed scripts that read the battery, focus or login item; no text from outside"
   },
   {
    "id": "desktop:fleet/settings.py:_has_battery",
@@ -3967,21 +3957,6 @@
    "id": "human:runtime_deploy.py:prepare_root",
    "kind": "human",
    "source": "runtime_deploy.py:prepare_root",
-   "trust": "an agent process or a member",
-   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
-    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
-    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
-    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
-   ],
-   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:runtime_launchers.py:_replace",
-   "kind": "human",
-   "source": "runtime_launchers.py:_replace",
    "trust": "an agent process or a member",
    "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
@@ -10494,6 +10469,18 @@
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
+   "id": "spawn:delegate.py:_folder",
+   "kind": "spawn",
+   "source": "delegate.py:_folder",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
    "id": "spawn:devbranch.py:development_branch",
    "kind": "spawn",
    "source": "devbranch.py:development_branch",
@@ -10509,19 +10496,6 @@
    "id": "spawn:device_host.py:_powershell",
    "kind": "spawn",
    "source": "device_host.py:_powershell",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "covered",
-   "tests": [
-    "tests/test_device_setup.py::test_a_hostile_windows_profile_path_reaches_wslpath_as_one_argument_and_no_command_goes_through_a_shell",
-    "tests/test_device_setup.py::test_every_command_the_host_runs_is_a_fixed_argv_with_no_input_from_outside"
-   ],
-   "note": "every argv is fixed (PowerShell script text is built from constants and travels encoded); the one outside string, the Windows profile path, is a single wslpath argument"
-  },
-  {
-   "id": "spawn:device_host.py:install_rust",
-   "kind": "spawn",
-   "source": "device_host.py:install_rust",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",

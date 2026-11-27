@@ -1347,7 +1347,7 @@ note = "cargo starts with a fixed argument list; a source path with shell punctu
 [[group]]
 match = ["spawn:device_host.py:*"]
 status = "covered"
-count = 4
+count = 3
 tests = ["tests/test_device_setup.py::test_a_hostile_windows_profile_path_reaches_wslpath_as_one_argument_and_no_command_goes_through_a_shell",
          "tests/test_device_setup.py::test_every_command_the_host_runs_is_a_fixed_argv_with_no_input_from_outside"]
 note = "every argv is fixed (PowerShell script text is built from constants and travels encoded); the one outside string, the Windows profile path, is a single wslpath argument"

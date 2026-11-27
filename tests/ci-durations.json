@@ -17,7 +17,6 @@
   "tests/test_agent_dependency.py": 1.4,
   "tests/test_agent_display.py": 1.5,
   "tests/test_agent_hooks.py": 0.4,
-  "tests/test_agent_hooks_stale.py": 0.1,
   "tests/test_agent_identity.py": 18.3,
   "tests/test_agent_interventions.py": 0.8,
   "tests/test_agent_marker_guard.py": 0.0,
