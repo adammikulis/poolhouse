@@ -8,7 +8,7 @@ import json
 from collections.abc import Callable
 
 from poolhouse import hub
-from poolhouse.hub import cli as hub_cli, hf_cache, origins
+from poolhouse.hub import cli as hub_cli, hf_cache, origins, uploads
 from poolhouse.log import say, warn
 from poolhouse.serve import estimate as est, models_adopt, suggest as pick
 from poolhouse.units import human_bytes
@@ -89,11 +89,14 @@ def _list(args: argparse.Namespace) -> int:
     found = hub.discover(formats=args.format or hub.FORMATS, include=args.source,
                          companions=args.all, kind=args.kind)
     came = {m.id: origins.latest(m.path.name, m.size_bytes) for m in found}
+    news = uploads.current()
     rows = [[m.name[:40], m.kind, human_bytes(m.size_bytes), m.quantization, m.format, m.source,
              _from(came[m.id]), "" if m.is_complete else "incomplete", m.id[:60]] for m in found]
-    return _emit(args, [m.as_dict() | {"from_member": came[m.id]} for m in found], lambda: (
+    shown = [m.as_dict() | {"from_member": came[m.id], "updates": [c["text"] for c in news if c["repo"] == m.repo]} for m in found]
+    return _emit(args, shown, lambda: (
         _table(rows, ["NAME", "KIND", "SIZE", "QUANT", "FORMAT", "SOURCE", "FROM", "", "ID"]),
-        say(f"\n{len(found)} models, {human_bytes(sum(m.size_bytes for m in found))}")))
+        say(f"\n{len(found)} models, {human_bytes(sum(m.size_bytes for m in found))}"),
+        [say(change["text"]) for change in news]))
 
 
 def _from(line: dict | None) -> str:

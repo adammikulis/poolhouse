@@ -202,6 +202,24 @@ The manifest is signed with the owner key and its serial only rises.
 their files; `Repo.builds()` is `(build, bytes, shards, quantization)` per build. Tests run
 against `poolhouse.testing.fakehub`.
 
+## New uploads
+
+While Poolhouse runs, the daemon checks once a day (`poolhouse.hub.uploads`) the `unsloth/*` repositories that have a model file
+in the Hub cache. It asks only the official Hub for their file lists, through the net pipeline and without a token; with
+`$HF_ENDPOINT` pointing elsewhere it asks nothing. It never downloads or deletes, and what it finds only informs. It finds:
+
+- a held file the repository replaced under the same name (another size, or another digest than the Hub cache names its bytes
+  by; where the cache holds no link, as on Windows without symlinks, only the size is compared; the comparison is the one
+  `poolhouse-models files` makes);
+- a `.gguf` model file added to the repository since the first check of it, which counts everything then listed as seen;
+- a draft head, projector or other companion added or changed since then, and any held one replaced.
+
+`poolhouse-models list` and the app's Models view show each until the file is fetched. Each distinct change is announced once on
+one workspace (the daemon's preferred project, else the first one present); with none, the next check offers it again. The first
+check reports the held files that are stale already. `poolhouse-models updates` shows the findings, `--now` checks at once without
+posting, and `--off` stops the daily check and hides its findings (`--on` resumes). The switch and the cache are
+`<state>/hub/uploads.json`.
+
 ## Memory estimates
 
 `serve.estimate.estimate(model, setup=None, **changes)` takes the fields of `Setup` as keywords

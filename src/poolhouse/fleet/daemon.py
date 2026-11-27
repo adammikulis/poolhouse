@@ -20,7 +20,7 @@ from typing import Any
 from poolhouse import home, lan as lan_policy, macauth, runtime_identity, sentinel
 from poolhouse.files import write_text
 from poolhouse.fleet.onboard.devices import Devices
-from poolhouse.hub import default_roots
+from poolhouse.hub import default_roots, uploads
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
 from poolhouse.log import say, warn
@@ -35,6 +35,7 @@ from . import (
     autostart_check,
     autostart_guard,
     managed_alignment,
+    model_uploads,
     runtime_repair,
     tls,
     updates as updating,
@@ -261,6 +262,7 @@ class DaemonRuntime:
         )
         self.managed_alignment.start(self.runner, self.nothing_running, self.update_admission)
         updating.follow_runtime(idle=self.nothing_running, admission=self.code_update_admission)
+        uploads.watch(model_uploads.board_notice(lambda: self.projects.boards()))
         self.control = create_control(self)
         self.tracked = str(getattr(self.settings, "track_branch", "") or "").strip()
         self.tracked_from = str(getattr(self.settings, "track_repo", "") or "") or updating.GIT_URL

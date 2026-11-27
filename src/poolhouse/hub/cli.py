@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import hub, optional
-from poolhouse.hub import hfstore, remote
+from poolhouse.hub import remote, uploads
 from poolhouse.hub.naming import _SHARD
 from poolhouse.log import say, warn
 from poolhouse.serve.tensors import resident_bytes
@@ -83,9 +83,27 @@ def _parser(extend: Callable[[Any], None] | None = None) -> argparse.ArgumentPar
     shape.add_argument("model", help="a path, an hf: reference already fetched, or a file "
                                      "name copied from `files`")
     shape.add_argument("--json", action="store_true", help="the same as JSON")
+    watched = sub.add_parser("updates", help="what Unsloth has uploaded for the models here, from the daily check; "
+                                             "nothing is downloaded")
+    on = watched.add_mutually_exclusive_group()
+    on.add_argument("--on", dest="switch", action="store_const", const=True, help="check once a day while Poolhouse runs (the default)")
+    on.add_argument("--off", dest="switch", action="store_const", const=False, help="stop checking and hide what was found")
+    watched.add_argument("--now", action="store_true", help="check now, posting no workspace notice")
     if extend:
         extend(sub)
     return ap
+
+
+def _updates(args) -> int:
+    """``poolhouse-models updates``: the switch of the daily upload check and what it found."""
+    if args.switch is not None:
+        uploads.switch(args.switch)
+    if args.now:
+        uploads.check()
+    say(f"daily check of downloaded {uploads.PUBLISHER}/* repositories: {'on' if uploads.enabled() else 'off'}")
+    for change in uploads.current():
+        say(change["text"])
+    return 0
 
 
 def _layout(args) -> int:
@@ -206,26 +224,21 @@ def _builds(repo: str, ending: str, listing: list[tuple[str, int]]) -> None:
 
 
 def _unlike(repo: str, served: dict[str, dict[str, int]], mine: dict[str, int], here: dict[str, Path]) -> dict[str, list[str]]:
-    """Per build, what differs in each file held here that is not the bytes the repository serves now: another size, or,
-    where the Hub cache already names the content (`hfstore.held_digest`), another digest. No model file is hashed, and
-    the digests are asked of the Hub only when the cache names one to compare."""
+    """Per build, what `uploads.difference` says of each file held here that is not the bytes the repository serves now."""
     listed: list[remote.RemoteFile] | None = None
     out: dict[str, list[str]] = {}
     for build, files in served.items():
         for name, size in sorted(files.items()):
             if name not in mine:
                 continue
-            if mine[name] != size:
-                out.setdefault(build, []).append(f"{name}: {mine[name]:,} bytes here, {size:,} served")
-                continue
-            held = hfstore.held_digest(here[name]) if name in here else ""
-            if not held:
-                continue
-            listed = remote.listing(repo) if listed is None else listed
-            digests = {digest for one in listed if one.name == name for digest in (one.sha256, one.oid)
-                       if len(digest) == len(held)}
-            if digests and held not in digests:
-                out.setdefault(build, []).append(f"{name}: same size, other content")
+
+            def digests(name: str = name) -> set[str]:
+                nonlocal listed
+                listed = remote.listing(repo) if listed is None else listed
+                return {digest for one in listed if one.name == name for digest in (one.sha256, one.oid)}
+
+            if detail := uploads.difference(here.get(name), mine[name], size, digests):
+                out.setdefault(build, []).append(f"{name}: {detail}")
     return out
 
 
@@ -257,7 +270,7 @@ def main(argv: list[str] | None = None, extend: Callable[[Any], None] | None = N
     adds subcommands to the parser and ``more`` maps each to its function."""
     args = _parser(extend).parse_args(argv)
     ran = {"layout": _layout, "find": _find, "card": _card, "fetch": _fetch,
-           "files": _files, **(more or {})}[args.cmd]
+           "files": _files, "updates": _updates, **(more or {})}[args.cmd]
     try:
         return ran(args)
     except Exception as exc:  # noqa: BLE001 - the Hub is somebody else's machine
