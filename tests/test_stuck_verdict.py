@@ -71,6 +71,13 @@ def test_the_default_command_is_scripts_status_with_the_verdict_option():
     assert stuck_verdict.default_command() == [sys.executable, str(HOOKS.parents[1] / "scripts" / "status"), "--verdict"]
 
 
+@pytest.mark.parametrize("persons", [True, False])
+def test_with_no_command_named_the_status_line_is_read_only_on_the_persons_machine(monkeypatch, persons):
+    monkeypatch.delenv("POOLHOUSE_STATUS_COMMAND", raising=False)
+    monkeypatch.setattr("poolhouse.lan.on_the_persons_machine", lambda: persons)
+    assert stuck_verdict.configured() == (stuck_verdict.default_command() if persons else [])
+
+
 def test_the_hook_text_starts_with_the_verdict(tmp_path, monkeypatch):
     fake = command(tmp_path, "print('STUCK: local run x')")
     monkeypatch.setenv("POOLHOUSE_STATUS_COMMAND", json.dumps(fake))

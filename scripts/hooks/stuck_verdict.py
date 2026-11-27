@@ -12,9 +12,11 @@ import sys
 import time
 from pathlib import Path
 
-import workspace_hook
+import workspace_hook  # puts this checkout's package on the path
 
-ROOT = Path(__file__).resolve().parents[2]
+from poolhouse import lan
+
+ROOT =Path(__file__).resolve().parents[2]
 CACHE_S = 300.0
 TIMEOUT_S = 3.0
 STUCK = "STUCK:"
@@ -34,7 +36,7 @@ def configured() -> list[str]:
         except ValueError:
             return []
         return [str(w) for w in value] if isinstance(value, list) else []
-    return default_command() if workspace_hook.lan.on_the_persons_machine() else []
+    return default_command() if lan.on_the_persons_machine() else []
 
 
 def ask(command: list[str], timeout: float) -> str:
