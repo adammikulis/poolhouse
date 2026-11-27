@@ -141,9 +141,19 @@ def bind(port: int, pid: int) -> None:
 
 
 def held(port: int) -> bool:
-    """Whether this computer holds a key bound to a running process for ``port``, whether or not it can be shown to be that process's."""
+    """Whether this computer holds a key bound to a running process for ``port``, whether or not it can be shown now to be that process's. A
+    process that only took the number (it started at another time than the key's record, or the lease record, says, or before the key was issued)
+    holds nothing."""
     entry = _entries().get(str(int(port)))
-    return bool(isinstance(entry, dict) and entry.get("pid") and _live(entry) and _read(key_file(port)))
+    if not (isinstance(entry, dict) and entry.get("pid") and _live(entry) and _read(key_file(port))):
+        return False
+    born, then, issued = _born(int(entry["pid"])), entry.get("started"), entry.get("at")
+    if then is None:   # the previous build wrote none: the lease record tells when that server started, when it names the process
+        record = recorded_servers().get(int(port))
+        then = record.get("started") if record and record.get("pid") == entry["pid"] else None
+        if born is not None and isinstance(issued, (int, float)) and born < issued - START_TOLERANCE_S:
+            return False
+    return born is not None and (not isinstance(then, (int, float)) or abs(born - then) <= START_TOLERANCE_S)
 
 
 def bound(port: int) -> int:

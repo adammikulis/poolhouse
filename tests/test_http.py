@@ -113,7 +113,8 @@ def test_only_http_and_https_are_opened(url):
     ('[::1]', True), ('localhost', False), ('127.0.0.1.example', False),
     ('192.0.2.1', False), ('127.1', False)])
 @pytest.mark.parametrize('cancelled', [False, True])
-def test_guarded_numeric_loopback_has_no_ambient_proxy(monkeypatch, host, direct, cancelled):
+@pytest.mark.parametrize('system', [{}, {'https': 'http://proxy.invalid:1'}], ids=['no-proxy-set', 'a-proxy-set'])
+def test_guarded_numeric_loopback_has_no_ambient_proxy(monkeypatch, host, direct, cancelled, system):
     import urllib.request
     from types import SimpleNamespace
 
@@ -123,14 +124,17 @@ def test_guarded_numeric_loopback_has_no_ambient_proxy(monkeypatch, host, direct
     control = object() if cancelled else None
     monkeypatch.setattr(http, 'active_cancellation', lambda: control)
     monkeypatch.setattr(http, 'cancel_handlers', lambda *_: [])
+    monkeypatch.setattr(urllib.request, 'getproxies', lambda: dict(system))   # the computer's own settings play no part
     monkeypatch.setattr(urllib.request, 'build_opener', lambda *handlers:
                         SimpleNamespace(open=lambda *_args, **_kwargs: seen.extend(handlers)))
     url = f'https://{host}:16443/status'
     http._open(http.build_request(url), 1, lambda value: guarded.append(value) or value)
     proxy = [handler for handler in seen if isinstance(handler, urllib.request.ProxyHandler)]
     # every name of this computer goes straight there, `localhost` and the short spelling too; the guard is asked early only for a numeric one
-    assert bool(proxy) is (direct or host in ('localhost', '127.1'))
-    assert not proxy or proxy[0].proxies == {}
+    local = direct or host in ('localhost', '127.1')
+    straight = [handler for handler in proxy if type(handler) is urllib.request.ProxyHandler]
+    assert [handler.proxies for handler in straight] == ([{}] if local else [])
+    assert len(proxy) - len(straight) == (1 if system and not local else 0), 'elsewhere the computer\'s proxy is still used'
     assert guarded == ([url] if direct else [])
 
 
@@ -140,6 +144,7 @@ def test_unguarded_loopback_keeps_the_default_opener(monkeypatch):
     from poolhouse import http
 
     seen = []
+    monkeypatch.setattr(urllib.request, 'getproxies', dict)
     monkeypatch.setattr(urllib.request, 'urlopen', lambda request, **kwargs: seen.append(request.full_url))
     http._open(urllib.request.Request('http://127.0.0.1/status'), 1, None)
     assert seen == ['http://127.0.0.1/status']

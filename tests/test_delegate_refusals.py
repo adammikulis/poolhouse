@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from poolhouse.delegate_refusals import Writes
+from poolhouse.delegate_refusals import Writes, writes
 
 
 @pytest.fixture
@@ -64,3 +64,19 @@ def test_an_edit_at_a_path_the_box_holds_counts_only_when_its_write_failed(tmp_p
     seen.ran({"id": "1", "tool": "edit", "state": {"status": "error", "input": arguments,
                                                     "error": error.format(path=tmp_path / "settings")}})
     assert paths(seen) == refused
+
+
+@pytest.mark.parametrize("command", [
+    "unzip -l held.zip", "unzip -t held.zip", "patch --dry-run -p1 < one.diff", "git clean -n", "git clean -nd build",
+    "git -C /etc clean --dry-run", "git config get user.name", "git config --global get user.name", "git config list",
+    "git -C /etc config get user.name", "scutil --get ComputerName", "networksetup -listallnetworkservices", "sudo cat /etc/hosts"])
+def test_a_command_that_only_looks_is_no_write(command):
+    assert not writes(command)
+
+
+@pytest.mark.parametrize("command", [
+    "unzip held.zip", "patch -p1 < one.diff", "git clean -fd", "git config set user.name x", "scutil --set ComputerName x",
+    "networksetup -setdnsservers Wi-Fi 192.0.2.1", "sudo -u root rm held", "su root -c 'rm held'", "sudo tee held",
+    "runas /user:admin 'del held'"])
+def test_a_command_that_changes_something_is_a_write(command):
+    assert writes(command)

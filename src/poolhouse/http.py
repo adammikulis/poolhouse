@@ -284,12 +284,18 @@ class _Proxies(urllib.request.ProxyHandler):
         return None if _this_computer(req.full_url) else super().proxy_open(req, proxy, type)
 
 
+def _proxies_for(url: str) -> list[Any]:
+    """The proxy handlers of an opener for ``url``: none used for this computer; elsewhere the environment's, which still pass this computer by on
+    a redirect."""
+    if _this_computer(url):
+        return [urllib.request.ProxyHandler({})]
+    return [_Proxies()] if urllib.request.getproxies() else []
+
+
 def _open(request: urllib.request.Request, timeout: float | None, guard: Callable[[str], str] | None,
           context: ssl.SSLContext | None = None, follow_redirects: bool = True) -> Any:
     context = context if context is not None else _https_context(request.full_url)
-    # an opener of our own for this computer: no proxy at all; elsewhere the environment's, which still pass this computer by on a redirect
-    proxies: list[Any] = ([urllib.request.ProxyHandler({})] if _this_computer(request.full_url)
-                          else [_Proxies()] if urllib.request.getproxies() else [])
+    proxies = _proxies_for(request.full_url)
     if guard is not None:
         try:
             loopback = ipaddress.ip_address(urllib.parse.urlsplit(request.full_url).hostname or '').is_loopback
@@ -382,7 +388,7 @@ def head_once(url: str, *, headers: dict[str, str] | None = None, token: str = "
     host without the token.
     """
     request = build_request(url, method="HEAD", headers=headers, token=token)
-    opener = urllib.request.build_opener(_NoRedirect)
+    opener = urllib.request.build_opener(_NoRedirect, *_proxies_for(request.full_url))
     try:
         with opener.open(request, timeout=timeout) as response:
             return Reply(int(response.status), b"", response.headers)

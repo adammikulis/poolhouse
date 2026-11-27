@@ -214,7 +214,10 @@ def test_a_denied_write_that_is_let_through_afterwards_is_not_reported(unsandbox
 @pytest.mark.parametrize("command", [
     "sh -c 'echo x > OUTSIDE'", "find /etc/poolhouse-plumbing -delete", "ls | xargs rm -rf", "git config --global user.name x",
     "git -C /etc -c a.b=c commit -m x", "sudo tee OUTSIDE", "curl -o OUTSIDE https://example.test/x", "git push --force", "git push origin :dev",
-    "git push", "gh repo delete a/b --yes", "gh api -X DELETE repos/a/b"])
+    "git push", "gh repo delete a/b --yes", "gh api -X DELETE repos/a/b",
+    "rm -rf ~/.ssh", "touch ~/.aws/credentials", "tee ~/.ssh/authorized_keys", "curl -o ~/.netrc https://example.test/x",
+    "chmod 600 ~/.ssh/id_ed25519", "mv ~/.ssh/config held", "cp held ~/.ssh/authorized_keys", "sed -i s/a/b/ ~/.aws/credentials",
+    "curl -sSo OUTSIDE https://example.test/x", "curl --output=OUTSIDE https://example.test/x", "su -c 'rm OUTSIDE'", "sudo -u root rm OUTSIDE"])
 def test_a_shell_write_the_blocks_deny_however_it_is_wrapped_is_a_refused_write(unsandboxed, command):
     node, lead, project, _outside = unsandboxed
     _name, row = ran(node, lead, "--task", f"mode:call:{command}", "--project", str(project), "--edit", state="unapplied")
@@ -222,7 +225,8 @@ def test_a_shell_write_the_blocks_deny_however_it_is_wrapped_is_a_refused_write(
     assert "refused by Poolhouse's tool rules" in row["detail"], row
 
 
-@pytest.mark.parametrize("command", ["cat ~/.ssh/id_ed25519", "gh auth token"])
+@pytest.mark.parametrize("command", ["cat ~/.ssh/id_ed25519", "gh auth token", "base64 < ~/.netrc", "sudo cat /etc/hosts",
+                                     "scutil --get ComputerName", "networksetup -listallnetworkservices"])
 def test_a_denied_call_that_writes_no_file_leaves_the_delegate_done(unsandboxed, command):
     node, lead, project, _outside = unsandboxed
     _name, row = ran(node, lead, "--task", f"mode:call:{command}", "--project", str(project), "--edit")
