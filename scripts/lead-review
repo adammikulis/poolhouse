@@ -97,7 +97,8 @@ def review(args: argparse.Namespace) -> str:
        given=f"{release_check.REVIEW_STATUS} {word} for {head}, by {me.name} ({me.model}).\n\n{note}")
     status = {"state": state, "context": release_check.REVIEW_STATUS, "description": f"{word} by {me.name}"[:140]}
     gh("api", "-X", "POST", "repos/{owner}/{repo}/statuses/" + head, "--input", "-", given=json.dumps(status))
-    said = f"pull request {args.number} at {head[:12]}: {word}"
+    # "recorded" first: a bare "failed" reads as the command failing, when it is the review that was recorded
+    said = f"review recorded for pull request {args.number} at {head[:12]}: {word}"
     if args.verdict == "reject":
         return said
     return f"{said}\nWhen the required checks pass, run this as the whole command:\n    gh pr merge {args.number} --merge --delete-branch --match-head-commit {head}"
