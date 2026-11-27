@@ -80,7 +80,7 @@ __all__ = [
 ]
 
 DEFAULT_CTX = 0
-DEFAULT_MODEL = "Qwen3.8-27B-UD-Q4_K_XL.gguf"
+DEFAULT_MODEL = "Qwen3.8-27B-UD-Q3_K_XL.gguf"
 """The model a session gets when the preferred one is not installed or does not fit: the dense 27B."""
 PREFERRED_MODEL = "Qwen3.8-Flash-Next-UD-IQ2_XS"
 """The owner's coding model: used when it is installed and this machine holds it at `PREFERRED_WINDOW` (the larger Flash-Next quants are not named, so they are never the default)."""

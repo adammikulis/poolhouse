@@ -105,7 +105,7 @@ def test_the_shells_that_should_have_been_commands_are_refused(command, why):
     'git status',
     'python3 -m pytest tests -q',
     'poolhouse-serve up model.gguf --port 8080',
-    'poolhouse-serve up Qwen3.8-27B-UD-Q4_K_XL.gguf --context 256k --kv q8_0 --no-wait',
+    'poolhouse-serve up Qwen3.8-27B-UD-Q3_K_XL.gguf --context 256k --kv q8_0 --no-wait',
     'poolhouse-serve down Qwen3.8-27B',
     'ls /opt/homebrew/bin/llama-server',
     'poolhouse-bench sweep --serve foo.gguf --smoke',

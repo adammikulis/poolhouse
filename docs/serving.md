@@ -73,7 +73,7 @@ remembered. The commands below are the surface of that.
 From a shell:
 
 ```
-poolhouse-serve up Qwen3.8-27B-UD-Q4_K_XL.gguf --context 256k --kv q8_0
+poolhouse-serve up Qwen3.8-27B-UD-Q3_K_XL.gguf --context 256k --kv q8_0
 poolhouse-serve up hf:unsloth/gemma-4-E4B-it-qat-GGUF/gemma-4-E4B-it-qat-Q4_K_M.gguf
 poolhouse-serve status
 poolhouse-serve down Qwen3.8-27B
