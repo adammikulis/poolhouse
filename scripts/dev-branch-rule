@@ -1,36 +1,34 @@
-#!/usr/bin/env python3
-"""Require a pull request and its checks on the development branch's GitHub ruleset (docs/github-protection.md).
+#!/usr/bin/env -S python3 -I
+"""Require a pull request and its checks on 0.3dev, by a GitHub ruleset of its own (docs/github-protection.md).
 
-    scripts/dev-branch-rule            print the ruleset as it would become; changes nothing
-    scripts/dev-branch-rule --apply    save the ruleset as it is under the state root, then change it
+    scripts/dev-branch-rule            print what would be created or added; changes nothing
+    scripts/dev-branch-rule --apply    create the ruleset, or add what it lacks
 
-An agent may run this, because it can only add protection to the development branch. It takes no rule, check, branch,
-repository or file from its caller. It changes one ruleset: the active branch ruleset whose only ref is the development
-branch. Every rule and check already there is kept as it is, and missing ones are added. Repository administrators may
-bypass the new rules only while merging a pull request (a check broken on the base branch would otherwise block its own
-fix). A ruleset that covers any other ref, is not active or lets anyone else bypass is refused and left alone.
+An agent may run this, because it can only add protection to 0.3dev. The repository, the branch, the ruleset's name and
+its rules are constants here: nothing comes from the caller, the environment or the checkout. It never changes another
+ruleset. It creates one ruleset holding only the pull request and status check rules, which repository administrators may
+bypass only while merging a pull request (a check broken on the base branch would otherwise block its own fix); that
+bypass reaches no other ruleset, so deletion and force push stay closed to everyone. Run again, it adds missing checks and
+removes nothing. Standard library only, run isolated, so no file beside it or in the checkout is imported.
 """
 from __future__ import annotations
 
 import argparse
 import copy
 import json
+import os
 import subprocess
 import sys
-import time
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "src"))
-
-from poolhouse import home  # noqa: E402
-from poolhouse.devbranch import development_branch  # noqa: E402
-
+REPOSITORY = 1342990396
+BRANCH = "0.3dev"
+NAME = "0.3dev: pull request and checks"
 CHECKS = ("gates", "privacy", "licenses", "lead-review")
 PULL_REQUEST = {"required_approving_review_count": 0, "require_code_owner_review": False,
                 "dismiss_stale_reviews_on_push": False, "require_last_push_approval": False,
                 "required_review_thread_resolution": False, "allowed_merge_methods": ["merge"]}
 ADMINS = {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "pull_request"}
+CONDITIONS = {"ref_name": {"include": [f"refs/heads/{BRANCH}"], "exclude": []}}
 KEPT = ("name", "target", "enforcement", "conditions", "rules", "bypass_actors")
 
 
@@ -38,93 +36,97 @@ class Refused(RuntimeError):
     pass
 
 
-def gh(*args: str, body: dict | None = None):
-    """The JSON reply of one `gh` call, run in this repository."""
+def environment() -> dict[str, str]:
+    """The caller's environment without what would point `gh` at another host or repository."""
+    return {k: v for k, v in os.environ.items() if k not in ("GH_HOST", "GH_REPO") and not k.startswith("GIT_")}
+
+
+def gh(method: str, path: str, body: dict | None = None):
+    """The JSON reply of one `gh api` call about the pinned repository."""
+    argv = ["gh", "api", "--hostname", "github.com", "-X", method, f"repositories/{REPOSITORY}/{path}"]
+    if body is not None:
+        argv += ["--input", "-"]
     try:
-        done = subprocess.run(["gh", *args], cwd=ROOT, input=None if body is None else json.dumps(body),
+        done = subprocess.run(argv, input=None if body is None else json.dumps(body), env=environment(), cwd="/",
                               capture_output=True, text=True, check=False, timeout=60)
     except (OSError, subprocess.SubprocessError) as error:
-        raise Refused(f"gh did not run: {error}") from None
+        raise Refused(f"gh did not answer: {error}; read the ruleset before trying again") from None
     if done.returncode:
         raise Refused((done.stderr.strip() or done.stdout.strip() or "gh failed").splitlines()[0])
     return json.loads(done.stdout)
 
 
-def target() -> tuple[str, str]:
-    """The repository and its development branch, which is never the default branch."""
-    repo = gh("repo", "view", "--json", "nameWithOwner,defaultBranchRef")
-    branch = development_branch(ROOT)
-    default = (repo.get("defaultBranchRef") or {}).get("name")
-    if not default or branch == default or not branch.endswith("dev"):
-        raise Refused(f"{branch!r} is not a development branch beside the default branch {default!r}")
-    return repo["nameWithOwner"], branch
+def found() -> dict | None:
+    """This script's ruleset as GitHub holds it, or None when there is none."""
+    named, page = [], 1
+    while True:
+        listed = gh("GET", f"rulesets?per_page=100&page={page}&includes_parents=false")
+        named += [entry for entry in listed if entry.get("name") == NAME]
+        if len(listed) < 100:
+            break
+        page += 1
+    if not named:
+        return None
+    if len(named) > 1:
+        raise Refused(f"{len(named)} rulesets are named {NAME!r}; none is changed")
+    mine = gh("GET", f"rulesets/{int(named[0]['id'])}")
+    bypass = mine.get("bypass_actors") or []
+    if (mine.get("target"), mine.get("enforcement"), mine.get("conditions")) != ("branch", "active", CONDITIONS) \
+            or any(actor != ADMINS for actor in bypass):
+        raise Refused(f"the ruleset {NAME!r} is not the active one for {BRANCH} alone as made here; it is left as it is")
+    return mine
 
 
-def found(repo: str, branch: str) -> dict:
-    """The one ruleset of ``repo`` whose only ref is ``branch``."""
-    only = {"include": [f"refs/heads/{branch}"], "exclude": []}
-    full = [gh("api", f"repos/{repo}/rulesets/{int(entry['id'])}") for entry in gh("api", f"repos/{repo}/rulesets")]
-    mine = [r for r in full if r.get("target") == "branch" and (r.get("conditions") or {}).get("ref_name") == only]
-    if len(mine) != 1:
-        raise Refused(f"{len(mine)} branch rulesets cover {branch} and nothing else; exactly one is needed")
-    if mine[0].get("enforcement") != "active":
-        raise Refused(f"the ruleset {mine[0].get('name')!r} is not active")
-    if any(actor != ADMINS for actor in mine[0].get("bypass_actors") or []):
-        raise Refused(f"the ruleset {mine[0].get('name')!r} lets others bypass it; it is left as it is")
-    return mine[0]
-
-
-def tightened(current: dict) -> dict:
-    """``current`` with a pull request and `CHECKS` required; nothing it already requires is changed."""
-    wanted = copy.deepcopy({key: current.get(key) or [] for key in KEPT})
-    rules = {rule["type"]: rule for rule in wanted["rules"]}
+def wanted(current: dict | None) -> dict:
+    """The ruleset as it should be: ``current`` with what it lacks, or a new one. Nothing it holds is removed or changed."""
+    if current is None:
+        whole = {"name": NAME, "target": "branch", "enforcement": "active", "conditions": copy.deepcopy(CONDITIONS),
+                 "rules": [], "bypass_actors": [dict(ADMINS)]}
+    else:
+        whole = copy.deepcopy({key: current.get(key) or [] for key in KEPT})
+    rules = {rule["type"]: rule for rule in whole["rules"]}
     if "pull_request" not in rules:
-        wanted["rules"].append({"type": "pull_request", "parameters": dict(PULL_REQUEST)})
-        # only with the rule it bypasses: adding an actor to a rule already in force would loosen it
-        wanted["bypass_actors"] = [dict(ADMINS)]
+        whole["rules"].append({"type": "pull_request", "parameters": copy.deepcopy(PULL_REQUEST)})
     status = rules.get("required_status_checks")
     if status is None:
         status = {"type": "required_status_checks", "parameters": {
             "strict_required_status_checks_policy": False, "required_status_checks": []}}
-        wanted["rules"].append(status)
+        whole["rules"].append(status)
     required = status["parameters"]["required_status_checks"]
     have = {check.get("context") for check in required}
     required.extend({"context": name} for name in CHECKS if name not in have)
-    return wanted
+    return whole
 
 
-def backup(repo: str, current: dict) -> Path:
-    path = home.state("github-protection", f"{repo.replace('/', '-')}-ruleset-{int(current['id'])}-{time.time_ns()}.json")
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path.write_text(json.dumps(current, indent=2), encoding="utf-8")
-    return path
+def complete(current: dict | None) -> bool:
+    return current is not None and wanted(current) == {key: current.get(key) or [] for key in KEPT}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0], allow_abbrev=False)
-    parser.add_argument("--apply", action="store_true", help="change the ruleset on GitHub")
+    parser.add_argument("--apply", action="store_true", help="change GitHub")
     args = parser.parse_args(argv)
+    required = f"{BRANCH}: requires a pull request and {', '.join(CHECKS)}"
     try:
-        repo, branch = target()
-        current = found(repo, branch)
-        wanted = tightened(current)
-        if all(wanted[key] == (current.get(key) or []) for key in KEPT):
-            print(f"{repo} {branch}: already requires a pull request and {', '.join(CHECKS)}")
+        current = found()
+        if complete(current):
+            print(f"{required} (already)")
             return 0
-        print(json.dumps(wanted, indent=2))
+        body = wanted(current)
+        print(json.dumps(body, indent=2))
         if not args.apply:
-            print(f"{repo} {branch}: nothing changed; --apply makes this the ruleset")
+            print(f"{BRANCH}: nothing changed; --apply {'creates' if current is None else 'completes'} this ruleset")
             return 0
-        saved = backup(repo, current)
-        print(f"the ruleset as it was: {saved}")
-        gh("api", "-X", "PUT", f"repos/{repo}/rulesets/{int(current['id'])}", "--input", "-", body=wanted)
-        after = found(repo, branch)
-        if tightened(after) != {key: after.get(key) or [] for key in KEPT}:
+        if current is None:
+            gh("POST", "rulesets", body)
+        else:
+            gh("PUT", f"rulesets/{int(current['id'])}", body)
+        if not complete(found()):
             raise Refused("GitHub accepted the change but the ruleset still lacks a rule or check")
     except Refused as error:
         print(f"dev-branch-rule: {error}", file=sys.stderr)
         return 1
-    print(f"{repo} {branch}: requires a pull request and {', '.join(CHECKS)}")
+    print(required)
     return 0
 
 

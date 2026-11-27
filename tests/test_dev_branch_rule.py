@@ -1,4 +1,4 @@
-"""`scripts/dev-branch-rule` can only add protection to the development branch.
+"""`scripts/dev-branch-rule` can only add protection to 0.3dev, by a ruleset of its own.
 
 PLUMBING ONLY: GitHub's replies are CANNED here; the script's own choices are what is tested.
 """
@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
 from importlib.machinery import SourceFileLoader
 from importlib.util import module_from_spec, spec_from_loader
 from pathlib import Path
@@ -14,7 +15,6 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "dev-branch-rule"
-REPO = "someone/project"
 
 
 def load():
@@ -24,30 +24,31 @@ def load():
     return module
 
 
-def ruleset(**changed):
-    return {"id": 7, "name": "development branch", "target": "branch", "enforcement": "active", "bypass_actors": [],
-            "conditions": {"ref_name": {"include": ["refs/heads/0.9dev"], "exclude": []}},
-            "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}], **changed}
+def older():
+    """The ruleset already in force on the branch, which nothing may change."""
+    return {"id": 7, "name": "development branch: no deletion, no force push", "target": "branch", "enforcement": "active",
+            "conditions": {"ref_name": {"include": ["refs/heads/0.3dev"], "exclude": []}}, "bypass_actors": [],
+            "rules": [{"type": "deletion"}, {"type": "non_fast_forward"}]}
 
 
 @pytest.fixture
-def github(tmp_path, monkeypatch):
-    """The module with a CANNED GitHub holding ``held``; ``writes`` lists every call that would change it."""
-    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
-    monkeypatch.setenv("POOLHOUSE_DEV_BRANCH", "0.9dev")
+def github(monkeypatch):
+    """The module over a CANNED GitHub holding ``held``; ``writes`` lists every call that would change it."""
     module = load()
-    held, writes = [ruleset()], []
+    held, writes = [older()], []
 
-    def gh(*args, body=None):
-        if args[0] == "repo":
-            return {"nameWithOwner": REPO, "defaultBranchRef": {"name": "main"}}
-        if "-X" in args:
-            writes.append((args[2], args[3], copy.deepcopy(body)))
-            held[0] = {**held[0], **copy.deepcopy(body)}
-            return {}
-        if args[1] == f"repos/{REPO}/rulesets":
-            return [{"id": r["id"]} for r in held]
-        return copy.deepcopy(next(r for r in held if args[1].endswith(f"/{r['id']}")))
+    def gh(method, path, body=None):
+        if method == "GET" and path.startswith("rulesets?"):
+            page = int(path.split("&page=")[1].split("&")[0])
+            return [{"id": r["id"], "name": r["name"]} for r in held][(page - 1) * 100:page * 100]
+        if method == "GET":
+            return copy.deepcopy(next(r for r in held if path == f"rulesets/{r['id']}"))
+        writes.append((method, path, copy.deepcopy(body)))
+        if method == "POST":
+            held.append({"id": 100 + len(held), **copy.deepcopy(body)})
+        else:
+            next(r for r in held if path == f"rulesets/{r['id']}").update(copy.deepcopy(body))
+        return {}
 
     monkeypatch.setattr(module, "gh", gh)
     module.held, module.writes = held, writes
@@ -59,17 +60,14 @@ def test_without_apply_nothing_is_changed(github, capsys):
     assert github.writes == [] and "nothing changed" in capsys.readouterr().out
 
 
-def test_apply_adds_the_pull_request_and_checks_and_keeps_what_was_there(github, tmp_path):
+def test_apply_creates_a_ruleset_of_its_own_and_leaves_the_one_in_force(github):
     assert github.main(["--apply"]) == 0
     (method, path, body), = github.writes
-    assert (method, path) == ("PUT", f"repos/{REPO}/rulesets/7")
-    rules = {rule["type"]: rule.get("parameters") for rule in body["rules"]}
-    assert set(rules) == {"deletion", "non_fast_forward", "pull_request", "required_status_checks"}
-    assert rules["pull_request"]["required_approving_review_count"] == 0
-    assert [c["context"] for c in rules["required_status_checks"]["required_status_checks"]] == list(github.CHECKS)
-    assert body["bypass_actors"] == [github.ADMINS] and body["conditions"] == ruleset()["conditions"]
-    saved, = (tmp_path / "state" / "github-protection").iterdir()
-    assert json.loads(saved.read_text()) == ruleset()
+    assert (method, path) == ("POST", "rulesets")
+    assert [rule["type"] for rule in body["rules"]] == ["pull_request", "required_status_checks"]
+    assert [c["context"] for c in body["rules"][1]["parameters"]["required_status_checks"]] == list(github.CHECKS)
+    assert body["conditions"] == {"ref_name": {"include": ["refs/heads/0.3dev"], "exclude": []}}
+    assert body["bypass_actors"] == [github.ADMINS] and github.held[0] == older()
 
 
 def test_a_second_apply_changes_nothing(github):
@@ -77,40 +75,48 @@ def test_a_second_apply_changes_nothing(github):
     assert len(github.writes) == 1
 
 
-def test_checks_and_parameters_already_required_stay(github):
-    strict = {"type": "pull_request", "parameters": {"required_approving_review_count": 2}}
-    checks = {"type": "required_status_checks", "parameters": {
-        "strict_required_status_checks_policy": True, "required_status_checks": [{"context": "other"}]}}
-    github.held[0] = ruleset(rules=[strict, checks])
+def test_a_missing_check_is_added_and_nothing_it_holds_changes(github):
+    mine = {"id": 9, **github.wanted(None)}
+    mine["bypass_actors"] = []
+    mine["rules"][0]["parameters"]["required_approving_review_count"] = 2
+    mine["rules"][1]["parameters"] = {"strict_required_status_checks_policy": True,
+                                      "required_status_checks": [{"context": "other"}]}
+    mine["rules"].append({"type": "required_signatures"})
+    github.held.append(mine)
     assert github.main(["--apply"]) == 0
-    body = github.writes[0][2]
-    assert body["rules"][0] == strict and body["bypass_actors"] == [], "a rule in force gains no bypass"
-    kept = body["rules"][1]["parameters"]
-    assert kept["strict_required_status_checks_policy"] is True
-    assert [c["context"] for c in kept["required_status_checks"]] == ["other", *github.CHECKS]
+    (method, path, body), = github.writes
+    assert (method, path) == ("PUT", "rulesets/9")
+    assert body["bypass_actors"] == [], "a bypass taken away stays away"
+    assert body["rules"][0]["parameters"]["required_approving_review_count"] == 2
+    assert body["rules"][2] == {"type": "required_signatures"}
+    status = body["rules"][1]["parameters"]
+    assert status["strict_required_status_checks_policy"] is True
+    assert [c["context"] for c in status["required_status_checks"]] == ["other", *github.CHECKS]
 
 
-@pytest.mark.parametrize("held", [
-    ruleset(conditions={"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}}),
-    ruleset(conditions={"ref_name": {"include": ["refs/heads/0.9dev", "refs/heads/main"], "exclude": []}}),
-    ruleset(conditions={"ref_name": {"include": ["refs/heads/0.9dev"], "exclude": ["refs/heads/0.9dev"]}}),
-    ruleset(target="tag"),
-    ruleset(enforcement="disabled"),
-    ruleset(bypass_actors=[{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]),
+@pytest.mark.parametrize("changed", [
+    {"conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}}},
+    {"conditions": {"ref_name": {"include": ["refs/heads/*dev"], "exclude": []}}},
+    {"conditions": {"ref_name": {"include": ["refs/heads/0.3dev", "refs/heads/main"], "exclude": []}}},
+    {"target": "tag"},
+    {"enforcement": "disabled"},
+    {"bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]},
 ])
-def test_a_ruleset_that_is_not_only_the_active_development_one_is_left_alone(github, held):
-    github.held[0] = held
+def test_a_ruleset_of_its_name_that_is_not_as_made_here_is_left_alone(github, changed):
+    github.held.append({"id": 9, **github.wanted(None), **changed})
     assert github.main(["--apply"]) == 1
     assert github.writes == []
 
 
-@pytest.mark.parametrize("branch", ["main", "master", "release"])
-def test_a_branch_that_is_no_development_branch_is_never_touched(github, monkeypatch, branch):
-    monkeypatch.setenv("POOLHOUSE_DEV_BRANCH", branch)
-    monkeypatch.setattr(github, "development_branch", lambda _root: branch)
-    github.held[0] = ruleset(conditions={"ref_name": {"include": [f"refs/heads/{branch}"], "exclude": []}})
-    assert github.main(["--apply"]) == 1
-    assert github.writes == []
+def test_two_rulesets_of_its_name_are_both_left_alone(github):
+    github.held.extend({"id": each, **github.wanted(None)} for each in (9, 10))
+    assert github.main(["--apply"]) == 1 and github.writes == []
+
+
+def test_a_ruleset_past_the_first_page_is_found(github):
+    github.held.extend({**older(), "id": 200 + each, "name": f"other {each}"} for each in range(100))
+    github.held.append({"id": 9, **github.wanted(None)})
+    assert github.main(["--apply"]) == 0 and github.writes == []
 
 
 @pytest.mark.parametrize("words", [["--branch", "main"], ["--repo", "other/one"], ["--app"], ["main"]])
@@ -118,3 +124,28 @@ def test_it_takes_nothing_from_its_caller_but_apply(github, words):
     with pytest.raises(SystemExit):
         github.main(words)
     assert github.writes == []
+
+
+def test_no_variable_of_the_caller_moves_the_repository_or_the_branch(monkeypatch):
+    module, asked = load(), []
+    for name, value in (("GH_REPO", "other/one"), ("GH_HOST", "example.invalid"), ("GIT_DIR", "/elsewhere/.git"),
+                        ("POOLHOUSE_DEV_BRANCH", "main")):
+        monkeypatch.setenv(name, value)
+
+    def run(argv, **how):
+        asked.append((argv, how))
+        return subprocess.CompletedProcess(argv, 0, json.dumps([]), "")
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    assert module.main([]) == 0
+    (argv, how), = asked
+    assert argv[:6] == ["gh", "api", "--hostname", "github.com", "-X", "GET"]
+    assert argv[6].startswith(f"repositories/{module.REPOSITORY}/rulesets?")
+    assert not {"GH_REPO", "GH_HOST", "GIT_DIR"} & set(how["env"]) and how["cwd"] == "/"
+    assert module.CONDITIONS["ref_name"]["include"] == ["refs/heads/0.3dev"]
+
+
+def test_it_runs_isolated_and_imports_only_the_standard_library():
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert text.startswith("#!/usr/bin/env -S python3 -I\n")
+    assert "from poolhouse" not in text and "import poolhouse" not in text and "sys.path" not in text
