@@ -169,11 +169,18 @@ def _followed(rec: store.Delegate, binary: str, own: Path, model: tuple[Callable
     except (Denied, OSError, RuntimeError, ValueError) as error:
         why = f"{type(error).__name__}: {error}"
         say(why)
+    except (SystemExit, KeyboardInterrupt) as stop:
+        raise delegate_confined.Stopped(_came_to(rec, stream.answer(status, delegate_confined.STOPPED_WHY))) from stop
     finally:
         running.close()
-    answer = stream.answer(status, why)
     drain()
+    answer = stream.answer(status, why)
     answer.tried = hooks.tried
+    return _came_to(rec, answer)
+
+
+def _came_to(rec: store.Delegate, answer: harness.Answer) -> harness.Answer:
+    """``answer`` with where the changes of a run with no sandbox are."""
     if rec.edit:
         answer.text += f"\n\nThis run had no sandbox: whatever it changed is in {nudge_fence.clean(rec.workdir)} itself."
     return answer

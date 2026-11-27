@@ -233,6 +233,8 @@ if "mode:patient" in task:
     finish()
     ended(CANNED + " model=" + str(reply.status) + " waited: " + answer.stdout)
 if "linger" in task:
+    step(CANNED + " changing a file, then lingering")
+    finish()
     open("src/pending.py", "w").write("x = 1\\n")
     open("home", "w").write(os.environ["HOME"])
     open("pid", "w").write(str(os.getpid()))
@@ -412,7 +414,7 @@ def test_a_read_only_delegate_reads_a_read_only_stage_with_no_editing_tool_and_i
     assert project.exists() and (plain / "source.py").exists() and not (plain / ".git").exists() and workdir.exists() is (folder == "project")
 
 
-def test_a_stopped_edit_delegate_ends_its_confined_processes_publishes_nothing_more_and_removes_what_it_made(editing, confinable):
+def test_a_stopped_edit_delegate_ends_its_confined_processes_publishes_nothing_more_keeps_the_patch_and_reports_its_counts(editing, confinable):
     node, lead, project = editing
     assert started("--task", "linger over the feature", "--project", str(project), "--edit") == 0
     [name] = agent_names(node, lead)
@@ -422,7 +424,7 @@ def test_a_stopped_edit_delegate_ends_its_confined_processes_publishes_nothing_m
         deadline = time.time() + 120
         while time.time() < deadline:
             found = [each for each in confinable.glob("**/pid") if (each.parent / "src" / "pending.py").exists()]
-            if found and found[0].read_text().isdigit() and (found[0].parent / "home").exists():
+            if found and found[0].read_text().isdigit() and (found[0].parent / "home").exists() and store.status(name).get("turns"):
                 pid_of.append(int(found[0].read_text()))
                 home_of.append(Path((found[0].parent / "home").read_text()))
                 os.kill(os.getpid(), signal.SIGTERM)
@@ -436,6 +438,9 @@ def test_a_stopped_edit_delegate_ends_its_confined_processes_publishes_nothing_m
         os.kill(pid_of[0], 0)
     assert not (project / "src" / "pending.py").exists() and not (project / "src" / "feature.py").exists(), "nothing more was published"
     assert not home_of[0].exists() and not list(confinable.glob("**/pending.py")), "the home and the stage are gone"
+    row = store.result(name)
+    assert (row["state"], row["turns"], row["input_tokens"]) == ("stopped", 1, 10), row
+    assert "pending.py" in "".join(Path(each).read_text() for each in row["patches"]) and row["patches"][0] in row["detail"], row
     assert project.exists()
 
 

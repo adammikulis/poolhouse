@@ -102,8 +102,8 @@ def run(name: str) -> int:
     try:
         answer = converse(rec, bridge, mine)
         state, why = ended(answer), answer.why
-    except (KeyboardInterrupt, SystemExit):
-        state, why = "stopped", "stopped by the lead"
+    except (KeyboardInterrupt, SystemExit) as stop:
+        state, why, answer = "stopped", delegate_confined.STOPPED_WHY, getattr(stop, "answer", None)
     except (Denied, NodeError, OSError, RuntimeError, ValueError, ImportError) as error:
         why = f"{type(error).__name__}: {error}"
         say(why)

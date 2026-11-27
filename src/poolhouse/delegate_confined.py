@@ -44,7 +44,7 @@ from poolhouse.log import say as log
 from poolhouse.workspace import nudge_fence
 from poolhouse.worktreerules import CHANGES_THE_TREE
 
-__all__ = ["NO_PROGRESS_S", "Hooks", "Stream", "admit", "converse", "follow", "tools_of", "unsandboxable", "writes"]
+__all__ = ["NO_PROGRESS_S", "STOPPED_WHY", "Hooks", "Stopped", "Stream", "admit", "converse", "follow", "tools_of", "unsandboxable", "writes"]
 
 READ_TOOLS = ("read", "glob", "grep")
 EDIT_TOOLS = ("edit", "write", "shell")
@@ -283,6 +283,28 @@ class Stream:
         return harness.Answer(text="\n".join(self.texts if failed else self.last or self.texts), spent=spent, is_error=failed, why=why)
 
 
+STOPPED_WHY = "stopped by the lead"
+"""Why a run the stop signal ended is over."""
+
+
+class Stopped(SystemExit):
+    """The stop signal, with what the run had come to (`answer`): its turns, tokens and text, and for a sandboxed one that edits the patch of what it
+    had changed."""
+
+    def __init__(self, answer: harness.Answer) -> None:
+        super().__init__(143)
+        self.answer = answer
+
+
+def _published(rec: store.Delegate, confinement: isolation.Confinement, answer: harness.Answer) -> harness.Answer:
+    """``answer`` with what the publications of a delegate that edits came to, as data and in the launcher's words."""
+    if rec.edit:
+        answer.published = confinement.published()
+        if said := confinement.said():
+            answer.text += "\n\nPublication, in the launcher's words:\n" + nudge_fence.clean("\n".join(said))
+    return answer
+
+
 def _chunks(pipe: int) -> queue.Queue[bytes]:
     """What ``pipe`` says, read by a thread of its own (`select` takes no pipe on Windows); an empty chunk is its end."""
     out: queue.Queue[bytes] = queue.Queue()
@@ -405,7 +427,8 @@ def renderer(rec: store.Delegate, binary: str, served: tuple[str, str, int]) -> 
 def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], None] = log) -> harness.Answer:
     """The task on the model, in the confinement: the model leased, the confinement proved, OpenCode started in it and read to its end, the last turn
     published. For a delegate that edits, the answer carries what the publications came to, and its text ends with them in the launcher's words. A run
-    that failed publishes nothing more and keeps what it had changed as a patch. A stop ends the processes of the session and publishes nothing more.
+    that failed publishes nothing more and keeps what it had changed as a patch. A stop ends the processes of the session, publishes nothing more, keeps the patch and raises
+    `Stopped` with what the run had come to.
     ``bridge`` has the two ways to the lead (`ask`, `note`), what the lead sent (`news`) and whether a question waits (`asking`); ``mine`` is the
     delegate's own session."""
     binary = harnessing.binary_for("opencode", pinned=True) or opencode_install.ensure()
@@ -442,9 +465,9 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
                     follow(confinement, process, rec.message().encode(), stream,
                            (progress, lambda: bridge.asking or hooks.running(), over))
                 status, read = process.returncode, True
-            except (SystemExit, KeyboardInterrupt):
-                confinement.close(publish=False)
-                raise
+            except (SystemExit, KeyboardInterrupt) as stop:
+                confinement.close(publish=False, keep_patch=True)
+                raise Stopped(_published(rec, confinement, stream.answer(status, STOPPED_WHY))) from stop
             except (Denied, OSError, RuntimeError, ValueError) as error:
                 why, read = f"{type(error).__name__}: {error}", True
                 say(why)
@@ -455,8 +478,4 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
             answer.tried = hooks.tried
             if answer.is_error:
                 confinement.close(publish=False, keep_patch=True)
-    if rec.edit:
-        answer.published = confinement.published()
-        if said := confinement.said():
-            answer.text += "\n\nPublication, in the launcher's words:\n" + nudge_fence.clean("\n".join(said))
-    return answer
+    return _published(rec, confinement, answer)

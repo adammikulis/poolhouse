@@ -13,6 +13,8 @@ import json
 import os
 import signal
 import sys
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -60,6 +62,12 @@ def asked(name, **given):
 
 
 line("step_start")
+if "mode:linger" in task:
+    hook("post", {{"loaded": True}})
+    line("step_finish", reason="tool-calls", tokens={{"input": 10, "output": 1}})
+    line("step_start")   # the turn the parent counts once the finished one has been read
+    import time
+    time.sleep(120)
 if "mode:no-plugin" in task:   # as OpenCode runs on without a plugin it cannot load: nothing is asked of the hook
     line("step_finish", reason="stop", tokens={{"input": 1, "output": 1}})
     sys.exit(0)
@@ -169,6 +177,24 @@ def test_a_delegate_whose_plugin_never_asked_the_hook_is_ended_as_failed(unsandb
     node, lead, _project, _outside = unsandboxed
     _name, row = ran(node, lead, "--task", "mode:no-plugin", state="failed")
     assert "without poolhouse's plugin" in row["error"]
+
+
+def test_a_stopped_delegate_with_no_sandbox_reports_what_it_had_come_to(unsandboxed):
+    node, lead, project, _outside = unsandboxed
+    assert started("--task", "mode:linger", "--project", str(project), "--edit") == 0
+    [name] = agent_names(node, lead)
+
+    def stop_when_working():
+        deadline = time.time() + 60
+        while time.time() < deadline and store.status(name).get("turns") != 2:
+            time.sleep(0.05)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=stop_when_working, daemon=True).start()
+    assert delegate_run.run(name) == 1
+    row = store.result(name)
+    assert (row["state"], row["turns"], row["input_tokens"]) == ("stopped", 2, 10), row
+    assert "no sandbox" in row["text"]
 
 
 @pytest.mark.parametrize("words", [["--permissions", "guarded"], ["--permissions", "yolo"], ["--edit"]])
