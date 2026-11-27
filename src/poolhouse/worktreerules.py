@@ -9,11 +9,11 @@ import re
 import shlex
 import subprocess
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
 
 __all__ = ["AGENT_MARKERS", "bash_refusal", "checkouts", "commit_refusal", "edit_refusal", "hard_bash_refusal",
-           "hard_edit_refusal", "patch_paths", "protected", "switched_off"]
+           "hard_edit_refusal", "in_poolhouse", "patch_paths", "project_rules", "protected", "switched_off"]
 
 AGENT_MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE")
 CHANGES_THE_TREE = frozenset({"add", "commit", "checkout", "switch", "reset", "restore", "stash",
@@ -118,6 +118,19 @@ def _enforced(primary: Path) -> bool:
     return (primary / "scripts" / "hooks" / "primary-only").exists()
 
 
+def in_poolhouse(path: str | Path) -> bool:
+    """Whether `path` lies in an enforced Poolhouse checkout or worktree, read without starting Git (a path under `.git`
+    belongs to its checkout)."""
+    here = Path(os.path.realpath(path))
+    return any(_enforced(folder) for folder in (here, *here.parents))
+
+
+def project_rules(cwd: str) -> Callable[[str], bool] | None:
+    """How far the Poolhouse repository's protected-write rules reach for a harness session in `cwd`: None (everywhere)
+    in an enforced checkout; in a user's project, only into one."""
+    return None if in_poolhouse(cwd or Path.cwd()) else in_poolhouse
+
+
 def _unquote(word: str) -> str:
     return re.sub(r"^~(?=/|$)", lambda _: os.environ.get("HOME", "~"), word.strip("'\""))
 
@@ -160,24 +173,27 @@ def release_refusal(cwd: str) -> str:
     return done.stdout.strip() or f"the release check could not run ({lines[-1] if lines else 'no reason given'})"
 
 
-def hard_edit_refusal(paths: Iterable[str], cwd: str) -> str:
+def hard_edit_refusal(paths: Iterable[str], cwd: str, owns: Callable[[str], bool] | None = None) -> str:
     """Why a write to any of `paths` is refused whatever POOLHOUSE_GUARD says: a guard, a hook setting, the hooks and
-    settings of the version control, the person folder or the authority registry."""
+    settings of the version control, the person folder or the authority registry. `owns` limits the repository's rules
+    (`project_rules`)."""
     base = Path(cwd or Path.cwd())
+    rules = protected()
     for raw in filter(None, paths):
         target = base / _unquote(raw)
         place = os.path.normpath(str(target))
-        if protected().guarded(place) or protected().guarded(os.path.realpath(place)) or protected().secret(place):
+        if rules.guarded(place, owns=owns) or rules.guarded(os.path.realpath(place), owns=owns) or rules.secret(place):
             return (f"{target} is one of the guards, hook settings, the person folder or the authority registry: refused to an "
                     "agent, since they decide what an agent may run; leave it as it is and say in the report what should change.")
     return ""
 
 
-def edit_refusal(paths: Iterable[str], cwd: str) -> str:
+def edit_refusal(paths: Iterable[str], cwd: str, owns: Callable[[str], bool] | None = None) -> str:
     """Why a write to any of `paths` is refused, empty for permitted development changes."""
     if switched_off():
         return ""
-    if why := hard_edit_refusal(paths, cwd):
+    paths = list(paths)
+    if why := hard_edit_refusal(paths, cwd, owns):
         return why
     base = Path(cwd or Path.cwd())
     for raw in filter(None, paths):
@@ -320,18 +336,18 @@ def _worktree_target(segment: str) -> str | None:
             return word
     return None
 
-def hard_bash_refusal(command: str, cwd: str) -> str:
+def hard_bash_refusal(command: str, cwd: str, owns: Callable[[str], bool] | None = None) -> str:
     """Why `command` may not run whatever POOLHOUSE_GUARD says: it writes a guard or the authority registry, touches the
     person folder or the session tokens, or changes what protects the repository."""
-    return protected().refusal(command, cwd or str(Path.cwd()), release_refusal)
+    return protected().refusal(command, cwd or str(Path.cwd()), release_refusal, owns=owns)
 
 
-def bash_refusal(command: str, cwd: str) -> str:
+def bash_refusal(command: str, cwd: str, owns: Callable[[str], bool] | None = None) -> str:
     """Why `command` may not run from `cwd`, empty when it may."""
     if switched_off():
         return ""
     here = Path(cwd or Path.cwd())
-    if why := hard_bash_refusal(command, str(here)):
+    if why := hard_bash_refusal(command, str(here), owns):
         return why
     for segment in _segments(protected().without_heredocs(command)):
         moved = _cd(segment, here)

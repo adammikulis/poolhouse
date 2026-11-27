@@ -77,15 +77,16 @@ def _primary_refusal(name: str, args: dict[str, Any] | None, cwd: str) -> str:
     """Why a write or git command in the primary checkout is refused, empty when it is not one."""
     if not args or not cwd:
         return ""
+    owns = worktreerules.project_rules(cwd)
     if name in SHELL_TOOLS:
-        return worktreerules.bash_refusal(_shell_line(name, args), cwd)
+        return worktreerules.bash_refusal(_shell_line(name, args), cwd, owns)
     if CATALOG.get(name) != "reversible":
         return ""
     paths = [str(args.get(key) or "") for key in ("file_path", "notebook_path", "path")]
     for value in args.values():
         if isinstance(value, str) and "*** Begin Patch" in value:
             paths += worktreerules.patch_paths(value)
-    return worktreerules.edit_refusal(paths, cwd)
+    return worktreerules.edit_refusal(paths, cwd, owns)
 
 
 def primary_decision(name: str, args: dict[str, Any] | None, cwd: str) -> Decision | None:
