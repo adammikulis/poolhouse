@@ -27,7 +27,8 @@ from poolhouse.sandbox.seatbelt import EXPOSURES
 from tests.sandbox_kit import AbsentBackend
 
 SRC = Path(__file__).resolve().parent.parent / "src"
-FACTS = {"free": 12, "need": 345, "url": "http://example.test:1", "name": "model bridge", "attempt": "P07"}
+FACTS = {"free": 12, "need": 345, "url": "http://example.test:1", "name": "model bridge", "attempt": "P07",
+         "why": "its folder is already part of another project"}
 COMMANDS = re.compile(r"sudo|\bapt\b|brew |`|--|poolhouse-|\bchmod\b|\bpip\b|type |\byes\b|y/n|password|approve|\bask\b", re.I)
 
 

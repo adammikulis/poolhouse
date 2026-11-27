@@ -161,16 +161,17 @@ def test_deleted_unique_branch_does_not_prove_recorded_work_landed(setup):
 
 
 @pytest.mark.redteam
-def test_harness_stop_uses_authenticated_owner_and_refuses_lingering_scope(setup):
+def test_turn_end_is_not_gated_and_session_exit_refuses_the_owners_lingering_scope(setup):
     kit = setup
     claim(kit)
-    rail = harnesshook.Rail('plan-and-go', kit.name, roots=[str(kit.checkout)])
-    result = harnesshook.stop(rail)
-    assert result['decision'] == 'block' and str(kit.checkout) in result['reason']
-    other = harnesshook.Rail('plan-and-go', kit.node.member('other', parent=kit.lead).name, roots=[str(kit.checkout)])
-    assert harnesshook.stop(other) == {}
+    assert harnesshook.stop(harnesshook.Rail('plan-and-go', kit.name, roots=[str(kit.checkout)])) == {}
+    ending = harnessid.HarnessSession(kit.name, base=kit.base)
+    with pytest.raises(ValueError, match='verified cleanup') as refused:
+        ending.require_clean()
+    assert str(kit.checkout.resolve()) in str(refused.value)
+    harnessid.HarnessSession(kit.node.member('other', parent=kit.lead).name, base=kit.base).require_clean()
     lifecycle.cleanup(kit.base, kit.name, str(kit.checkout), owner_of(kit.s))
-    assert harnesshook.stop(rail) == {}
+    ending.require_clean()
 
 
 def test_claude_settings_wire_stop_and_subagent_stop():

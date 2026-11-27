@@ -163,7 +163,7 @@ def test_a_denied_action_never_starts_and_nothing_can_ask_for_it_to(owner):
     assert store.action_state(execution, call, current=lambda: True)["state"] == "denied"
     assert not hasattr(store, "action_request") and not hasattr(coding_actions, "approval_request")
     with pytest.raises(ValueError, match="Invalid coding action decision"):
-        action(scope, decision=Decision("ask", "destructive", "confirm this exact write", "tool_call_destructive"))
+        action(scope, decision=Decision("ask", "destructive", "confirm this exact write"))
 
 
 def test_a_denied_action_blocks_argument_variants_until_another_explicit_user_message(owner):

@@ -8,6 +8,8 @@ import re
 import pytest
 
 from poolhouse import node_supervise
+from poolhouse.board import place
+from poolhouse.net import git
 from poolhouse.workspace import board_cli, nudge
 
 pytest_plugins = ["node_kit"]
@@ -65,9 +67,18 @@ def test_prompt_hook_injects_the_line_as_context_and_stays_silent_when_empty(kit
     assert hook(kit, "prompt") == ""
 
 
-def test_the_cli_hook_prints_the_same_json_as_the_library(kit, tmp_path):
+def test_the_cli_hook_prints_the_same_json_as_the_library(workspace_node, tmp_path):
+    project = tmp_path / "project"
+    git.run(["init", "-b", "development", str(project)])
+    workspace_node.board = place.add(workspace_node.client, project)
+    kit = workspace_node
+    kit.alice, kit.bob = (kit.member(n) for n in ("alice", "bob"))
     say(kit, kit.alice, kit.bob, "question", "SECRET-BODY ready?")
-    done = kit.cli("nudge", "--hook", "prompt", who=kit.bob, env={"TMPDIR": str(tmp_path / "state")})
+    env = {"TMPDIR": str(tmp_path / "state")}
+    outside = kit.cli("nudge", "--hook", "prompt", who=kit.bob, env=env, cwd=tmp_path)  # a hook's board is its folder's project, never the environment's
+    assert (outside.returncode, outside.stdout) == (0, ""), outside.stderr
+    done = kit.cli("nudge", "--hook", "prompt", who=kit.bob, env=env, cwd=project)
+    assert done.returncode == 0 and done.stdout, done.stderr
     shape = json.loads(done.stdout)
     assert shape["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit" and "SECRET-BODY ready?" in shape["systemMessage"]
 

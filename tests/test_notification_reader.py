@@ -10,6 +10,7 @@ from harness_kit import SRC
 from node_kit import node_binary, workspace_node  # noqa: F401
 
 from poolhouse import harnesshook, runtime
+from poolhouse.board import place
 from poolhouse.board.client import Client
 from poolhouse.errors import Denied
 from poolhouse.net import git
@@ -17,9 +18,13 @@ from poolhouse.workspace import harness_session, notification_reader as reader
 
 
 @pytest.fixture
-def kit(workspace_node, tmp_path):  # noqa: F811
+def kit(workspace_node, tmp_path, monkeypatch):  # noqa: F811
+    root = tmp_path / 'project'  # a reader finds its board from the folder itself, never from a selector: the folder is a registered project
+    git.run(['init', str(root)])
+    workspace_node.board = place.add(workspace_node.client, root)
+    monkeypatch.setenv(place.BOARD_ENV, workspace_node.board)
     lead = workspace_node.member('lead')
-    kit = SimpleNamespace(node=workspace_node, root=tmp_path, lead=lead)
+    kit = SimpleNamespace(node=workspace_node, root=root, lead=lead)
     kit.reader, kit.sender = (workspace_node.member(name, parent=lead) for name in ('reader', 'sender'))
     kit.r, kit.s = workspace_node.session(kit.reader), workspace_node.session(kit.sender)
     return kit
@@ -63,10 +68,10 @@ def test_a_retired_session_never_reads(kit):
         reader.read(kit.reader.name, kit.root)
 
 
-def test_a_checkout_of_another_project_is_never_read_with_the_session_of_this_one(kit, monkeypatch, tmp_path):
-    monkeypatch.delenv('POOLHOUSE_BOARD')
+def test_a_checkout_of_another_project_is_never_read_with_the_session_of_this_one(kit, tmp_path):
     elsewhere = tmp_path / 'elsewhere'
     git.run(['init', str(elsewhere)])
+    assert place.add(kit.node.client, elsewhere) != kit.node.board
     with pytest.raises(Denied, match=f'no usable token for {kit.reader.name}') as refused:
         reader.read(kit.reader.name, elsewhere)
     assert not isinstance(refused.value, harness_session.BoardUnavailable)
@@ -77,7 +82,7 @@ def test_a_read_asks_who_the_token_is_once_and_what_waits_once(kit, monkeypatch)
     calls, real = [], Client.call
     monkeypatch.setattr(Client, 'call', lambda self, method, *args, **options: calls.append(method) or real(self, method, *args, **options))
     reader.read(kit.reader.name, kit.root)
-    assert calls == ['whoami', 'read']
+    assert calls == ['project_resolve', 'whoami', 'read']
 
 
 def test_nudge_subprocess_is_bounded_and_session_explicit(monkeypatch):
@@ -127,7 +132,7 @@ def test_each_notification_read_reauthenticates_and_does_not_advance_cursor(kit,
     monkeypatch.setattr(Client, 'call', lambda self, method, *args, **options: calls.append(method) or real(self, method, *args, **options))
     first = reader.read(kit.reader.name, kit.root)
     assert reader.read(kit.reader.name, kit.root) == first
-    assert calls == ['whoami', 'read', 'whoami', 'read']
+    assert calls == ['project_resolve', 'whoami', 'read'] * 2
 
 
 def test_notification_never_uses_a_mutable_display_name(kit, monkeypatch):
@@ -143,8 +148,9 @@ def test_rejected_identity_cannot_read_private_cursor(kit, monkeypatch, bad_acto
     else:
         kit.r.retire()
     monkeypatch.setattr(harness_session.credentials, 'cursors', lambda *args: pytest.fail('unauthorized private cursor read'))
-    with pytest.raises(Denied):
+    with pytest.raises(Denied) as refused:
         reader.read(kit.reader.name, kit.root)
+    assert not isinstance(refused.value, harness_session.BoardUnavailable)
 
 
 def test_revocation_after_identity_proof_is_enforced_by_the_inbox_read(kit, monkeypatch):
@@ -155,8 +161,9 @@ def test_revocation_after_identity_proof_is_enforced_by_the_inbox_read(kit, monk
             kit.r.retire()
         return result
     monkeypatch.setattr(Client, 'call', revoke)
-    with pytest.raises(Denied):
+    with pytest.raises(Denied, match=r'revoked|retired|token') as refused:
         reader.read(kit.reader.name, kit.root)
+    assert not isinstance(refused.value, harness_session.BoardUnavailable)
 
 
 @pytest.mark.parametrize('reply', [{'name': None}, {}, [], {'name': ''}])

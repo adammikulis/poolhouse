@@ -45,7 +45,7 @@ def test_import_failure_is_traced_before_heavy_hook_imports(tmp_path, event, sta
 import importlib.abc, runpy, sys
 class Refuse(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname == 'poolhouse.harness_claims':
+        if fullname == 'poolhouse.harnesspolicy':
             raise ImportError('missing fixture import sk-' + 'a' * 30)
 sys.meta_path.insert(0, Refuse())
 sys.argv = ['harnesshook', sys.argv[1]]
@@ -101,7 +101,8 @@ def test_inspector_rejects_path_traversal_and_redacts_modified_records(capsys):
     assert hook_diagnostics.COMMAND.run(["../fixture"]) == 2
 
 
-def test_nudge_failure_keeps_reference_visible_in_post_context(monkeypatch, capsys):
+def test_nudge_failure_keeps_reference_visible_in_post_context(monkeypatch, capsys, tmp_path):
+    monkeypatch.chdir(tmp_path)  # outside the trusted runtime, which a coding folder may not overlap
     def fail(*args, **kwargs):
         raise FileNotFoundError("workspace launcher missing")
     monkeypatch.setattr(harnesshook, "_reader_run", fail)
@@ -109,6 +110,7 @@ def test_nudge_failure_keeps_reference_visible_in_post_context(monkeypatch, caps
     context = answer["hookSpecificOutput"]["additionalContext"]
     held = _record()
     assert held["stage"] == "reader" and held["id"] in context
+    assert "workspace launcher missing" in held["reason"]
     assert held["id"] in capsys.readouterr().err
 
 
@@ -155,7 +157,7 @@ from poolhouse import hook_bootstrap
 hook_bootstrap.POST_SECONDS = .25
 class Slow(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname == 'poolhouse.harness_claims':
+        if fullname == 'poolhouse.harnesspolicy':
             time.sleep(3)
 sys.meta_path.insert(0, Slow())
 sys.argv = ['harnesshook', 'post']

@@ -229,7 +229,8 @@ def test_bundle_that_grows_while_read_is_cut_off_at_the_limit(tmp_path, monkeypa
 
 def test_bundle_owned_by_another_user_is_refused(trial, monkeypatch):
     own = os.getuid
-    monkeypatch.setattr(os, 'getuid', lambda: own() + 1)
+    # Only the archive check sees another account: the state's own lock file refuses a foreign account before the bundle is read.
+    monkeypatch.setattr(worktree_archive, 'os', SimpleNamespace(**{**vars(os), 'getuid': lambda: own() + 1}))
     refuse(trial, 'owned regular canonical file')
 
 

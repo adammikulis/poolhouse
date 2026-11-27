@@ -15,6 +15,8 @@ REPO = Path(__file__).resolve().parent.parent
 SRC = REPO / "src" / "poolhouse"
 
 STANDALONE = {
+    "core": "the public library for a program outside this repository that serves a model with no pool (docs/core.md); the broker shares its "
+            "pieces in poolhouse.serve and never imports it, which would close the core/serve import cycle",
     "pi_tools": "the tool-proxy model's per-tool worker, kept until the native path is proven (docs/design-isolated-launcher.md, 15.2 and 18.10); "
                 "Pi's launcher no longer calls it, since Pi's own tools run inside the confinement",
     "protectedwrites":"loaded by file through poolhouse.worktreerules, so the hook scripts need no package on the path",

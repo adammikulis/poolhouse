@@ -95,7 +95,7 @@ def test_current_source_content_is_reinspected_on_each_decision(tmp_path):
     assert decision(tmp_path, inputs).action == "deny"
 
 
-def test_pi_extension_forwards_only_the_current_nested_edit_contract(tmp_path, monkeypatch):
+def test_pi_extension_forwards_only_the_current_nested_edit_contract(tmp_path):
     node = shutil.which("node")
     if not node:
         pytest.skip("Node is required by Pi")
@@ -103,10 +103,8 @@ def test_pi_extension_forwards_only_the_current_nested_edit_contract(tmp_path, m
     hook = tmp_path / "capture.py"
     hook.write_text("import json,pathlib,sys\npathlib.Path(sys.argv[1]).write_text(sys.stdin.read())\n"
                     "print(json.dumps(dict(hookSpecificOutput=dict(permissionDecision='deny'))))\n")
-    monkeypatch.setattr(pi.runtime, "module_argv", lambda *args: [sys.executable, str(hook), str(capture)])
     policy = tmp_path / "policy.mjs"
-    policy.write_text(pi.extension({"root": str(tmp_path), "permissions": "guarded", "executionMode": "execute",
-                                   "agent": "isolated-edit", "protected": []}))
+    policy.write_text(pi.extension({"hook": [sys.executable, str(hook), str(capture)], "root": str(tmp_path)}))
     driver = tmp_path / "driver.mjs"
     driver.write_text('import extension from "./policy.mjs";\n'
                       'const handlers={}; extension({on:(name,fn)=>handlers[name]=fn});\n'

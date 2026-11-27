@@ -15,6 +15,7 @@ from poolhouse.workspace import notification_reader as reader, worktree_lifecycl
 
 @pytest.mark.parametrize('emit', [True, False])
 def test_stalled_worker_is_reaped_before_hook_deadline(tmp_path, monkeypatch, emit):
+    monkeypatch.chdir(tmp_path)  # outside the trusted runtime, which a coding folder may not overlap
     pid_file = tmp_path / 'pid'
     actual = harnesshook.platform.start_process
 
@@ -102,6 +103,7 @@ def test_cancelled_checkpoint_keeps_committed_scopes_and_releases_lock(tmp_path)
 
 
 def test_timeout_reaps_worker_and_its_spawned_descendant(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # outside the trusted runtime, which a coding folder may not overlap
     pid_file = tmp_path / 'child'
     actual = harnesshook.platform.start_process
 

@@ -9,6 +9,7 @@ from typing import Any
 from poolhouse.guard import shellcmds, sqlscan
 from poolhouse.guard.harm import Finding, outside, protected, resolve
 from poolhouse.guard.verbs import verb_finding, words_of
+from poolhouse.home import expand
 
 __all__ = ["content", "generic", "walk"]
 
@@ -165,11 +166,12 @@ def generic(name: str, args: Mapping[str, Any], roots: tuple[str, ...], label: s
                 and PROD.search(value):
             found.append(Finding(D, "touches production"))
     if acts:
-        found += _path_findings(args, words, roots)
+        found += _path_findings(args, words, roots, name == "Write")
     return [*found, *_numbers(args, words)]
 
 
-def _path_findings(args: Mapping[str, Any], words: set[str], roots: tuple[str, ...]) -> list[Finding]:
+def _path_findings(args: Mapping[str, Any], words: set[str], roots: tuple[str, ...], on_disk: bool) -> list[Finding]:
+    """``on_disk``: the call is the harness's own ``Write``, whose destination is a file on this disk."""
     found: list[Finding] = []
     writes = bool(words & (WRITES | MOVES | {"delete", "remove", "rm", "edit", "update", "create"}))
     paths = _paths(args)
@@ -182,13 +184,14 @@ def _path_findings(args: Mapping[str, Any], words: set[str], roots: tuple[str, .
     dest = [p for k, p in paths if k in DEST_KEYS]
     appends = any(k == "mode" and str(v).startswith(("a", "append")) for k, v in walk(args)) \
         or any(k in ("append", "append_to") and v is True for k, v in walk(args))
+    held = [p for p in dest if _exists(p, roots)]
     if words & (WRITES | MOVES) and not appends:
-        for path in dest:
-            if _exists(path, roots):
-                found.append(Finding(D, f"overwrites an existing file ({path[:60]})"))
+        found += [Finding(D, f"overwrites an existing file ({path[:60]})") for path in held]
+    # Another tool's destination may be somewhere this disk does not show, and a relative one is read from a folder unknown here.
+    emptied = [p for p in dest if p in held or not expand(p).is_absolute()] if on_disk else dest
     if words & WRITES and not appends:
         for key, value in walk(args):
-            if key in BODY_KEYS and isinstance(value, str) and dest and len(value.strip()) <= 12:
+            if key in BODY_KEYS and isinstance(value, str) and emptied and len(value.strip()) <= 12:
                 found.append(Finding(D, "writes almost nothing over a file, which empties it"))
     if words & {"checkout", "restore"} and any(k in ("path", "paths", "file", "files") for k, _ in paths):
         found.append(Finding(D, "discards the changes to the named files"))

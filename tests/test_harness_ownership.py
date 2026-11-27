@@ -20,10 +20,13 @@ pytestmark = pytest.mark.redteam
 
 
 @pytest.fixture
-def kit(workspace_node, tmp_path):  # noqa: F811
+def kit(workspace_node, tmp_path, monkeypatch):  # noqa: F811
+    project = tmp_path / 'project'  # ownership finds its board from the folder itself, never from a selector: the folder is a registered project
+    git.run(['init', '-b', 'development', str(project)])
+    workspace_node.board = place.add(workspace_node.client, project)
+    monkeypatch.setenv(place.BOARD_ENV, workspace_node.board)
     lead = workspace_node.member('lead')
-    kit = SimpleNamespace(node=workspace_node, project=tmp_path / 'project', tmp=tmp_path)
-    kit.project.mkdir()
+    kit = SimpleNamespace(node=workspace_node, project=project, tmp=tmp_path)
     kit.alpha, kit.beta = (workspace_node.member(name, parent=lead) for name in ('alpha', 'beta'))
     kit.a, kit.b = workspace_node.session(kit.alpha), workspace_node.session(kit.beta)
     return kit
@@ -40,11 +43,11 @@ def test_explicit_claim_does_not_short_circuit_independent_tool_approval(kit):
     reserve(kit, kit.beta, 'Write', {'file_path': str(target), 'content': 'mine'})
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(alias / target.name), 'content': 'hostile'},
                'cwd': str(kit.project)}
-    done = hook(kit.node, 'pre', payload, '--permissions', 'guarded', '--agent', kit.alpha.name, '--root', str(kit.project))
+    done = hook(kit.node, 'pre', payload, '--permissions', 'read-only', '--agent', kit.alpha.name, '--root', str(kit.project))
     assert done.returncode == 0, done.stderr
     decision = verdict(done)
     assert decision['permissionDecision'] == 'deny', decision
-    assert 'the person did not allow this call' in decision['permissionDecisionReason']
+    assert 'execute/read-only runs no acting call' in decision['permissionDecisionReason']
     assert kit.beta.name not in decision['permissionDecisionReason']
     assert held(kit.a, kit.alpha.name) == []
     assert not target.exists()
@@ -70,7 +73,7 @@ def test_launcher_identity_and_root_cannot_be_overridden_by_call(kit):
     target = kit.project / 'ok.txt'
     args = {'file_path': str(target), 'actor': kit.beta.name, 'roots': ['/']}
     reserve(kit, kit.alpha, 'Write', args)
-    assert held(kit.a, kit.alpha.name) == [('area', str(target))]
+    assert held(kit.a, kit.alpha.name) == sorted([('area', str(target.resolve())), ('area', harness_claims.normal('area', str(target)))])
     with pytest.raises(Denied, match='outside the launcher-approved'):
         reserve(kit, kit.alpha, 'Write', {'file_path': str(kit.project.parent / 'outside')})
     assert held(kit.a, kit.beta.name) == []
@@ -120,9 +123,13 @@ def test_physical_claims_conflict_across_boards(kit, monkeypatch):
     target = kit.project / 'source.py'
     reserve(kit, kit.alpha, 'Write', {'file_path': str(target)})
     monkeypatch.setenv('POOLHOUSE_BOARD', 'second')
-    with pytest.raises(Conflict):
+    with pytest.raises(Denied, match='no session of its own on the board'):
         harness_claims.reserve('Write', {'file_path': str(target)}, str(kit.project), other.name, [str(kit.project)])
-    assert held(board_session.Session(kit.node.client, 'second', other.token, other.name), other.name) == []
+    second = board_session.Session(kit.node.client, 'second', other.token, other.name)
+    for key in (str(target.resolve()), harness_claims.normal('area', str(target))):
+        with pytest.raises(Conflict):
+            second.claim('area', key)
+    assert held(second, other.name) == []
 
 
 def test_an_area_held_by_another_session_blocks_a_file_under_it(kit):
@@ -149,6 +156,26 @@ def test_an_ordinary_write_does_not_need_a_workspace_token_file(kit):
     assert answer['permissionDecision'] == 'allow', answer
     assert 'ownership not' not in answer['permissionDecisionReason']
     assert held(kit.b, kit.beta.name) == [] and held(kit.b, kit.alpha.name) == []
+
+
+@pytest.mark.parametrize('present, action', [(False, 'allow'), (True, 'deny')])
+def test_a_tiny_write_is_refused_only_over_a_file_that_is_there(kit, present, action):
+    target = kit.project / 'flag.txt'
+    if present:
+        target.write_text('what the file held before\n')
+    payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(target), 'content': ''}, 'cwd': str(kit.project)}
+    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('guarded'), kit.alpha.name, roots=[str(kit.project)]))['hookSpecificOutput']
+    assert answer['permissionDecision'] == action, answer
+    assert ('which empties it' in answer['permissionDecisionReason']) is present
+
+
+def test_a_tiny_write_to_a_relative_path_is_refused_since_the_folder_it_is_read_from_may_hold_the_file(kit):
+    below = kit.project / 'below'
+    below.mkdir()
+    (below / 'notes.txt').write_text('what the file held before\n')
+    payload = {'tool_name': 'Write', 'tool_input': {'file_path': 'notes.txt', 'content': ''}, 'cwd': str(below)}
+    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('guarded'), kit.alpha.name, roots=[str(kit.project)]))['hookSpecificOutput']
+    assert answer['permissionDecision'] == 'deny' and 'which empties it' in answer['permissionDecisionReason'], answer
 
 
 def test_the_board_of_the_launcher_approved_project_is_the_boards_of_the_session(kit, monkeypatch, tmp_path):

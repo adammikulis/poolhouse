@@ -3,6 +3,7 @@ import json
 
 import pytest
 from launch_support import browser, signed
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_fleet_ui import Serving
 
 from poolhouse import home
@@ -15,7 +16,8 @@ from tests.sandbox_kit import AbsentBackend
 
 
 @pytest.fixture
-def catalogue_api(tmp_path, monkeypatch):
+def catalogue_api(tmp_path, monkeypatch, studio_node):  # noqa: F811
+    # A window's session is bound to the pool its node is in, so the daemon serves beside a real node.
     monkeypatch.setattr(home, 'user_home', lambda: tmp_path.resolve())
     monkeypatch.setattr(coding_routes.hub, 'discover', lambda **_options: [])
     monkeypatch.setattr(coding_routes.harnessing, 'binary_for', lambda _name: 'fixture-installed')
@@ -59,7 +61,7 @@ def test_a_computer_that_cannot_confine_is_not_opened_by_installed_harnesses(cat
     without_a_sandbox(monkeypatch, AbsentBackend)
     app = catalogue_api
     status, first, _ = get(app)
-    assert status == 200
+    assert status == 200, first
     assert first['can_start'] is False
     assert first['enforcement_error'] == 'This Mac cannot confine coding agents: its built-in sandbox tool is missing.'
     assert all(row['available'] for row in first['harnesses'])
@@ -96,7 +98,9 @@ def test_constructor_without_project_registry_is_honestly_unselected(catalogue_a
 def test_revoked_session_cannot_return_folder_or_catalogue(catalogue_api, monkeypatch, when):
     app = catalogue_api
     original = app.ui.projects.coding_project
+    reached = []
     def revoke(*, current):
+        reached.append(when)
         if when == 'during':
             app.ui.sessions.close(app.cookie.split('=', 1)[1])
         result = original(current=current)
@@ -106,6 +110,7 @@ def test_revoked_session_cannot_return_folder_or_catalogue(catalogue_api, monkey
     monkeypatch.setattr(app.ui.projects, 'coding_project', revoke)
     status, data, _ = get(app)
     assert status == 403 and 'selected_project' not in data and 'models' not in data
+    assert reached == [when], data  # refused because of the revocation, not before the folder was read
 
 
 @pytest.mark.parametrize('error', [FileNotFoundError('/private/fixture/missing'), ValueError('/private/fixture/protected')])
