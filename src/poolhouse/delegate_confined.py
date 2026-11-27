@@ -148,9 +148,10 @@ def arguments(rec: store.Delegate) -> argparse.Namespace:
          rec.permissions or ("guarded" if rec.edit else "read-only")])
 
 
-def unsandboxable(project: str) -> str:
-    """Why this computer cannot sandbox a delegate of ``project`` (empty: a folder of its own), as one sentence; empty when it can."""
-    return isolation.capability(isolation.Spec("opencode", "", "", "", 0, project=project)).enforcement_error
+def unsandboxable() -> str:
+    """Why this computer cannot sandbox a delegate, as one sentence; empty when it can. A folder a capable computer cannot stage is no such
+    reason: `admit` refuses it."""
+    return isolation.capability().enforcement_error
 
 
 def admit(rec: store.Delegate, asked: str) -> None:

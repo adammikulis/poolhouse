@@ -129,8 +129,7 @@ def start(args: argparse.Namespace) -> int:
     if same := _running(asked):
         say(f"{same} is already running that task; `poolhouse-delegate status {same}`")
         return 0
-    copied = bool(source) and not edit and not os.path.lexists(Path(source) / ".git")
-    why = delegate_confined.unsandboxable("" if copied else source)
+    why = delegate_confined.unsandboxable()
     if why:   # on the folder itself, or an empty one of its own
         workdir = source or tempfile.mkdtemp(prefix="poolhouse-delegate-")
     else:

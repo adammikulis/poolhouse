@@ -183,7 +183,7 @@ def test_edit_and_read_only_together_are_refused_at_once(unsandboxed, capsys):
 @pytest.mark.parametrize("words", [[], ["--permissions", "yolo"]])
 def test_a_computer_that_can_sandbox_keeps_every_tier_sandboxed(lead_node, detached, capsys, monkeypatch, words):
     node, lead, project = lead_node
-    monkeypatch.setattr(delegate_confined, "unsandboxable", lambda _project: "")
+    monkeypatch.setattr(delegate_confined, "unsandboxable", lambda: "")
     monkeypatch.setattr(delegate_confined, "admit", lambda _rec, _asked: None)
     assert started("--task", "look around", "--project", str(project), *words) == 0
     [name] = agent_names(node, lead)
