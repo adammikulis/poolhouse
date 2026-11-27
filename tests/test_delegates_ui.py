@@ -88,6 +88,32 @@ def test_the_delegate_routes_keep_the_pages_own_checks_and_show_nothing_to_anoth
 
 
 @pytest.mark.slow
+def test_a_run_with_no_step_record_says_so_and_shows_why_it_failed_and_what_was_asked(serving, playwright):
+    """A run from before records were kept has its task, state and answer and no ``events.jsonl``."""
+    store.save(store.Delegate(NAME, "lead-1", "board", "make the PLUMBING tests pass", "/tmp/work", "Plumbing-Q4.gguf", edit=True))
+    why = "interrupted: PLUMBING the harness reported an error; all 3 attempt(s) are used"
+    store.set_status(NAME, "failed", why)
+    (delegate_record.folder(NAME) / delegate_record.FILE).unlink()
+    store.save_result(NAME, {"state": "failed", "text": f"{CANNED} half way", "error": why})
+    with playwright.chromium.launch(headless=True) as browser:
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.goto(f"http://127.0.0.1:{serving.port}/ui/#delegates")
+        view = page.locator("delegates-view")
+        expect(view.locator(".delegate-run")).to_contain_text("PLUMBING the harness reported an error")
+        expect(view.locator("#delegate-why")).to_have_text(why)
+        expect(view.locator("#delegate-empty")).to_contain_text("No steps are recorded for this run")
+        expect(view.locator(".delegate-tests")).to_have_text("No test run recorded.")
+        expect(view.locator("#delegate-facts")).to_be_visible()
+        expect(view.locator("#delegate-facts")).to_contain_text(f"{CANNED} half way")
+        view.locator("#delegate-about summary").click()
+        page.wait_for_timeout(2500)
+        expect(view.locator("#delegate-facts")).to_be_hidden()
+        delegate_record.append(NAME, "step", turn=1)
+        expect(view.locator(".delegate-event")).to_have_count(1, timeout=10000)
+        expect(view.locator("#delegate-empty")).to_be_hidden()
+
+
+@pytest.mark.slow
 @pytest.mark.parametrize("width", [1280, 390])
 def test_the_delegates_view_lists_the_runs_follows_one_live_and_shows_box_text_as_text(serving, playwright, tmp_path, width):
     name = a_live_run()
