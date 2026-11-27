@@ -56,7 +56,15 @@ needs no install step; a missing SDK is reported as a defective install, never a
 
 ## The rails
 
-| `--permissions` | Codex's own mode | the hook |
+A harness in the isolated launcher (`poolhouse-claude`, `-codex`, `-pi`, `-opencode` and a delegate that edits) writes
+its hook events from inside the box, so the launcher judges them by their text alone (`harnesshook.confined_pre`): it
+starts no program and looks at no path an event names. It refuses a call that names the session's files or the state
+root, and in `read-only` or plan mode an editing or sending tool. Every other call is allowed, shell commands
+included, in every profile: the sandbox holds them (a read-only session's project is mounted read-only) and
+publication decides what leaves the box. The classifier below judges a harness that is not confined (a read-only
+delegate).
+
+| `--permissions` | Codex's own mode | the hook, for a harness that is not confined |
 | --- | --- | --- |
 | `read-only` | sandbox `read-only`, approvals `never` | allows reads; denies every acting call |
 | `guarded` (default) | sandbox `workspace-write`, approvals `never` | allows reads and reversible calls; denies destructive and unsure ones at once, with the reason |

@@ -21,7 +21,7 @@ from poolhouse.guard.destructive import classify, reason_text
 from poolhouse.guard.shellscan import segments
 from poolhouse.interventions import Call
 
-__all__ = ["CATALOG", "LEAD_TOOLS", "SHELL_TOOLS", "Decision", "decide", "workspace_authority"]
+__all__ = ["CATALOG", "LEAD_TOOLS", "SHELL_TOOLS", "Decision", "confined_decision", "decide", "workspace_authority"]
 
 LEAD_TOOLS = ("mcp__lead__ask", "mcp__lead__note")
 """A delegate's two tools (`poolhouse.delegate_run`): a message to the one session that started it, and the wait for its reply."""
@@ -112,6 +112,17 @@ def decide(policy: coding_policy.Policy, call: Call, *, roots: Sequence[str] = (
     if verdict.label == "unsure" or (verdict.label == "destructive" and policy.permissions != coding_policy.YOLO):
         return _denied(verdict.label, f"{why}; the {policy.permissions} profile runs no {verdict.label} call")
     return Decision("allow", verdict.label, why)
+
+
+def confined_decision(policy: coding_policy.Policy, name: str, args: dict[str, Any] | None, protected: Sequence[str] = ()) -> Decision:
+    """The decision for a call made inside the isolated launcher's confinement, from its text alone (``protected`` as for `decide`). The box writes
+    every word of the call, so nothing here starts a program or looks at a path: the sandbox mounts a read-only session's project read-only and
+    publication decides what leaves a writable one."""
+    if hit := _mentions(args, protected):
+        return _denied("destructive", f"the call names {hit}, which belongs to the launcher")
+    if not policy.writable and CATALOG.get(name) == "reversible":
+        return _denied("reversible", f"{policy.execution_mode}/{policy.permissions} runs no acting call: {name}")
+    return Decision("allow", CATALOG.get(name, "confined"), "the confinement holds what this call does")
 
 
 def after_downloads(decision: Decision, name: str, args: dict[str, Any] | None, roots: Sequence[str], fetched: Sequence[str]) -> Decision:

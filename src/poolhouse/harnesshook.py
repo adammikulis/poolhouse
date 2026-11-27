@@ -35,6 +35,7 @@ from poolhouse.harnesspolicy import (
     Decision,
     _shell_line,
     after_downloads,
+    confined_decision,
     decide,
     primary_decision,
     workspace_authority,
@@ -43,7 +44,7 @@ from poolhouse.interventions import Call
 from poolhouse.keystore import ENV_NONINTERACTIVE
 from poolhouse.serve.process import kill_process_tree
 
-__all__ = ["FAILURES", "Rail", "nudge", "post", "pre", "run"]
+__all__ = ["FAILURES", "Rail", "confined_pre", "nudge", "post", "pre", "run"]
 
 CLEANUP_RESERVE_S = 1.5
 NUDGE_S = hook_bootstrap.POST_SECONDS - CLEANUP_RESERVE_S
@@ -99,6 +100,15 @@ def pre(payload: dict[str, Any], rail: Rail) -> dict[str, Any]:
     except FAILURES as error:
         return _answer(event, "deny", f"poolhouse: a download could not be recorded: {hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings())}")
     return _answer(event, 'allow', reason)
+
+
+def confined_pre(payload: dict[str, Any], rail: Rail) -> dict[str, Any]:
+    """The PreToolUse answer for ``payload`` from a harness in the isolated launcher's confinement. `pre` judges a harness on the host, where it
+    runs git and looks at the files a call names; a boxed process writes the whole payload, its folder included, so none of that is done for it."""
+    args = payload.get("tool_input")
+    decision = confined_decision(rail.policy, str(payload.get("tool_name", "")), args if isinstance(args, dict) else None, rail.protected)
+    said = decision.reason if decision.action == "deny" else decision.label
+    return _answer(HOOK_EVENTS["pre"], decision.action, f"poolhouse: {said}")
 
 
 def _reader_run(command, **kwargs):

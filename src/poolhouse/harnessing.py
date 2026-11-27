@@ -537,9 +537,9 @@ def confined(args: argparse.Namespace, run: Session, how: Harness,
     helper, parent = run.session, getattr(run.session, "parent", None)
 
     def decide(stage: str) -> Callable[[str, dict], dict]:
-        # a call is judged against the stage it writes to; what the board tells the helper is read for the person's project, whose board it is
+        # a call is the box's own words, judged as text; what the board tells the helper is read for the person's project, whose board it is
         rail, project = rail_of(args, helper.name, stage), rail_of(args, helper.name, str(run.cwd))
-        return lambda event, payload: (harnesshook.pre(payload, rail) if event == "pre" else harnesshook.stop(rail) if event == "stop"
+        return lambda event, payload: (harnesshook.confined_pre(payload, rail) if event == "pre" else harnesshook.stop(rail) if event == "stop"
                                        else harnesshook.post(helper.name, project, board=helper.board))
 
     notice = isolation.Notice(None if parent is None else isolation.Reporter(_post(parent)), getattr(parent, "name", ""), REPORT_CAP,
