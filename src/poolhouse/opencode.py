@@ -242,14 +242,14 @@ def taken_up(extra: Sequence[str]) -> str:
     return ""
 
 
-def argv_of(binary: str, alias: str, extra: Sequence[str], directory: str, socket: str = "", preload: str = "") -> tuple[str, ...]:
+def argv_of(binary: str, alias: str, extra: Sequence[str], directory: str, through: tuple[str, str] = ("", "")) -> tuple[str, ...]:
     """The command line of one run. ``opencode run`` has no mode without a server, and its own private one (`--standalone`) listens on a port the
     operating system picks, which the box cannot grant. So the confined process starts ``opencode serve`` on `SERVER_PORT` and runs ``opencode run
-    --server`` against it, behind the password the bridge token gives both; with ``socket`` and ``preload`` (the file of `through_socket`) the two
-    meet on that Unix socket and no port is bound. The binary's own folder leads ``PATH``: the ripgrep kept beside it is the one the search tools
+    --server`` against it, behind the password the bridge token gives both; with ``through`` (a Unix socket, and the file of `through_socket` for it)
+    the two meet on that socket and no port is bound. The binary's own folder leads ``PATH``: the ripgrep kept beside it is the one the search tools
     run. A conversation ``extra`` takes up (`taken_up`) is first moved to ``directory``, this box's copy of the project: it was held in another
     box's, which this one may not read."""
-    return ("/bin/sh", "-c", SERVE, "opencode", binary, str(SERVER_PORT), socket, preload, taken_up(extra), json.dumps({"directory": directory}),
+    return ("/bin/sh", "-c", SERVE, "opencode", binary, str(SERVER_PORT), *through, taken_up(extra), json.dumps({"directory": directory}),
             "--format", "json", "--model", f"{PROVIDER}/{alias}", *extra)
 
 
@@ -263,17 +263,17 @@ def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], 
                  [server["command"], *server["args"]], families.for_model_id(alias).think_kwargs(False), setup.brief, setup.agent)
     written = {f".opencode-config/{CONFIG}": config(made),
                f"{PLUGIN}/{ENTRY}": plugin({"hook": context.client_argv("hook"), "root": context.stage, **settings}), **files}
-    preload = ""
+    through = ("", "")
     if context.server_socket:
         written[SOCKET_PRELOAD] = through_socket(context.server_socket)
-        preload = str(context.file(SOCKET_PRELOAD))
+        through = (context.server_socket, str(context.file(SOCKET_PRELOAD)))
 
     def noted(lacks: str) -> dict[str, str]:
         """The config again, with what the box lacks at the end of the agent's own system prompt."""
         agent = {**made.agent, "system": f"{made.agent['system']}{lacks}\n"}
         return {f".opencode-config/{CONFIG}": config(replace(made, agent=agent))}
 
-    return isolation.Rendering(argv_of(binary, alias, extra, context.stage, context.server_socket, preload), written, serves=True,
+    return isolation.Rendering(argv_of(binary, alias, extra, context.stage, through), written, serves=True,
                                noted=noted if made.agent else None)
 
 
