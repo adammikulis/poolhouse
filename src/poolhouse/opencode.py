@@ -16,7 +16,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from poolhouse import harness_js, harnessing, isolation, opencode_install
+from poolhouse import harness_js, harnessing, isolation, lead_bridge, opencode_install
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.client import families
 from poolhouse.guard import harnesses
@@ -44,7 +44,8 @@ def config(served: tuple[str, str, int], token: str, files: tuple[str, str], lea
     if thinking:
         model["options"] = {"chat_template_kwargs": thinking}
     return json.dumps({
-        "$schema": "https://opencode.ai/config.json", "mcp": {isolation.SERVER: {"type": "local", "command": list(lead), "enabled": True}},
+        "$schema": "https://opencode.ai/config.json", "mcp": {isolation.SERVER: {"type": "local", "command": list(lead), "enabled": True,
+                                                                                  "timeout": int(lead_bridge.tool_timeout() * 1000)}},
         "model": f"{PROVIDER}/{alias}", "small_model": f"{PROVIDER}/{alias}",
         "provider": {PROVIDER: {"npm": "@ai-sdk/openai-compatible", "name": "poolhouse",
                                 "options": {"baseURL": base_url.rstrip("/") + "/v1", "apiKey": token}, "models": {alias: model}}},

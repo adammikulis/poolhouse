@@ -25,6 +25,7 @@ from poolhouse import (
     harnessid,
     harnessing,
     isolation,
+    lead_bridge,
     private_path,
     runtime,
 )
@@ -246,7 +247,8 @@ class TestCodex:
         assert got["hooks"]["PreToolUse"][0]["hooks"][0]["command"] == "PRE"
         assert got["hooks"]["PostToolUse"][0]["hooks"][0]["command"] == "POST"
         assert "SessionStart" not in got["hooks"], "no hook of the harness's own reaches a poolhouse command the box cannot run"
-        assert got["mcp_servers"] == {"lead": {"command": "/py", "args": list(mcp[1:]), "startup_timeout_sec": 30, "required": True}}
+        assert got["mcp_servers"] == {"lead": {"command": "/py", "args": list(mcp[1:]), "startup_timeout_sec": 30,
+                                               "tool_timeout_sec": int(lead_bridge.tool_timeout()), "required": True}}
         assert text == codex.config_toml("http://127.0.0.1:8080/", "qwen", 262144, ("PRE", "POST", 300.0), mcp)
 
     def test_codexs_own_sandbox_is_off_inside_the_confinement_and_it_never_asks(self):

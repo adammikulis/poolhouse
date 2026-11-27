@@ -50,6 +50,11 @@ def test_two_delegates_of_one_lead_start_from_the_same_system_prompt_and_differ_
     assert one.message() != two.message() and "claude-aaaaaa" in one.message() and "read the tests" in one.message()
 
 
+def test_a_read_only_delegate_asks_the_sdk_to_keep_the_dynamic_sections_out_of_the_system_prompt():
+    rec = a_delegate("claude-aaaaaa")
+    assert delegate_run.options(rec, lead_bridge.Bridge(None, rec.lead, rec.name, lambda *_: None))["system_prompt"]["exclude_dynamic_sections"] is True
+
+
 def test_warm_hands_a_delegate_the_trivial_task_and_nothing_else(monkeypatch):
     seen = []
     monkeypatch.setattr(delegate, "start", lambda args: seen.append(args) or 0)

@@ -19,7 +19,7 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from poolhouse import harnessing, isolation
+from poolhouse import harnessing, isolation, lead_bridge
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.guard import harnesses
 from poolhouse.log import say
@@ -68,7 +68,7 @@ def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, f
     ]
     if mcp:
         lines += ["", f"[mcp_servers.{isolation.SERVER}]", f"command = {_q(mcp[0])}", f"args = {json.dumps(list(mcp[1:]))}", "startup_timeout_sec = 30",
-                  "required = true"]
+                  f"tool_timeout_sec = {int(lead_bridge.tool_timeout())}", "required = true"]
     return "\n".join(lines) + "\n"
 
 

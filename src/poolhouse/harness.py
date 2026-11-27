@@ -100,6 +100,12 @@ class Answer:
     spent: Usage
     messages: list[Any] = field(default_factory=list)
     is_error: bool = False
+    why: str = ""
+    """Why a run that is an error ended, when the harness said."""
+    published: Any = None
+    """For a run in the confinement, what its publications came to (`isolation.workspace.Published`); None for a run that publishes nothing."""
+    tried: bool = False
+    """Whether the run called a tool that changes files."""
 
 
 class Harness:
@@ -124,7 +130,7 @@ class Harness:
         return sdk().ClaudeAgentOptions(model=self.alias, **{
             **merged, "hooks": hooks,
             "sandbox": merged.get("sandbox") or confined_bash(),
-            "env": {**self.env, **dict(over.get("env") or {})}})
+            "env": {**self.env, **dict(merged.get("env") or {})}})
 
     async def stream(self, prompt: str, **over: Any) -> AsyncIterator[Any]:
         """The SDK's messages for ``prompt``, as they arrive."""
@@ -136,21 +142,25 @@ class Harness:
         texts: list[str] = []
         kept: list[Any] = []
         usage = Usage()
-        async for message in self.stream(prompt, **over):
-            kept.append(message)
-            name = type(message).__name__
-            if name == "AssistantMessage":
-                for block in getattr(message, "content", []) or []:
-                    text = getattr(block, "text", None)
-                    if isinstance(text, str):
-                        texts.append(text)
-            elif name == "ResultMessage":
-                usage = _usage_of(message)
-                if getattr(message, "result", None) and not texts:
-                    texts.append(str(message.result))
+        why = ""
+        try:
+            async for message in self.stream(prompt, **over):
+                kept.append(message)
+                name = type(message).__name__
+                if name == "AssistantMessage":
+                    for block in getattr(message, "content", []) or []:
+                        text = getattr(block, "text", None)
+                        if isinstance(text, str):
+                            texts.append(text)
+                elif name == "ResultMessage":
+                    usage = _usage_of(message)
+                    if getattr(message, "result", None) and not texts:
+                        texts.append(str(message.result))
+        except sdk().ResultError as ended:   # the run ended with an error result (a turn limit, say): what had arrived is the answer's
+            why = f"{type(ended).__name__}: {ended.subtype or ''} {ended}".strip()
         usage.seconds = round(time.time() - began, 2)
-        return Answer(text="\n".join(texts).strip(), spent=usage, messages=kept,
-                      is_error=bool(getattr(kept[-1], "is_error", False)) if kept else False)
+        return Answer(text="\n".join(texts).strip(), spent=usage, messages=kept, why=why,
+                      is_error=bool(why) or (bool(getattr(kept[-1], "is_error", False)) if kept else False))
 
     def ask(self, prompt: str, **over: Any) -> Answer:
         """One agentic task, start to finish, and what it spent."""

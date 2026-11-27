@@ -41,6 +41,7 @@ REASONS = {
     "path": "a path of the checkout that goes through a link, so it is not written",
     "collision": "a name that folds to the same name as another on this filesystem",
     "unread": "a project too large to read what names what, so nothing of it is applied",
+    "withheld": "a change of a run that failed, which nothing publishes",
 }
 """One sentence the parent writes for each cause of a refusal: the classes of the classifier, and the causes that are not about a file's class."""
 RULED = frozenset({"program", "data"})

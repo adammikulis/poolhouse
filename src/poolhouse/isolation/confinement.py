@@ -43,7 +43,7 @@ from poolhouse.isolation.publish import bind
 from poolhouse.isolation.refusals import IsolationFailed
 from poolhouse.isolation.session_bridge import Handlers, SessionBridge, Terms
 from poolhouse.isolation.spec import Spec
-from poolhouse.isolation.workspace import Launch, Session, Turn
+from poolhouse.isolation.workspace import Launch, Published, Session, Turn, tally
 from poolhouse.sandbox import Started, process_tree, spawn
 from poolhouse.sandbox.run import HOOKS
 
@@ -92,9 +92,10 @@ class Context:
         command, *arguments = self.client_argv("mcp")
         return {"command": command, "args": arguments}
 
-    def lead_servers(self) -> str:
-        """The JSON file (``{"mcpServers": {"lead": ...}}``) of a harness that reads one."""
-        return json.dumps({"mcpServers": {SERVER: self.lead_server()}})
+    def lead_servers(self, timeout_s: float) -> str:
+        """The JSON file (``{"mcpServers": {"lead": ...}}``) of Claude Code; ``timeout_s`` is how long it waits for one call of the server's tools
+        (its per-server ``timeout``, in milliseconds)."""
+        return json.dumps({"mcpServers": {SERVER: {**self.lead_server(), "timeout": int(timeout_s * 1000)}}})
 
     def file(self, name: str) -> Path:
         """Where the rendered file ``name`` is, inside the agent home."""
@@ -289,16 +290,30 @@ class Confinement:
         in order: the line a terminal launch ends with."""
         return [turn.text for turn in self.made.turns if turn.text]
 
+    def published(self) -> Published:
+        """What every publication of this session came to, as data: no caller reads it from `said`."""
+        return tally(self.made.turns)
+
+    def waiting_for_model(self) -> bool:
+        """Whether a request of the harness is with the model server now."""
+        return any(each.busy() for each in self.made.services if isinstance(each, ModelBridge))
+
+    def end_processes(self) -> None:
+        """End every process of the session's tree, so none that outlived the harness holds its pipes; nothing is published."""
+        if self._started is not None and self._started.tree is not None:
+            self._end()
+
     def _end(self) -> process_tree.Ended:
         started = self._started
         if started is None:
             return process_tree.Ended()
         return process_tree.end(started.tree, stalled=self.stall)
 
-    def close(self, *, publish: bool = True) -> Turn:
+    def close(self, *, publish: bool = True, keep_patch: bool = False) -> Turn:
         """End every process of the session, publish the last turn (the checks decide, not the exit status), stop the services and remove what the
-        launch made. With ``publish`` false (the session is stopped by the one that started it) nothing more is published: the stage's unpublished
-        work is dropped with the stage. Safe to call twice; the first call decides."""
+        launch made. With ``publish`` false (the session is stopped by the one that started it, or it failed) nothing more is published: the stage's
+        unpublished work is dropped with the stage, after it is kept as a patch when ``keep_patch`` says so. Safe to call twice; the first call
+        decides."""
         if self.closed:
             return self.turn or Turn()
         self.closed = True
@@ -306,7 +321,7 @@ class Confinement:
         try:
             tree = started.tree if started else None
             self.turn = (self.session.finish(tree, stalled=self.stall, ended=None if started else process_tree.Ended()) if publish
-                         else self.session.discard(tree, stalled=self.stall))
+                         else self.session.discard(tree, stalled=self.stall, keep_patch=keep_patch))
             self.made.turns.append(self.turn)
         finally:
             if started is not None:

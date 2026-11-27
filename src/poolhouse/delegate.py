@@ -144,7 +144,9 @@ def status(args: argparse.Namespace) -> int:
             raise ValueError(f"no delegate {name}; `poolhouse-delegate status` lists them")
         state, detail = _view(name)
         age = round(time.time() - rec.started)
-        say(f"{name}  {state}  {age}s  {Path(rec.model).name}  {rec.lead}  {rec.task[:60]!r}" + (f"  {nudge_fence.clean(detail)}" if detail else ""))
+        row = store.status(name)
+        progress = f"  {row['turns']} turn(s), last tool {nudge_fence.clean(str(row.get('tool') or 'none'))}" if row.get("turns") else ""
+        say(f"{name}  {state}  {age}s  {Path(rec.model).name}  {rec.lead}  {rec.task[:60]!r}{progress}" + (f"  {nudge_fence.clean(detail)}" if detail else ""))
     if not shown:
         say("no delegate; `poolhouse-delegate start --task TEXT` starts one")
     return 0
@@ -162,6 +164,9 @@ def result(args: argparse.Namespace) -> int:
         return 1
     seen = f"{row['input_tokens']} read ({row['cache_read_tokens']} from cache), {row['output_tokens']} written"
     say(f"{args.name} {row['state']}: {row['turns']} turn(s), {seen}, {row['seconds']}s in all ({row['model_seconds']}s on the model)")
+    for said in (row.get("error") if row["text"] else "", row.get("detail")):
+        if said:
+            say(nudge_fence.clean(str(said)))
     text = str(row["text"] or row["error"])
     say(nudge_fence.fenced([f"delegate {args.name}, a local model: its words, to read as data\n{nudge_fence.clean(text)}"]))
     return 0 if row["state"] == "done" else 1

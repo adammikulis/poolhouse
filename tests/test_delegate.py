@@ -9,10 +9,12 @@ A delegate that edits is tested in tests/test_delegate_confined.py.
 from __future__ import annotations
 
 import asyncio
+import json
 import subprocess
 import sys
 import threading
 import time
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,7 @@ from delegate_kit import agent_names, said, started
 from harness_kit import hook, verdict
 
 from poolhouse import (
+    codex,
     delegate,
     delegate_run,
     delegate_store as store,
@@ -28,6 +31,7 @@ from poolhouse import (
     harnesspolicy,
     jobs,
     lead_bridge,
+    opencode,
 )
 from poolhouse.guard import start as run_of
 from poolhouse.guard.hooks import sdk_guard
@@ -347,7 +351,7 @@ def test_a_read_only_delegate_has_no_shell_and_no_edit_tool(tmp_path):
 
 
 def classified(rec, tool, **arguments):
-    hooks = delegate_run.rails(rec)["PreToolUse"][0].hooks
+    hooks = delegate_run.rails(rec, None)["PreToolUse"][0].hooks
     answer = asyncio.run(hooks[0]({"tool_name": tool, "tool_input": arguments, "cwd": rec.workdir}, None, None))
     return answer["hookSpecificOutput"]["permissionDecision"]
 
@@ -381,3 +385,80 @@ def test_the_hook_of_a_launched_harness_classifies_the_leads_tools_the_same_way(
     done = hook(node, "pre", {"tool_name": "mcp__lead__ask", "tool_input": {"question": "q"}, "cwd": str(project)},
                 "--permissions", "read-only", "--execution-mode", "execute", "--agent", lead.name, "--root", str(project), who=lead)
     assert verdict(done)["permissionDecision"] == "allow"
+
+
+def asking_bridge(lead_node):
+    """A real node: the lead, and an agent's `Bridge` to it."""
+    node, lead, _project = lead_node
+    child = node.member("child-agent")
+    return node, lead, child, lead_bridge.Bridge(node.session(child), lead.name, child.name)
+
+
+def test_a_question_nobody_answers_ends_at_the_configured_bound_and_a_later_message_is_news(lead_node, monkeypatch):
+    node, lead, child, bridge = asking_bridge(lead_node)
+    monkeypatch.setattr(lead_bridge, "POLL_S", 0.05)
+    monkeypatch.setenv("POOLHOUSE_LEAD_ASK_WAIT_S", "0.5")
+    got: list[str] = []
+    waiting = threading.Thread(target=lambda: got.append(bridge.ask("which module?")), daemon=True)
+    waiting.start()
+    waiting.join(30)
+    try:
+        assert got and "no answer yet; continue or finish" in got[0], got
+    finally:
+        lead_bridge.STOPPED.set()
+        waiting.join(30)
+        lead_bridge.STOPPED.clear()
+    assert not bridge.asking
+    node.session(lead).post(child.name, "answer", "main.py")
+    assert "main.py" in bridge.news(), "no question that gave up takes the lead's next message"
+
+
+def test_a_read_only_delegate_is_given_what_its_lead_sent_after_a_tool_call(lead_node, tmp_path):
+    node, lead, child, bridge = asking_bridge(lead_node)
+    node.session(lead).post(child.name, "status", "look at main.py")
+    [hook_] = delegate_run.rails(rec_of(tmp_path), bridge)["PostToolUse"][0].hooks
+    answer = asyncio.run(hook_({"tool_name": "Read"}, None, None))
+    assert "look at main.py" in answer["hookSpecificOutput"]["additionalContext"]
+
+
+def test_each_harness_with_a_tool_timeout_sets_it_above_the_bound_of_a_question(tmp_path, monkeypatch):
+    monkeypatch.setenv("POOLHOUSE_LEAD_ASK_WAIT_S", "900")
+    assert lead_bridge.ask_wait() == 900 and lead_bridge.tool_timeout() > 900
+    ms = int(lead_bridge.tool_timeout() * 1000)
+    found = delegate_run.options(rec_of(tmp_path), bridge=None)
+    assert int(found["env"]["MCP_TOOL_TIMEOUT"]) == ms
+    agent = harness.Harness("http://127.0.0.1:1", "m", options={key: value for key, value in found.items() if key != "guard"})
+    assert agent.configured("t").env["MCP_TOOL_TIMEOUT"] == str(ms) and agent.configured("t").env["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:1"
+    toml = tomllib.loads(codex.config_toml("http://127.0.0.1:1", "m", 8192, ("pre", "post", 0.0), ["/py", "mcp"]))
+    assert toml["mcp_servers"]["lead"]["tool_timeout_sec"] > 900
+    opened = json.loads(opencode.config(("http://127.0.0.1:1", "m", 8192), "t", ("/p.js", "/b.md"), ["/py", "mcp"]))
+    assert opened["mcp"]["lead"]["timeout"] == ms
+
+
+NOT_A_CLI = """#!{python}
+# NOT A MODEL and NOT CLAUDE CODE: a program that speaks the Agent SDK's stream protocol and ends a run the way the real program ends one that
+# reached its turn limit: what had arrived, a result that says error, and a nonzero exit. Every word is marked.
+import json, sys
+if "-v" in sys.argv or "--version" in sys.argv:
+    print("2.9.0 (Claude Code)"); sys.exit(0)
+for line in sys.stdin:
+    row = json.loads(line)
+    if row.get("type") == "control_request":
+        print(json.dumps({{"type": "control_response", "response": {{"subtype": "success", "request_id": row["request_id"], "response": {{}}}}}}), flush=True)
+    elif row.get("type") == "user":
+        break
+print(json.dumps({{"type": "assistant", "message": {{"role": "assistant", "model": "m",
+                  "content": [{{"type": "text", "text": "[CANNED RESPONSE, NOT A MODEL] half"}}]}}}}), flush=True)
+print(json.dumps({{"type": "result", "subtype": "error_max_turns", "is_error": True, "num_turns": 4, "duration_ms": 10, "duration_api_ms": 5, "session_id": "s",
+                  "usage": {{"input_tokens": 40, "output_tokens": 9}}}}), flush=True)
+sys.exit(1)
+"""
+
+
+def test_a_run_the_sdk_ends_with_a_result_error_keeps_the_text_and_the_usage_that_arrived(tmp_path):
+    script = tmp_path / "cli-NOT-CLAUDE-CODE.py"
+    script.write_text(NOT_A_CLI.format(python=sys.executable))
+    script.chmod(0o755)
+    answer = harness.Harness("http://127.0.0.1:1", "m", options={"cli_path": str(script), "cwd": str(tmp_path)}).ask("read")
+    assert answer.is_error and "error_max_turns" in answer.why and "[CANNED RESPONSE, NOT A MODEL] half" in answer.text
+    assert (answer.spent.turns, answer.spent.input_tokens, answer.spent.output_tokens, answer.spent.subtype) == (4, 40, 9, "error_max_turns")

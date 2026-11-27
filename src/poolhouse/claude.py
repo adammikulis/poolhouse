@@ -10,7 +10,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from poolhouse import coding_policy, harnessing, isolation
+from poolhouse import coding_policy, harnessing, isolation, lead_bridge
 from poolhouse.client import reported_models
 from poolhouse.guard import harnesses
 from poolhouse.log import say
@@ -118,7 +118,7 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
 
     def render(context: isolation.Context) -> isolation.Rendering:
         files = {"session/settings.json": settings(context.hook("pre"), context.hook("post"), harnessing.WAIT_S, context.hook("stop")),
-                 "session/brief.md": brief, "session/mcp.json": context.lead_servers()}
+                 "session/brief.md": brief, "session/mcp.json": context.lead_servers(lead_bridge.tool_timeout())}
         return isolation.Rendering((binary, "--settings", str(context.file("session/settings.json")), "--append-system-prompt-file",
                                     str(context.file("session/brief.md")), "--mcp-config", str(context.file("session/mcp.json")),
                                     "--strict-mcp-config", *extra), files)

@@ -15,7 +15,7 @@ import contextlib
 import hashlib
 import os
 import shutil
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -30,7 +30,7 @@ from poolhouse.isolation.publication import Refusal, fold
 from poolhouse.isolation.publish import PublishRule
 from poolhouse.sandbox import process_tree
 
-__all__ = ["ENVIRONMENT_LINKS", "PATCHES_AT", "Launch", "Session", "Turn", "binds"]
+__all__ = ["ENVIRONMENT_LINKS", "PATCHES_AT", "Launch", "Published", "Session", "Turn", "binds", "tally"]
 
 ENVIRONMENT_LINKS = (".venv", "venv", "node_modules")
 """The ignored folders a project needs that a stage does not hold: each is linked into the stage when the person's own folder of that name is a real
@@ -42,6 +42,7 @@ KEPT_VERSION = 1
 Log = Callable[..., object]
 SURVIVOR = "A process of the session could not be ended, so the stage may still be written and nothing more of it was published; the stage is kept."
 DEFERRED = "The stage was written while it was read, so nothing was published this turn; it is read again at the next turn."
+UNREAD = "The run failed and the stage could not be read, so nothing more was published and no patch of it was kept."
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +73,32 @@ class Turn:
     report: str = ""
     deferred: str = ""
     restored: tuple[tuple[str, str], ...] = ()
+    withheld: tuple[str, ...] = ()
+    """The paths a failed session had changed and nothing published; ``patch`` keeps them."""
+
+
+@dataclass(frozen=True, slots=True)
+class Published:
+    """What the publications of one session came to, as data: each path where its last publication left it, the paths withheld from a failed
+    session, why the last publication published nothing (empty when it ran) and every patch that was kept."""
+
+    applied: tuple[str, ...] = ()
+    refused: tuple[str, ...] = ()
+    conflicts: tuple[str, ...] = ()
+    withheld: tuple[str, ...] = ()
+    deferred: str = ""
+    patches: tuple[str, ...] = ()
+
+
+def tally(turns: Sequence[Turn]) -> Published:
+    """The turns of one session, in order, as one `Published`: a later turn's word on a path replaces an earlier one's."""
+    where: dict[str, str] = {}
+    for turn in turns:
+        for state, paths in (("applied", turn.applied), ("refused", tuple(each.path for each in turn.refused)),
+                             ("conflicts", turn.conflicts), ("withheld", turn.withheld)):
+            where.update(dict.fromkeys(paths, state))
+    held = {state: tuple(sorted(path for path, found in where.items() if found == state)) for state in ("applied", "refused", "conflicts", "withheld")}
+    return Published(**held, deferred=turns[-1].deferred if turns else "", patches=tuple(turn.patch.path for turn in turns if turn.patch))
 
 
 def _digest(value: str | bytes) -> str:
@@ -267,14 +294,42 @@ class Session:
         self._settle(keep=bool(self.decided) or bool(turn.deferred))
         return turn
 
-    def discard(self, tree: process_tree.Tree | None, *, stalled: float) -> Turn:
-        """End every process of the session and drop the stage without publishing it: what the session of a stopped launch had made and not yet
-        published is not applied, and nothing of it is kept for a re-launch. The patches already kept for the session stay, with their reports."""
+    def discard(self, tree: process_tree.Tree | None, *, stalled: float, keep_patch: bool = False) -> Turn:
+        """End every process of the session and drop the stage without publishing it: what the session of a stopped or failed launch had made and
+        not yet published is not applied, and nothing of it is kept for a re-launch. The patches already kept for the session stay, with their
+        reports. With ``keep_patch`` (a failed launch) the unpublished changes are first written as one more patch, which the turn names."""
         if tree is not None:
             process_tree.end(tree, stalled=stalled)
             process_tree.release(tree)
-        self._settle(keep=False)
-        return Turn()
+        turn = Turn()
+        try:
+            if keep_patch:
+                with self.workspace.lock:
+                    turn = self._withhold()
+        finally:
+            self._settle(keep=False)
+        return turn
+
+    def _withhold(self) -> Turn:
+        """The changes no publication has decided, kept as a patch and applied nowhere."""
+        try:
+            captured, made = self.workspace.observe(self.stage, self.base)
+        except (RuntimeError, TimeoutError):
+            return Turn(deferred=UNREAD, text=UNREAD)
+        changes = tuple(each for each in between(self.base, captured) if self.decided.get(each.path) != (each.after, each.after_mode))
+        basis = publication.Basis(self.root, captured, self.tracked, self.launch.rules)
+        decision = publication.decide(basis, changes, self._news(captured, made))
+        sizes = {os.fsdecode(each.path): each.size for each in captured.entries}
+        kept = [*decision.refused, *(Refusal(each.path, "withheld", sizes.get(each.path, 0)) for each in decision.edits)]
+        if not kept:
+            return Turn()
+        patch = self.kept.write(publication.patch_text(basis, kept))
+        paths = tuple(each.path for each in kept)
+        text = (f"{HEAD} The run failed, so nothing more was published. What it had changed ({len(paths)}) and had not published is kept as a patch, "
+                f"digest {patch.digest[:16]}, at {patch.path}.")
+        self.launch.log("isolation.publication", subject=self.launch.session, outcome="withheld",
+                        meta={"withheld": [_digest(path) for path in paths], "patch": patch.digest})
+        return Turn(patch=patch, text=text, withheld=paths)
 
     def _settle(self, *, keep: bool) -> None:
         """Close the session's directories. A stage with refused or unpublished work is kept, with its base, for a re-launch of the same

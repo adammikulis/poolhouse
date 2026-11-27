@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -12,9 +13,11 @@ from poolhouse import home
 from poolhouse.board.names import valid_name
 from poolhouse.files import read_json, write_json
 
-__all__ = ["Delegate", "finished", "folder", "load", "log_file", "names", "result", "save", "save_result", "set_status", "status"]
+__all__ = ["Delegate", "finished", "folder", "load", "log_file", "names", "result", "save", "save_result", "set_progress", "set_status", "status"]
 
-ENDED = ("done", "failed", "stopped")
+ENDED = ("done", "partial", "unapplied", "failed", "stopped")
+_STATUS = threading.Lock()
+"""Held while the status is read and written again: the runner writes progress while a question marks the state from another thread."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,13 +85,22 @@ def names() -> list[str]:
 
 
 def status(name: str) -> dict[str, Any]:
-    """What the runner last wrote: ``state`` (starting, loading, working, asking, done, failed or stopped), ``detail`` and ``beat``."""
+    """What the runner last wrote: ``state`` (starting, loading, working, asking, done, partial, unapplied, failed or stopped), ``detail``,
+    ``beat`` and, once a run has said something, its ``turns`` and last ``tool``."""
     found = read_json(home.state("delegates", name) / "status.json", {}) if valid_name(name) else {}
     return found if isinstance(found, dict) else {}
 
 
 def set_status(name: str, state: str, detail: str = "") -> None:
-    write_json(folder(name) / "status.json", {"state": state, "detail": detail, "beat": time.time()})
+    with _STATUS:
+        progress = {key: value for key, value in status(name).items() if key in ("turns", "tool")}
+        write_json(folder(name) / "status.json", {**progress, "state": state, "detail": detail, "beat": time.time()})
+
+
+def set_progress(name: str, turns: int, tool: str) -> None:
+    """The turns a run has taken and the last tool it called; its state stays as it is."""
+    with _STATUS:
+        write_json(folder(name) / "status.json", {**status(name), "turns": turns, "tool": tool, "beat": time.time()})
 
 
 def save_result(name: str, row: dict[str, Any]) -> None:

@@ -173,6 +173,7 @@ class ModelBridge:
         self._slots = threading.BoundedSemaphore(max(1, int(lease.slots)))
         self._totals = Totals(Counter(), Counter())
         self._lock = threading.Lock()
+        self._busy = 0
         self._server = Server(socket.AF_INET, ("127.0.0.1", 0), self._connection,
                               stopped=lambda: tell(self.events, "model-bridge", "isolation.service_stopped"))
         self.port = 0
@@ -187,6 +188,11 @@ class ModelBridge:
 
     def stop(self) -> None:
         self._server.stop()
+
+    def busy(self) -> int:
+        """How many requests are with the model server now, those that wait for one of its slots among them."""
+        with self._lock:
+            return self._busy
 
     def summary(self) -> dict[str, object]:
         """What was served, for the end-of-session record: counts by route and status, the bytes answered and the routes refused."""
@@ -242,12 +248,18 @@ class ModelBridge:
             if not JSON_TYPE.fullmatch((head.one("content-type") or "").strip()):
                 raise wire.Refusal(400, MESSAGES["type"])
             body = pin(wire.read_body(sock, buffer, length), self.alias, path)
-        if not self._slots.acquire(timeout=min(self.idle, SLOT_WAIT_SECONDS)):
-            raise wire.Refusal(429, MESSAGES["busy"], (("Retry-After", str(RETRY_AFTER)),))
+        with self._lock:
+            self._busy += 1
         try:
-            return self._relay(sock, head, path, body)
+            if not self._slots.acquire(timeout=min(self.idle, SLOT_WAIT_SECONDS)):
+                raise wire.Refusal(429, MESSAGES["busy"], (("Retry-After", str(RETRY_AFTER)),))
+            try:
+                return self._relay(sock, head, path, body)
+            finally:
+                self._slots.release()
         finally:
-            self._slots.release()
+            with self._lock:
+                self._busy -= 1
 
     def _models(self) -> dict[str, object]:
         """The one model of this session as the lease names it: its alias and its window, and nothing the server would say of itself (the path
