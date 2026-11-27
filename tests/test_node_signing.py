@@ -33,7 +33,10 @@ from poolhouse import (
     node_permission,
     node_signing,
     real_machine,
+    runtime,
+    runtime_deploy,
     runtime_identity,
+    runtime_store,
     setup,
 )
 from poolhouse.lock import Busy, only_one
@@ -77,6 +80,7 @@ class Tools:
         self.keeps_trust = False
         self.refuses_untrust = False
         self.listing_fails = False
+        self.export_fails = False
 
     def trusted(self, sha: str = SHA, *, key: bool = True, trusted: bool = True) -> None:
         self.certificates[sha] = {"key": key, "trusted": trusted}
@@ -108,7 +112,7 @@ class Tools:
         assert argv[0] == "security", f"plumbing-only keychain: unexpected command {argv}"
         self.on.get(argv[1], lambda _rest: None)(argv[2:])
         code, out = self._security(argv[1], argv[2:])
-        none = "No Trust Settings were found." if argv[1] == "trust-settings-export" else "SecKeychain error"
+        none = "No Trust Settings were found." if argv[1] == "trust-settings-export" and not self.export_fails else "SecKeychain error"
         return subprocess.CompletedProcess(argv, code, out, "" if code == 0 else f"plumbing-only canned: {none}")
 
     def _security(self, verb: str, rest: list[str]) -> tuple[int, str]:
@@ -126,7 +130,7 @@ class Tools:
                         for sha in self.certificates]
             return (0, "".join(rows)) if rows else (44, "")
         if verb == "trust-settings-export":
-            if not self.settings:
+            if not self.settings or self.export_fails:
                 return 1, ""
             issuer = bytes([len(NAME)]) + NAME.encode()
             Path(rest[0]).write_bytes(plistlib.dumps({"trustVersion": 1, "trustList": {sha.upper(): {"issuerName": issuer} for sha in self.settings}}))
@@ -394,14 +398,15 @@ def reads_as_certificate_signed(monkeypatch, bundle: Path) -> None:
 
 
 @pytest.mark.usefixtures("macos")
-@pytest.mark.parametrize(("keychain", "kept"), [("cannot sign", True), ("cannot be listed", True), ("holds no certificate", False)],
-                         ids=["cannot-sign", "cannot-be-listed", "no-certificate"])
+@pytest.mark.parametrize(("keychain", "kept"), [("cannot sign", True), ("cannot be listed", True), ("holds no certificate", False),
+                                                ("certificate is not trusted", False), ("certificate has no key", False)],
+                         ids=["cannot-sign", "cannot-be-listed", "no-certificate", "untrusted", "keyless"])
 def test_a_certificate_signed_executable_stays_when_the_next_one_cannot_be_signed_with_it(installed, monkeypatch, capsys, keychain, kept):
     executable = runtime_identity.ensure_bundle(interpreter())
     stamp = executable.stat().st_ino
     reads_as_certificate_signed(monkeypatch, runtime_identity.bundle_path())
     if keychain != "holds no certificate":
-        installed.trusted()
+        installed.trusted(trusted=keychain != "certificate is not trusted", key=keychain != "certificate has no key")
     installed.certificate_signing_fails, installed.listing_fails = True, keychain == "cannot be listed"
     monkeypatch.setattr(runtime_identity, "digest", lambda files: "f" * 64)  # another interpreter, so a new executable is due
     capsys.readouterr()
@@ -535,10 +540,118 @@ def test_a_trust_setting_that_outlives_its_certificate_is_removed_or_named(tools
             node_signing.remove(lambda _text: None)
 
 
-def test_a_trust_setting_with_no_certificate_is_named_not_called_nothing(tools):
+def test_a_trust_setting_whose_certificate_file_is_nowhere_is_named_and_stops_nothing(tools):
     tools.settings.add(OTHER)
-    with pytest.raises(node_signing.SigningError, match=f"trust setting {OTHER}"):
+    said, ran = [], []
+    node_signing.remove(said.append, lambda: ran.append(True))
+    told = " ".join(said)
+    assert ran == [True] and OTHER in told and "can be deleted in" in told
+
+
+def test_a_setting_one_removal_leaves_is_deleted_by_the_next(tools):
+    tools.trusted()
+    tools.keeps_trust = tools.refuses_untrust = True
+    with pytest.raises(node_signing.SigningError, match=f"trust setting {SHA}"):
         node_signing.remove(lambda _text: None)
+    tools.refuses_untrust = False
+    node_signing.remove(lambda _text: None)
+    assert tools.settings == set() and not list((home.home() / "certificates").glob("*.pem")), "the copy goes with the setting"
+
+
+@pytest.mark.usefixtures("macos")
+def test_the_apps_are_signed_locally_once_the_identity_is_gone_though_a_setting_stays(tmp_path, installed):
+    node_app.build(node_program(tmp_path))
+    installed.trusted()
+    installed.keeps_trust = installed.refuses_untrust = True
+    installed.calls.clear()
+    assert node_permission.main(["certificate", "remove"]) == 1
+    assert installed.certificates == {} and installed.signatures() == ["-"]
+
+
+def test_trust_settings_that_cannot_be_read_stop_no_deletion(tools):
+    tools.trusted()
+    tools.export_fails = True
+    ran = []
+    with pytest.raises(node_signing.SigningError, match="could not be read"):
+        node_signing.remove(lambda _text: None, lambda: ran.append(True))
+    assert tools.certificates == {} and ran == [True]
+
+
+def test_an_unfinished_setup_removes_what_it_imported_though_trust_cannot_be_read(tools):
+    tools.trust_step, tools.export_fails = 1, True
+    with pytest.raises(node_signing.SigningError):
+        node_signing.enable(lambda _text: None)
+    assert tools.certificates == {}
+
+
+def test_the_key_advice_names_all_that_stays_locked_and_what_is_not_known():
+    for words in ("device key", "memory vault", "stored credentials", "signing key", "screen", "has not been verified"):
+        assert words in node_signing.KEY_ADVICE
+
+
+def made_runtime(tmp_path: Path, name: str) -> runtime.Runtime:
+    prefix = tmp_path / "runtimes" / name
+    subprocess.run([runtime_identity.unbound(Path(sys.executable)), "-m", "venv", "--without-pip", str(prefix)], check=True,
+                   capture_output=True)
+    return runtime.Runtime(prefix, "a" * 40, "0", runtime.identity())
+
+
+@pytest.mark.usefixtures("macos")
+def test_a_certificate_signed_executable_that_no_longer_starts_is_replaced(installed, monkeypatch):
+    executable = runtime_identity.ensure_bundle(interpreter())
+    stamp, starts = executable.stat().st_ino, runtime_identity.bare_problem
+    reads_as_certificate_signed(monkeypatch, runtime_identity.bundle_path())
+    installed.trusted()
+    installed.certificate_signing_fails = True
+    monkeypatch.setattr(runtime_identity, "bare_problem",
+                        lambda path: "plumbing-only: its Python is gone" if path == executable else starts(path))
+    monkeypatch.setattr(runtime_identity, "digest", lambda files: "f" * 64)
+    assert runtime_identity.ensure_bundle(interpreter()) == executable and executable.stat().st_ino != stamp
+
+
+@pytest.mark.usefixtures("macos")
+def test_a_kept_executable_that_cannot_start_the_new_runtime_is_replaced(tmp_path, installed, monkeypatch):
+    old = runtime_identity.bind(made_runtime(tmp_path, "one"))
+    stamp, probe = old.stat().st_ino, runtime_identity._probe
+    reads_as_certificate_signed(monkeypatch, runtime_identity.bundle_path())
+    installed.trusted()
+    installed.certificate_signing_fails = True
+    monkeypatch.setattr(runtime_identity, "digest", lambda files: "f" * 64)
+
+    def probed(prefix, executable):
+        if executable.stat().st_ino == stamp:
+            raise runtime_identity.IdentityError("plumbing-only: the old executable cannot start this runtime")
+        probe(prefix, executable)
+
+    monkeypatch.setattr(runtime_identity, "_probe", probed)
+    new = made_runtime(tmp_path, "two")
+    assert runtime_identity.bind(new) == old and runtime_identity.bound(new.prefix) and old.stat().st_ino != stamp
+
+
+@pytest.mark.usefixtures("macos")
+def test_a_kept_executable_is_in_the_outcome_the_deploy_record_and_setup(tmp_path, installed, monkeypatch):
+    chosen = made_runtime(tmp_path, "one")
+    runtime_identity.bind(chosen)
+    reads_as_certificate_signed(monkeypatch, runtime_identity.bundle_path())
+    installed.trusted()
+    installed.certificate_signing_fails = True
+    monkeypatch.setattr(runtime_identity, "digest", lambda files: "f" * 64)
+    told = runtime_deploy._identity(chosen, runtime_deploy.Plan(tmp_path, chosen.commit, None))
+    assert any("made from" in one and "certificate enable" in one for one in told)
+    assert any("made from" in one for one in runtime_store.read_state()["identity_notices"])
+    monkeypatch.setattr(setup.runtime, "selection_prefix", lambda: chosen.prefix)
+    kept = [finding for finding in setup.signature_findings() if finding.name == "macOS executable"]
+    assert kept and not kept[0].good and kept[0].fix == ["poolhouse", "local-network", "certificate", "enable"]
+
+
+@pytest.mark.usefixtures("macos")
+def test_a_changed_signature_is_in_the_updates_outcome_and_record(tmp_path, installed, monkeypatch):
+    chosen = made_runtime(tmp_path, "one")
+    runtime_identity.bind(chosen)
+    holds_a_key()
+    monkeypatch.setattr(runtime_identity, "digest", lambda files: "f" * 64)
+    told = runtime_deploy._identity(chosen, runtime_deploy.Plan(tmp_path, chosen.commit, None))
+    assert node_signing.KEY_NOTE in told and node_signing.KEY_NOTE in runtime_store.read_state()["identity_notices"]
 
 
 def test_a_declined_step_that_still_made_a_trust_setting_leaves_none(tools):

@@ -319,22 +319,21 @@ def built_runtime(tmp_path: Path) -> runtime.Runtime:
     return runtime.Runtime(tmp_path / "prefix", COMMIT, "0", runtime.identity())
 
 
-@pytest.mark.parametrize(("failing", "expected"), [("", ["smoke", "adopt", "publish"]), ("smoke", ["smoke", "discard"]),
-                                                   ("adopt", ["smoke", "adopt", "discard"])],
-                         ids=["passes", "smoke-fails", "cannot-bind"])
-def test_the_executable_changes_only_after_the_smoke_and_just_before_the_selection(tmp_path, monkeypatch, failing, expected):
+def deploying(tmp_path, monkeypatch, failing: str) -> tuple[runtime.Runtime, list[str]]:
+    """A deployment whose every step but the order is stood in for; "kept" is a kept executable the second smoke refuses."""
     chosen, order = built_runtime(tmp_path), []
 
     def step(name, fault):
         def run(*_args, **_kwargs):
             order.append(name)
-            if failing == name:
+            if failing == name or (failing == "kept" and name == "smoke" and order.count("smoke") == 2):
                 raise fault(f"plumbing-only: {name} fails")
             return ""
 
         return run
 
     deploy, nothing = runtime_deploy, lambda *_a, **_k: None
+    monkeypatch.setattr(deploy.runtime_identity, "kept_note", lambda *_a: "kept" if failing == "kept" else "", raising=False)
     monkeypatch.setattr(deploy, "_agent_context", lambda agent="": False)
     monkeypatch.setattr(deploy, "host_python", lambda: tmp_path / "python")
     monkeypatch.setattr(deploy.runtime_wheel, "build", lambda *a, **k: chosen)
@@ -353,13 +352,43 @@ def test_the_executable_changes_only_after_the_smoke_and_just_before_the_selecti
         monkeypatch.setattr(deploy.runtime_bridges, name, lambda *_a, **_k: [])
     monkeypatch.setattr(deploy, "floor_of", lambda *_a: 0)
     monkeypatch.setattr(deploy, "resolve_commit", lambda *_a: COMMIT)
+    return chosen, order
+
+
+@pytest.mark.parametrize(("failing", "expected"), [("", ["smoke", "adopt", "publish"]), ("smoke", ["smoke", "discard"]),
+                                                   ("adopt", ["smoke", "adopt", "discard"]),
+                                                   ("kept", ["smoke", "adopt", "smoke", "adopt", "smoke", "publish"])],
+                         ids=["passes", "smoke-fails", "cannot-bind", "kept-executable-refused"])
+def test_the_executable_changes_only_after_the_smoke_and_just_before_the_selection(tmp_path, monkeypatch, failing, expected):
+    chosen, order = deploying(tmp_path, monkeypatch, failing)
     plan = runtime_deploy.Plan(tmp_path, COMMIT, None)
-    if failing:
+    if failing in ("smoke", "adopt"):
         with pytest.raises(OSError if failing == "adopt" else runtime_deploy.DeployError, match=f"{failing} fails"):
             runtime_deploy.build_and_switch(plan)
     else:
         assert runtime_deploy.build_and_switch(plan) == chosen
     assert order == expected
+
+
+@pytest.mark.usefixtures("macos")
+def test_a_selection_that_fails_after_the_binding_leaves_the_executable_as_it_was(tmp_path, monkeypatch):
+    deploying(tmp_path, monkeypatch, "publish")
+    monkeypatch.setattr(runtime_identity, "applies", lambda: True)
+    interpreter = Path(os.path.realpath(sys.executable))
+    runtime_identity.ensure_bundle(interpreter)
+    before = runtime_identity.requirement_of(runtime_identity.bundle_path())
+
+    def rebuilt(chosen, **_):
+        monkeypatch.setattr(runtime_identity, "digest", lambda files: "f" * 64)
+        runtime_identity.ensure_bundle(interpreter)
+        assert runtime_identity.requirement_of(runtime_identity.bundle_path()) != before
+        return ""
+
+    monkeypatch.setattr(runtime_identity, "adopt", rebuilt)
+    with pytest.raises(OSError, match="publish fails"):
+        runtime_deploy.build_and_switch(runtime_deploy.Plan(tmp_path, COMMIT, None))
+    assert runtime_identity.requirement_of(runtime_identity.bundle_path()) == before
+    assert not (runtime_identity.bundle_path().parent / ".previous").exists()
 
 
 def test_the_host_python_is_never_the_copy_in_the_bundle(tmp_path, monkeypatch):

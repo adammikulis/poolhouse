@@ -18,6 +18,7 @@ import hashlib
 import plistlib
 import re
 import secrets
+import shutil
 import signal
 import subprocess
 import tempfile
@@ -45,8 +46,9 @@ REMOVE = "poolhouse local-network certificate remove"
 UNLOCK = "poolhouse-security unlock"
 WHY_NOT_AN_AGENT = "an agent must not write your keychain"
 KEY_ADVICE = ("The encryption key Poolhouse keeps in your login keychain trusts the program that made it, as it is signed. After that "
-              "signature changes, macOS may ask before Poolhouse can read the key, and a background node cannot answer: if the node "
-              f"does not start, run `{UNLOCK}` in a terminal and tell macOS to always allow it.")
+              "signature changes, macOS may refuse Poolhouse the key: the node's device key, the memory vault, stored credentials and the "
+              "fleet signing key then stay locked, and a background process cannot answer macOS. A person at this Mac's screen can run "
+              f"`{UNLOCK}` in a terminal and tell macOS to always allow it; that this restores access has not been verified.")
 KEY_NOTE = f"Poolhouse's signature on this Mac changed. {KEY_ADVICE}"
 WHAT_ENABLE_ADDS = f"""This adds a code-signing certificate to your login keychain:
   - a self-signed certificate named "{CERT_NAME}" and its private key, which /usr/bin/codesign may use
@@ -188,10 +190,10 @@ def usable_certificate() -> str:
         return ""
 
 
-def may_hold_certificate() -> bool:
-    """False only when the keychain answers that it holds no certificate of this name."""
+def may_have_identity() -> bool:
+    """False only when the keychain answers that it has no identity of this certificate that is usable for code signing."""
     try:
-        return bool(certificates())
+        return bool(identities())
     except (OSError, subprocess.SubprocessError):
         return True
 
@@ -199,9 +201,45 @@ def may_hold_certificate() -> bool:
 def holds_leftovers() -> bool:
     """Whether the keychain or its trust settings hold anything of this certificate, usable or not; False where that cannot be read."""
     try:
-        return bool(certificates() or trusted_certificates())
+        if certificates():
+            return True
     except (OSError, subprocess.SubprocessError):
         return False
+    return bool(_settings([]))
+
+
+def _settings(why: list[str]) -> list[str] | None:
+    """`trusted_certificates`, or None with the reason added to ``why`` when the trust settings cannot be read."""
+    try:
+        return trusted_certificates()
+    except (OSError, subprocess.SubprocessError) as exc:
+        why.append(str(exc))
+        return None
+
+
+def _copies() -> Path:
+    """Where the public certificate is kept until its trust setting is known to be gone: deleting a setting takes its certificate's file."""
+    return home() / "certificates"
+
+
+def _keep_copies() -> None:
+    """Keep the public certificate of every certificate of this name now in the keychain."""
+    folder = _copies()
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    for pem in re.findall(r"-----BEGIN CERTIFICATE-----.+?-----END CERTIFICATE-----", _find("-p"), re.DOTALL):
+        (folder / f"{fingerprint_of(pem)}.pem").write_text(pem + "\n", encoding="utf-8")
+
+
+def _kept_copies() -> dict[str, Path]:
+    return {path.stem: path for path in _copies().glob("*.pem")}
+
+
+def _forget_copies(present: list[str], settings: list[str] | None) -> None:
+    """Drop the kept certificate of each fingerprint that has neither a certificate nor a trust setting any more."""
+    if settings is not None:
+        for sha1, path in _kept_copies().items():
+            if sha1 not in present and sha1 not in settings:
+                path.unlink(missing_ok=True)
 
 
 def sign(bundle: Path, identifier: str, requirement_for: Callable[[str], str]) -> str:
@@ -220,10 +258,16 @@ def sign(bundle: Path, identifier: str, requirement_for: Callable[[str], str]) -
 
 
 def _delete(sha1: str, *, trust: bool) -> str:
-    """Delete one certificate with its private key, and with ``trust`` its user trust setting; returns what went wrong, or ''."""
+    """Delete one certificate with its private key, and with ``trust`` its user trust setting; returns what went wrong, or ''.
+    A certificate macOS does not list as usable is then tried without its setting, which it may never have had."""
     try:
         verb = "delete-identity" if sha1 in identities(usable=False) else "delete-certificate"  # the second for one with no key
-        _run(["security", verb, "-Z", sha1, *(["-t"] if trust else []), str(keychain())])
+        try:
+            _run(["security", verb, "-Z", sha1, *(["-t"] if trust else []), str(keychain())])
+        except SigningError:
+            if not trust or sha1 in identities():
+                raise
+            _run(["security", verb, "-Z", sha1, str(keychain())])
     except (OSError, subprocess.SubprocessError) as exc:
         return str(exc)
     return ""
@@ -238,10 +282,14 @@ def _untrust(certificate: Path) -> str:
     return ""
 
 
-def _left(only: str = "") -> list[str]:
-    """What is still there of this certificate (of ``only``, when named), each as "<what> <fingerprint>"."""
-    held = (("certificate", certificates()), ("identity", identities(usable=False)), ("trust setting", trusted_certificates()))
-    return [f"{what} {sha1}" for what, found in held for sha1 in found if not only or sha1 == only]
+def _left(ours: set[str], why: list[str]) -> list[str]:
+    """What is still there that a further run could delete, each as "<what> <fingerprint>": certificates and identities of this
+    name, and the trust settings of ``ours``, the certificates whose files are kept."""
+    held = [("certificate", certificates()), ("identity", identities(usable=False))]
+    settings = _settings(why)
+    held.append(("trust setting", [sha1 for sha1 in settings or [] if sha1 in ours]))
+    left = [f"{what} {sha1}" for what, found in held for sha1 in found]
+    return left if settings is not None else [*left, "trust settings that could not be read"]
 
 
 @contextmanager
@@ -303,6 +351,8 @@ def _add(say: Callable[[str], None]) -> None:
         key, cert, package = (Path(scratch) / name for name in ("key.pem", "cert.pem", "id.p12"))
         _run([OPENSSL, *certificate_request(), "-keyout", str(key), "-out", str(cert)])
         sha1 = fingerprint_of(cert.read_text(encoding="utf-8"))
+        _copies().mkdir(mode=0o700, parents=True, exist_ok=True)
+        shutil.copyfile(cert, _copies() / f"{sha1}.pem")  # before the keychain holds anything of it
         _run([OPENSSL, "pkcs12", "-export", "-inkey", str(key), "-in", str(cert), "-out", str(package), "-passout", f"pass:{password}"])
         trusted, added = False, False
         try:
@@ -326,10 +376,13 @@ def _discard(sha1: str, certificate: Path, *, trusted: bool) -> None:
     why: list[str] = []
     try:
         if sha1 in certificates():
-            why.append(_delete(sha1, trust=trusted or sha1 in trusted_certificates()))
-        if sha1 in trusted_certificates():
+            settings = _settings(why)
+            why.append(_delete(sha1, trust=trusted or settings is None or sha1 in settings))
+        settings = _settings(why)
+        if sha1 not in certificates() and (settings is None or sha1 in settings):
             why.append(_untrust(certificate))
-        left = _left(sha1)
+        left = [one for one in _left({sha1}, why) if sha1 in one or "could not be read" in one]
+        _forget_copies(certificates(), _settings(why))
     except (OSError, subprocess.SubprocessError) as exc:
         why.append(str(exc))
         left = [f"certificate {sha1}"]
@@ -341,38 +394,40 @@ def _discard(sha1: str, certificate: Path, *, trusted: bool) -> None:
 
 
 def remove(say: Callable[[str], None], then: Callable[[], None] = lambda: None) -> None:
-    """Delete every certificate of this name with its private key and trust setting, then run ``then``; with none there the
-    keychain is not changed. Refused at once to an agent."""
+    """Delete every certificate of this name with its private key and trust setting; with none there the keychain is not changed.
+    ``then`` runs once no identity of the name is left, whatever else is; raises for what a further run could still delete.
+    Refused at once to an agent."""
     caller.refuse_agent(REMOVE, WHY_NOT_AN_AGENT)
     real_machine.require("removing the signing certificate from the login keychain")
     with _changing():
-        _remove(say)
-        then()
+        left, why = _remove(say)
+        if not identities(usable=False):
+            then()
+    if left:
+        raise SigningError(f"still in your login keychain or its trust settings: {', '.join(left)}. {' '.join(filter(None, why))}")
 
 
-def _remove(say: Callable[[str], None]) -> None:
-    held, settings = certificates(), trusted_certificates()
-    if not held and not settings:
+def _remove(say: Callable[[str], None]) -> tuple[list[str], list[str]]:
+    """Delete what there is; returns what a further run could still delete, and what the tools said."""
+    why: list[str] = []
+    held = certificates()
+    _keep_copies()  # before anything is deleted, so a later run can delete a setting this one could not
+    settings = _settings(why)
+    if not held and settings == []:
+        _forget_copies(held, settings)
         say(f"there is no {CERT_NAME!r} certificate or trust setting in your login keychain; nothing to remove")
-        return
+        return [], []
     say(f"removing the {CERT_NAME!r} certificate, its private key and its trust setting; macOS may ask for your password. "
         f"Poolhouse is then signed locally.\n{KEY_ADVICE}")
-    with tempfile.TemporaryDirectory(prefix="poolhouse-cert") as scratch:
-        copies = {}  # a trust setting is deleted by its certificate's file, which has to be taken before the certificate goes
-        for pem in re.findall(r"-----BEGIN CERTIFICATE-----.+?-----END CERTIFICATE-----", _find("-p"), re.DOTALL):
-            sha1 = fingerprint_of(pem)
-            copies[sha1] = Path(scratch) / f"{sha1}.pem"
-            copies[sha1].write_text(pem + "\n", encoding="utf-8")
-        problems = []
-        for sha1 in held:
-            usable = sha1 in identities()
-            why = _delete(sha1, trust=True)
-            if why and not usable:
-                why = _delete(sha1, trust=False)  # one that never was trusted has no setting to delete
-            problems.append(why)
-        present = certificates()
-        problems += [_untrust(copies[sha1]) for sha1 in trusted_certificates() if sha1 in copies and sha1 not in present]
-    left = _left()
-    if left:
-        raise SigningError(f"still in your login keychain or its trust settings: {', '.join(left)}. {' '.join(filter(None, problems))}")
-    say(f"removed {', '.join(held)}")
+    why += [_delete(sha1, trust=True) for sha1 in held]
+    present, settings, kept = certificates(), _settings(why), _kept_copies()
+    why += [_untrust(path) for sha1, path in kept.items() if sha1 not in present and (settings is None or sha1 in settings)]
+    left = _left(set(kept), why)
+    settings = _settings(why)
+    _forget_copies(certificates(), settings)
+    for sha1 in [one for one in settings or [] if one not in kept]:
+        say(f"a trust setting for {sha1} remains and no file of its certificate is left, so `security` cannot delete it; it can be "
+            "deleted in Keychain Access")
+    if not left and held:
+        say(f"removed {', '.join(held)}")
+    return left, why

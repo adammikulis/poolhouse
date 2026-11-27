@@ -6,6 +6,7 @@ import json
 import os
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -176,10 +177,12 @@ def owning(paths: list[Path], *, wait_s: float, who: session.Session | None) -> 
 
 def host_python() -> Path:
     """The Python that builds runtime environments."""
-    found = Environment(runtime.directory() / "bootstrap").host_python()
+    environment = Environment(runtime.directory() / "bootstrap")
+    found = environment.host_python()
     if found is None:
         raise OSError("install Python 3.13 to prepare an isolated runtime")
-    return runtime_identity.unbound(found)
+    same_version = environment.python_version == f"{sys.version_info.major}.{sys.version_info.minor}"
+    return (runtime_identity.held_interpreter() if same_version else None) or runtime_identity.unbound(found)
 
 
 def build(plan: Plan, stage: Path, prefix: Path) -> runtime.Runtime:
@@ -236,7 +239,29 @@ def _record(plan: Plan) -> None:
     _note({"checkout": str(plan.checkout), "launchers": str(plan.launchers) if plan.launchers else None})
 
 
-def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = frozenset()) -> None:
+def _adopt(chosen: runtime.Runtime, check: Callable[[], None] | None) -> list[str]:
+    """Bind ``chosen``; returns the sentences a person should know about it, which the deploy record keeps. A kept executable that
+    ``check`` (the smoke of this runtime) refuses is replaced and checked again."""
+    before = runtime_identity.signed_as(chosen.identity)
+    done = runtime_identity.adopt(chosen)
+    if check is not None and runtime_identity.kept_note(chosen.prefix, chosen.identity):
+        try:
+            check()
+        except RECOVERABLE:
+            runtime_identity.adopt(chosen, keep=False)
+            check()
+    told = runtime_identity.notices(chosen.prefix, chosen.identity, before)
+    _note({"identity_notices": told or None})
+    return [*([done] if done else []), *told]
+
+
+def _notices() -> list[str]:
+    held = runtime_store.read_state().get("identity_notices")
+    return [str(one) for one in held] if isinstance(held, list) else []
+
+
+def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = frozenset(),
+           check: Callable[[], None] | None = None) -> None:
     """Prepare owned commands and atomically publish the selected runtime."""
     _needs_session(acting(plan), plan.agent)
     with runtime_git.crossing(plan.checkout, note="runtime cutover"):
@@ -262,8 +287,9 @@ def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = fr
                 runtime_launchers.install(plan.launchers, chosen, follow_selection=plan.launchers == runtime_launchers.directory())
             runtime_bridges.install(expected, bridges)
             _automatic(plan)
-            runtime_identity.adopt(chosen)  # the last step before the selection: the executable changes only for a runtime about to be it
-            runtime.publish(chosen)
+            with runtime_identity.restored_on_failure(chosen.identity):
+                _adopt(chosen, check)  # the last step before the selection: the executable changes only for a runtime about to be it
+                runtime.publish(chosen)
             published = True
             _record(plan)
         finally:
@@ -328,7 +354,7 @@ def build_and_switch(plan: Plan, builder: Builder = build, who: session.Session 
             try:
                 runtime_git.until_free(plan.checkout, 0.0)
                 with owning(_switch_paths(plan), wait_s=plan.wait_s, who=who) as claimed:
-                    switch(built, plan, claimed=claimed)
+                    switch(built, plan, claimed=claimed, check=lambda: smoke(built, stage / "source", stage))
             except Busy:
                 deferred = True
                 raise
@@ -444,13 +470,12 @@ def _identity(chosen: runtime.Runtime, plan: Plan) -> list[str]:
     """What it took to make the selected runtime run as Poolhouse, or why it cannot (here, or because this process is not the
     installed software and says so); a failure never takes a working runtime down."""
     try:
-        done = runtime_identity.adopt(chosen)
+        told = _adopt(chosen, None)
     except runtime_identity.IdentityError as exc:
         _note({"identity_failure": {"commit": chosen.commit, "at": time.time(), "detail": str(exc)[-1000:]}})
         return [f"not running as Poolhouse: {exc}"]
     _note({"identity_failure": None})
-    note = done or runtime_identity.unbound_note(chosen, binder(plan))
-    return [note] if note else []
+    return told or [note for note in [runtime_identity.unbound_note(chosen, binder(plan))] if note]
 
 
 def _selection_identity(plan: Plan) -> list[str]:
@@ -501,7 +526,7 @@ def _ensured(plan: Plan, force: bool, force_build: bool, builder: Builder) -> Ou
     _reject_below_floor(plan, built.prefix)
     runtime_store.collect({built.prefix, *([chosen.prefix] if chosen else [])})
     detail = [*steps, f"selected {built.prefix}", *([] if plan.launchers else ["launchers not updated"]),
-              *filter(None, [runtime_identity.unbound_note(built, binder(plan))])]
+              *filter(None, [runtime_identity.unbound_note(built, binder(plan))]), *_notices()]
     return Outcome("switched", plan.commit, "; ".join(detail))
 
 
@@ -529,6 +554,7 @@ def rollback(plan: Plan, to: str = "") -> Outcome:
                 return Outcome("failed", target.commit, str(exc)[-500:])
             if now.get("commit"):
                 _note({"held": {"commit": now["commit"], "reason": f"rolled back to {target.commit[:7]}"}})
-            return Outcome("switched", target.commit, "; ".join(filter(None, [f"selected {target.prefix}", runtime_identity.unbound_note(target, binder(plan))])))
+            return Outcome("switched", target.commit, "; ".join(filter(None, [f"selected {target.prefix}", runtime_identity.unbound_note(target, binder(plan)),
+                                                                              *_notices()])))
     except Busy as exc:
         return Outcome("busy", detail=str(exc))

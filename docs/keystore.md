@@ -127,10 +127,11 @@ The item trusts the program that made it, as that program is signed. When the si
 it changes (a host Python upgrade or a switch of interpreter; for an installed runtime, whose processes
 run as Poolhouse's own executable, an update that changes its local signature, `poolhouse local-network
 certificate enable` or `remove`: [the signature on macOS](node.md#the-signature-on-macos)), macOS asks
-whether the new one may read the master. A background process cannot answer and stays locked, and a
-node whose device key is in the keystore does not start: run `poolhouse-security unlock` in a terminal
-and tell macOS to always allow it. Creating the item with the `security` CLI and `-T` so that a "stable launcher"
-is trusted was considered and not done:
+whether the new one may read the master. A background process cannot answer: the node's device key, the
+memory vault, stored credentials and the fleet signing key stay locked, and a node whose device key is in
+the keystore does not start. A person at the screen can run `poolhouse-security unlock` in a terminal and
+tell macOS to always allow it; that this restores access is unverified. Creating the item with the
+`security` CLI and `-T` so that a "stable launcher" is trusted was considered and not done:
 
 - A launcher that is a script is not what the Keychain checks: the kernel runs the interpreter named
   on its first line, and the access list is matched against that process. Trusting a script path

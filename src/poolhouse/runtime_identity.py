@@ -20,7 +20,8 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from poolhouse import app_bundle, keystore, macho, node_signing, real_machine, runtime
@@ -189,6 +190,19 @@ def unbound(interpreter: Path) -> Path:
     return recorded if recorded.is_file() else interpreter
 
 
+def held_interpreter(identity: str | None = None) -> Path | None:
+    """The interpreter the Poolhouse executable was copied from, while it is there unchanged: a runtime built from it leaves the
+    executable, and what macOS keeps against its signature, as they are. None otherwise."""
+    row = source_of(bundle_path(identity))
+    recorded = Path(str(row.get("interpreter", "")))
+    if not recorded.is_file():
+        return None
+    try:
+        return recorded if digest(parts(recorded)) == row.get("sha256") else None
+    except OSError:
+        return None
+
+
 def parts(interpreter: Path) -> list[tuple[Path, str]]:
     """The files that make the executable: ``interpreter`` (as ``Poolhouse``) and each library it loads from beside itself
     (``@executable_path/`` and ``@loader_path/``, which a Python that is not installed in place, such as a standalone build, uses),
@@ -262,26 +276,75 @@ def _swap(staging: Path, bundle: Path) -> None:
 
 
 def _keeps(bundle: Path, identifier: str) -> bool:
-    """Whether an app stays as it is when its new signature came out local: it carries a certificate signature that verifies, on a
-    Mac whose keychain still holds a certificate of that name or cannot be asked."""
-    if not (applies() and bundle.exists() and signature_form(bundle, identifier) == "certificate" and node_signing.may_hold_certificate()):
+    """Whether an app stays as it is when its new signature came out local: it carries a certificate signature that verifies, the
+    keychain has a usable identity of that certificate or cannot be asked, and, for a runtime's, its executable still starts."""
+    if not (applies() and bundle.exists() and signature_form(bundle, identifier) == "certificate" and node_signing.may_have_identity()):
+        return False
+    if identifier == BUNDLE_ID and bare_problem(bundle / "Contents" / "MacOS" / EXECUTABLE):
         return False
     warn(f"signing with the certificate failed, so {bundle} keeps the executable and certificate signature it had")
     return True
 
 
-def _tell_key(before: str, after: str) -> None:
-    """Say what a changed signature of the executable means for the encryption key, when Poolhouse keeps one in the keychain."""
-    if applies() and before != after and keystore.Keystore().status()["provisioned"]:
-        warn(node_signing.KEY_NOTE)
+def signed_as(identity: str | None = None) -> str:
+    """The designated requirement of the installed Mac's Poolhouse executable, or '' when there is none."""
+    bundle = bundle_path(identity)
+    return requirement_of(bundle) if applies() and bundle.exists() else ""
 
 
-def _build(bundle: Path, files: list[tuple[Path, str]], sha: str, signer: Signer) -> None:
+def _key_note(before: str, after: str) -> str:
+    """What a changed signature of the executable means for the encryption key, when Poolhouse keeps one in the keychain; else ''."""
+    return node_signing.KEY_NOTE if applies() and before != after and keystore.Keystore().status()["provisioned"] else ""
+
+
+def kept_note(prefix: Path, identity: str | None = None) -> str:
+    """What to say when the runtime at ``prefix`` runs under an executable made from another interpreter than its own, which is
+    what a signature failure leaves of an app the certificate had signed; else ''."""
+    if not applies() or not bound(prefix, identity):
+        return ""
+    base, row = base_of(prefix), source_of(bundle_path(identity))
+    try:
+        if base is None or row.get("sha256") == digest(parts(base)):
+            return ""
+    except OSError:
+        return ""
+    return (f"Poolhouse runs under the certificate-signed executable made from {row.get('interpreter')}, not from {base}, because "
+            f"signing a new one failed. `{node_signing.ENABLE}` signs it again")
+
+
+def notices(prefix: Path, identity: str | None, before: str) -> list[str]:
+    """What a person should know after the runtime at ``prefix`` was bound, ``before`` being `signed_as` from before that."""
+    return [one for one in (kept_note(prefix, identity), _key_note(before, signed_as(identity))) if one]
+
+
+@contextmanager
+def restored_on_failure(identity: str | None = None) -> Iterator[None]:
+    """Put the Poolhouse executable back as it was when the block fails, so a runtime that was not selected leaves what the
+    selected one runs as unchanged."""
+    bundle = bundle_path(identity)
+    if not applies() or not bundle.exists():
+        yield
+        return
+    backup = bundle.parent / ".previous" / bundle.name
+    shutil.rmtree(backup.parent, ignore_errors=True)
+    shutil.copytree(bundle, backup, symlinks=True)
+    held, succeeded = (source_of(bundle).get("sha256"), requirement_of(bundle)), False
+    try:
+        yield
+        succeeded = True
+    finally:
+        if not succeeded and (source_of(bundle).get("sha256"), requirement_of(bundle)) != held:
+            with app_bundle.locked(bundle):
+                _swap(backup, bundle)
+        shutil.rmtree(backup.parent, ignore_errors=True)
+
+
+def _build(bundle: Path, files: list[tuple[Path, str]], sha: str, signer: Signer, keep: bool) -> None:
     """Make the signed bundle beside its place and move it in only once it verifies and starts, so a failure leaves the old one
-    standing; the old one also stays where `_keeps` says so."""
+    standing; with ``keep`` the old one also stays where `_keeps` says so."""
     with app_bundle.staged(bundle) as staging:
         _assemble(staging, files, sha)
-        if signer(staging, BUNDLE_ID, requirement) != "certificate" and _keeps(bundle, BUNDLE_ID):
+        if signer(staging, BUNDLE_ID, requirement) != "certificate" and keep and _keeps(bundle, BUNDLE_ID):
             return
         problem = signature_problem(staging) or bare_problem(staging / "Contents" / "MacOS" / EXECUTABLE)
         if problem:
@@ -289,9 +352,10 @@ def _build(bundle: Path, files: list[tuple[Path, str]], sha: str, signer: Signer
         _swap(staging, bundle)
 
 
-def ensure_bundle(interpreter: Path, identity: str | None = None, *, signer: Signer = node_signing.sign) -> Path:
+def ensure_bundle(interpreter: Path, identity: str | None = None, *, signer: Signer = node_signing.sign, keep: bool = True) -> Path:
     """The signed executable made from ``interpreter``, built when it is missing, holds another interpreter, no longer verifies, or
-    is signed locally although the user has a certificate for it (one attempt each time a runtime is bound)."""
+    is signed locally although the user has a certificate for it (one attempt each time a runtime is bound). With ``keep`` a
+    certificate-signed one may stay when its replacement cannot be signed with the certificate (`_keeps`)."""
     bundle = bundle_path(identity)
     files = parts(interpreter)
     sha = digest(files)
@@ -304,10 +368,11 @@ def ensure_bundle(interpreter: Path, identity: str | None = None, *, signer: Sig
         say(f"runtime: signing the Poolhouse executable at {bundle} from {interpreter}")
         before = requirement_of(bundle) if bundle.exists() else ""
         try:
-            _build(bundle, files, sha, signer)
+            _build(bundle, files, sha, signer, keep)
         except (node_signing.SigningError, subprocess.SubprocessError, ValueError) as exc:
             raise IdentityError(f"Poolhouse could not sign its executable ({exc}); the runtime keeps the identity it had") from exc
-        _tell_key(before, requirement_of(bundle))
+        if note := _key_note(before, requirement_of(bundle)):
+            warn(note)
     return executable_path(identity)
 
 
@@ -327,8 +392,8 @@ def resign(bundle: Path, identifier: str, requirement_for: Callable[[str], str])
         if signed != "certificate" and _keeps(bundle, identifier):
             return "kept"
         _swap(staging, bundle)
-        if identifier == BUNDLE_ID:  # the node's app reads no key
-            _tell_key(before, requirement_of(bundle))
+        if identifier == BUNDLE_ID and (note := _key_note(before, requirement_of(bundle))):  # the node's app reads no key
+            warn(note)
     return signed
 
 
@@ -365,40 +430,49 @@ def bare_problem(executable: Path) -> str:
     return "" if done.returncode == 0 else f"{executable} does not start on its own: {(done.stderr or done.stdout).strip()[-300:]}"
 
 
-def bind(chosen: runtime.Runtime, *, signer: Signer = node_signing.sign) -> Path:
+def bind(chosen: runtime.Runtime, *, signer: Signer = node_signing.sign, keep: bool = True) -> Path:
     """Make a runtime's interpreter the Poolhouse executable (idempotent); returns the executable.
 
     The executable is a signed copy of the interpreter the runtime was built with. A runtime that already leads to it only has
-    the executable checked and rebuilt when it is gone. A start that fails puts the old links back and raises `IdentityError`.
+    the executable checked and rebuilt when it is gone. A kept executable (`_keeps`) that cannot start the runtime is replaced.
+    A start that fails puts the old links back and raises `IdentityError`.
     """
     prefix, identity = chosen.prefix, chosen.identity
     done = bound(prefix, identity)
     base = base_of(prefix) or (None if done else interpreter_of(prefix))
     if base is None or not base.is_file():
         raise IdentityError("the runtime names no interpreter to make the Poolhouse executable from: the next build of the runtime does")
-    executable = ensure_bundle(base, identity, signer=signer)
-    problem = bare_problem(executable)
-    if problem:
-        raise IdentityError(problem)
-    if done:
+    def lead_to(keeping: bool) -> Path:
+        executable = ensure_bundle(base, identity, signer=signer, keep=keeping)
+        problem = bare_problem(executable)
+        if problem:
+            raise IdentityError(problem)
+        if done:
+            return executable
+        undo = _repoint(prefix, interpreter_of(prefix), executable)
+        try:
+            _probe(prefix, executable)
+        except (IdentityError, OSError, ValueError, subprocess.SubprocessError) as exc:
+            for link, target in undo:
+                _link(link, target)
+            raise IdentityError(str(exc)) from exc
         return executable
-    undo = _repoint(prefix, interpreter_of(prefix), executable)
+
     try:
-        _probe(prefix, executable)
-    except (IdentityError, OSError, ValueError, subprocess.SubprocessError) as exc:
-        for link, target in undo:
-            _link(link, target)
-        raise IdentityError(str(exc)) from exc
-    return executable
+        return lead_to(keep)
+    except IdentityError:
+        if not keep or source_of(bundle_path(identity)).get("sha256") == digest(parts(base)):
+            raise
+        return lead_to(False)  # the executable from before was kept, and it cannot run this runtime
 
 
-def adopt(chosen: runtime.Runtime) -> str:
+def adopt(chosen: runtime.Runtime, *, keep: bool = True) -> str:
     """`bind` on the installed software of a Mac, and a sentence when that changed the runtime; nothing anywhere else (a test, a
     checkout, another state root, another system)."""
     if not applies():
         return ""
     was = bound(chosen.prefix, chosen.identity)
-    bind(chosen)
+    bind(chosen, keep=keep)
     return "" if was else f"{chosen.commit[:7]} now runs as Poolhouse"
 
 
