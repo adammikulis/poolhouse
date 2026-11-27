@@ -351,6 +351,9 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
   command-line tools' own; their `usr/bin` precedes `/usr/bin` on `PATH`. A shim run with no `TMPDIR` says on its error output
   that it could not keep its cache, and works. With Xcode installed and no command-line tools, the shim finds nothing the box
   reads (verified on a Mac with both; the Xcode-only case is not verified).
+- **The runtime interpreter** (it runs the bridge client and the probe) of a macOS framework build, as python.org's installer,
+  Apple's and Homebrew's are, starts the app binary of its framework, so the profile runs that one file beside the interpreter's
+  own binary (`profile.interpreter_programs`).
 - **The stage's `.git` is read-only** (`profile.GIT_DIRECTORY`, a frozen name like the control names, with every ancestor): the
   launcher reads its index after the run, so the box cannot write, remove, rename, link or redirect it. `git status` and
   `git diff` work; a commit fails.
