@@ -30,7 +30,7 @@ from poolhouse.sandbox import Limits, Net, Policy
 from poolhouse.sandbox.policies import SYSTEM_EXEC
 from poolhouse.sandbox.run import fair_share
 
-__all__ = ["Profile", "build", "interpreter_reads", "search_path"]
+__all__ = ["Profile", "build", "interpreter_programs", "interpreter_reads", "search_path"]
 
 GIT_DIRECTORY = ".git"
 """The stage's git directory, which the launcher reads again after the run (its index names what is captured): a session reads it, so `git diff` and
@@ -75,6 +75,13 @@ def interpreter_reads() -> tuple[str, ...]:
     return tuple(sorted({os.path.realpath(sys.prefix), os.path.realpath(sys.base_prefix)}))
 
 
+def interpreter_programs() -> tuple[str, ...]:
+    """The programs that start the interpreter that runs the bridge client and the probe: its own, and for a macOS framework build (python.org's,
+    Apple's, Homebrew's) the app binary of that framework, which its `python` hands on to."""
+    app = Path(os.path.realpath(Path(sys.base_prefix, "Resources", "Python.app", "Contents", "MacOS", "Python")))
+    return (os.path.realpath(sys.executable), *((str(app),) if app.is_file() else ()))
+
+
 def _git_directory() -> tuple[str, ...]:
     """The directory of a git a confined shell runs first: not Apple's `/usr/bin/git`, a selector that only hands on to another one."""
     found = shutil.which("git")
@@ -109,7 +116,7 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
                 *([spec.patches] if spec.patches else [])]
     ports = (spec.model_port, *([spec.proxy_port] if spec.proxy_port else []))
     policy = Policy(f"coding-{spec.harness}", read=tuple(dict.fromkeys(readable)), write=tuple(writable),
-                    exec=tuple(dict.fromkeys([*SYSTEM_EXEC, os.path.realpath(sys.executable), spec.install, *system_toolchain(), *runs,
+                    exec=tuple(dict.fromkeys([*SYSTEM_EXEC, *interpreter_programs(), spec.install, *system_toolchain(), *runs,
                                               *_git_directory(), *spec.environments, *own])),
                     net=Net.only(*ports, accept=spec.window), env=dict(env or {}), strict=True, signal_children=True, preferences=PREFERENCES.get(spec.harness, ()), user_records=True,
                     unix_sockets=tuple(each for each in (spec.session_socket, spec.window_socket) if each),
