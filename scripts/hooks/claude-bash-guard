@@ -96,8 +96,8 @@ REFUSE = [
      "them, so only `git fetch` and `git push` move them: `git update-ref`, `git symbolic-ref` and a fetch or push whose "
      "refspec ends in refs/remotes are refused to an agent."),
     (PUSH_MAIN,
-     "An agent pushes the development branch by name: `git push origin <development branch>` "
-     "after a merge lands on it. A push to `main` publishes: release-please reads the subjects "
+     "Work lands by pull request into the development branch: push your own branch (`git push origin HEAD`) and "
+     "open one (docs/landing.md). A push to `main` publishes: release-please reads the subjects "
      "there, so it moves the release pull request and releases every commit on the branch at "
      "once. It is refused to an agent until the commit has a standing independent land-review accept "
      "(`poolhouse-workspace land-review`) and the checkout is clean; this guard decides at once and says which is missing. "
@@ -225,8 +225,10 @@ def unidentified(why: Exception) -> int:
 
 
 ACTS_AS_A_SESSION = re.compile(
-    r"(?:^|[\s;&|(`'\"=]|bin/)poolhouse(?:-[a-z]+)*(?=$|[\s;&|)`'\"<>])|-m\s*poolhouse\b|POOLHOUSE_|\bgit\b[^;&|\n]*\b(?:commit|push)\b", re.M)
-"""A command that acts as a session: it runs a poolhouse program or module, reads a Poolhouse variable, or commits or pushes (whose hooks do)."""
+    r"(?:^|[\s;&|(`'\"=]|bin/)poolhouse(?:-[a-z]+)*(?=$|[\s;&|)`'\"<>])|-m\s*poolhouse\b|POOLHOUSE_|\bgit\b[^;&|\n]*\b(?:commit|push)\b"
+    r"|\blead-review\b", re.M)
+"""A command that acts as a session: it runs a poolhouse program or module, reads a Poolhouse variable, commits or pushes (whose hooks do),
+or reviews a pull request (`scripts/lead-review` refuses the author, so it must know who runs it)."""
 
 
 def subagent_stamped(event: dict, given: dict) -> dict | None:

@@ -26,10 +26,12 @@ Rules:
 - Run `python packaging/build.py` once in the worktree, then only the explicit affected selectors
   through `scripts/test`. Fix real failures in the branch's own code; never weaken a test.
 - Add files by name; never `git add -A`, `.` or `-u`. Never `pip install -e`.
-- Never tag, merge into the development branch by hand or touch `main`. Push the finished branch yourself: fetch, merge
-  `origin/<dev>`, run the affected tests, then `git push origin HEAD:refs/heads/<dev>` (plain, never forced), and report
-  landed only when the push succeeds and the commit is on `origin/<dev>`.
-- Run git as one plain command per call: `git -C <worktree> push origin HEAD:refs/heads/<dev>`, never `cd … && …` or a pipe, which the auto-mode classifier does not match to the allow rules.
+- Never tag, touch `main`, push the development branch or merge a pull request you worked on. Hand the finished branch
+  over as a pull request: fetch, merge `origin/<dev>`, run the affected tests, `git push origin HEAD` (never forced), then
+  `gh pr create --base <dev>` (or push to the branch's open one) with a description that ends in the line
+  `Author-agent: <your name>`. The agent that spawned you reviews and merges it (docs/landing.md). Report the pull
+  request and the ready SHA.
+- Run git as one plain command per call: `git -C <worktree> push origin HEAD`, never `cd … && …` or a pipe, which the auto-mode classifier does not match to the allow rules.
 - No GPU lease unless the brief gives one. Release your claim when done.
 
 Report in a few lines: branch, ready SHA, affected test commands and results (the `ran` and `reused`

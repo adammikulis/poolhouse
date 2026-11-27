@@ -215,6 +215,9 @@ class DevelopmentIntegration:
         repo.clean(self.candidate)
         repo.remote_baseline(self.primary, self.development, self.before)
         tip = repo.git(self.candidate, 'rev-parse', 'HEAD')
+        if self.publish_requested and repo.requires_pull_request(self.primary, self.development):
+            self.record = _event(self.s, self.base, self.record, 'blocked', commit=tip, checks=checks, pull_request='')
+            return self.proposed()
         for name in self.preserved:
             self._claim('area', str(self.primary / name))
         integration_staging.verify(self.primary, tip, self.preserved)
@@ -224,6 +227,39 @@ class DevelopmentIntegration:
         _event(self.s, self.base, self.record, 'integrated', commit=tip, checks=checks)
         if repo.git(self.primary, 'rev-parse', 'HEAD') != tip:
             raise Denied('development moved after its fast-forward; publication must be rechecked')
+        return self.finish(tip, checks)
+
+    def proposed(self) -> dict:
+        """An integration into a development branch that takes work only by pull request: open it once, and finish when its
+        merge has reached origin."""
+        tip, checks = self.record['commit'], self.record['checks']
+        if repo.published(self.primary, self.development, tip):
+            return self.merged(tip, checks)
+        url = self.record['pull_request'] or repo.open_pull_request(
+            self.primary, tip, self.branch, self.development,
+            f"Reviewed task {self.record['task']}.\n\nAuthor-agent: {self.record['worker']}")
+        for kind, key in (('branch', self.development),
+                          *(('area', str(self.primary / name)) for name in self.record.get('preserved', []))):
+            if _owner(self.s, kind, key) == self.record['owner']:
+                self.s.release(kind, key)
+        reason = f'{self.development} takes work only by pull request: have {url} reviewed and merged, then integrate again'
+        return _event(self.s, self.base, self.record, 'blocked', pull_request=url, reason=reason)
+
+    def merged(self, tip: str, checks: list[dict]) -> dict:
+        """Bring the primary checkout to origin's development branch, which holds the merged pull request, and finish."""
+        for kind, key in (('branch', self.development), ('worktree', str(self.source)), ('branch', self.worktree['branch']),
+                          ('worktree', str(self.candidate)), ('branch', self.branch)):
+            self._claim(kind, key)
+        if not repo.ancestor(self.primary, tip, 'HEAD'):
+            preserved = self.record.get('preserved', [])
+            for name in preserved:
+                self._claim('area', str(self.primary / name))
+            integration_staging.verify(self.primary, tip, preserved)
+            if integration_staging.merge_state(self.primary, tip):
+                repo.git(self.primary, 'merge', '--quit')
+            repo.git(self.primary, 'merge', '--ff-only', 'FETCH_HEAD')
+        self.record = _event(self.s, self.base, self.record, 'publication_confirmed', commit=tip, checks=checks,
+                             publication_verified=True)
         return self.finish(tip, checks)
 
     def finish(self, tip: str, checks: list[dict]) -> dict:
@@ -308,5 +344,7 @@ def integrate(s: Session, base: Path, task_id: str, *, publish: bool = False) ->
         operation.candidate, operation.branch = Path(previous['candidate']), previous['branch']
         operation.development, operation.publish_requested = previous['development'], publish
         with held(operation.primary / '.git' / 'poolhouse-integration.lock'):
+            if 'pull_request' in previous and not previous.get('publication_verified'):
+                return operation.proposed()
             return operation.finish(previous['commit'], previous['checks'])
     return DevelopmentIntegration(s, base, task_id, publish=publish).run()

@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 from git_world import DEV, ROOT, Project, git
+from github_support import pull, serve
 
 from poolhouse import authority, caller
 from poolhouse.board import place
@@ -144,9 +145,12 @@ def guard(merge, command, cwd=None, marked=True):
                           check=False, env=env)
 
 
-MERGES = ["git push origin main", "gh pr merge 12 --squash", "gh pr merge --auto 12", "git -C . push origin main"]
+MERGES = ["git push origin main", "gh pr merge 12 --squash", "gh pr merge --auto 12", "git -C . push origin main",
+          "gh -R o/r pr merge 12", "gh --repo o/r pr merge 12"]
 NEVER = ["git push --force origin main", "git push origin main --force-with-lease", "git push origin --tags",
-         "git push --mirror", "git push origin --delete main", "gh api -X PUT repos/o/r/rulesets/5 -f enforcement=disabled"]
+         "git push --mirror", "git push origin --delete main", "gh api -X PUT repos/o/r/rulesets/5 -f enforcement=disabled",
+         "gh pr merge 12 --merge --admin", "gh pr merge --admin=true 12", "gh -R o/r pr merge 12 --admin",
+         "gh api -X PUT repos/o/r/pulls/12/merge", "gh api repos/{owner}/{repo}/pulls/12/merge -f merge_method=merge"]
 
 
 @pytest.mark.parametrize("command", MERGES)
@@ -157,6 +161,12 @@ def test_the_guards_refuse_a_merge_at_once_until_the_commit_has_an_accept_and_th
     review(merge, merge.head)
     allowed = guard(merge, command)
     assert allowed.returncode == 0, allowed.stderr
+
+
+def test_the_refused_push_of_main_says_that_development_work_lands_by_pull_request(merge):
+    refused = guard(merge, "git push origin main")
+    assert "pull request into the development branch" in refused.stderr, refused.stderr
+    assert "git push origin <development branch>" not in refused.stderr
 
 
 @pytest.mark.parametrize("command", NEVER)
@@ -238,7 +248,93 @@ def test_an_accept_does_not_open_an_update_that_is_not_a_fast_forward(merge):
     assert refused.returncode == 1 and "fast-forward" in refused.stderr, refused.stderr
 
 
-def test_the_hook_still_refuses_a_branch_that_is_not_the_development_branch_whatever_the_accept(merge):
+def test_a_work_branch_is_pushed_without_a_review_since_its_pull_request_is_where_it_is_reviewed(merge):
+    allowed = hook(merge, merge.head, ref="refs/heads/some-work")
+    assert allowed.returncode == 0, allowed.stderr
+    refused = hook(merge, merge.head, ref="refs/tags/v9")
+    assert refused.returncode == 1 and "only branches are pushed" in refused.stderr
+
+
+# A pull request into the development branch: its review is the `lead-review` status on its head commit (docs/landing.md).
+
+
+@pytest.fixture
+def pulls(merge, tmp_path, monkeypatch):
+    """The canned `gh` first on the PATH of the guard; answers what `gh pr view NUMBER` says."""
+    serve(tmp_path, monkeypatch, {})
+    monkeypatch.delenv("POOLHOUSE_DEV_BRANCH", raising=False)
+    return lambda number, head, base, **found: pull(tmp_path, number, head, base, **found)
+
+
+def development_merge(sha, flags="--merge --delete-branch"):
+    return f"gh pr merge 12 {flags} --match-head-commit {sha}"
+
+
+def control(merge, pulls):
+    """The plain merge of a reviewed head into development is allowed, so a refusal beside it is about what differs."""
+    pulls(12, merge.head, DEV, review="SUCCESS")
+    allowed = guard(merge, development_merge(merge.head))
+    assert allowed.returncode == 0, allowed.stderr
+
+
+@pytest.mark.parametrize("flags", ["--merge --delete-branch", "--merge"])
+def test_a_pull_request_into_development_with_a_passed_review_of_its_head_may_be_merged_by_the_agent_that_reviewed_it(
+        merge, pulls, flags):
+    pulls(12, merge.head, DEV, review="SUCCESS")
+    allowed = guard(merge, development_merge(merge.head, flags))
+    assert allowed.returncode == 0, allowed.stderr
+
+
+@pytest.mark.parametrize("found", [{}, {"review": "FAILURE"}, {"review": "PENDING"}, {"check_run": "SUCCESS"}],
+                         ids=["unreviewed", "failed", "pending", "a job of the same name"])
+def test_a_pull_request_into_development_without_a_passed_review_status_is_refused(merge, pulls, found):
+    control(merge, pulls)
+    pulls(12, merge.head, DEV, **found)
     review(merge, merge.head)
-    refused = hook(merge, merge.head, ref="refs/heads/some-work")
-    assert refused.returncode == 1 and "only development and promotion snapshots" in refused.stderr
+    refused = guard(merge, development_merge(merge.head))
+    assert refused.returncode == 2 and "scripts/lead-review" in refused.stderr, refused.stderr
+
+
+def test_a_development_merge_that_names_another_commit_than_the_head_is_refused(merge, pulls):
+    control(merge, pulls)
+    refused = guard(merge, development_merge("0" * 40))
+    assert refused.returncode == 2 and merge.head[:7] in refused.stderr, refused.stderr
+
+
+@pytest.mark.parametrize("base", ["main", "master", "9.9dev", "work/stacked"])
+def test_a_passed_review_status_opens_no_merge_into_any_other_branch(merge, pulls, base):
+    control(merge, pulls)
+    pulls(12, merge.head, base, review="SUCCESS")
+    refused = guard(merge, development_merge(merge.head))
+    assert refused.returncode == 2 and "needs review" in refused.stderr, refused.stderr
+    review(merge, merge.head)
+    assert guard(merge, development_merge(merge.head)).returncode == 0, "the rule for the other branches is the board's accept"
+
+
+OTHER_FORMS = [
+    "gh pr merge 12 --merge --admin --match-head-commit {sha}",
+    "gh pr merge 12 --merge", "gh pr merge 12 --match-head-commit {sha}", "gh pr merge 12 --squash --match-head-commit {sha}",
+    "gh pr merge 12 --merge --auto --match-head-commit {sha}", "gh pr merge --merge --match-head-commit {sha}",
+    "gh pr merge 12 --merge --match-head-commit {sha} -R other/repo", "gh pr merge 12 --merge --match-head-commit {sha} --repo=o/r",
+    "gh pr edit 12 --base main && gh pr merge 12 --merge --match-head-commit {sha}",
+    "gh pr merge 12 --merge --match-head-commit {sha}; gh pr merge 13 --merge",
+    "GH_REPO=other/repo gh pr merge 12 --merge --match-head-commit {sha}",
+    "export GH_REPO=other/repo\ngh pr merge 12 --merge --match-head-commit {sha}",
+    "cd /tmp && gh pr merge 12 --merge --match-head-commit {sha}",
+    "gh pr merge 12 --merge --match-head-commit {sha} --body $(gh pr edit 12 --base main)",
+]
+
+
+@pytest.mark.parametrize("command", OTHER_FORMS)
+def test_only_the_one_plain_command_the_review_prints_is_a_development_merge(merge, pulls, command):
+    control(merge, pulls)
+    pulls(13, merge.head, "main", review="SUCCESS")
+    refused = guard(merge, command.format(sha=merge.head))
+    assert refused.returncode == 2 and "land-review" in refused.stderr, refused.stderr
+
+
+def test_a_pull_request_that_cannot_be_read_falls_to_the_rule_of_the_other_branches(merge, pulls, tmp_path):
+    control(merge, pulls)
+    (tmp_path / "replies" / "pr_12.json").unlink()
+    refused = guard(merge, development_merge(merge.head))
+    assert refused.returncode == 2 and "needs review" in refused.stderr, refused.stderr

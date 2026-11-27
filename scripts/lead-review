@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Review a pull request into the development branch: record the verdict on the board, comment on the pull request and set the
+`lead-review` status on the commit that was reviewed (docs/landing.md).
+
+    scripts/lead-review PR SHA --verdict accept|reject --note TEXT
+
+SHA is the commit that was read; a pull request whose head has moved since is refused, since a new commit needs a new review.
+The agents the pull request names in `Author-agent: NAME` lines do not accept it, nor does an agent such a subagent started;
+a subagent's pull request is accepted by an agent above it or by a main session. All agents use one GitHub sign-in, so the
+status records the process and is not a security boundary. After an accept, the one merge command is printed.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+
+from poolhouse import board, devbranch  # noqa: E402
+from poolhouse.workspace import landing, release_check  # noqa: E402
+
+AUTHOR = re.compile(r"^[ \t]*Author-agent:[ \t]*([A-Za-z0-9][A-Za-z0-9_.-]*)[ \t\r]*$", re.M | re.I)
+SHA = re.compile(r"[0-9a-f]{7,40}")
+WORDS = {"accept": ("success", "passed"), "reject": ("failure", "failed")}
+
+
+class Refused(RuntimeError):
+    pass
+
+
+def gh(*args: str, given: str) -> None:
+    """Run one `gh` command that writes ``given``, read from its standard input, to the pull request or its commit."""
+    done = subprocess.run(["gh", *args], input=given, capture_output=True, text=True, timeout=60, check=False)
+    if done.returncode:
+        raise Refused(f"gh {' '.join(args[:2])} failed: {(done.stderr.strip() or 'no reason given').splitlines()[0]}")
+
+
+def reviewed(number: str, sha: str, found: dict) -> str:
+    """The full head commit of the pull request ``found``, which is open, targets development and is still at ``sha``."""
+    dev = devbranch.development_branch(Path.cwd())
+    if found.get("baseRefName") != dev:
+        raise Refused(f"pull request {number} targets {found.get('baseRefName')}; this reviews pull requests into the development branch {dev}")
+    if found.get("state") != "OPEN":
+        raise Refused(f"pull request {number} is {str(found.get('state')).lower()}")
+    head = str(found.get("headRefOid"))
+    if not SHA.fullmatch(sha) or not head.startswith(sha):
+        raise Refused(f"the head of pull request {number} is {head}, not {sha}: a new commit needs a new review; read that commit")
+    return head
+
+
+def spawners(name: str, parents: dict[str, str]) -> list[str]:
+    """The sessions that started ``name``, the nearest first."""
+    above: list[str] = []
+    while (name := parents.get(name, "")) and name not in above:
+        above.append(name)
+    return above
+
+
+def independent(reviewer: str, parents: dict[str, str], authors: list[str]) -> None:
+    """Raise unless ``reviewer`` may accept work of ``authors``; ``parents`` maps each session of the board to the one that started it
+    (empty for a main session)."""
+    for author in authors:
+        if reviewer == author:
+            raise Refused(f"{reviewer} is an author of this pull request and does not accept its own work")
+        above = spawners(author, parents)
+        if author in parents and not above:
+            continue    # a main session's work: any other agent may have read it, one it started too
+        if author in spawners(reviewer, parents):
+            raise Refused(f"{reviewer} was started by its author {author}, so its accept is not independent")
+        if parents.get(reviewer) and reviewer not in above:
+            raise Refused(f"{author} is reviewed by the agent that spawned it ({', '.join(above) or 'unknown to this board'}) "
+                          "or by a main session")
+
+
+def review(args: argparse.Namespace) -> str:
+    """Record the review and return what to print."""
+    note = args.note.strip()
+    if not note:
+        raise Refused("--note says what was read and why the verdict is that")
+    found = release_check.pull_request(".", args.number, "number", "state", "baseRefName", "headRefName", "headRefOid", "body", "author")
+    head = reviewed(args.number, args.sha.lower(), found)
+    session = board.session.connect(cwd=Path.cwd(), client=board.client.Client(autostart=False))
+    me = session.whoami()
+    if args.verdict == "accept":
+        authors = AUTHOR.findall(str(found.get("body") or ""))
+        if not authors and not (found.get("author") or {}).get("is_bot"):
+            raise Refused("the pull request names no author: its description needs an `Author-agent: NAME` line")
+        independent(me.name, {a.name: a.parent for a in session.agents(retired=True)}, authors)
+    landing.review(session, str(found.get("headRefName")), head, args.verdict)
+    state, word = WORDS[args.verdict]
+    gh("pr", "comment", args.number, "--body-file", "-",
+       given=f"{release_check.REVIEW_STATUS} {word} for {head}, by {me.name} ({me.model}).\n\n{note}")
+    status = {"state": state, "context": release_check.REVIEW_STATUS, "description": f"{word} by {me.name}"[:140]}
+    gh("api", "-X", "POST", "repos/{owner}/{repo}/statuses/" + head, "--input", "-", given=json.dumps(status))
+    said = f"pull request {args.number} at {head[:12]}: {word}"
+    if args.verdict == "reject":
+        return said
+    return f"{said}\nWhen the required checks pass, run this as the whole command:\n    gh pr merge {args.number} --merge --delete-branch --match-head-commit {head}"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="lead-review", description=__doc__.split("\n\n")[0])
+    parser.add_argument("number", help="the pull request's number")
+    parser.add_argument("sha", help="the head commit that was reviewed (7 to 40 hexadecimal characters)")
+    parser.add_argument("--verdict", choices=tuple(WORDS), required=True)
+    parser.add_argument("--note", required=True, help="posted on the pull request, which may be public")
+    args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    if not args.number.isdigit():
+        parser.error("a pull request is named by its number")
+    try:
+        print(review(args))
+    except (Refused, OSError, ValueError, subprocess.SubprocessError, board.client.NodeError) as exc:
+        print(f"lead-review: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

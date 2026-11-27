@@ -1,4 +1,4 @@
-"""The git hook that lets an agent push the development branch and nothing else."""
+"""The git hook that keeps an agent's push to branches, forward only, and main to a reviewed commit."""
 
 import os
 import shlex
@@ -67,7 +67,7 @@ def test_an_agents_push_of_main_is_refused(checkout):
     done = push(checkout, "main", CLAUDECODE="1")
     assert done.returncode != 0
     assert "refused: refs/heads/main" in done.stderr
-    assert "git push origin 0.9dev" in done.stderr
+    assert "open a pull request into 0.9dev" in done.stderr
 
 
 def test_main_rides_along_with_the_development_branch_and_is_still_refused(checkout):
@@ -81,9 +81,6 @@ def test_the_opener_variable_does_not_open_main_for_an_agent(checkout):
     assert done.returncode != 0
 
 
-def test_the_opener_opens_main_and_nothing_else(checkout):
-    assert push(checkout, "split-something", CLAUDECODE="1",
-                POOLHOUSE_PUSH_MAIN="yes").returncode != 0
 
 
 def test_the_opener_does_not_open_a_deletion(checkout):
@@ -114,8 +111,18 @@ def test_the_refusal_names_the_promotion_pull_request(checkout):
     assert "refs/heads/promote/<date>" in done.stderr
 
 
-def test_an_agents_push_of_a_work_branch_is_refused(checkout):
-    assert push(checkout, "split-something", CLAUDECODE="1").returncode != 0
+def test_an_agent_pushes_its_work_branch_to_open_a_pull_request(checkout):
+    done = push(checkout, "split-something", CLAUDECODE="1")
+    assert done.returncode == 0, done.stderr
+
+
+def test_an_agent_cannot_push_a_tag_or_delete_a_work_branch(checkout):
+    assert push(checkout, "split-something", sha=ZERO, CLAUDECODE="1").returncode != 0
+    sha = git(checkout, "rev-parse", "HEAD")
+    hook = subprocess.run(["sh", HOOK.as_posix(), "origin", "https://example.invalid/x.git"], cwd=checkout, text=True,
+                          input=f"refs/tags/v1 {sha} refs/tags/v1 {ZERO}\n", capture_output=True,
+                          env={**os.environ, "CLAUDECODE": "1", "PYTHON": Path(sys.executable).as_posix()})
+    assert hook.returncode != 0 and "only branches are pushed" in hook.stderr
 
 
 def test_an_agent_cannot_delete_the_development_branch(checkout):
@@ -192,7 +199,7 @@ def test_the_development_branch_pushes_from_a_clean_sibling_worktree(checkout):
     env = {"CLAUDECODE": "1", "GIT_DIR": git(tree, "rev-parse", "--absolute-git-dir")}
     assert push(tree, "0.9dev", sha=tip, **env).returncode == 0
     assert push(tree, "main", sha=tip, **env).returncode != 0
-    assert push(tree, "side-work", sha=tip, **env).returncode != 0
+    assert push(tree, "side-work", sha=tip, **env).returncode == 0
 
 
 def test_a_worktree_with_its_own_commits_does_not_block(checkout):
