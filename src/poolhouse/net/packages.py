@@ -89,6 +89,10 @@ def _admit(value, hosts):
         return
     if scheme != "https":
         raise Refused("package sources require HTTPS")
+    standard = (parsed.hostname == "pypi.org" and parsed.path.rstrip("/") == "/simple")
+    artifact = parsed.hostname == "files.pythonhosted.org"
+    if (standard or artifact) and parsed.port in (None, 443) and not parsed.username:
+        hosts = policy.Policy((*hosts.allowed, parsed.hostname), path=hosts.path, clock=hosts.clock)
     hosts.admit(value, "Python packages")
 
 

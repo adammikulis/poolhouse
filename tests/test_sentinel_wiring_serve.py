@@ -5,7 +5,6 @@ Broker, real fake-llama-server processes, real sentinel store under the test's s
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import subprocess
@@ -85,36 +84,9 @@ def test_a_hand_placed_model_is_pinned_as_it_is_and_served_without_anyone_asked(
     broker.release(grant.lease)
 
 
-def test_serving_a_local_model_that_changed_pins_it_again_says_so_and_starts(broker, model, caplog):
+def test_a_tampered_pinned_model_is_refused_and_no_server_starts(broker, manager, model):
     node = sentinel.default()
-    first = broker.lease(ask(model), timeout=30)
-    broker.release(first.lease)
-    broker.stop(first.port, force=True)
-    was = node.manifest.pins()[str(model)].sha256
-    model.write_bytes(b"GGUF" + b"\x03" * 5000)
-    assert node.scan(deep=True) == [] and node.store.state_of("model", str(model)) == State.CLEAR
-    grant = broker.lease(ask(model), timeout=30)
-    pin = node.manifest.pins()[str(model)]
-    assert grant.port in broker.servers and model.exists()
-    assert pin.sha256 == hashlib.sha256(model.read_bytes()).hexdigest() != was
-    assert [e.evidence["was"] for e in node.bus.recent(kind="model.repinned")] == [was]
-    assert "pins it again" in caplog.text
-    broker.release(grant.lease)
-
-
-@pytest.mark.parametrize("source", ["", "hf://org/repo@rev", "trained:mine"])
-def test_serving_a_changed_file_that_was_not_downloaded_pins_it_again(manager, model, source):
-    node = sentinel.default()
-    node.manifest.pin(model, "model", source=source)
-    model.write_bytes(b"GGUF" + b"\x04" * 4096)
-    start_check(manager, model)
-    assert node.manifest.pins()[str(model)].sha256 == hashlib.sha256(model.read_bytes()).hexdigest()
-    assert model.exists() and node.store.state_of("model", str(model)) == State.CLEAR
-
-
-def test_a_tampered_downloaded_model_is_refused_and_no_server_starts(broker, manager, model):
-    node = sentinel.default()
-    node.manifest.pin(model, "model", source="pull")
+    node.manifest.pin(model, "model", source="hf://org/repo@rev")
     with model.open("r+b") as fh:
         fh.seek(2000)
         fh.write(b"\xff")
@@ -129,7 +101,7 @@ def test_a_tampered_downloaded_model_is_refused_and_no_server_starts(broker, man
 
 def test_a_tampered_model_is_refused_through_the_manager_too(manager, model):
     node = sentinel.default()
-    node.manifest.pin(model, "model", source="pull")
+    node.manifest.pin(model, "model", source="hf://org/repo@rev")
     model.write_bytes(b"GGUF" + b"\x01" * 4096)
     with pytest.raises(SentinelRefused, match="pin"):
         manager.lease(ServerSpec(context=4096, model=str(model), port=free_port()), roam=False, timeout=5)
@@ -313,7 +285,7 @@ def test_an_unchanged_pinned_model_is_not_read_again_at_the_next_start(
 
 
 def test_a_one_byte_edit_with_the_same_size_is_caught_at_the_next_start(manager, model):
-    sentinel.default().manifest.pin(model, "model", source="pull")
+    sentinel.default().manifest.pin(model, "model", source="test")
     start_check(manager, model)
     before = model.stat().st_mtime_ns
     with model.open("r+b") as fh:
@@ -343,7 +315,7 @@ def test_an_edit_that_restores_size_and_mtime_passes_the_start_and_fails_the_dee
 
 def test_a_replaced_file_with_the_same_size_and_mtime_is_hashed_again(manager, model):
     node = sentinel.default()
-    node.manifest.pin(model, "model", source="pull")
+    node.manifest.pin(model, "model", source="test")
     start_check(manager, model)
     stamp = model.stat().st_mtime_ns
     swap = model.with_name("swap.bin")
@@ -374,7 +346,7 @@ def test_sentinel_off_is_honoured_only_with_a_reason(model, monkeypatch, capsys)
 
 
 def test_a_longer_file_with_the_mtime_restored_is_caught_at_the_next_start(manager, model):
-    sentinel.default().manifest.pin(model, "model", source="pull")
+    sentinel.default().manifest.pin(model, "model", source="test")
     start_check(manager, model)
     stamp = model.stat().st_mtime_ns
     with model.open("ab") as fh:

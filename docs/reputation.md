@@ -61,9 +61,9 @@ Observation points call `poolhouse.sentinel.observers`, which does nothing until
 
 ## What it changes
 
-A verdict on a host or URL holds no fetch back: each file passes the digest, format and scan checks
-whatever its source. Reputation never admits a host the policy refuses, and never touches a role,
-rule or human-only step.
+`net.Policy.admit` raises `Distrusted` (a `NeedsApproval`) for a host or URL that is watched or bad,
+unless a person approved the host after the verdict. Reputation never admits a host the policy
+refuses, and never touches a role, rule or human-only step.
 
 ## Commands
 

@@ -60,7 +60,7 @@ tag's shifted by GitHub's commit count; `dev-<sha9>` when upstream cannot say.
 
 **Source comes through `poolhouse.net` and git verifies it.** The ref is resolved to a full commit
 by `api.github.com` (`commits/<ref>`). The commit is fetched with `net.git.run`: the host policy
-applies (a program that passes its own allow-list is held to it, ending in the needs-approval state
+applies (github.com is on the default allow-list; any other host ends in the needs-approval state
 with the exact `poolhouse-security approve-host HOST` line), over HTTPS alone, hooks off
 (`core.hooksPath` is an empty directory, so a template or global hook does not run),
 `fetch.fsckObjects`, no submodules, `--depth 1`. `git rev-parse HEAD` must equal the commit that

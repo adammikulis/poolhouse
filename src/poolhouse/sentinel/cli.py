@@ -211,16 +211,10 @@ def scan(args: argparse.Namespace) -> int:
     flag("--kind", default="model", choices=FILE_KINDS), flag("--source", default=""),
     flag("--honey", action="store_true", help="plant the decoy files")))
 def baseline(args: argparse.Namespace) -> int:
-    """Pin the named files as they are now. An agent may not replace the pin of a downloaded model whose bytes changed:
-    that digest is what the download was checked against."""
+    """Pin the named files as they are now; an agent may not pin a model, since a pin is what lets it load."""
+    if args.kind == "model" and args.pin:
+        refuse_agent("pinning a model file by hand", "a pin is what lets a model file load, and an agent must not vouch for what it fetched")
     node = sentinel.default()
-    if args.source in node.manifest.DOWNLOADED | node.manifest.SELF_MADE:
-        warn(f"poolhouse security: the source {args.source!r} is recorded by a download or by serving a file; name another")
-        return 2
-    for path in args.pin:
-        held = node.manifest.pin_of(path)
-        if held is not None and held.source in node.manifest.DOWNLOADED and node.changed_digest(held):
-            refuse_agent("replacing the pin of a changed downloaded model", "download it again: its digest is what the download was checked against")
     pins = [node.manifest.pin(p, args.kind, args.source) for p in args.pin]
     if args.honey:
         node.honey.plant()

@@ -163,9 +163,9 @@ def test_a_first_use_pin_covers_the_path_and_bytes_it_was_made_for(tmp_path):
     path = where("other.gguf")
     path.write_bytes(gguf_bytes(extra=512))
     load(path)
-    path.write_bytes(gguf_bytes(extra=513))               # other bytes at the pinned path: serving it names it
-    assert load(path) == "" and pins()[str(path)].sha256 == SHA(path.read_bytes()) and path.exists()
-    assert sentinel.default().bus.recent(kind="model.repinned")
+    path.write_bytes(gguf_bytes(extra=513))               # other bytes at the pinned path
+    with pytest.raises(SentinelRefused, match="does not match its pin"):
+        load(path)
     copy = where("copy.gguf")
     copy.write_bytes(gguf_bytes(extra=512))               # the pinned bytes at another path: pinned as its own first use
     assert load(copy) == "" and pins()[str(copy)].source == "first-use"

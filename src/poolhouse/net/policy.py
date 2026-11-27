@@ -1,5 +1,4 @@
-"""Which hosts a fetch may reach. The standard policy fetches any https URL the caller names; a program that passes an
-allow-list is held to it. The built-in names and recorded approvals say which hosts the policy vouches for."""
+"""Which hosts a fetch may reach: an allow-list, and approvals a person recorded."""
 
 from __future__ import annotations
 
@@ -15,9 +14,10 @@ from pathlib import Path
 
 from poolhouse import home
 from poolhouse.httpguard import Refused
+from poolhouse.sentinel import observers
 
-__all__ = ["ALLOWED", "ANYWHERE", "ENV", "Approval", "NeedsApproval", "Policy", "approvals_path", "default", "host_of",
-           "mirror_netloc"]
+__all__ = ["ALLOWED", "ANYWHERE", "ENV", "HOLD_S", "Approval", "Distrusted", "NeedsApproval", "Policy", "approvals_path",
+           "default", "host_of", "mirror_netloc"]
 
 ALLOWED: tuple[str, ...] = (
     "huggingface.co", "*.huggingface.co", "hf.co", "*.hf.co",
@@ -25,7 +25,7 @@ ALLOWED: tuple[str, ...] = (
     "release-assets.githubusercontent.com", "raw.githubusercontent.com",
     "codeload.github.com", "nominatim.openstreetmap.org",
 )
-"""Hosts the standard policy names: the model hub, GitHub's release hosts and the geocoder. The
+"""Hosts that need no approval: the model hub, GitHub's release hosts and the geocoder. The
 host of ``$HF_ENDPOINT`` and those in ``$POOLHOUSE_NET_ALLOW_HOSTS`` count as listed too."""
 
 ANYWHERE: tuple[str, ...] = ("*",)
@@ -33,15 +33,28 @@ ANYWHERE: tuple[str, ...] = ("*",)
 
 ENV = "POOLHOUSE_NET_ALLOW_HOSTS"
 
-class NeedsApproval(Refused):
-    """A host the policy does not admit for this URL; ``host`` is what to approve."""
+HOLD_S: dict[str, float] = {"watch": 3600.0, "bad": 86400.0}
+"""How long the reputation ledger's verdict on a host or URL holds fetches back: an hour for a source that was reliable and just
+changed, a day for one that misbehaved before and has no clean record since. The hold ends by itself, because a held source can earn
+no clean record: the next fetch is verified like every other (digest, size, scanner), and a failure there deletes what was fetched."""
 
-    def __init__(self, host: str, purpose: str, *, any_https: bool = False) -> None:
-        why = (f"{purpose} is not made over plain http to {host}: use its https address (any https URL is fetched)"
-               if any_https else
-               f"{host} is not on the allow-list for {purpose}. A program lists it in the `allowed` argument "
-               f"(`net.Policy(allowed=(..., {host!r}))` in a `net.Pipeline`)")
-        super().__init__(f"{why}; `poolhouse-security approve-host {host}` approves it (decided by the sentinel.policy gate)")
+
+class NeedsApproval(Refused):
+    """A host that is neither allow-listed nor approved; ``host`` is what to approve."""
+
+    def __init__(self, host: str, purpose: str) -> None:
+        super().__init__(f"{host} is not on the allow-list for {purpose}. A program lists it in the `allowed` "
+                         f"argument (`net.Policy(allowed=(..., {host!r}))` in a `net.Pipeline`); "
+                         f"`poolhouse-security approve-host {host}` approves it (decided by the sentinel.policy gate)")
+        self.host, self.purpose = host, purpose
+
+
+class Distrusted(NeedsApproval):
+    """A host or URL that is allowed but that the reputation ledger says to ask about."""
+
+    def __init__(self, host: str, purpose: str, reason: str, hold_s: float = 0.0) -> None:
+        ends = f"the hold ends by itself in about {max(1, round(hold_s / 60))} minutes, or `poolhouse-security approve-host {host}` ends it now"
+        Refused.__init__(self, f"{reason}; {ends} ({purpose} was not made).")
         self.host, self.purpose = host, purpose
 
 
@@ -82,13 +95,11 @@ def mirror_netloc() -> str:
 
 
 class Policy:
-    """Allow-list plus recorded approvals; an allow-list entry may hold ``*`` wildcards. Without ``allowed`` the
-    policy names `ALLOWED` and also admits any https URL; with it, only what the list and the approvals name."""
+    """Allow-list plus recorded approvals; an allow-list entry may hold ``*`` wildcards."""
 
-    def __init__(self, allowed: Iterable[str] | None = None, *, path: Path | None = None,
+    def __init__(self, allowed: Iterable[str] = ALLOWED, *, path: Path | None = None,
                  clock: Callable[[], float] = time.time) -> None:
-        self.any_https = allowed is None
-        self.allowed = tuple(p.lower() for p in (ALLOWED if allowed is None else allowed))
+        self.allowed = tuple(p.lower() for p in allowed)
         self.path = path
         self.clock = clock
         self._lock = threading.Lock()
@@ -144,27 +155,27 @@ class Policy:
         now = self.clock()
         return any(a.host == host and (not a.until or a.until > now) for a in self.approvals())
 
-    def named(self, url: str) -> bool:
-        """Whether the host of ``url`` is listed or approved."""
-        host = host_of(url)
-        if not host:
-            return False
-        netloc = urllib.parse.urlsplit(url.strip()).netloc.lower().rsplit("@", 1)[-1]
-        return self.listed(host) or self.listed(netloc) or self.approved(host)
-
-    def vouches(self, url: str) -> bool:
-        """Whether the policy names the host of ``url`` and not every host: what arrived from there may be trusted as
-        brought in by Poolhouse."""
-        return not self.lists_every_host() and self.named(url)
-
     def admit(self, url: str, purpose: str = "fetch") -> str:
         """The host of ``url`` when it may be reached; `NeedsApproval` otherwise."""
         host = host_of(url)
         if not host:
             raise Refused("that URL has no host")
-        if self.named(url) or (self.any_https and urllib.parse.urlsplit(url.strip()).scheme == "https"):
+        netloc = urllib.parse.urlsplit(url.strip()).netloc.lower().rsplit("@", 1)[-1]
+        if self.listed(host) or self.listed(netloc) or self.approved(host):
+            self._tighten(host, url, purpose)
             return host
-        raise NeedsApproval(host, purpose, any_https=self.any_https)
+        raise NeedsApproval(host, purpose)
+
+    def _tighten(self, host: str, url: str, purpose: str) -> None:
+        """`Distrusted` for a host or URL the ledger watches or marks bad, for `HOLD_S` from the verdict, unless the host was approved after
+        it. The hold lapses by itself. Only ever adds a refusal."""
+        now = self.clock()
+        for kind, key in (("host", host), ("url", url)):
+            found = observers.gate(kind, key)
+            if not found or now - found.since >= HOLD_S.get(found.state, HOLD_S["bad"]):
+                continue
+            if not any(a.host == host and a.at >= found.since and (not a.until or a.until > now) for a in self.approvals()):
+                raise Distrusted(host, purpose, found.reason, HOLD_S.get(found.state, HOLD_S["bad"]) - (now - found.since))
 
 
 _DEFAULT = Policy()

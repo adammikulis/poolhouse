@@ -1,6 +1,5 @@
 """What the Broker asks sentinel before a model server starts: a quarantined model or server is
-refused, a downloaded model must still hash to its pin, and a local model file that is unpinned or changed is
-pinned as it is."""
+refused, a pinned model must still hash to its pin, and an unpinned model is pinned as it is."""
 
 from __future__ import annotations
 
@@ -31,7 +30,7 @@ __all__ = ["Armed", "SentinelRefused", "arm", "blocked", "caller_blocked", "file
 
 
 class SentinelRefused(ServerFailed):
-    """Sentinel holds the model, or a downloaded model no longer matches its pin."""
+    """Sentinel holds the model, or the model no longer matches its pin."""
 
 
 _HOOKED: weakref.WeakKeyDictionary[Sentinel, set[str]] = weakref.WeakKeyDictionary()
@@ -171,19 +170,6 @@ def _first_use(node: Sentinel, digest: str, vouched: bool) -> str:
     return "first-use"
 
 
-def _repin(node: Sentinel, pin: Any, digest: str, name: str) -> str:
-    """Pin the changed local file at ``pin.path`` as it is now and say so: serving it names it. A signed list that
-    names the file still refuses other bytes. Returns what `verify` returns."""
-    said = _by_manifest(node, Path(pin.path), digest, name)
-    source = _first_use(node, digest, bool(said))
-    node.manifest.pin_verified(pin.path, pin.kind, digest, source=source, digest_from="computed")
-    logger.warning("%s changed since it was pinned: serving it pins it again as it is now (sha256 %s, was %s)",
-                   name, digest[:12], pin.sha256[:12])
-    node.bus.emit(Event("model.repinned", Severity.NOTICE, "serve", f"model:{pin.path}",
-                        {"name": name, "sha256": digest, "was": pin.sha256, "source": source}, node.clock()))
-    return said
-
-
 def parts_of(spec: Any) -> tuple[object, ...]:
     """What a start reads from disk and so verifies: the weights, the draft unless its head is embedded,
     the projector, the chat template and the static lookup cache."""
@@ -191,13 +177,11 @@ def parts_of(spec: Any) -> tuple[object, ...]:
     return (spec.model, drafted, spec.mmproj, spec.chat_template_file, spec.lookup_static)
 
 
-def verify(model: object, *, state_file: Path, stop: Callable[[int], Any], named: bool = True) -> str:
-    """Refuse to start a server for ``model`` when sentinel holds it, the bytes of a downloaded model differ from
-    its pin, or a signed manifest this machine accepted lists other bytes for it. A model with
+def verify(model: object, *, state_file: Path, stop: Callable[[int], Any]) -> str:
+    """Refuse to start a server for ``model`` when sentinel holds it, its bytes differ from
+    the pin, or a signed manifest this machine accepted lists other bytes for it. A model with
     no pin is pinned when a signed list vouches for it, when its bytes are already pinned, or as it is on
-    first use; a local file that changed since it was pinned is pinned again and that is said. A model poolhouse
-    pulled has its pin from the pull. ``named`` is False for a file Poolhouse picked by itself (a default MTP head),
-    which is refused rather than pinned again when it changed. Returns ``verified by manifest serial N`` when a manifest vouched for the file, else ''."""
+    first use. A model poolhouse pulled has its pin from the pull. Returns ``verified by manifest serial N`` when a manifest vouched for the file, else ''."""
     node = sentinel.armed()
     register(node, state_file, stop)
     if node.mode == sentinel.Mode.OFF:
@@ -221,8 +205,6 @@ def verify(model: object, *, state_file: Path, stop: Callable[[int], Any], named
         node.bus.emit(Event("model.pinned_first_use", Severity.NOTICE, "serve", f"model:{path}",
                             {"name": name, "manifest": said, "source": source}, node.clock()))
         return said
-    if named and pin.source not in node.manifest.DOWNLOADED and (digest := node.changed_digest(pin)):
-        return _repin(node, pin, digest, name)
     if not node.verify_before_load(path, cached=True):
         raise SentinelRefused(f"{name} does not match its pin and is quarantined by "
                               f"sentinel; the file was moved aside")

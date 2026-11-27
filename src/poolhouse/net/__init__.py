@@ -23,11 +23,11 @@ from poolhouse.net.download import (
     download,
 )
 from poolhouse.net.pipeline import ASK, Ask, Pipeline, Reply, default, library, use
-from poolhouse.net.policy import NeedsApproval, Policy
+from poolhouse.net.policy import Distrusted, NeedsApproval, Policy
 from poolhouse.net.provenance import Provenance, recent
 from poolhouse.net.scan import Outcome, Scanner, ScanPolicy, ScanResult, scan_file
 
-__all__ = ["Ask", "Blocked", "ChecksumMismatch", "Hooks", "NeedsApproval", "NoDigest", "Outcome", "Pipeline",
+__all__ = ["Ask", "Blocked", "ChecksumMismatch", "Distrusted", "Hooks", "NeedsApproval", "NoDigest", "Outcome", "Pipeline",
            "Policy", "Provenance", "Reply", "ScanPolicy", "ScanResult", "Scanner", "Truncated",
            "Want", "default", "download", "get", "library", "recent", "scan_file", "use"]
 

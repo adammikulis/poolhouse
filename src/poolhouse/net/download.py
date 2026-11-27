@@ -268,15 +268,7 @@ def download(url: str, dest: Path | str, want: Want | None = None, pipeline: Pip
         hooks.phase("verifying")
     return _finish(pipe, staged, final, want, Arrival(url, shown.url, shown.status,
                        tuple(shown.redirects), shown.headers, host, hooks.phase,
-                       _vouched(pipe, want, (url, *shown.redirects, shown.url)), hooks.cancel))
-
-
-def _vouched(pipe: Pipeline, want: Want, hops: tuple[str, ...]) -> bool:
-    """Whether a file that arrived over ``hops`` came through a policy that names each of them (`net.Policy.vouches`);
-    a download the host policy was not applied to is judged only by whether that policy lists every host."""
-    if not want.admit:
-        return not pipe.policy.lists_every_host()
-    return all(pipe.policy.vouches(hop) for hop in hops)
+                       not pipe.policy.lists_every_host(), hooks.cancel))
 
 
 @dataclass(frozen=True, slots=True)
@@ -358,7 +350,7 @@ def _pin_pulled(final: Path, kind: str, want: Want, digest: str, arrival: Arriva
     every check passed and the file was promoted; ``digest`` is that of the staged bytes
     (equal to ``want.sha256`` when one was pinned), nothing is hashed again. A failure to
     record is logged and does not undo the download: the file then falls back to first-use, as does a file
-    downloaded from a host the policy does not name (``arrival.named`` is False)."""
+    downloaded through a policy that names no host (``arrival.named`` is False)."""
     what = PINNED_KINDS.get(kind)
     if what is None or not arrival.named:
         return

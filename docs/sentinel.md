@@ -216,8 +216,8 @@ Most things need nobody, and say nothing on the screen:
 
 Nothing asks anyone, because every hold resolves by a fixed policy (`Sentinel.resolve_holds`, run at the end of every scan):
 
-* **A changed downloaded or hand-pinned file, link or model** (a model that does not match its manifest) is moved aside and refused to every load
-  (a local file pinned when it was served is only logged by a scan; `verify_before_load` checks the file at its own path against its pin each time). The hold ends by itself at the next scan
+* **A changed pinned file, link or model** (a model that does not match its manifest) is moved aside and refused to every load
+  (`verify_before_load` checks the file at its own path against its pin each time). The hold ends by itself at the next scan
   once the file at its path verifies against its pin again (a pull fetched it again, a training run re-registered it): the moved-aside copy is
   deleted and the record is released (`sentinel.hold_ended`). A hold nothing fixed lapses after seven days (`HOLD_S["file"]`); a lapse
   lets nothing unverified run, because a load still checks the file against its pin.
@@ -386,10 +386,8 @@ Armed (tests: `tests/test_publisher_trust.py`, `tests/test_supply_chain_pins.py`
   tuning flags of `serve/downloads.py` (`LLAMA_FLAGS`), so `-m`, `--model`, `-md`, `--mmproj`, `--lora`, `--control-vector`,
   `--chat-template-file`, `--lookup-cache-static`, `-mv`, `-Hf` and any flag not on the list are refused; the child's `LLAMA_ARG_`
   repository, URL and token variables are removed. A start verifies the weights, the draft, the projector, the chat template and
-  the static lookup cache (`guarded.parts_of`). A pin counts as vouching for another file's bytes only when it came from a pull or a
-  signed list. A local file that was not downloaded and changed since its pin is pinned again when it is served, with a warning and the
-  event `model.repinned`; a default MTP head that changed is left out instead. `poolhouse-security baseline --pin FILE` pins a local
-  file for anyone; it takes no download or serving source, and an agent may not replace the pin of a changed downloaded model.
+  the static lookup cache (`guarded.parts_of`). `sentinel baseline --pin FILE --kind model` is refused to an agent at once, and a pin counts
+  as vouching for another file's bytes only when it came from a pull, a person, or a signed list.
 
 * **Pinned at pull.** Every model file (`gguf`, `safetensors`) that `net.download` or `net.accept` keeps
   (so `hub.pull`, `hub.fetch`, `hub.snapshot` and the other

@@ -17,7 +17,7 @@ _REGISTERED: list[Ledger] = []
 
 def install(ledger: Ledger | None = None) -> Ledger:
     """Make ``ledger`` (by default the user's own) what net and members report to. Idempotent without an argument. A source that stepped
-    down is recorded; no fetch is held back for it, and each file is verified like every other."""
+    down is held back by itself (`poolhouse.net.policy.HOLD_S`); nothing is asked."""
     if ledger is None and _REGISTERED and observers.installed() is _REGISTERED[-1]:
         return _REGISTERED[-1]
     held = ledger or Ledger(clock=time.time)
