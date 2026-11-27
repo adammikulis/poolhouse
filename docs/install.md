@@ -187,9 +187,8 @@ python packaging/build.py --bundle   # and the app for this platform (needs Rust
 ## Starting at login and keeping the runtime current
 
 Units that start Poolhouse for you are prepared by a command anyone (or any agent) can run and
-installed by you, at your own terminal, with one command it prints. Nothing writes to
-`~/Library/LaunchAgents`, `~/.config/systemd/user` or a system directory until you run that
-command.
+installed with one command it prints. Nothing writes to `~/Library/LaunchAgents`,
+`~/.config/systemd/user` or a system directory until that command runs.
 
 ```
 python -m poolhouse.fleet.autostart prepare --launchers <launcher directory> --role pool-daemon --role runtime-ensure
@@ -203,12 +202,13 @@ sha256 of each unit, the exec argv (the launcher's absolute path and its options
 string), a path-only environment, the working directory, the restart policy, the log paths, who
 prepared it, the device it is for and a 24-hour expiry.
 
-`install` shows what it will do, asks you to type the manifest id, then refuses unless the
+`install` is decided at once by the `autostart.install` gate (nothing is typed or confirmed),
+shows what it will do, then refuses unless the
 manifest has not expired, was prepared for this device, names a launcher the runtime tooling
 wrote (not a checkout, not an editable install), and every staged unit still has the recorded
 hash and is what `prepare` would write today. It backs up each file it replaces, writes the unit,
 loads it, checks that it is loaded and that the daemon answers its health probe, records the
-install in the authority audit log as a person's action, and prints the command that undoes it:
+install in the authority audit log, and prints the command that undoes it:
 
 ```
 python -m poolhouse.fleet.autostart rollback
