@@ -1,6 +1,7 @@
 """Studio graph editing and durable run controls through the application."""
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
@@ -10,6 +11,7 @@ import pytest
 from browser_expect import expect
 from studio_commands import studio_command, workflow_picker
 from test_fleet_ui import Serving
+from web_assets import SimulatedDaemon, canned
 
 from poolhouse.fleet import studio_service
 
@@ -44,59 +46,83 @@ def studio_browser(browser_owner):
     return browser_owner.pages
 
 
-@pytest.fixture
-def studio_page(tmp_path, studio_browser):
-    pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
+def canned_studio(state):
+    """The route answering ``/ui/studio/**`` from ``state`` with made-up records; it keeps what the page saved and submitted."""
+    def route(request):
+        path = request.request.url.split('/ui/studio', 1)[1]
+        data = request.request.post_data_json if request.request.method != 'GET' else None
+        if path == '/nodes':
+            result = {'nodes': SPECS}
+        elif path == '/templates':
+            result = {'templates': []}
+        elif path == '/workflows' and data is None:
+            result = {'workflows': state['workflows']}
+        elif path.startswith('/workflows'):
+            if state.get('save_error'):
+                canned(request, {'error': state['save_error']}, 503)
+                return
+            workflow = {'id': 'workflow-1', 'revision': len(state['saved']) + 1, **data}
+            workflow['revision'] = len(state['saved']) + 1
+            state['saved'].append(workflow)
+            state['workflows'] = [workflow]
+            result = {'workflow': workflow}
+        elif path == '/validate':
+            result = {'valid': True, 'errors': []}
+        elif path == '/runs' and data is not None:
+            state['submissions'].append(data)
+            run = {'id': 'run-1', 'workflow_id': data['workflow_id'], 'revision': data['revision'],
+                   'state': 'done', 'nodes': {}}
+            state['runs'] = [run]
+            if state.pop('disconnect_next', False):
+                request.abort()
+                return
+            result = {'run': run}
+        elif path == '/runs':
+            result = {'runs': state['runs']}
+        elif path == '/runs/run-1':
+            result = {'run': state['runs'][0]}
+        else:
+            result = {}
+        canned(request, result)
+    return route
+
+
+@contextlib.contextmanager
+def studio_journey(studio_browser, url, daemon=None):
+    """One page opened on Studio at ``url`` with `canned_studio` answering its Studio routes: ``(page, state, errors)``."""
     state = {'workflows': [], 'runs': [], 'submissions': [], 'saved': []}
     with studio_browser() as page:
         page.set_viewport_size({'width': 1440, 'height': 1000})
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
-        def route(request):
-            path = request.request.url.split('/ui/studio', 1)[1]
-            data = request.request.post_data_json if request.request.method != 'GET' else None
-            if path == '/nodes':
-                result = {'nodes': SPECS}
-            elif path == '/templates':
-                result = {'templates': []}
-            elif path == '/workflows' and data is None:
-                result = {'workflows': state['workflows']}
-            elif path.startswith('/workflows'):
-                if state.get('save_error'):
-                    request.fulfill(status=503, json={'error': state['save_error']})
-                    return
-                workflow = {'id': 'workflow-1', 'revision': len(state['saved']) + 1, **data}
-                workflow['revision'] = len(state['saved']) + 1
-                state['saved'].append(workflow)
-                state['workflows'] = [workflow]
-                result = {'workflow': workflow}
-            elif path == '/validate':
-                result = {'valid': True, 'errors': []}
-            elif path == '/runs' and data is not None:
-                state['submissions'].append(data)
-                run = {'id': 'run-1', 'workflow_id': data['workflow_id'], 'revision': data['revision'],
-                       'state': 'done', 'nodes': {}}
-                state['runs'] = [run]
-                if state.pop('disconnect_next', False):
-                    request.abort()
-                    return
-                result = {'run': run}
-            elif path == '/runs':
-                result = {'runs': state['runs']}
-            elif path == '/runs/run-1':
-                result = {'run': state['runs'][0]}
-            else:
-                result = {}
-            request.fulfill(json=result)
-        page.route('**/ui/studio/**', route)
-        try:
-            page.goto(f'http://127.0.0.1:{served.port}/ui/')
-            expect(page.locator('studio-view > section')).to_be_visible()
-            yield page, state, errors
-        finally:
-            served.close()
+        if daemon is not None:
+            daemon.attach(page)
+        page.route('**/ui/studio/**', canned_studio(state))
+        page.goto(url)
+        expect(page.locator('studio-view > section')).to_be_visible()
+        yield page, state, errors
+
+
+@pytest.fixture
+def studio_page(studio_browser):
+    """Studio on a daemon simulated in the browser: the real page and files, CANNED answers, no server."""
+    pytest.importorskip('playwright.sync_api')
+    daemon = SimulatedDaemon()
+    with studio_journey(studio_browser, daemon.url, daemon) as journey:
+        yield journey
+
+
+@pytest.fixture
+def saving_studio_page(tmp_path, studio_browser):
+    """`studio_page` served by a real daemon, for a journey that saves preferences; only the Studio routes are CANNED."""
+    pytest.importorskip('playwright.sync_api')
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    try:
+        with studio_journey(studio_browser, f'http://127.0.0.1:{served.port}/ui/') as journey:
+            yield journey
+    finally:
+        served.close()
 
 
 def add(page, title):
