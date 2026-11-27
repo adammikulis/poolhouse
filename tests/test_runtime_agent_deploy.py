@@ -66,7 +66,7 @@ def test_an_agent_is_refused_while_the_gate_is_the_person_s_and_nothing_is_built
     commit(repo, "a")
     authority.set_state(["runtime.deploy"], authority.PERSON, by="lead")
     assert runtime_cli.main(["ensure"]) == 1
-    assert "for a person" in capsys.readouterr().err
+    assert "refused to an agent" in (said := capsys.readouterr().err) and "the gate runtime.deploy is held back from agents" in said, said
     assert selected() == "" and not runtime_store.candidates()
     [entry] = deploys()
     assert (entry.outcome, entry.meta["command"]) == ("refused", "ensure") and entry.meta["agent"] == agent.name
