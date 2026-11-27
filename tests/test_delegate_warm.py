@@ -13,11 +13,9 @@ import pytest
 from poolhouse import (
     delegate,
     delegate_confined,
-    delegate_run,
     delegate_store as store,
     harness,
     hub,
-    lead_bridge,
 )
 from poolhouse.serve import cli, holding, ops
 from poolhouse.serve.backend import LlamaServerBackend
@@ -41,18 +39,12 @@ def test_the_attribution_line_that_changes_every_request_is_turned_off():
     assert iso_env.OFFLINE["CLAUDE_CODE_ATTRIBUTION_HEADER"] == "0"
 
 
-def test_two_delegates_of_one_lead_start_from_the_same_system_prompt_and_differ_in_the_message():
-    one, two = a_delegate("claude-aaaaaa"), a_delegate("claude-bbbbbb")
-    for made in (lambda rec: delegate_confined.brief_of(rec),
-                 lambda rec: delegate_run.options(rec, lead_bridge.Bridge(None, rec.lead, rec.name, lambda *_: None))["system_prompt"]["append"]):
-        assert made(one) == made(two)
-        assert "claude-aaaaaa" not in made(one)
+@pytest.mark.parametrize("edit", [False, True])
+def test_two_delegates_of_one_lead_start_from_the_same_system_prompt_and_differ_in_the_message(edit):
+    one, two = a_delegate("claude-aaaaaa", edit=edit), a_delegate("claude-bbbbbb", edit=edit)
+    assert delegate_confined.brief_of(one) == delegate_confined.brief_of(two)
+    assert "claude-aaaaaa" not in delegate_confined.brief_of(one)
     assert one.message() != two.message() and "claude-aaaaaa" in one.message() and "read the tests" in one.message()
-
-
-def test_a_read_only_delegate_asks_the_sdk_to_keep_the_dynamic_sections_out_of_the_system_prompt():
-    rec = a_delegate("claude-aaaaaa")
-    assert delegate_run.options(rec, lead_bridge.Bridge(None, rec.lead, rec.name, lambda *_: None))["system_prompt"]["exclude_dynamic_sections"] is True
 
 
 def test_warm_hands_a_delegate_the_trivial_task_and_nothing_else(monkeypatch):

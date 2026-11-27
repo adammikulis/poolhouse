@@ -7,11 +7,11 @@ import json
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
-from pathlib import Path
 from typing import Any
 
 from poolhouse import coding_policy, harnessing, isolation, lead_bridge
 from poolhouse.client import reported_models
+from poolhouse.client.health import served_alias
 from poolhouse.guard import harnesses
 from poolhouse.log import say
 from poolhouse.serve import provenance
@@ -42,13 +42,7 @@ def settings(pre: str = "", post: str = "", wait: float = 0.0, stop: str = "") -
 
 def alias_of(base_url: str, model: str) -> str:
     """The name the server serves the model under -- what every model variable must say."""
-    names = reported_models(base_url)
-    for name in names:
-        said = str(name)
-        if said and "/" not in said and not said.endswith(".gguf"):
-            return said
-    stem = Path(str(names[0]) if names else str(model)).name
-    return stem[:-5] if stem.endswith(".gguf") else stem
+    return served_alias(reported_models(base_url), str(model))
 
 
 def parser() -> argparse.ArgumentParser:

@@ -12,7 +12,7 @@ from typing import Any
 
 __all__ = ["NAMES", "prelude"]
 
-NAMES = {"bash": "Bash", "powershell": "PowerShell", "read": "Read", "edit": "Edit", "write": "Write", "grep": "Grep", "find": "Glob",
+NAMES = {"bash": "Bash", "shell": "Bash", "powershell": "PowerShell", "read": "Read", "edit": "Edit", "write": "Write", "grep": "Grep", "find": "Glob",
          "glob": "Glob", "ls": "LS", "list": "LS", "webfetch": "WebFetch", "lead_ask": "mcp__lead__ask", "lead_note": "mcp__lead__note"}
 
 

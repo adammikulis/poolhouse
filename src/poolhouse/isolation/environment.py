@@ -61,8 +61,9 @@ MIN_COMPACT_WINDOW = 100000
 """The window from which Claude Code is told to compact; the value `claude.MIN_COMPACT_WINDOW` carries today."""
 CODEX_KEY = "POOLHOUSE_API_KEY"
 OPENCODE_OFFLINE = {"OPENCODE_DISABLE_AUTOUPDATE": "true", "OPENCODE_DISABLE_MODELS_FETCH": "true", "OPENCODE_DISABLE_CLAUDE_CODE": "true",
-                    "OPENCODE_DISABLE_FILEWATCHER": "true"}
-"""What keeps OpenCode from calling out to anything but the bridge, and from reading the person's Claude Code files."""
+                    "OPENCODE_DISABLE_FILEWATCHER": "true", "OPENCODE_DISABLE_PROJECT_CONFIG": "true"}
+"""What keeps OpenCode from calling out to anything but the bridge, from reading the person's Claude Code files, and from taking the project's own
+OpenCode configuration and plugins, which would replace the permissions and the plugin the launcher gives it."""
 
 BY_HARNESS: dict[str, tuple[str, ...]] = {
     "claude": ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_TMPDIR", "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", *MODEL_VARS, *OFFLINE,

@@ -6,6 +6,7 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from poolhouse.http import Options, ServerError, request_bytes, request_json
@@ -158,6 +159,15 @@ def reported_models(base_url: str, *, timeout: float = 5.0,
         for entry in data
         if isinstance(entry, dict) and isinstance(entry.get("id"), str) and entry["id"].strip()
     ]
+
+
+def served_alias(names: list[str], model: str = "") -> str:
+    """The name a harness calls the model by, from the ids ``names`` a server reports (else the ``model`` it was started on): the first id that is
+    neither a path nor a file, else the file's name without ``.gguf``."""
+    for name in names:
+        if "/" not in name and not name.endswith(".gguf"):
+            return name
+    return Path(names[0] if names else model).name.removesuffix(".gguf")
 
 
 def quant_from_model_path(path: str) -> str | None:

@@ -3,20 +3,23 @@
     poolhouse-delegate start --task TEXT [--project DIR] [--name N] [--edit]
     poolhouse-delegate status [NAME]     poolhouse-delegate result NAME     poolhouse-delegate stop NAME
 
-The agent is a session of its own on the lead's board, registered as a subagent of the session that starts it. It has no
-shell: it reads (Read, Grep, Glob) and reaches the lead through two tools. With `--edit` it also changes the project, in
-the isolated launcher's confinement (`poolhouse.delegate_confined`): the plain source it changed is published into the
-project after each turn and anything else is refused at once and kept as a patch. Nothing here waits on a person: a
-refusal is immediate and says why.
+The agent is a session of its own on the lead's board, registered as a subagent of the session that starts it. It is
+OpenCode in the isolated launcher's confinement (`poolhouse.delegate_confined`). It reads and searches a read-only copy of
+its folder, with no shell, and reaches the lead through two tools. With `--edit` it also changes the project and runs a
+shell in the confinement: the plain source it changed is published into the project when it ends and anything else is
+refused at once and kept as a patch. Nothing here waits on a person: a refusal is immediate and says why.
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import os
 import shutil
+import subprocess
 import tempfile
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from poolhouse import (
@@ -72,6 +75,23 @@ def _running(asked: store.Delegate) -> str:
     return ""
 
 
+def _folder(source: str, edit: bool) -> str:
+    """The folder a delegate is confined to a stage of: its project, or, for one with none or one that only reads a folder that is no git project's
+    root, a git repository of its own under the temporary folder, holding a copy of that folder (links are copied as links). A confinement stages
+    a git project and nothing else; one that edits such a folder is refused by it."""
+    if source and (edit or os.path.lexists(Path(source) / ".git")):
+        return source
+    made = tempfile.mkdtemp(prefix="poolhouse-delegate-")
+    try:
+        if source:
+            shutil.copytree(source, made, symlinks=True, dirs_exist_ok=True)
+        subprocess.run([shutil.which("git") or "git", "init", "--quiet", made], check=True, capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        shutil.rmtree(made, ignore_errors=True)
+        raise
+    return made
+
+
 @COMMANDS.command("start", help="start a local agent on a task and print its name", options=[
     flag("--task", required=True, help="what the agent is to do"),
     flag("--project", default="", metavar="DIR", help="the folder it reads, and with --edit changes (default: an empty scratch folder of its own; with --edit, the project this command runs in)"),
@@ -79,7 +99,7 @@ def _running(asked: store.Delegate) -> str:
     flag("--as", dest="parent", default="", metavar="AGENT", help="the session it is a subagent of (default: the session this command runs in)"),
     option("model", help="the model (default: the one served on this machine now)"),
     flag("--max-turns", type=int, default=None),
-    flag("--edit", action="store_true", help="let it change the project, in a confinement: plain source is published after each turn, the rest refused")])
+    flag("--edit", action="store_true", help="let it change the project, in a confinement: plain source is published when it ends, the rest refused")])
 def start(args: argparse.Namespace) -> int:
     """Register the agent as a subagent of the calling session, then run it detached; prints its name."""
     authority.require("workspace.agents", "start a delegate")
@@ -94,12 +114,16 @@ def start(args: argparse.Namespace) -> int:
     if same := _running(asked):
         say(f"{same} is already running that task; `poolhouse-delegate status {same}`")
         return 0
-    if args.edit:
-        delegate_confined.admit(asked, args.project)   # the project, the gate and this computer's confinement, decided now: a refusal is at once and starts nothing
+    workdir = _folder(source, args.edit)
+    try:   # the folder, the gate and this computer's confinement, decided now: a refusal is at once and starts nothing
+        delegate_confined.admit(replace(asked, workdir=workdir), args.project if workdir == source else "")
+    except (Denied, OSError, RuntimeError, ValueError):
+        if workdir != source:
+            shutil.rmtree(workdir, ignore_errors=True)
+        raise
     made = harnessid.invite(harnessid.agent_name(model, "delegate", args.name), Path.cwd(), lead, say, claim=("", "poolhouse-agent"))
     if made.native is None:
         raise ValueError("the agent's session carries no native identity to run under")
-    workdir = source or tempfile.mkdtemp(prefix="poolhouse-delegate-")
     rec = store.Delegate(made.name, lead, board, args.task, workdir, model, args.name, source, args.edit, args.max_turns,
                          [made.native.model, made.native.harness, made.native.id])
     store.save(rec)
@@ -186,7 +210,7 @@ def stop(args: argparse.Namespace) -> int:
         store.set_status(rec.name, "stopped", "stopped by the lead")
     with contextlib.suppress(Denied, NodeError, ValueError, OSError):
         harnessid.launcher(Client(node_launch.default_state()), rec.board, rec.lead).retire(rec.name)
-    if not rec.source:
+    if rec.workdir != rec.source:
         shutil.rmtree(rec.workdir, ignore_errors=True)
     say(f"stopped {rec.name}")
     return 0

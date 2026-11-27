@@ -9,7 +9,7 @@ from poolhouse import node_launch
 from poolhouse.board import credentials, place
 from poolhouse.board.client import Client, NodeError
 from poolhouse.board.session import Entry, Native, Session
-from poolhouse.client.health import reported_models
+from poolhouse.client.health import reported_models, served_alias
 from poolhouse.errors import Denied
 from poolhouse.workspace import worktree_lifecycle
 
@@ -90,8 +90,10 @@ class HarnessSession:
         if not self.minted and not self.persistent:
             return False
         try:
-            if server and alias not in reported_models(server):
-                return False
+            if server:
+                names = reported_models(server)
+                if not names or alias not in (*names, served_alias(names)):   # the server must report the model: by this id, or as the alias made of it
+                    return False
             self.session().whoami(Path(alias).name if server else alias, harness)
         except (Denied, NodeError, ValueError, OSError, HTTPException):
             return False

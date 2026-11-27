@@ -164,15 +164,16 @@ def window_of(base_url: str) -> int:
 
 
 def binary_for(name: str) -> str:
-    """The installed harness executable, including the maintained Claude SDK's bundled CLI."""
+    """The installed harness executable, including the maintained Claude SDK's bundled CLI. OpenCode is the pinned release this install keeps
+    (`opencode_install.VERSION`) and nothing on PATH."""
+    if name == "opencode":
+        return opencode_install.kept()
     if binary := shutil.which(name):
         return binary
     if name == "claude" and (spec := importlib.util.find_spec("claude_agent_sdk")) and spec.origin:
         binary = Path(spec.origin).parent / "_bundled" / ("claude.exe" if os.name == "nt" else "claude")
         if binary.is_file() and os.access(binary, os.X_OK):
             return str(binary)
-    if name == "opencode":
-        return opencode_install.kept()
     return ""
 
 def admitted(found: str, ctx: int, say: Callable[[str], None], *, plan: Callable[..., object] | None = None, kv: str = KV) -> bool:
@@ -526,6 +527,8 @@ class Harness:
     """Given the launch's helper identity, what the session bridge has of its lead, the two tools `ask` and `note` and what the lead sent: by
     default of the session that launched it."""
     conversation: str | None = None
+    observe: Callable[[str, Mapping[str, Any], Mapping[str, Any]], None] | None = None
+    """Told each hook event of the box, with its payload and the answer it was given."""
 
 
 @contextlib.contextmanager
@@ -539,8 +542,19 @@ def confined(args: argparse.Namespace, run: Session, how: Harness,
 
     def decide(stage: str) -> Callable[[str, dict], dict]:
         rail = rail_of(args, helper.name, stage)   # a call is the box's own words, judged as text; after it the box is given what its lead sent
-        return lambda event, payload: (harnesshook.confined_pre(payload, rail) if event == "pre" else harnesshook.stop(rail) if event == "stop"
-                                       else harnesshook.confined_post(lead.news()))
+
+        def answered(event: str, payload: dict) -> dict:
+            if event == "pre":
+                said = harnesshook.confined_pre(payload, rail)
+            elif event == "stop":
+                said = harnesshook.stop(rail)
+            else:   # a plugin's word that it has loaded takes none of the lead's messages: nothing would show them to the model
+                said = {} if payload.get("loaded") else harnesshook.confined_post(lead.news())
+            if how.observe is not None:
+                how.observe(event, payload, said)
+            return said
+
+        return answered
 
     notice = isolation.Notice(None if parent is None else isolation.Reporter(_post(parent)), getattr(parent, "name", ""), REPORT_CAP,
                               lambda name, fields: sandbox_run.HOOKS.events and sandbox_run.HOOKS.events(name, fields))

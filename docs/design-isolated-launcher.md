@@ -313,7 +313,7 @@ The environment is an allow-list built by the launcher; `os.environ` is never co
 | Claude Code | `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_TMPDIR` inside the agent home, `ANTHROPIC_BASE_URL` (the bridge), `ANTHROPIC_AUTH_TOKEN` (the bridge token), the model variables, the offline variables and the window variables of `claude.py`, the shell bounds (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`, `BASH_DEFAULT_TIMEOUT_MS`, `BASH_MAX_TIMEOUT_MS`, and `BASH_MAX_OUTPUT_LENGTH` from the served window; docs/limits.md), `CLAUDE_CODE_EXTRA_BODY` and `CLAUDE_CODE_EFFORT_LEVEL` where the caller sets them |
 | Codex | `CODEX_HOME` (an existing directory), the provider key variable set to the bridge token |
 | Pi | `PI_CODING_AGENT_DIR`, `PI_OFFLINE`, `POOLHOUSE_NONINTERACTIVE` |
-| OpenCode | `OPENCODE_CONFIG` and the four `XDG_*` homes inside the agent home, and the `OPENCODE_DISABLE_*` switches of `environment.OPENCODE_OFFLINE` (update, model list, Claude Code import, file watcher), and `OPENCODE_PASSWORD` (the bridge token, the password of the server OpenCode runs on the one loopback port `Rendering.listen` names) |
+| OpenCode | `OPENCODE_CONFIG` and the four `XDG_*` homes inside the agent home, and the `OPENCODE_DISABLE_*` switches of `environment.OPENCODE_OFFLINE` (update, model list, Claude Code import, file watcher, the project's own OpenCode configuration), and `OPENCODE_PASSWORD` (the bridge token, the password of the server OpenCode runs on the one loopback port `Rendering.listen` names) |
 
 The table is closed. A variable it does not name does not exist for any harness, whatever the caller's environment, a project file
 or a grant holds: a toolchain grant contributes `PATH` entries and no variable, so a toolchain directory whose files name
@@ -351,9 +351,16 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
   (`secretpaths.tree_hit`) or is neither linked nor read. The walk does not enter `site-packages` or a nested `node_modules`: a
   credential file there is readable by the box, which can put what it reads only into its answer, its messages to its lead and the
   source it publishes.
+- **A delegate** (`poolhouse-delegate`) is OpenCode in this profile, whether it edits or only reads, so it starts only where the
+  launcher can confine. Its OpenCode permissions deny every action but its own tools, and Poolhouse's plugin offers the model only
+  those; a delegate that only reads is permitted no shell and no editing tool, and its stage is read-only. A run whose plugin never
+  reached the parent fails and publishes nothing. That word comes from inside the box, so it shows a plugin that did not load and
+  is no boundary: the profile and publication are. A process the box detaches can send such frames and so hold off the no-progress
+  limit; `poolhouse-delegate stop` ends the run.
 - **A delegate's shell** runs in this profile with no further grant: no network but the model bridge's port (which the shell, like
-  the harness, holds the token of) and the session bridge's socket, no port to listen on, no nested sandbox. Its hooks are judged
-  by their text alone (`harnesshook.confined_pre`), so nothing a hook or a tool result holds is run outside the box.
+  the harness, holds the token of), the session bridge's socket and the one loopback port OpenCode's own server listens on, and no
+  nested sandbox. The plugin runs each command under a program that ends it at its timeout. Its hooks are judged by their text
+  alone (`harnesshook.confined_pre`), so nothing a hook or a tool result holds is run outside the box.
 
 ### 3.5 Headless and interactive
 
