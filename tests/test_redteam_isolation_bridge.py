@@ -381,7 +381,7 @@ def test_a_picture_named_by_an_address_is_still_refused_beside_a_tool_with_a_typ
 
 
 def test_a_fault_in_reading_a_request_is_answered_500_and_never_ends_in_a_reset(bridge, upstream, monkeypatch):
-    def broken(body: bytes, alias: str, route: str) -> bytes:
+    def broken(body: bytes, alias: str, route: str, most: int | None = None) -> bytes:
         raise TypeError("injected")
 
     monkeypatch.setattr(model_bridge, "pin", broken)

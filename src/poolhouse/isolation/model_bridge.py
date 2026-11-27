@@ -9,6 +9,7 @@ profile. Responses pass through as bytes, never parsed for anything but their fr
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -20,14 +21,15 @@ import threading
 import time
 import traceback
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
+from poolhouse.http import MOST_BODY
 from poolhouse.isolation import wire
 from poolhouse.isolation.gate import check_on
 from poolhouse.isolation.serving import IDLE_SECONDS, Server, tell
-from poolhouse.json_objects import unique_object
+from poolhouse.media import inline
 
 __all__ = ["FORWARDED", "ROUTES", "Lease", "ModelBridge", "pin"]
 
@@ -48,10 +50,8 @@ FIELDS: dict[str, tuple[str, ...]] = {
 """The only top-level fields of a request that reach the server, by route: what the three message routes of the harnesses take. Every other field
 is dropped, a slot (`id_slot`, `slot_id`), an adapter (`lora`) and the server's own cache switch (`cache_prompt`) among them, and none is added by
 being unknown to a list kept here (the list is the allow-list, never a deny-list)."""
-MEDIA = frozenset({"image_url", "image", "input_image", "input_audio", "audio", "audio_url", "file", "input_file", "video_url", "document"})
-"""The content parts that carry a picture, a sound, a video or a file: each is read for a place the server could fetch from."""
-LOCATIONS = ("image_url", "audio_url", "video_url", "file_url", "url")
-DEPTH = 24
+MOST_MEDIA = MOST_BODY
+"""The bytes of pictures, sounds and videos a request may carry beside its text, which is held to four bytes a token of the window."""
 SLOT_WAIT_SECONDS = 2.0
 """How long a request waits for a slot before it is answered 429 with `Retry-After`: the time one parallel request of a harness may overlap another's
 end. A bounded wait on the server's own capacity, never on a person."""
@@ -63,12 +63,12 @@ STATUS = re.compile(rb"HTTP/1\.[01] ([1-5][0-9]{2})(?: [ -~]*)?")
 JSON_TYPE = re.compile(r"application/json(?:\s*;\s*charset=utf-8)?", re.IGNORECASE)
 MESSAGES = {
     "pinned": "This coding session may use only the model it was given.",
-    "json": "The body is not one JSON object with each field once.",
+    "json": inline.UNREADABLE,
+    "long": "The text of this request is longer than the session's context takes.",
     "type": "The body must be sent as application/json.",
     "auth": "The token is not this session's.",
     "route": "No such route.",
     "busy": "The model is answering as many requests as it has room for; ask again in a moment.",
-    "remote": "A picture, a sound or a file must be sent as its own bytes (a data: URL), never as an address.",
     "down": "The model server did not answer.",
     "length": "A request with a body states its length.",
     "empty": "This route takes no body.",
@@ -76,57 +76,25 @@ MESSAGES = {
 }
 
 
-def _media(value: object, depth: int = 0) -> list[dict]:
-    """Every content part under ``value`` that carries a picture, a sound, a video or a file (`MEDIA`), at any depth a message nests them."""
-    if depth > DEPTH:
-        raise wire.Refusal(400, MESSAGES["json"])
-    found: list[dict] = []
-    if isinstance(value, dict):
-        kind = value.get("type")
-        if isinstance(kind, str) and kind in MEDIA:   # a tool's schema has a property named `type` whose value is a dict, a list unhashable here
-            found.append(value)
-        found += [part for each in value.values() if isinstance(each, (dict, list)) for part in _media(each, depth + 1)]
-    elif isinstance(value, list):
-        found += [part for each in value for part in _media(each, depth + 1)]
-    return found
-
-
-def _remote(part: dict) -> bool:
-    """Whether a media part names a place the server could fetch from (a URL that is not `data:`, a file the server holds) and not bytes it was sent."""
-    for key in LOCATIONS:
-        held = part.get(key)
-        named = held.get("url") if isinstance(held, dict) else held
-        if isinstance(named, str) and not named.startswith("data:"):
-            return True
-    source = part.get("source")
-    return "file_id" in part or (isinstance(source, dict) and (source.get("type") in ("url", "file") or "url" in source or "file_id" in source))
-
-
-def pin(body: bytes, alias: str, route: str) -> bytes:
+def pin(body: bytes, alias: str, route: str, most: int | None = None) -> bytes:
     """``body`` as the server gets it: one JSON object with each field once (a duplicate would be read one way here and another there), no
     constant that is not a number (`NaN`, `Infinity`), only the fields ``route`` takes (`FIELDS`, an allow-list), its `model` set to ``alias``
     when empty or absent and refused when it names another, and no picture, sound, video or file named by anything but its own bytes (a URL the
-    server fetched would be a request made from the one process that has the network)."""
-    def reject(constant: str) -> None:
-        raise ValueError(constant)
-
+    server fetched would be a request made from the one process that has the network). ``most`` bounds the bytes that are not media."""
     try:
-        found = json.loads(body, object_pairs_hook=unique_object, parse_constant=reject)
-    except (ValueError, RecursionError):
-        raise wire.Refusal(400, MESSAGES["json"]) from None
-    if not isinstance(found, dict):
-        raise wire.Refusal(400, MESSAGES["json"])
-    model = found.get("model", "")
-    if model not in ("", alias):
-        raise wire.Refusal(400, MESSAGES["pinned"])
-    found = {name: value for name, value in found.items() if name in FIELDS[route]}
-    found["model"] = alias
-    if any(_remote(part) for part in _media(found)):
-        raise wire.Refusal(400, MESSAGES["remote"])
-    try:
-        return json.dumps(found, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    except ValueError:
-        raise wire.Refusal(400, MESSAGES["json"]) from None
+        found = inline.parsed(body)
+        if not isinstance(found, dict):
+            raise wire.Refusal(400, MESSAGES["json"])
+        if found.get("model", "") not in ("", alias):
+            raise wire.Refusal(400, MESSAGES["pinned"])
+        found = {name: value for name, value in found.items() if name in FIELDS[route]}
+        found["model"] = alias
+        carried = inline.inline_bytes(found)
+        if most is not None and len(body) - carried > most:
+            raise wire.Refusal(413, MESSAGES["long"])
+        return inline.written(found)
+    except inline.Refused as why:
+        raise wire.Refusal(400, str(why)) from None
 
 
 def _digest(text: str) -> str:
@@ -236,27 +204,39 @@ class ModelBridge:
             raise wire.Refusal(404, MESSAGES["route"])
         self._authenticate(head)
         post = head.method == "POST"
-        length = wire.length_of(head, self.limit)
+        length = wire.length_of(head, self.limit + MOST_MEDIA if post else self.limit)
         if not post and path == "/v1/models" and not length:
             return 200, wire.answer(sock, 200, json.dumps(self._models()).encode())
         if post and head.one("content-length") is None:
             raise wire.Refusal(411, MESSAGES["length"])
         if not post and length:
             raise wire.Refusal(400, MESSAGES["empty"])
-        body = b""
-        if post:
-            if not JSON_TYPE.fullmatch((head.one("content-type") or "").strip()):
-                raise wire.Refusal(400, MESSAGES["type"])
-            body = pin(wire.read_body(sock, buffer, length), self.alias, path)
+        if post and not JSON_TYPE.fullmatch((head.one("content-type") or "").strip()):
+            raise wire.Refusal(400, MESSAGES["type"])
+        media = length > self.limit   # past the text's own bound, a body is read only once it holds a slot: the slots bound what is held at once
+        body = b"" if media or not post else self._pinned(sock, buffer, length, path)
+        with self._slot() as free:
+            if not free:
+                if media:
+                    _drain(sock, length - len(buffer))
+                raise wire.Refusal(429, MESSAGES["busy"], (("Retry-After", str(RETRY_AFTER)),))
+            return self._relay(sock, head, path, self._pinned(sock, buffer, length, path) if media else body)
+
+    def _pinned(self, sock: socket.socket, buffer: bytearray, length: int, path: str) -> bytes:
+        return pin(wire.read_body(sock, buffer, length), self.alias, path, most=self.limit)
+
+    @contextlib.contextmanager
+    def _slot(self) -> Iterator[bool]:
+        """Whether one of the server's slots came free in time, held for as long as the block runs; the request counts as busy meanwhile."""
         with self._lock:
             self._busy += 1
         try:
-            if not self._slots.acquire(timeout=min(self.idle, SLOT_WAIT_SECONDS)):
-                raise wire.Refusal(429, MESSAGES["busy"], (("Retry-After", str(RETRY_AFTER)),))
+            free = self._slots.acquire(timeout=min(self.idle, SLOT_WAIT_SECONDS))
             try:
-                return self._relay(sock, head, path, body)
+                yield free
             finally:
-                self._slots.release()
+                if free:
+                    self._slots.release()
         finally:
             with self._lock:
                 self._busy -= 1
@@ -353,6 +333,13 @@ def _compose(status: int, fields: dict[str, str]) -> bytes:
     lines = [f"HTTP/1.1 {status} {wire.reason(status)}", "Connection: close"]
     lines += [f"{name.title()}: {value}" for name, value in fields.items()]
     return ("\r\n".join(lines) + "\r\n\r\n").encode("latin-1")
+
+
+def _drain(sock: socket.socket, left: int) -> None:
+    """Read and drop the ``left`` bytes of a refused request still on the way, so that its sender reads the answer and not a reset."""
+    with contextlib.suppress(OSError):
+        while left > 0 and (more := sock.recv(65536)):
+            left -= len(more)
 
 
 def _discard(sock: socket.socket) -> bool:

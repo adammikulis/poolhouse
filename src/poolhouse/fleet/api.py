@@ -27,6 +27,7 @@ from poolhouse.files import promote
 from poolhouse.graph.guard import MAX_BODY
 from poolhouse.http import _open
 from poolhouse.macauth import Verdict
+from poolhouse.media import inline
 from poolhouse.sentinel.adapters import watch_authenticator
 from poolhouse.speech import service as speech
 from poolhouse.speech.protocols import ProviderError
@@ -273,13 +274,20 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 self._send(503, {"error": "no model server is running on this machine"})
                 return True
 
+            if body:
+                try:
+                    body = inline.relayed(body, route, self.headers.get("Content-Type", ""))
+                except inline.Refused as why:
+                    self._send(400, {"error": str(why)})
+                    return True
+
             upstream = urllib.request.Request(
                 f"http://127.0.0.1:{port}{rest}", data=body or None, method=self.command)
             if leased := serverkeys.for_url(upstream.full_url):
                 upstream.add_header("Authorization", f"Bearer {leased}")
             for name, value in self.headers.items():
-                if name.lower() in ("authorization", "host", "content-length",
-                                    "connection", "x-poolhouse-ui"):
+                if name.lower() in ("authorization", "host", "content-length", "content-encoding",
+                                    "transfer-encoding", "connection", "x-poolhouse-ui"):
                     continue
                 upstream.add_header(name, value)
             if body:
