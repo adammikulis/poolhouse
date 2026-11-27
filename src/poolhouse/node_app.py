@@ -1,9 +1,9 @@
 """Poolhouse.app: the stable macOS identity the LAN-enabled node runs under.
 
-macOS ties Local Network permission to an app's bundle id and code signature. A bare cargo-built binary has neither, so every
-build of it asks the person again. The bundle built here holds a copy of the verified node binary as its executable, with a
-fixed bundle id and a signature whose designated requirement names that id and the signing certificate (`node_signing`), never
-the binary's hash, so rebuilding the binary keeps the permission the person gave.
+macOS ties Local Network permission to an app's bundle id and code signature. A bare cargo-built binary has neither a name nor an
+id of its own. The bundle built here holds a copy of the verified node binary as its executable, with a fixed bundle id, signed by
+`node_signing`: locally by default, which names the code, so macOS may ask again after the binary changes; with the user's
+certificate when they added one, whose requirement names the id and the certificate, so the permission should stay.
 
 The bundle lives under `~/.poolhouse/apps/`, outside the repository. `BUNDLE_ID` is never changed: a new id is a new app to macOS
 and loses every grant.
@@ -44,13 +44,9 @@ def info_plist(version: str = "0", *, icon: bool = True) -> dict:
 
 
 def requirement(certificate_sha1: str) -> str:
-    """The designated requirement: this bundle id, signed by this certificate. It names no cdhash, so a rebuilt binary still satisfies it."""
+    """The designated requirement of a certificate signature: this bundle id, signed by this certificate. It names no cdhash, so a
+    rebuilt binary still satisfies it."""
     return f'designated => identifier "{BUNDLE_ID}" and certificate leaf = H"{certificate_sha1.lower()}"'
-
-
-def ad_hoc_requirement() -> str:
-    """The designated requirement of the fallback signature, which has no certificate: the bundle id alone."""
-    return f'designated => identifier "{BUNDLE_ID}"'
 
 
 def launch_command(bundle: Path, args: list[str]) -> list[str]:
@@ -78,7 +74,7 @@ def build(binary: Path, *, icon: Path | None = None, bundle: Path | None = None)
     shutil.rmtree(staging.parent, ignore_errors=True)
     sha = _assemble(staging, binary, icon or (ICON_SVG if ICON_SVG.is_file() else None))
     try:
-        signing = node_signing.sign(staging, BUNDLE_ID, requirement, ad_hoc_requirement())
+        signing = node_signing.sign(staging, BUNDLE_ID, requirement)
         shutil.rmtree(bundle, ignore_errors=True)
         shutil.copytree(staging, bundle, symlinks=True)
     finally:

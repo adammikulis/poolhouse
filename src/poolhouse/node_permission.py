@@ -8,6 +8,7 @@ parse results and build command lines, and open no sockets.
 
     poolhouse local-network permission [--seconds N]
     poolhouse local-network build [--binary PATH] [--icon SVG]
+    poolhouse local-network certificate enable|remove       (poolhouse.node_signing)
     poolhouse local-network key
 """
 
@@ -20,7 +21,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from poolhouse import node_app, node_key, node_launch
+from poolhouse import node_app, node_key, node_launch, node_signing, runtime_identity
 from poolhouse.command import Group, flag
 from poolhouse.log import say, warn
 
@@ -101,6 +102,33 @@ def _permission_command(args) -> int:
     return 0 if permission(args.seconds) == GRANTED else 1
 
 
+def resign_apps() -> list[tuple[Path, str]]:
+    """Sign every Poolhouse app on this Mac again with what the keychain now holds; each as (app, "certificate" or "ad-hoc")."""
+    apps = [(bundle, runtime_identity.BUNDLE_ID, runtime_identity.requirement) for bundle in runtime_identity.bundles()]
+    if node_app.executable_path().is_file():
+        apps.append((node_app.bundle_path(), node_app.BUNDLE_ID, node_app.requirement))
+    return [(bundle, runtime_identity.resign(bundle, identifier, requirement_for)) for bundle, identifier, requirement_for in apps]
+
+
+def _certificate_command(args) -> int:
+    """``poolhouse local-network certificate``: add or remove the user's signing certificate, then sign the apps accordingly."""
+    if sys.platform != "darwin":
+        warn("certificate: only macOS signs Poolhouse's apps, so there is nothing to change on this computer")
+        return 1
+    adding = args.change == "enable"
+    try:
+        (node_signing.enable if adding else node_signing.remove)(say)
+        signed = resign_apps()
+    except (OSError, subprocess.SubprocessError) as exc:
+        warn(f"certificate: {exc}")
+        return 1
+    for bundle, how in signed:
+        say(f"{bundle} is signed {'with the certificate' if how == 'certificate' else 'locally'}")
+    if signed:
+        say("Poolhouse processes already running keep the signature they started with until they restart.")
+    return int(adding and any(how != "certificate" for _bundle, how in signed))
+
+
 WHERE = {"keystore": "the keystore", "passphrase": "a file under a passphrase (weak)", "file": "a file (weak)", "none": "no key yet", "unknown": "an unknown place"}
 
 
@@ -111,11 +139,15 @@ def _key_command(args) -> int:
     return 0
 
 
-GROUP = Group("poolhouse.node_permission", "The macOS identity of the LAN node: build it, and ask for Local Network permission.")
+GROUP = Group("poolhouse.node_permission", "The macOS identity of Poolhouse: build the node's app, add or remove a signing "
+                                           "certificate, and ask for Local Network permission.")
 GROUP.add("permission", _permission_command, help="ask macOS for Local Network permission for Poolhouse and say the answer",
           options=[flag("--seconds", type=int, default=SECONDS, help="how long the probe waits to hear itself")])
 GROUP.add("key", _key_command, help="say where the device key is kept",
           options=[flag("--state", default="", help="the node's state directory (default: the machine's)")])
+GROUP.add("certificate", _certificate_command, help="enable or remove a signing certificate in your login keychain",
+          options=[flag("change", choices=("enable", "remove"),
+                        help="enable says what it adds before macOS asks for your password; remove deletes the certificate and key")])
 GROUP.add("build", node_app.build_command, help="build and sign Poolhouse.app from the node binary", options=[
     flag("--binary", default="", help="the node binary (default: the selected runtime's)"),
     flag("--icon", default="", help="an SVG for the icon (default: the Poolhouse mark)")])

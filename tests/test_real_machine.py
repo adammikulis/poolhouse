@@ -145,7 +145,7 @@ def test_a_test_that_resolves_the_real_keyring_fails_there():
 # What may start `osascript`, `security` or macOS authorization. The first group asks first (`real_machine`); the second only shows
 # a dialog or text, which the suite's PATH shims and the notifier shim check; none opens an administrator or Keychain prompt itself.
 ASKS_FIRST = {
-    "node_signing.py": "security find-certificate / import / add-trusted-cert",
+    "node_signing.py": "security find-identity / find-certificate / import / add-trusted-cert / delete-identity / delete-certificate",
 }
 NO_PROMPT = {
     "fleet/shard_split.py": "a pattern that keeps macOS-only code off other devices",
@@ -296,11 +296,15 @@ def nothing_spawns(monkeypatch):
 
 
 def test_a_signing_certificate_is_never_made_or_read_outside_the_installed_software(nothing_spawns, tmp_path, monkeypatch):
-    from poolhouse import node_signing
+    from poolhouse import caller, node_signing
 
+    for name in caller.AGENT_MARKERS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(caller, "confined", lambda: False)
     signed: list[list[str]] = []
     monkeypatch.setattr(node_signing, "_run", lambda argv: signed.append(argv) or "")
-    assert node_signing.sign(tmp_path / "app", "id", lambda _fingerprint: "req", "adhoc-req") == "ad-hoc"
+    assert node_signing.sign(tmp_path / "app", "id", lambda _fingerprint: "req") == "ad-hoc"
     assert [argv[0] for argv in signed] == ["codesign"] and signed[0][3] == "-"
-    with pytest.raises(real_machine.Refused):
-        node_signing.certificate_sha1()
+    for touch in (node_signing.identities, lambda: node_signing.enable(print), lambda: node_signing.remove(print)):
+        with pytest.raises(real_machine.Refused):
+            touch()

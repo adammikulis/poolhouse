@@ -1061,11 +1061,9 @@ when the verified binary's checksum differs from the one inside, so the supervis
   `CFBundleName` is Poolhouse, `LSUIElement` hides the dock icon, `NSLocalNetworkUsageDescription` is the sentence the prompt
   shows, and `NSBonjourServices` lists `_poolhouse._tcp`. The node discovers by raw multicast beacon, not mDNS; the keys are
   there so the prompt reads right.
-- **Stable signature.** `node_signing` makes the self-signed code-signing certificate `Poolhouse Local Signing` once in the login
-  keychain (trusted for code signing in the user domain only; no Apple developer account) and signs the bundle with the designated
-  requirement `identifier "app.poolhouse.node" and certificate leaf = H"<sha1>"`. It names no cdhash, so rebuilding the binary
-  keeps the grant. If the certificate cannot be made, the bundle is signed ad hoc with the identifier-only requirement and a
-  warning says the permission may be asked again after a rebuild. A bundle is built beside its place and moved in only once signed.
+- **Signature.** `node_signing` signs the bundle ([the signature on macOS](#the-signature-on-macos)): locally by default, or with
+  the user's certificate under the designated requirement `identifier "app.poolhouse.node" and certificate leaf = H"<sha1>"`. A
+  bundle is built beside its place and moved in only once signed.
 - **Asking once.** `poolhouse local-network permission` launches the bundle through Launch Services with `poolhouse-node probe`, which joins
   the beacon group, sends datagrams of its own (multicast, each network's broadcast address and the router) and listens for
   itself, up to 30 seconds. It prints GRANTED, DENIED (the sends were refused or never heard) or NOT ASKED (the bundle did not
@@ -1074,6 +1072,37 @@ when the verified binary's checksum differs from the one inside, so the supervis
 - **What the probe cannot see.** Hearing its own datagram is delivered inside the machine, so a refused send (`No route to host`
   on the multicast group) is the signal of a denied permission, and a run launched from a terminal borrows that terminal's
   permission; only the `open` launch the command uses measures the bundle's own.
+
+## The signature on macOS
+
+Both Poolhouse apps (the node's and the runtime's) are signed one of two ways. The default writes nothing outside Poolhouse's own
+folder; the certificate is the user's choice.
+
+| | Default | Opted in |
+|---|---|---|
+| Login keychain | Untouched | A certificate and its key are added and trusted for code signing, for this user only |
+| Signature | Local (ad hoc), no certificate; the app is still named Poolhouse | Signed with the certificate |
+| Designated requirement | codesign's own: hashes of the code | The bundle id and the certificate, no hash |
+| After an update that changes the code | macOS may ask again for network permission | The permission should stay |
+| Updates | Signing needs nothing from the user | A certificate that cannot sign leaves the local signature, with a warning |
+
+How often macOS asks again under either signature is unmeasured.
+
+- **Opting in.** `poolhouse local-network certificate enable` prints what it adds, then makes the self-signed certificate
+  `Poolhouse Local Signing` (no Apple developer account), imports it with its key into the login keychain (`/usr/bin/codesign` may
+  use the key), trusts it for code signing in the user domain, for which macOS asks for the password, and signs the apps already
+  there. A step that fails, is declined or is interrupted deletes what was imported. `poolhouse-setup` shows the command on an
+  installed Mac and runs nothing.
+- **Undoing it.** `poolhouse local-network certificate remove` deletes every certificate of that name with its private key and
+  trust setting, then signs the apps locally. With none there it changes nothing in the keychain.
+- **Who may.** Both commands are refused at once to an agent or a confined process (`caller.refuse_agent`) and outside the
+  installed software on the real home (`real_machine`). No install, update, rollback, node start or setup run creates, imports or
+  trusts a certificate.
+- **Opted in is what the keychain says.** `security find-identity -v -p codesigning` listing an identity of that name is the whole
+  record. A certificate that is untrusted, has no key or cannot be read counts as none.
+- **Falling back.** When the certificate cannot sign (the keychain is locked, `codesign` is refused the key or the result does not
+  verify), the app is signed locally and the warning says why. Binding a runtime that is signed locally on an opted-in Mac tries
+  the certificate again.
 
 ## The runtime's identity on macOS
 
@@ -1088,37 +1117,39 @@ measured with `responsibility_get_pid_responsible_for_pid`), and Local Network p
 - **One executable, named Poolhouse.** `runtime_identity.bind` copies the interpreter a runtime was made from (and the libraries it
   loads from beside itself, which a standalone Python needs; `macho` reads the load commands, never `otool`) into
   `~/.poolhouse/apps/runtime/<platform>-<machine>-<python>/Poolhouse.app/Contents/MacOS/Poolhouse`, with bundle id
-  `app.poolhouse.runtime`, display name Poolhouse and the node bundle's Local Network text, signs it with `Poolhouse Local Signing`
-  and points the runtime's `bin/python` links at it. The runtime stays a virtual environment (the kernel runs the bundle, Python
-  reads the `pyvenv.cfg` beside the link it was started by), so `sys.executable`, the launchers and the hooks do not change, and
-  every Python process of the runtime is Poolhouse: the daemon, the workers, the launchd units.
-- **Stable across rebuilds and updates.** The designated requirement is `identifier "app.poolhouse.runtime" and certificate leaf =
-  H"<sha1>"`, no hash of the bytes. The path holds the platform and Python ABI, not a version, so a runtime update or a patch release
-  of Python replaces the bundle in place (made beside, verified, moved in) and the path and the requirement stay; a new Python minor
-  version is a new executable and macOS asks once more. `bind` runs when a runtime is built, again when it is selected (a rollback, a
-  fallback) and when `runtime ensure` finds the selection current but not yet Poolhouse's.
-- **Loud, never unsigned.** When the certificate cannot be had (the keychain is locked, the person is not there to approve making it) the
-  build stops with `Poolhouse could not sign its executable (...)`, the previous runtime stays selected and keeps running, and the
-  failure is recorded (`identity_failure` in the deploy record, shown in `runtime ensure`'s detail) and not tried again for ten minutes,
-  so a Mac without the certificate does not ask for it every time `ensure` runs. There is no ad hoc fallback for this bundle. A runtime whose Python
-  does not start as the copy is not bound and the build is refused with what the probe saw. Nothing is bound or signed outside the
-  installed software on the real home (`real_machine`).
+  `app.poolhouse.runtime`, display name Poolhouse and the node bundle's Local Network text, signs it
+  ([the signature on macOS](#the-signature-on-macos)) and points the runtime's `bin/python` links at it. The runtime stays a virtual
+  environment (the kernel runs the bundle, Python reads the `pyvenv.cfg` beside the link it was started by), so `sys.executable`,
+  the launchers and the hooks do not change, and every Python process of the runtime is Poolhouse: the daemon, the workers, the
+  launchd units.
+- **One path across rebuilds and updates.** The path holds the platform and Python ABI, not a version, so a runtime update or a
+  patch release of Python replaces the bundle in place (made beside, verified, moved in) and the path and name stay; a new Python
+  minor version is a new executable. With the certificate the requirement is `identifier "app.poolhouse.runtime" and certificate
+  leaf = H"<sha1>"` and stays too; with the local signature it names the new code. An unchanged interpreter is not rebuilt. `bind`
+  runs when a runtime is built, again when it is selected (a rollback, a fallback) and when `runtime ensure` finds the selection
+  current but not yet Poolhouse's.
+- **Loud, never half-bound.** An executable that cannot be signed even locally, does not verify or does not start as the copy is not
+  bound: the build stops with what was seen, the previous runtime stays selected and keeps running, and the failure is recorded
+  (`identity_failure` in the deploy record, shown in `runtime ensure`'s detail) and not tried again for ten minutes. A missing or
+  unusable certificate is not such a failure. Nothing is bound outside the installed software on the real home (`real_machine`).
 - **launchd.** The bundle also starts by itself (a `pyvenv.cfg` in its resources tells Python where its standard library is, which a
   standalone Python needs), and `bind` and the unit check start it bare. Both autostart paths write `ProgramArguments` as `[Poolhouse, -I, -S, <launcher>, ...]`, so the background item and the
   job are Poolhouse; a unit is refused while an installed Mac has no verified executable. Detached daemon restarts (`runtime
   restart-host`, `poolhouse --restart`) start the process with its responsibility disclaimed (`disclaim`), so its prompts name Poolhouse
   and not the terminal or editor that ran the command. A daemon run in the foreground of a terminal stays that terminal's.
 - **Attack notes.** *Who can replace the executable:* any process of the same account, as it can replace the interpreter today;
-  `ensure_bundle` rebuilds a bundle that no longer verifies, `poolhouse-setup` and `autostart status` report one that does not or one
-  signed with a certificate other than this Mac's (the requirement is compared with the keychain's certificate, not only checked for
-  its shape), and a swapped binary signed ad hoc does not satisfy the requirement macOS kept. The base Python comes from the
-  runtime's own `pyvenv.cfg`, so a lost bundle is made again from what the runtime says, and a bundle is replaced in one step
-  (`renamex_np`), never removed first.
-  *Who can sign as Poolhouse:* a process of the account that can use the certificate's key, which is the grant `codesign` already has
-  for the node bundle; it can ride the Allow of this executable, which is a general interpreter that any process of the account can run, as python3.13 is
-  today; what changes is that the Allow no longer belongs to every other program installed with that Python. *Quarantine and notarisation:* the files are made locally, so they carry no quarantine
-  attribute and Gatekeeper does not assess them; they are not notarised, so the Application Firewall does not allow them
-  automatically as signed software and asks once. *The certificate missing:* the loud refusal above.
+  `ensure_bundle` rebuilds a bundle that no longer verifies, `poolhouse-setup` and `autostart status` report one that does not, one
+  whose requirement was written to name an id alone, or, on an opted-in Mac, one signed with another certificate (the requirement
+  is compared with the keychain's certificate, not only checked for its shape). A binary swapped in and signed locally passes these
+  checks; its requirement names its own code, so it does not satisfy the requirement macOS kept for the one it replaced. The base
+  Python comes from the runtime's own `pyvenv.cfg`, so a lost bundle is made again from what the runtime says, and a bundle is
+  replaced in one step (`renamex_np`), never removed first.
+  *Who can use the Allow:* the executable is a general interpreter that any process of the account can run, as the Python it was
+  copied from is; the Allow belongs to this executable and not to every program installed with that Python. *Who can sign as
+  Poolhouse:* with the certificate, any process of the account that asks `codesign` to use its key; with the local signature there
+  is no key to use. *Quarantine and notarisation:* the files are made locally, so they carry no quarantine attribute and Gatekeeper
+  does not assess them; they are not notarised, so the Application Firewall does not allow them automatically as signed software
+  and asks.
 - **What is not covered.** A runtime from a Python macOS cannot copy (its libraries sit outside the bundle's reach) is refused loudly.
   A `--dev` checkout installed with `pip install -e` is not a runtime and keeps its interpreter's name. Windows names a program by
   its file, so the Windows rules are by port.

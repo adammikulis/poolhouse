@@ -1,11 +1,11 @@
 {
- "surfaces": 877,
+ "surfaces": 880,
  "by_status": {
-  "covered": 559,
-  "partial": 180,
+  "covered": 561,
+  "partial": 182,
   "uncovered": 51,
-  "n/a": 87,
-  "unmapped": 0
+  "n/a": 85,
+  "unmapped": 1
  },
  "by_kind": {
   "chat-tool": {
@@ -38,7 +38,7 @@
   },
   "egress": {
    "covered": 61,
-   "partial": 45,
+   "partial": 46,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 0
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 56,
+   "covered": 58,
    "partial": 0,
    "uncovered": 0,
    "n/a": 1,
@@ -62,13 +62,13 @@
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
-   "unmapped": 0
+   "unmapped": 1
   },
   "listener": {
    "covered": 7,
    "partial": 3,
    "uncovered": 0,
-   "n/a": 31,
+   "n/a": 29,
    "unmapped": 0
   },
   "mcp-tool": {
@@ -101,7 +101,7 @@
   },
   "spawn": {
    "covered": 102,
-   "partial": 61,
+   "partial": 62,
    "uncovered": 0,
    "n/a": 4,
    "unmapped": 0
@@ -1494,6 +1494,18 @@
    "id": "egress:client/health.py:is_healthy",
    "kind": "egress",
    "source": "client/health.py:is_healthy",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "partial",
+   "tests": [
+    "tests/test_net_no_bypass.py"
+   ],
+   "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
+  },
+  {
+   "id": "egress:client/health.py:refuses_key",
+   "kind": "egress",
+   "source": "client/health.py:refuses_key",
    "trust": "addresses and redirects named by pages, repositories and members",
    "attacker": "a redirect or address sends the request somewhere the person did not choose",
    "status": "partial",
@@ -3909,6 +3921,36 @@
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
   },
   {
+   "id": "human:node_signing.py:enable",
+   "kind": "human",
+   "source": "node_signing.py:enable",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_node_signing.py::test_enable_and_remove_are_refused_to_an_agent_and_run_nothing",
+    "tests/test_node_signing.py::test_the_command_refused_to_an_agent_fails_and_says_why",
+    "tests/test_node_signing.py::test_no_build_or_start_makes_imports_or_trusts_a_certificate",
+    "tests/test_node_signing.py::test_a_trust_step_that_does_not_finish_removes_what_was_imported"
+   ],
+   "note": "adding or removing the signing certificate is refused to an agent before anything runs; building and starting write no keychain; a declined, timed-out or interrupted trust step removes what was imported"
+  },
+  {
+   "id": "human:node_signing.py:remove",
+   "kind": "human",
+   "source": "node_signing.py:remove",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_node_signing.py::test_enable_and_remove_are_refused_to_an_agent_and_run_nothing",
+    "tests/test_node_signing.py::test_the_command_refused_to_an_agent_fails_and_says_why",
+    "tests/test_node_signing.py::test_no_build_or_start_makes_imports_or_trusts_a_certificate",
+    "tests/test_node_signing.py::test_a_trust_step_that_does_not_finish_removes_what_was_imported"
+   ],
+   "note": "adding or removing the signing certificate is refused to an agent before anything runs; building and starting write no keychain; a declined, timed-out or interrupted trust step removes what was imported"
+  },
+  {
    "id": "human:reputation/cli.py:_guarded.run",
    "kind": "human",
    "source": "reputation/cli.py:_guarded.run",
@@ -4405,6 +4447,16 @@
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
   },
   {
+   "id": "keystore:guard/unboxed.py:<module>",
+   "kind": "keystore",
+   "source": "guard/unboxed.py:<module>",
+   "trust": "the process environment and the files on disk",
+   "attacker": "a failure path leaks, downgrades or overwrites a secret",
+   "status": "unmapped",
+   "tests": [],
+   "note": ""
+  },
+  {
    "id": "keystore:installed.py:<module>",
    "kind": "keystore",
    "source": "installed.py:<module>",
@@ -4688,26 +4740,6 @@
    "status": "n/a",
    "tests": [],
    "note": "outbound HTTP sockets bind an optional source address; they never listen or accept connections"
-  },
-  {
-   "id": "listener:isolation/confinement.py:prepare",
-   "kind": "listener",
-   "source": "isolation/confinement.py:prepare",
-   "trust": "anything that can connect to the address",
-   "attacker": "an unauthenticated or cross-origin client reaches the port",
-   "status": "n/a",
-   "tests": [],
-   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
-  },
-  {
-   "id": "listener:isolation/grants.py:_file",
-   "kind": "listener",
-   "source": "isolation/grants.py:_file",
-   "trust": "anything that can connect to the address",
-   "attacker": "an unauthenticated or cross-origin client reaches the port",
-   "status": "n/a",
-   "tests": [],
-   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
   },
   {
    "id": "listener:isolation/probe.py:p09",
@@ -11586,9 +11618,9 @@
    "note": "Poolhouse.app is built, signed and launched with argv lists only (codesign, security, openssl, open, the bundle executable); a hostile path or member address is one argument, and the certificate name, bundle id and requirement are constants"
   },
   {
-   "id": "spawn:node_signing.py:certificate_sha1",
+   "id": "spawn:node_signing.py:certificates",
    "kind": "spawn",
-   "source": "node_signing.py:certificate_sha1",
+   "source": "node_signing.py:certificates",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",
@@ -11596,6 +11628,18 @@
     "tests/test_node_app.py::test_a_hostile_path_is_one_argument_in_every_command_line_the_app_builds"
    ],
    "note": "Poolhouse.app is built, signed and launched with argv lists only (codesign, security, openssl, open, the bundle executable); a hostile path or member address is one argument, and the certificate name, bundle id and requirement are constants"
+  },
+  {
+   "id": "spawn:opencode.py:_own_server",
+   "kind": "spawn",
+   "source": "opencode.py:_own_server",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
    "id": "spawn:pi_tools.py:_inspect",

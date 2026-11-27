@@ -30,7 +30,6 @@ def test_requirement_names_the_id_and_the_certificate_never_a_cdhash():
     text = node_app.requirement(SHA1)
     assert text == f'designated => identifier "app.poolhouse.node" and certificate leaf = H"{SHA1.lower()}"'
     assert "cdhash" not in text
-    assert node_app.ad_hoc_requirement() == 'designated => identifier "app.poolhouse.node"'
 
 
 def test_launch_command_runs_the_executable_inside_the_bundle():
@@ -46,11 +45,13 @@ def test_only_a_lan_start_on_macos_goes_through_the_bundle(monkeypatch):
 
 
 def test_sign_command_uses_the_identifier_and_requirement():
-    argv = node_signing.sign_command(Path("/x/P.app"), "app.poolhouse.node", node_app.requirement(SHA1))
-    assert argv[:4] == ["codesign", "--force", "--sign", "Poolhouse Local Signing"]
+    argv = node_signing.sign_command(Path("/x/P.app"), "app.poolhouse.node", node_app.requirement(SHA1), SHA1)
+    assert argv[:4] == ["codesign", "--force", "--sign", SHA1]
     assert argv[4:6] == ["--identifier", "app.poolhouse.node"]
     assert f"-r={node_app.requirement(SHA1)}" in argv
-    assert node_signing.sign_command(Path("/x/P.app"), "i", "r", identity="-")[3] == "-"
+    local = node_signing.sign_command(Path("/x/P.app"), "i")
+    assert local == ["codesign", "--force", "--sign", "-", "--identifier", "i", "--timestamp=none", "/x/P.app"], \
+        "a local signature takes codesign's own requirement"
 
 
 def test_certificate_request_is_a_code_signing_leaf():
@@ -58,10 +59,13 @@ def test_certificate_request_is_a_code_signing_leaf():
     assert "/CN=Poolhouse Local Signing" in words and "codeSigning" in words and "CA:false" in words
 
 
-def test_parse_sha1_reads_security_output():
-    out = f"SHA-256 hash: AA\nSHA-1 hash: {SHA1}\nkeychain: x\n"
-    assert node_signing.parse_sha1(out) == SHA1.lower()
-    assert node_signing.parse_sha1("nothing") == ""
+def test_the_keychain_listings_are_read_by_exact_name():
+    listed = f'  1) {SHA1} "Poolhouse Local Signing"\n  2) {"B" * 40} "Poolhouse Local Signing 2"\n     2 valid identities found\n'
+    assert node_signing.parse_identities(listed) == [SHA1.lower()]
+    assert node_signing.parse_identities("     0 valid identities found\n") == []
+    rows = "".join(f'SHA-256 hash: AA\nSHA-1 hash: {sha}\nkeychain: "x"\nattributes:\n    "labl"<blob>="{label}"\n'
+                   for sha, label in ((SHA1, "Poolhouse Local Signing"), ("C" * 40, "Somebody's Poolhouse Local Signing")))
+    assert node_signing.parse_certificates(rows) == [SHA1.lower()]
 
 
 def test_probe_command_goes_through_launch_services():

@@ -2,8 +2,8 @@
 
 macOS asks about a program, and keeps the answer, by the executable it runs: its path and its code signature. The firewall list and
 the Local Network prompt therefore said python3.13 for the daemon, and one Allow belonged to every program using that Python. These
-tests build the bundle for real (a copy of the interpreter, signed with `codesign`, ad hoc here because a test never touches the
-keychain that holds the local certificate), run a runtime through it and ask the kernel which executable the process is.
+tests build the bundle for real (a copy of the interpreter, signed locally with `codesign` as every Mac signs it until its user adds a
+certificate; a test never touches the keychain), run a runtime through it and ask the kernel which executable the process is.
 """
 
 from __future__ import annotations
@@ -70,20 +70,6 @@ def macos():
 def no_icon(monkeypatch):
     """A bundle in a test has no icon: drawing one starts the system's renderer."""
     monkeypatch.setattr(app_bundle, "ICON_SVG", Path("/nowhere/Poolhouse.svg"))
-
-
-@pytest.fixture
-def ad_hoc(monkeypatch):
-    """Sign the way a test may: ad hoc, with a requirement that names only the id (the certificate is the installed software's)."""
-    def sign(bundle, identifier, requirement_for):
-        done = subprocess.run(["codesign", "--force", "--sign", "-", "--identifier", identifier, "--timestamp=none",
-                               f'-r=designated => identifier "{identifier}"', str(bundle)], capture_output=True, text=True, check=False)
-        if done.returncode:
-            raise node_signing.SigningError(done.stderr)
-        return "ad-hoc"
-
-    monkeypatch.setattr(runtime_identity, "stable_requirement", lambda text: f'identifier "{runtime_identity.BUNDLE_ID}"' in text)
-    return sign
 
 
 def make_runtime(tmp_path: Path, name: str = "one") -> runtime.Runtime:
@@ -178,7 +164,7 @@ def test_a_library_that_would_sit_outside_the_bundle_is_refused(tmp_path):
         runtime_identity.parts(interpreter)
 
 
-def test_without_the_certificate_nothing_is_signed_and_nothing_is_left_behind(tmp_path):
+def test_an_executable_that_cannot_be_signed_leaves_nothing_behind(tmp_path):
     interpreter = tmp_path / "python"
     interpreter.write_bytes(thin("/usr/lib/libSystem.B.dylib"))
 
@@ -190,21 +176,11 @@ def test_without_the_certificate_nothing_is_signed_and_nothing_is_left_behind(tm
     assert not runtime_identity.bundle_path().exists() and not (runtime_identity.bundle_path().parent / ".building").exists()
 
 
-def test_the_node_bundle_still_falls_back_to_ad_hoc_but_the_runtime_never_does(monkeypatch, tmp_path):
-    ran = []
-    monkeypatch.setattr(node_signing, "_run", lambda argv: ran.append(argv) or "")
-    monkeypatch.setattr(node_signing, "ensure_certificate", lambda: "")
-    with pytest.raises(node_signing.SigningError):
-        node_signing.sign_with_certificate(tmp_path, "id", lambda _s: "req")
-    assert ran == [], "no signature of any kind was made"
-    assert node_signing.sign(tmp_path, "id", lambda _s: "req", "adhoc") == "ad-hoc" and ran[0][3] == "-"
-
-
 @pytest.mark.usefixtures("macos")
-def test_a_runtime_started_through_the_bundle_is_the_poolhouse_executable_to_the_kernel(tmp_path, ad_hoc):
+def test_a_runtime_started_through_the_bundle_is_the_poolhouse_executable_to_the_kernel(tmp_path):
     chosen = make_runtime(tmp_path)
     before = runtime_identity.interpreter_of(chosen.prefix)
-    executable = runtime_identity.bind(chosen, signer=ad_hoc)
+    executable = runtime_identity.bind(chosen)
     assert runtime_identity.bound(chosen.prefix) and runtime_identity.interpreter_of(chosen.prefix) == Path(os.path.realpath(executable))
     assert runtime_identity.unbound(chosen.prefix / "bin" / "python") == before, "a runtime built from this one points at Python, not at the copy"
     child = subprocess.Popen([str(chosen.python), "-I", "-c", "import time; time.sleep(20)"])
@@ -223,9 +199,9 @@ def test_a_runtime_started_through_the_bundle_is_the_poolhouse_executable_to_the
 
 
 @pytest.mark.usefixtures("macos")
-def test_nothing_listens_beyond_loopback_under_an_interpreter_path(tmp_path, ad_hoc):
+def test_nothing_listens_beyond_loopback_under_an_interpreter_path(tmp_path):
     chosen = make_runtime(tmp_path)
-    runtime_identity.bind(chosen, signer=ad_hoc)
+    runtime_identity.bind(chosen)
     code = "import socket,sys,time; s=socket.socket(); s.bind(('127.0.0.1',0)); s.listen(); print(s.getsockname()[1], flush=True); time.sleep(30)"
     child = subprocess.Popen([str(chosen.python), "-I", "-c", code], stdout=subprocess.PIPE, text=True)
     try:
@@ -240,24 +216,23 @@ def test_nothing_listens_beyond_loopback_under_an_interpreter_path(tmp_path, ad_
 
 
 @pytest.mark.usefixtures("macos")
-def test_the_requirement_does_not_change_when_the_executable_is_rebuilt(tmp_path, ad_hoc):
+def test_a_rebuilt_executable_keeps_its_path_and_id_and_its_local_signature_names_the_new_code(tmp_path):
     chosen = make_runtime(tmp_path)
-    runtime_identity.bind(chosen, signer=ad_hoc)
+    executable = runtime_identity.bind(chosen)
     bundle = runtime_identity.bundle_path()
     first = runtime_identity.requirement_of(bundle)
-    first_hash = subprocess.run(["codesign", "-dvvv", str(bundle)], capture_output=True, text=True, check=False).stderr.split("CDHash=")[1].split()[0]
     changed = tmp_path / "python-again"
     shutil.copyfile(runtime_identity.interpreter_of(chosen.prefix), changed)
     subprocess.run(["codesign", "--force", "--sign", "-", "--identifier", "python.again", str(changed)], check=True, capture_output=True)  # another file, the same program
-    runtime_identity.ensure_bundle(changed, signer=ad_hoc)
-    second_hash = subprocess.run(["codesign", "-dvvv", str(bundle)], capture_output=True, text=True, check=False).stderr.split("CDHash=")[1].split()[0]
-    assert first_hash != second_hash, "the bundle was rebuilt"
-    assert runtime_identity.requirement_of(bundle) == first, "and what macOS keeps its answer against did not move"
-    assert runtime_identity.source_of(bundle)["interpreter"] == str(changed)
+    assert runtime_identity.ensure_bundle(changed) == executable
+    second = runtime_identity.requirement_of(bundle)
+    assert first.startswith('# designated => cdhash H"') and second.startswith('# designated => cdhash H"') and first != second, \
+        "without a certificate the requirement names the code, so a rebuild changes it"
+    assert runtime_identity.signature_problem(bundle) == "" and runtime_identity.source_of(bundle)["interpreter"] == str(changed)
 
 
 @pytest.mark.usefixtures("macos")
-def test_a_runtime_that_does_not_start_as_poolhouse_keeps_the_interpreter_it_had(tmp_path, ad_hoc, monkeypatch):
+def test_a_runtime_that_does_not_start_as_poolhouse_keeps_the_interpreter_it_had(tmp_path, monkeypatch):
     chosen = make_runtime(tmp_path)
     before = runtime_identity.interpreter_of(chosen.prefix)
 
@@ -266,29 +241,29 @@ def test_a_runtime_that_does_not_start_as_poolhouse_keeps_the_interpreter_it_had
 
     monkeypatch.setattr(runtime_identity, "_probe", refuse)
     with pytest.raises(runtime_identity.IdentityError, match="started as /usr/bin/python3"):
-        runtime_identity.bind(chosen, signer=ad_hoc)
+        runtime_identity.bind(chosen)
     assert runtime_identity.interpreter_of(chosen.prefix) == before and not runtime_identity.bound(chosen.prefix)
     assert subprocess.run([str(chosen.python), "-I", "-c", "pass"], check=False).returncode == 0
 
 
 @pytest.mark.usefixtures("macos")
-def test_binding_twice_changes_nothing_and_a_removed_bundle_is_made_again(tmp_path, ad_hoc):
+def test_binding_twice_changes_nothing_and_a_removed_bundle_is_made_again(tmp_path):
     chosen = make_runtime(tmp_path)
-    first = runtime_identity.bind(chosen, signer=ad_hoc)
+    first = runtime_identity.bind(chosen)
     stamp = first.stat().st_ino
-    assert runtime_identity.bind(chosen, signer=ad_hoc) == first and first.stat().st_ino == stamp
+    assert runtime_identity.bind(chosen) == first and first.stat().st_ino == stamp
     shutil.rmtree(runtime_identity.bundle_path())
-    assert runtime_identity.bind(chosen, signer=ad_hoc) == first and first.is_file(), "the runtime itself says which Python it was made from"
+    assert runtime_identity.bind(chosen) == first and first.is_file(), "the runtime itself says which Python it was made from"
     assert str(runtime_identity.base_of(chosen.prefix)) == runtime_identity.source_of(runtime_identity.bundle_path())["interpreter"]
 
 
 @pytest.mark.usefixtures("macos")
 @pytest.mark.slow
-def test_the_real_daemon_reports_the_poolhouse_executable_and_its_bundle_id(tmp_path, ad_hoc, monkeypatch):
+def test_the_real_daemon_reports_the_poolhouse_executable_and_its_bundle_id(tmp_path, monkeypatch):
     from test_setup import _booted_daemon
 
     chosen = make_runtime(tmp_path)
-    executable = runtime_identity.bind(chosen, signer=ad_hoc)
+    executable = runtime_identity.bind(chosen)
     (next((chosen.prefix / "lib").glob("python*")) / "site-packages" / "tests.pth").write_text(
         "\n".join(entry for entry in sys.path if entry and Path(entry).is_dir()), encoding="utf-8")  # what this suite imports, for the daemon
     monkeypatch.setattr(sys, "executable", str(chosen.python))
@@ -440,9 +415,9 @@ def test_no_other_system_takes_a_process_name_from_inside():
 
 
 @pytest.mark.usefixtures("macos")
-def test_the_executable_starts_by_itself_for_a_unit_that_gives_it_no_virtual_environment(tmp_path, ad_hoc):
+def test_the_executable_starts_by_itself_for_a_unit_that_gives_it_no_virtual_environment(tmp_path):
     chosen = make_runtime(tmp_path)
-    executable = runtime_identity.bind(chosen, signer=ad_hoc)
+    executable = runtime_identity.bind(chosen)
     assert runtime_identity.bare_problem(executable) == ""
     pyvenv = (runtime_identity.bundle_path() / "Contents" / "MacOS" / "pyvenv.cfg").read_text()
     assert f"home = {runtime_identity.base_of(chosen.prefix).parent}" in pyvenv
@@ -453,16 +428,16 @@ def test_the_executable_starts_by_itself_for_a_unit_that_gives_it_no_virtual_env
 
 
 @pytest.mark.usefixtures("macos")
-def test_a_bundle_is_replaced_in_one_step_with_no_moment_without_one(tmp_path, ad_hoc, monkeypatch):
+def test_a_bundle_is_replaced_in_one_step_with_no_moment_without_one(tmp_path, monkeypatch):
     chosen = make_runtime(tmp_path)
-    runtime_identity.bind(chosen, signer=ad_hoc)
+    runtime_identity.bind(chosen)
     bundle = runtime_identity.bundle_path()
     changed = tmp_path / "python-again"
     shutil.copyfile(runtime_identity.base_of(chosen.prefix), changed)
     subprocess.run(["codesign", "--force", "--sign", "-", "--identifier", "python.again", str(changed)], check=True, capture_output=True)
     taken = []
     monkeypatch.setattr(runtime_identity, "promote", lambda *a, **k: taken.append(a) or pytest.fail("the old bundle was moved aside first"))
-    runtime_identity.ensure_bundle(changed, signer=ad_hoc)
+    runtime_identity.ensure_bundle(changed)
     assert taken == [] and runtime_identity.source_of(bundle)["interpreter"] == str(changed)
     assert not (bundle.parent / ".replaced").exists() and not (bundle.parent / ".building").exists()
 
@@ -474,12 +449,18 @@ def test_a_bundle_signed_with_another_certificate_than_this_macs_is_not_the_pool
     monkeypatch.setattr(runtime_identity, "signature_problem", lambda path: "")
     monkeypatch.setattr(runtime_identity, "applies", lambda: True)
     monkeypatch.setattr(runtime_identity, "requirement_of", lambda path: runtime_identity.requirement("a" * 40))
-    monkeypatch.setattr(node_signing, "certificate_sha1", lambda: "a" * 40)
+    monkeypatch.setattr(node_signing, "usable_certificate", lambda: "a" * 40)
     assert runtime_identity.bundle_problem() == "", bundle
-    monkeypatch.setattr(node_signing, "certificate_sha1", lambda: "b" * 40)
+    interpreter = tmp_path / "python"
+    interpreter.write_bytes(thin("/usr/lib/libSystem.B.dylib"))
+    (bundle / "Contents" / "Resources").mkdir()
+    (bundle / "Contents" / "Resources" / "source.json").write_text(json.dumps({"sha256": runtime_identity.digest([(interpreter, "Poolhouse")])}))
+    assert runtime_identity.ensure_bundle(interpreter, signer=lambda *_: pytest.fail("a bundle the certificate signed was signed again")) \
+        == runtime_identity.executable_path()
+    monkeypatch.setattr(node_signing, "usable_certificate", lambda: "b" * 40)
     assert "another certificate" in runtime_identity.bundle_problem(), "a stranger's self-signed certificate has the same shape of requirement"
-    monkeypatch.setattr(node_signing, "certificate_sha1", lambda: "")
-    assert "is not in the login keychain" in runtime_identity.bundle_problem()
+    monkeypatch.setattr(node_signing, "usable_certificate", lambda: "")
+    assert runtime_identity.bundle_problem() == "", "a Mac that has not opted in has no certificate to compare with"
 
 
 def test_a_tool_that_hangs_or_is_missing_is_a_failed_check_not_an_exception(monkeypatch):

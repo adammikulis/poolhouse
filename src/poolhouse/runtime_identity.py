@@ -3,9 +3,10 @@
 macOS names a program in its firewall list, its Local Network prompt and its background-item list by the executable the process runs, and keys
 the answer by that executable's path and code signature. A runtime's `bin/python` leads to the interpreter Python was installed
 with, so every prompt said python3.13 and one Allow belonged to every program using it. `bind` points the runtime's interpreter
-at `~/.poolhouse/apps/runtime/<identity>/Poolhouse.app/Contents/MacOS/Poolhouse` instead: a copy of that interpreter signed with
-the certificate `node_signing` makes, whose designated requirement names no hash. A rebuild, a runtime update or a patch release of
-Python then leaves the path and the requirement as they were. Without the certificate nothing is bound and the update stops there.
+at `~/.poolhouse/apps/runtime/<identity>/Poolhouse.app/Contents/MacOS/Poolhouse` instead: a copy of that interpreter signed by
+`node_signing`, so a rebuild, a runtime update or a patch release of Python leaves the path and the name as they were. The signature
+is local by default, which names the code, so macOS may ask again when the code changes; with the certificate a user added, its
+designated requirement names no hash and stays. A certificate that cannot sign leaves a local signature and stops no update.
 """
 
 from __future__ import annotations
@@ -85,8 +86,14 @@ def requirement(certificate_sha1: str) -> str:
 
 
 def stable_requirement(text: str) -> bool:
-    """Whether a designated requirement is the Poolhouse one: this id, a certificate, no cdhash."""
+    """Whether a designated requirement is the certificate signature's: this id, a certificate, no cdhash."""
     return f'identifier "{BUNDLE_ID}"' in text and 'certificate leaf = H"' in text and "cdhash" not in text
+
+
+def local_requirement(text: str) -> bool:
+    """Whether a designated requirement is the one codesign gives a local signature by itself (the leading "#" says nobody wrote
+    it): hashes of the code, so no other program satisfies it by claiming an id."""
+    return text.startswith('# designated => cdhash H"') and "identifier" not in text
 
 
 def _tool(argv: list[str]) -> subprocess.CompletedProcess:
@@ -98,17 +105,31 @@ def _tool(argv: list[str]) -> subprocess.CompletedProcess:
 
 
 def requirement_of(path: Path) -> str:
-    """The designated requirement `codesign` reads off ``path``, or ''."""
+    """The designated requirement `codesign` reads off ``path``, or ''; one codesign made itself keeps its leading "# "."""
     lines = (_tool(["codesign", "-d", "-r-", str(path)]).stdout or "").splitlines()
-    return next((line for line in lines if line.startswith("designated")), "")
+    return next((line for line in lines if line.removeprefix("# ").startswith("designated")), "")
+
+
+def identifier_of(path: Path) -> str:
+    """The signing identifier `codesign` reads off ``path``, or ''."""
+    lines = (_tool(["codesign", "-d", "--verbose=2", str(path)]).stderr or "").splitlines()
+    return next((line.partition("=")[2] for line in lines if line.startswith("Identifier=")), "")
 
 
 def signature_problem(bundle: Path) -> str:
-    """Why ``bundle`` does not carry the Poolhouse signature, or '' when it does."""
+    """Why ``bundle`` does not carry a Poolhouse signature (local or the certificate's), or '' when it does."""
     checked = _tool(["codesign", "--verify", "--strict", str(bundle)])
     if checked.returncode:
         return f"{bundle} does not verify: {(checked.stderr or checked.stdout).strip()[-200:]}"
-    return "" if stable_requirement(requirement_of(bundle)) else f"{bundle} is not signed with the Poolhouse requirement"
+    required = requirement_of(bundle)
+    if stable_requirement(required) or (local_requirement(required) and identifier_of(bundle) == BUNDLE_ID):
+        return ""
+    return f"{bundle} is not signed as Poolhouse"
+
+
+def _certificate() -> str:
+    """The certificate the user opted in with, as the installed software of a Mac sees it; '' anywhere else."""
+    return node_signing.usable_certificate() if applies() else ""
 
 
 def bundle_problem(identity: str | None = None) -> str:
@@ -116,12 +137,13 @@ def bundle_problem(identity: str | None = None) -> str:
     if not executable_path(identity).is_file():
         return "Poolhouse has no signed executable yet: run `poolhouse runtime ensure`"
     problem = signature_problem(bundle_path(identity))
-    if problem or not applies():
+    if problem:
         return problem
-    leaf = node_signing.certificate_sha1()
-    if not leaf:
-        return f"{node_signing.CERT_NAME} is not in the login keychain, so the Poolhouse executable has nothing to be checked against"
-    return "" if f'H"{leaf}"' in requirement_of(bundle_path(identity)) else "the Poolhouse executable is signed with another certificate than this Mac's"
+    leaf = _certificate()
+    required = requirement_of(bundle_path(identity)) if leaf else ""
+    if stable_requirement(required) and f'H"{leaf}"' not in required:
+        return "the Poolhouse executable is signed with another certificate than this Mac's"
+    return ""
 
 
 def source_of(bundle: Path) -> dict:
@@ -255,15 +277,17 @@ def _build(bundle: Path, files: list[tuple[Path, str]], sha: str, signer: Signer
         shutil.rmtree(bundle.parent / ".replaced", ignore_errors=True)
 
 
-def ensure_bundle(interpreter: Path, identity: str | None = None, *, signer: Signer = node_signing.sign_with_certificate) -> Path:
-    """The signed executable made from ``interpreter``, built when it is missing, holds another interpreter or no longer verifies."""
+def ensure_bundle(interpreter: Path, identity: str | None = None, *, signer: Signer = node_signing.sign) -> Path:
+    """The signed executable made from ``interpreter``, built when it is missing, holds another interpreter, no longer verifies, or
+    is signed locally although the user has a certificate for it (one attempt each time a runtime is bound)."""
     bundle = bundle_path(identity)
     files = parts(interpreter)
     sha = digest(files)
     bundle.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     bundle.parent.chmod(0o700)
     with only_one(bundle.parent / "build.lock", announce=lambda _: None):
-        if source_of(bundle).get("sha256") == sha and not bundle_problem(identity):
+        if source_of(bundle).get("sha256") == sha and not bundle_problem(identity) \
+                and (not _certificate() or stable_requirement(requirement_of(bundle))):
             return executable_path(identity)
         say(f"runtime: signing the Poolhouse executable at {bundle} from {interpreter}")
         try:
@@ -271,6 +295,28 @@ def ensure_bundle(interpreter: Path, identity: str | None = None, *, signer: Sig
         except (node_signing.SigningError, subprocess.SubprocessError, ValueError) as exc:
             raise IdentityError(f"Poolhouse could not sign its executable ({exc}); the runtime keeps the identity it had") from exc
     return executable_path(identity)
+
+
+def bundles() -> list[Path]:
+    """Every runtime's Poolhouse.app that holds an executable."""
+    found = (app_bundle.apps_directory() / "runtime").glob(f"*/{NAME}.app")
+    return sorted(one for one in found if (one / "Contents" / "MacOS" / EXECUTABLE).is_file())
+
+
+def resign(bundle: Path, identifier: str, requirement_for: Callable[[str], str]) -> str:
+    """Sign an app that already exists with what the keychain now holds; returns "certificate" or "ad-hoc". A copy is signed
+    beside it and moved into its place, so a failure leaves the app as it was."""
+    with only_one(bundle.parent / "build.lock", announce=lambda _: None):
+        staging = bundle.parent / ".building" / bundle.name
+        shutil.rmtree(staging.parent, ignore_errors=True)
+        try:
+            shutil.copytree(bundle, staging, symlinks=True)
+            signed = node_signing.sign(staging, identifier, requirement_for)
+            _swap(staging, bundle)
+        finally:
+            shutil.rmtree(staging.parent, ignore_errors=True)
+            shutil.rmtree(bundle.parent / ".replaced", ignore_errors=True)
+    return signed
 
 
 def _link(link: Path, target: Path | str) -> None:
@@ -306,7 +352,7 @@ def bare_problem(executable: Path) -> str:
     return "" if done.returncode == 0 else f"{executable} does not start on its own: {(done.stderr or done.stdout).strip()[-300:]}"
 
 
-def bind(chosen: runtime.Runtime, *, signer: Signer = node_signing.sign_with_certificate) -> Path:
+def bind(chosen: runtime.Runtime, *, signer: Signer = node_signing.sign) -> Path:
     """Make a runtime's interpreter the Poolhouse executable (idempotent); returns the executable.
 
     The executable is a signed copy of the interpreter the runtime was built with. A runtime that already leads to it only has

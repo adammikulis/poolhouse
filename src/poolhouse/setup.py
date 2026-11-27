@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
-from poolhouse import home, runtime_identity
+from poolhouse import home, node_signing, runtime_identity
 from poolhouse.checks import Finding, checkout, show, tilde
 from poolhouse.fleet.onboard.lan import can_bind
 from poolhouse.installed import standard
@@ -179,6 +179,7 @@ def look() -> list[Finding]:
     out.extend(_speech_findings())
     out.append(_commands_finding())
     out.extend(_fleet_findings())
+    out.extend(signature_findings())
     out.append(_store_finding())
 
     if is_windows():
@@ -273,6 +274,24 @@ def identity_finding(me: dict) -> Finding:
         fix=[] if ours else ["poolhouse", "runtime", "ensure"],
         note="" if ours else "macOS asks about this program by that name, and the answer belongs to every program that uses it; "
                              "an update makes the daemon run as Poolhouse")
+
+
+def signature_findings() -> list[Finding]:
+    """How the installed Poolhouse on a Mac is signed and the command that changes it, which is shown and never run; nothing
+    anywhere else. Both signatures are good ones: the certificate is the user's choice."""
+    if not runtime_identity.applies():
+        return []
+    if not node_signing.usable_certificate():
+        return [Finding(name="macOS signature", good=True, said="local (no certificate)",
+                        note="macOS may ask again for network permission after an update. To keep the permission, "
+                             f"`{node_signing.ENABLE}` adds a certificate to your keychain; it says what it adds before macOS "
+                             "asks for your password")]
+    app = runtime_identity.bundle_path()
+    if app.exists() and not runtime_identity.stable_requirement(runtime_identity.requirement_of(app)):
+        return [Finding(name="macOS signature", good=True, said=f"local, although {node_signing.CERT_NAME!r} is in your keychain",
+                        note=f"`{node_signing.ENABLE}` signs Poolhouse with it again")]
+    return [Finding(name="macOS signature", good=True, said=f"the {node_signing.CERT_NAME!r} certificate",
+                    note=f"`{node_signing.REMOVE}` deletes the certificate and its key and signs Poolhouse locally")]
 
 
 def _store_finding(path: Path | None = None) -> Finding:
