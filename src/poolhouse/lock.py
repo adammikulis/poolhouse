@@ -43,6 +43,8 @@ __all__ = ["Busy", "held", "held_by", "only_one", "release", "rewriting", "take"
 
 #: The byte locked on Windows. Past any pid text, so a reader is never refused by the lock.
 _LOCKED_BYTE = 1 << 30
+PROBE_GRACE_S = 0.1
+"""How long an attempt that must not wait still tries while the lock may be held only by somebody asking who holds it."""
 
 
 class Busy(RuntimeError):
@@ -110,6 +112,22 @@ def release(handle: Any) -> None:
     fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+def _claim(handle: int) -> bool:
+    """Take the exclusive lock unless somebody holds it. `held_by` takes a shared one for the instant it asks, which keeps an exclusive
+    one out too: that asker is waited out, for at most `PROBE_GRACE_S`. Windows has no shared lock to tell the two apart, so there every
+    refusal is tried again for that long."""
+    until = time.monotonic() + PROBE_GRACE_S
+    while not take(handle):
+        if sys.platform != "win32":
+            if not take(handle, shared=True):
+                return False     # an exclusive holder
+            release(handle)
+        if time.monotonic() > until:
+            return False
+        time.sleep(0.002)
+    return True
+
+
 def _open(path: Path, *, create: bool, mode: int = 0o644) -> int:
     """Open the lock file `path` read-write; never through a symlink, and only a regular file this account owns."""
     handle = os.open(path, os.O_RDWR | (os.O_CREAT if create else 0) | getattr(os, "O_NOFOLLOW", 0), mode)
@@ -153,7 +171,7 @@ def only_one(what: str | Path, *, wait: bool = True, timeout: float = 0.0,
     handle = _open(path, create=True)
     began, told, taken, tries = time.monotonic(), False, False, 0
     try:
-        while not take(handle):
+        while not _claim(handle):
             held = _holder(handle)
             if not wait:
                 raise Busy(f"{path} is held by {held}")
@@ -230,7 +248,7 @@ def held_by(what: str | Path) -> str:
     except OSError:
         return ""
     try:
-        if not take(handle):
+        if not take(handle, shared=True):   # shared: two askers never see each other as a holder
             return _holder(handle)
         release(handle)
         return ""
