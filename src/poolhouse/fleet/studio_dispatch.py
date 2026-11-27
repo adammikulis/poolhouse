@@ -29,7 +29,7 @@ class DeviceDispatch:
                  "available": True, "capabilities": []}]
         rows.extend({"id": item.fingerprint, "name": item.name, "is_self": False,
                      "available": True, "capabilities": item.beacon.device.get("backends", [])}
-                    for item in members() if item.beacon and item.beacon.machine != machine_id())
+                    for item in members(self.ui) if item.beacon and item.beacon.machine != machine_id())
         return list({row["id"]: row for row in rows}.values())
 
     def is_remote(self, node: dict) -> bool:
@@ -37,7 +37,7 @@ class DeviceDispatch:
 
     def member(self, target):
         identity = target if isinstance(target, dict) else {"certificate": target}
-        found = [item for item in members() if item.beacon and item.fingerprint == identity.get("certificate")
+        found = [item for item in members(self.ui) if item.beacon and item.fingerprint == identity.get("certificate")
                  and (not identity.get("machine") or item.beacon.machine == identity["machine"])
                  and (not identity.get("pool") or self._pool(item) == identity["pool"])]
         if len(found) != 1:
@@ -151,7 +151,7 @@ class DeviceDispatch:
 
     def authorize_execution(self, source: str, request: dict) -> bool:
         certificate, pool, _ = source.split(":")
-        found = [item for item in members() if item.beacon and item.fingerprint == certificate and self._pool(item) == pool]
+        found = [item for item in members(self.ui) if item.beacon and item.fingerprint == certificate and self._pool(item) == pool]
         if len(found) != 1:
             return False
         target = found[0].beacon.machine
