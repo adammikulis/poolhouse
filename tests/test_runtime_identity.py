@@ -8,9 +8,11 @@ keychain that holds the local certificate), run a runtime through it and ask the
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
+import socket
 import struct
 import subprocess
 import sys
@@ -33,6 +35,7 @@ from poolhouse import (
     runtime_identity,
     setup,
 )
+from poolhouse.fleet.launch import already_running
 from poolhouse.home import home
 
 SHA1 = "4E2F3980AC138E86B7532FF4E3460EF53D0E7B23"
@@ -90,6 +93,33 @@ def make_runtime(tmp_path: Path, name: str = "one") -> runtime.Runtime:
     prefix = tmp_path / "runtimes" / name
     subprocess.run([runtime_identity.unbound(Path(sys.executable)), "-m", "venv", "--without-pip", str(prefix)], check=True, capture_output=True)
     return runtime.Runtime(prefix, COMMIT, "0", runtime.identity())
+
+
+@contextlib.contextmanager
+def booted_daemon(tmp_path: Path):
+    """A real daemon of this machine only, started by ``sys.executable`` on a root of its own; the port it answers on."""
+    with socket.socket() as chosen:
+        chosen.bind(("127.0.0.1", 0))
+        port = chosen.getsockname()[1]
+    log = tmp_path / "traind.out"
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"), "PYTHONUNBUFFERED": "1"}
+    with log.open("wb") as said:
+        daemon = subprocess.Popen([sys.executable, "-m", "poolhouse.cli.daemon", "--root", str(tmp_path / "traind"),
+                                   "--host", "127.0.0.1", "--port", str(port), "--name", "identitybox", "--no-web"],
+                                  env=env, stdout=said, stderr=subprocess.STDOUT)
+        try:
+            deadline = time.monotonic() + 30
+            while already_running(port) is None:
+                assert daemon.poll() is None and time.monotonic() < deadline, log.read_text(errors="replace")
+                time.sleep(0.1)
+            yield port
+        finally:
+            daemon.terminate()
+            try:
+                daemon.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                daemon.kill()
+                daemon.wait()
 
 
 def test_the_identity_is_poolhouse_with_an_id_of_its_own_beside_the_nodes():
@@ -285,16 +315,12 @@ def test_binding_twice_changes_nothing_and_a_removed_bundle_is_made_again(tmp_pa
 @pytest.mark.usefixtures("macos")
 @pytest.mark.slow
 def test_the_real_daemon_reports_the_poolhouse_executable_and_its_bundle_id(tmp_path, ad_hoc, monkeypatch):
-    from test_setup import _booted_daemon
-
     chosen = make_runtime(tmp_path)
     executable = runtime_identity.bind(chosen, signer=ad_hoc)
     (next((chosen.prefix / "lib").glob("python*")) / "site-packages" / "tests.pth").write_text(
         "\n".join(entry for entry in sys.path if entry and Path(entry).is_dir()), encoding="utf-8")  # what this suite imports, for the daemon
     monkeypatch.setattr(sys, "executable", str(chosen.python))
-    with _booted_daemon(tmp_path) as (_key, port, _disco, _log):
-        from poolhouse.fleet.launch import already_running
-
+    with booted_daemon(tmp_path) as port:
         said = already_running(port)
     assert said["process"]["bundle_id"] == "app.poolhouse.runtime" and said["process"]["name"] == "Poolhouse"
     assert said["process"]["executable"] == str(Path(os.path.realpath(executable)).relative_to(Path(os.path.realpath(home()))))
@@ -303,11 +329,7 @@ def test_the_real_daemon_reports_the_poolhouse_executable_and_its_bundle_id(tmp_
 
 @pytest.mark.slow
 def test_the_daemon_of_a_machine_that_is_not_bound_says_which_program_it_is(tmp_path):
-    from test_setup import _booted_daemon
-
-    from poolhouse.fleet.launch import already_running
-
-    with _booted_daemon(tmp_path) as (_key, port, _disco, _log):
+    with booted_daemon(tmp_path) as port:
         said = already_running(port)
     assert said["process"]["executable"] == Path(os.path.realpath(sys.executable)).name
     assert said["process"]["bundle_id"] == "" and said["process"]["name"] == Path(said["process"]["executable"]).name
