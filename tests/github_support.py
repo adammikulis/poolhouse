@@ -79,6 +79,9 @@ if [ "$1" = pr ]; then
     if [ "$2" = view ]; then
         printf 'GET pr/%s\\n' "$3" >> "$GH_LOG"
         [ -f "$GH_REPLIES/pr_$3.json" ] && { cat "$GH_REPLIES/pr_$3.json"; exit 0; }
+    elif [ "$2" = create ]; then
+        printf 'CREATE pr %s\\n' "$(printf '%s ' "$@" | tr '\\n' ' ')" >> "$GH_LOG"
+        echo "https://github.com/$GH_REPO/pull/7"; exit 0
     else
         printf 'COMMENT pr/%s %s\\n' "$3" "$(tr '\\n' ' ')" >> "$GH_LOG"
         case " $GH_FAIL " in *" pr/$3 "*) echo "gh: HTTP 422" >&2; exit 1;; esac

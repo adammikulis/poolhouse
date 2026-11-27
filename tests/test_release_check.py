@@ -145,9 +145,12 @@ def guard(merge, command, cwd=None, marked=True):
                           check=False, env=env)
 
 
-MERGES = ["git push origin main", "gh pr merge 12 --squash", "gh pr merge --auto 12", "git -C . push origin main"]
+MERGES = ["git push origin main", "gh pr merge 12 --squash", "gh pr merge --auto 12", "git -C . push origin main",
+          "gh -R o/r pr merge 12", "gh --repo o/r pr merge 12"]
 NEVER = ["git push --force origin main", "git push origin main --force-with-lease", "git push origin --tags",
-         "git push --mirror", "git push origin --delete main", "gh api -X PUT repos/o/r/rulesets/5 -f enforcement=disabled"]
+         "git push --mirror", "git push origin --delete main", "gh api -X PUT repos/o/r/rulesets/5 -f enforcement=disabled",
+         "gh pr merge 12 --merge --admin", "gh pr merge --admin=true 12", "gh -R o/r pr merge 12 --admin",
+         "gh api -X PUT repos/o/r/pulls/12/merge", "gh api repos/{owner}/{repo}/pulls/12/merge -f merge_method=merge"]
 
 
 @pytest.mark.parametrize("command", MERGES)
@@ -274,7 +277,7 @@ def control(merge, pulls):
     assert allowed.returncode == 0, allowed.stderr
 
 
-@pytest.mark.parametrize("flags", ["--merge --delete-branch", "--merge", "--merge --delete-branch --admin"])
+@pytest.mark.parametrize("flags", ["--merge --delete-branch", "--merge"])
 def test_a_pull_request_into_development_with_a_passed_review_of_its_head_may_be_merged_by_the_agent_that_reviewed_it(
         merge, pulls, flags):
     pulls(12, merge.head, DEV, review="SUCCESS")
@@ -309,6 +312,7 @@ def test_a_passed_review_status_opens_no_merge_into_any_other_branch(merge, pull
 
 
 OTHER_FORMS = [
+    "gh pr merge 12 --merge --admin --match-head-commit {sha}",
     "gh pr merge 12 --merge", "gh pr merge 12 --match-head-commit {sha}", "gh pr merge 12 --squash --match-head-commit {sha}",
     "gh pr merge 12 --merge --auto --match-head-commit {sha}", "gh pr merge --merge --match-head-commit {sha}",
     "gh pr merge 12 --merge --match-head-commit {sha} -R other/repo", "gh pr merge 12 --merge --match-head-commit {sha} --repo=o/r",

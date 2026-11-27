@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import harness_claims_kit as harness_claims
 import pytest
+from github_support import REPO, serve
 from node_kit import node_binary, workspace_node  # noqa: F401
 from taskboard_kit import accepted, board as _board_fixture
 
@@ -141,6 +142,51 @@ def test_reviewed_native_patch_runs_maintained_gates_then_fast_forwards_developm
 
 
 @pytest.mark.redteam
+def requires_pull_requests(project, tmp_path, monkeypatch):
+    """Origin as a GitHub repository whose rules take development only by pull request: git still pushes to the local bare
+    remote, and a canned `gh` (tests/github_support.py) answers the rules and creates the pull request."""
+    address = f'https://github.com/{REPO}.git'
+    repo.git(project['primary'], 'config', f"url.{project['origin']}.insteadOf", address)
+    repo.git(project['primary'], 'config', 'remote.origin.url', address)
+    return serve(tmp_path, monkeypatch, {'repos/{owner}/{repo}/rules/branches/0.2dev': [
+        {'type': 'deletion'}, {'type': 'pull_request', 'parameters': {}}]})
+
+
+def merge_on_origin(project, tmp_path, branch):
+    """What the server does when the pull request is merged: a merge commit of ``branch`` on development."""
+    server = tmp_path / 'server'
+    repo.git(tmp_path, 'clone', '-q', '--branch', '0.2dev', str(project['origin']), str(server))
+    repo.git(server, 'config', 'user.name', 'Isolated server')
+    repo.git(server, 'config', 'user.email', 'server@example.test')
+    repo.git(server, 'merge', '--no-ff', '-m', 'Merge pull request', f'origin/{branch}')
+    repo.git(server, 'push', '-q', 'origin', '0.2dev')
+    return repo.git(server, 'rev-parse', 'HEAD')
+
+
+def test_development_that_takes_only_pull_requests_gets_one_and_is_finished_after_its_merge(
+        board, project, tmp_path, monkeypatch):
+    board.board.review(board.task['id'], accepted())
+    log = requires_pull_requests(project, tmp_path, monkeypatch)
+    before = repo.git(project['primary'], 'rev-parse', 'HEAD')
+    waiting = integrate(board, publish=True)
+    assert waiting['state'] == 'blocked' and f'https://github.com/{REPO}/pull/7' in waiting['reason'], waiting.get('reason')
+    head = repo.git(project['origin'], 'for-each-ref', '--format=%(refname:short)', 'refs/heads/*/integrate-*')
+    assert repo.git(project['origin'], 'rev-parse', head) == waiting['commit']
+    assert repo.git(project['origin'], 'rev-parse', 'refs/heads/0.2dev') == before, 'development is never pushed'
+    assert repo.git(project['primary'], 'rev-parse', 'HEAD') == before and project['source'].exists()
+    assert ('branch', '0.2dev') not in claims_of(board), 'a waiting review holds no other integration'
+    [created] = [line for line in log.read_text().splitlines() if line.startswith('CREATE ')]
+    assert f'--base 0.2dev --head {head}' in created and 'Author-agent: ' + board.child.name in created
+    assert integrate(board, publish=True)['state'] == 'blocked', 'asking again before the merge opens no second one'
+    assert sum(line.startswith('CREATE ') for line in log.read_text().splitlines()) == 1
+    merged = merge_on_origin(project, tmp_path, head)
+    done = integrate(board, publish=True)
+    assert done['state'] == 'published' and done['publication_verified'], done.get('reason')
+    assert repo.git(project['primary'], 'rev-parse', 'HEAD') == merged
+    assert repo.git(project['origin'], 'rev-parse', 'refs/heads/0.2dev') == merged
+    assert not project['source'].exists() and detail(board)['state'] == 'completed'
+
+
 def test_unaccepted_and_unrelated_requests_make_no_git_changes(board, project):
     for who in (board.parent, board.reviewer):
         with pytest.raises(Denied):

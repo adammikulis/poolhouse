@@ -82,7 +82,7 @@ API_VALUES = frozenset({"-X", "--method", "-H", "--header", "-f", "-F", "--field
                         "-t", "--template", "--hostname", "--cache", "-p", "--preview"})
 API_BODY = ("-f", "-F", "--field", "--raw-field", "--input")
 ADMIN = re.compile(r"rulesets?|protection|secrets|variables|environments|collaborators|hooks|keys|invitations|merges"
-                   r"|git/refs|releases|actions|dispatches|workflows|teams|memberships|transfer|rename|branches|rules")
+                   r"|git/refs|releases|actions|dispatches|workflows|teams|memberships|transfer|rename|branches|rules|pulls/[^/]+/merge")
 GRAPHQL = re.compile(r"BranchProtectionRule|Ruleset|mergePullRequest|enablePullRequestAutoMerge|updateRepository"
                      r"|deleteRepository|updateRef|createRef|deleteRef|Secret", re.I)
 GH_BLOCKED: dict[str, frozenset[str] | None] = {
@@ -515,9 +515,10 @@ def _first_words(words: list[str]) -> tuple[list[str], dict[str, str]]:
 
 
 def _gh(args: list[str], shell: Shell) -> str:
-    verbs = [a for a in args if not a.startswith("-")]
+    verbs = [a for i, a in enumerate(args) if not a.startswith("-") and args[i - 1:i] not in (["-R"], ["--repo"])]
     head, rest = (verbs[0] if verbs else ""), verbs[1:2]
-    if head == "pr" and rest == ["merge"] and (why := shell.released(str(shell.here))):
+    skips = any(a.startswith("--admin") for a in args) and "`--admin` merges past the required checks, which no agent does"
+    if head == "pr" and rest == ["merge"] and (why := skips or shell.released(str(shell.here))):
         return ("`gh pr merge` is refused to an agent: into the development branch it needs a passed lead-review status on the head it names, elsewhere a "
                 f"standing independent land-review accept (`poolhouse-workspace land-review`) and a clean checkout; {why}.")
     if head == "workflow" and rest == ["run"] and not (verbs[2:] and verbs[2] in CHECK_WORKFLOWS):
@@ -551,7 +552,7 @@ def _gh_api(args: list[str]) -> str:
                 "what should change.") if GRAPHQL.search(" ".join(args)) else ""
     writes = method in MUTATING or (body and not method)
     if writes and (ADMIN.search(endpoint) or re.fullmatch(r"repos/[^/]+/[^/]+/?", endpoint)):
-        return ("`gh api` writing to protection, secrets, releases or settings is refused to an agent; leave them as they are "
+        return ("`gh api` writing to protection, secrets, releases, settings or a merge is refused to an agent; leave them as they are "
                 "and say in the report what should change.")
     return ""
 

@@ -15,7 +15,8 @@ one the primary checkout is on (`POOLHOUSE_DEV_BRANCH` overrides it) and never `
 ## Review of a pull request
 
 The agent that spawned the author reviews the change; a main agent's own pull request is reviewed by an agent that did
-not write it. The owner is never required. One command records the verdict on the exact commit that was read:
+not write it. The owner is never required. One command records the verdict on the exact commit that was read, and it is the only way an agent posts the
+`lead-review` status:
 
 ```sh
 scripts/lead-review <PR> <SHA> --verdict accept|reject --note "what was read and why"
@@ -32,14 +33,15 @@ gh pr merge <PR> --merge --delete-branch --match-head-commit <SHA>
 ```
 
 The guard (`poolhouse.workspace.release_check`) allows an agent that exact command, alone on its line, when the pull
-request targets the development branch, its head is `<SHA>` and the `lead-review` status there passed. `--admin` may be
-added to use the administrator's pull-request bypass when a required check is broken by the base branch itself. Any other
+request targets the development branch, its head is `<SHA>` and the `lead-review` status there passed. No agent skips a
+required check: `gh pr merge --admin` and a write to the merge API are refused. Any other
 `gh pr merge`, a pull request into another branch and one `gh` cannot read keep the rule for `main`: a standing
 independent `land-review` accept of the checkout's commit and a clean checkout. If `gh` reports that it could not delete
 the local branch because a worktree holds it, the merge is done: run `scripts/worktrees sweep`, then the same command again.
 
-**What the status is not.** Every agent uses the owner's GitHub sign-in, so GitHub cannot take a formal approval and any
-agent could set a status by hand; the authors are the names the description gives. `lead-review` records the process. It is
+**What the status is not.** Every agent uses the owner's GitHub sign-in, so GitHub cannot take a formal approval and
+nothing there stops an agent from setting a status by hand, which the process forbids; the authors are the names the
+description gives. `lead-review` records the process. It is
 not a security boundary. The attack pass (docs/agent-policy.md, "Attack first") stays advice, and an author still runs its
 own checks.
 
