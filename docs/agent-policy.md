@@ -864,7 +864,7 @@ no shape this repository has decided to live with. Budgets and red-team debt onl
   repository records, and a mismatch fails the install: Python libraries from `src/poolhouse/requirements.lock`
   (`poolhouse.pinned`; `scripts/lock-requirements` writes it, run after changing a dependency), llama.cpp and its
   converter from `patches/llama.cpp/verified.json`, release assets from the tables beside their installers. Chromium is
-  the revision the locked Playwright release names, with no digest held here. What cannot be pinned (no prebuilt wheel,
+  the revision the locked Playwright release names and the Silero voice detector one commit, with no digest held here. What cannot be pinned (no prebuilt wheel,
   a source address, another package index) is not installed unless somebody asks for it by name. A pinned download is
   kept on a device with no virus scanner; one a scanner flags is refused.
 - A write is never held back for code quality. Claude Code's edit guard (`scripts/hooks/claude-edit-guard`) tells the

@@ -8,6 +8,7 @@ import ast
 import platform
 import shutil
 import subprocess
+import sys
 import zipfile
 from fnmatch import fnmatch
 from pathlib import Path
@@ -19,7 +20,7 @@ from poolhouse import pinned, provision
 from poolhouse.fleet import environment as environments
 from poolhouse.serve import build_patches, build_platform, build_recover, build_release
 from poolhouse.serve.build_paths import BuildFailed
-from poolhouse.speech import asr
+from poolhouse.speech import asr, vad
 
 SRC = Path(__file__).resolve().parent.parent / "src" / "poolhouse"
 LOCK = """# PLUMBING ONLY: a lock of releases that do not exist
@@ -219,6 +220,14 @@ def test_a_library_the_lock_cannot_hold_is_not_installed_at_need(tmp_path, libra
     with pytest.raises((OSError, ValueError), match="not installed"):
         environment.locked_install(library)
     assert not hasattr(environment, "asked")
+
+
+def test_the_voice_detector_is_fetched_and_run_at_one_commit(monkeypatch):
+    asked = []
+    hub = SimpleNamespace(load=lambda repo, name, **how: asked.append(repo) or (object(), None))   # plumbing only: loads nothing
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(hub=hub))
+    vad.SileroVAD().start()
+    assert asked == ["snakers4/silero-vad:63d4a2a7bfce8cd9bb39ed8fa0afcb5236d73e01"]
 
 
 @pytest.mark.parametrize("name,revision", [("small.en", "d1d751a5f8271d482d14ca55d9e2deeebbae577f"), ("somebody/chose-this", None)])
