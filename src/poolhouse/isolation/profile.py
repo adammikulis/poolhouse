@@ -1,7 +1,7 @@
 """The profile of one confinement: the engine policy a launch runs under, and a digest of everything in it.
 
 `build` turns a `Spec` and the grants in force into one `sandbox.Policy`: the stage and the agent home are the only writable trees (the stage
-is read-only for `read-only` and for plan mode), the harness's install tree, the interpreter, the system toolchain, the derived toolchain
+is read-only for `read-only` and for plan mode, and a session with a writable stage runs the programs in both), the harness's install tree, the interpreter, the system toolchain, the derived toolchain
 folders and the granted reads are readable, the control names are frozen in the stage, the network is the model bridge's port and the
 egress proxy's, and the one unix socket is the session bridge's. The same object runs the harness and the probe of the proof, so what the
 proof shows is what the harness gets (docs/design-isolated-launcher.md, 3.2, 5.2 and 8.1).
@@ -98,12 +98,15 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
     reads = [each for grant in grants if grant.kind in ("read", "toolchain") for each in (toolchain.reach(grant.subject) if grant.kind == "toolchain" else (grant.subject,))]
     runs = [each for grant in grants if grant.kind == "toolchain" for each in toolchain.reach(grant.subject)]
     writable = [spec.home] if spec.read_only_stage else [spec.stage, spec.home]
+    own = () if spec.read_only_stage else (spec.stage, spec.home)
+    """What an editing session runs of its own: the programs it wrote, a project's `scripts/test` among them. It already runs them through a shell
+    or an interpreter, in this same box, so this reaches nothing new."""
     readable = [spec.stage, spec.install, *interpreter_reads(), *system_toolchain(), *_git_directory(), *reads, *spec.environments,
                 *([spec.patches] if spec.patches else [])]
     ports = (spec.model_port, *([spec.proxy_port] if spec.proxy_port else []))
     policy = Policy(f"coding-{spec.harness}", read=tuple(dict.fromkeys(readable)), write=tuple(writable),
                     exec=tuple(dict.fromkeys([*SYSTEM_EXEC, os.path.realpath(sys.executable), spec.install, *system_toolchain(), *runs,
-                                              *_git_directory(), *spec.environments])),
+                                              *_git_directory(), *spec.environments, *own])),
                     net=Net.only(*ports, listen=spec.listen), env=dict(env or {}), strict=True, signal_children=True, preferences=PREFERENCES.get(spec.harness, ()),
                     unix_sockets=(spec.session_socket,) if spec.session_socket else (),
                     deny_write=(*(str(Path(spec.stage) / name) for name in (*CONTROL_PREFIXES, GIT_DIRECTORY)), *spec.frozen),

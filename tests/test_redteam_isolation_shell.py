@@ -363,11 +363,15 @@ def test_a_shell_in_the_box_reaches_nothing_it_was_not_given(box):
             tried kill-other-box 'kill -9 {boxed.pid}'
             tried signal-parent 'kill -0 {os.getpid()}'
             tried kill-sibling 'kill -9 "$(cat sibling.pid)"'
-            cp /bin/ls ./a-binary && chmod +x ./a-binary; tried stage-binary './a-binary'
-            printf '#!/bin/sh\\necho ran\\n' > a-script && chmod +x a-script; tried stage-script './a-script'
-            sh ./a-script
+            cp {python} ./a-binary && chmod +x ./a-binary; ./a-binary -V >/dev/null && echo "binary ran"
+            printf '#!/bin/sh\\ncat "$1"\\n' > a-script && chmod +x a-script; ./a-script README.md >/dev/null && echo "script ran"
+            cp a-script "$HOME/a-script" && "$HOME/a-script" README.md >/dev/null && echo "home script ran"
+            tried binary-reads-outside 'PYTHONHOME={sys.base_prefix} ./a-binary -c "open(\\"{house / "id_ed25519"}\\").read()"'
+            tried script-reads-outside './a-script {shlex.quote(str(house / "id_ed25519"))}'
+            tried script-writes-outside 'printf "#!/bin/sh\\necho x > %s\\n" {shlex.quote(str(house / "planted"))} > w && chmod +x w && ./w'
             """)
-        assert "OPEN " not in out and out.count("shut ") == 12 and "NOT-A-REAL-KEY" not in out and "ran" in out, out
+        assert "OPEN " not in out and out.count("shut ") == 13 and "NOT-A-REAL-KEY" not in out, out
+        assert "binary ran" in out and "script ran" in out and "home script ran" in out and not (house / "planted").exists(), out
         assert outsider.poll() is None and boxed.poll() is None and siblings[0].process.poll() is None
         later = {path for path, _ in confinement.turn.runs_later}
         assert {"a-binary", "a-script"} <= set(confinement.turn.applied) & later, "applied, and named as of the kind that runs later"
@@ -422,6 +426,22 @@ def test_a_hook_and_a_tool_result_from_the_box_start_nothing_outside_it(box):
     assert "armed" in out and "permissionDecision" in out, out
     assert [event for event, _ in box.asked] == ["pre", "stop"], box.asked
     assert not marker.exists(), "nothing the box wrote was run by the launcher"
+
+
+def test_the_box_looks_up_its_user_and_groups_and_reaches_no_other_directory_service_or_resolver(box):
+    """What a test suite asks the system (`getpwuid`, `getgrnam`) answers in the box; the administrative directory service, the keychain and name
+    resolution stay refused."""
+    python = shlex.quote(os.path.realpath(sys.executable))
+    out, _, _ = shelled(box, f"""\
+        {python} -I -c 'import grp, os, pwd; print("user", pwd.getpwuid(os.getuid()).pw_uid, "group", grp.getgrnam("staff").gr_name)'
+        tried directory '/usr/bin/dscl . -list /Users'
+        tried keychain '/usr/bin/security list-keychains'
+        tried keychain-item '/usr/bin/security find-generic-password -s poolhouse-proof'
+        tried resolver '{python} -I -c "import socket; socket.getaddrinfo(\\"localhost.localdomain.invalid\\", 80)"'
+        tried mdns '{python} -I -c "import socket; s = socket.socket(socket.AF_UNIX); s.connect(\\"/private/var/run/mDNSResponder\\")"'
+        """)
+    assert f"user {os.getuid()} group staff" in out, out
+    assert "OPEN " not in out and out.count("shut ") == 5, out
 
 
 def test_what_the_box_has_of_the_systems_programs(box):
