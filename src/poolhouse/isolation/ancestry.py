@@ -14,6 +14,8 @@ An unattended agent (a delegate, a board's local agent) launches, widens and reg
 
 from __future__ import annotations
 
+import contextlib
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from itertools import pairwise
@@ -23,11 +25,12 @@ import psutil
 
 from poolhouse import caller, home, node_health, session_identity
 from poolhouse.board.place import PLACER
+from poolhouse.isolation.refusals import sentence
 
-__all__ = ["UNATTENDED", "Ancestry", "Session", "Unattested", "attest", "node_state", "unattended"]
+__all__ = ["UNATTENDED", "Ancestry", "Session", "Unattested", "attest", "node_state", "refusal", "require_attended", "unattended"]
 
 MOST = 64
-"""The most sessions one answer is read for, and the most processes above a caller that are read for a runner."""
+"""The most sessions one answer is read for; a tree holds a lead and its helpers."""
 
 UNATTENDED = ("poolhouse.delegate_run", "poolhouse.workspace.localcoding", "poolhouse.workspace.localloop")
 """The modules whose process runs an agent with nobody at it: the runner of a delegate and the two runners of a board's local agents."""
@@ -74,25 +77,41 @@ def _words(process: psutil.Process) -> list[str]:
 
 
 def unattended() -> bool:
-    """Whether the runner of an unattended agent (`UNATTENDED`) started this process, at any depth. The operating system's process table says
-    what runs above it, which no variable changes and the process asking cannot rewrite. A runner is not something it started itself, so it
-    launches the agent it was made to run. A process whose parent had already ended has no runner above it: the limit of every check of a
-    process tree (8.3)."""
+    """Whether the process table shows the runner of an unattended agent (`UNATTENDED`) above this process, at any depth. A variable changes
+    nothing here. A runner is not something it started itself, so it launches the agent it was made to run. A process whose parent had already
+    ended has no runner above it: the gap of every check of a process tree (8.3)."""
     process = psutil.Process()
     own = _words(process)[1:]
-    for depth in range(MOST):
+    # on Windows a virtual environment's interpreter starts the interpreter as its child with the same arguments: that parent is the same run
+    same_run = os.name == "nt"
+    seen = {process.pid}
+    while True:
         try:
             process = process.parent()
-        except (psutil.Error, OSError):   # nothing above can be read, as above a process whose parent has ended
-            break
-        if process is None:
-            break
+        except (psutil.Error, OSError):   # nothing above can be read
+            return False
+        if process is None or process.pid in seen:
+            return False
         words = _words(process)
-        if depth == 0 and words[1:] == own:   # an interpreter that starts the interpreter as its child (a virtual environment's on Windows)
-            continue
-        if any(flag == "-m" and module in UNATTENDED for flag, module in pairwise(words)):
+        if not (same_run and words[1:] == own) and any(flag == "-m" and module in UNATTENDED for flag, module in pairwise(words)):
             return True
-    return False
+        same_run = False
+        seen.add(process.pid)
+
+
+def refusal(action: str, key: str) -> caller.AgentRefused:
+    """The refusal of ``action`` with the sentence ``key``, audited; a confinement that cannot write the audit log is refused all the same."""
+    with contextlib.suppress(OSError):
+        caller.record("refused", action=action, why=key)
+    return caller.AgentRefused(sentence(key))
+
+
+@home.real_roots
+def require_attended(action: str) -> None:
+    """Refuse ``action`` at once, audited, to a process shown below the runner of an unattended agent (`unattended`), in a sandbox or without
+    one."""
+    if unattended():
+        raise refusal(action, "unattended_caller")
 
 
 @home.real_roots

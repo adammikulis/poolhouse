@@ -21,13 +21,13 @@ from urllib.parse import urlparse
 from poolhouse import activity, authority, caller, home
 from poolhouse.contracts.loader import ContractError
 from poolhouse.isolation import ancestry, egress, policy, projects, toolchain
+from poolhouse.isolation.ancestry import refusal as _refuse, require_attended
 from poolhouse.isolation.grants import Decision, Grant, Request, Rule, decide, fingerprint
 from poolhouse.isolation.refusals import IsolationRefused, sentence
 from poolhouse.sandbox.confinement import confined
 from poolhouse.sandbox.run import HOOKS
 
-__all__ = ["GATE", "Arguments", "Launch", "check_on", "decide_launch", "registered_by_the_node", "remove_project", "require_attended",
-           "require_widening"]
+__all__ = ["GATE", "Arguments", "Launch", "check_on", "decide_launch", "registered_by_the_node", "remove_project", "require_widening"]
 
 GATE = "isolation.grant"
 Events = Callable[[str, dict[str, object]], None]
@@ -98,13 +98,6 @@ def registered_by_the_node(path: str) -> bool:
     return bool(policy.key_of(path))
 
 
-def _refuse(action: str, key: str) -> caller.AgentRefused:
-    """The refusal of ``action`` with the sentence ``key``, audited; a confinement that cannot write the audit log is refused all the same."""
-    with contextlib.suppress(OSError):
-        caller.record("refused", action=action, why=key)
-    return caller.AgentRefused(sentence(key))
-
-
 def _attest() -> ancestry.Ancestry:
     """Who runs this process, as the node attests it from the process tree; a node that cannot say refuses the launch at once, audited."""
     try:
@@ -113,14 +106,6 @@ def _attest() -> ancestry.Ancestry:
         with contextlib.suppress(OSError):
             caller.record("refused", action="attesting who runs the launcher", why="unattested")
         raise caller.AgentRefused(str(why)) from why
-
-
-@home.real_roots
-def require_attended(action: str) -> None:
-    """Refuse ``action`` at once, audited, to a process the runner of an unattended agent started: a delegate and a local agent of a board
-    launch nothing, widen nothing and register or remove no project, and neither does anything either starts, in a sandbox or without one."""
-    if ancestry.unattended():
-        raise _refuse(action, "unattended_caller")
 
 
 def _caller(action: str) -> ancestry.Ancestry:

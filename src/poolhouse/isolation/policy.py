@@ -82,8 +82,10 @@ def load(project: str | os.PathLike[str]) -> ProjectPolicy | None:
 
 @home.real_roots
 def save(project: str | os.PathLike[str], policy: ProjectPolicy, env: Mapping[str, str] | None = None) -> None:
-    """Write the policy of the project the node has registered around ``project``. An agent and a process inside a confinement are refused at
-    once, with the reason; a folder the node holds no project for has none to write (`Unregistered`)."""
+    """Write the policy of the project the node has registered around ``project``. An agent, a process inside a confinement and whatever an
+    unattended agent's runner started are refused at once, with the reason; a folder the node holds no project for has none to write
+    (`Unregistered`)."""
+    ancestry.require_attended("writing the widenings a project may be launched with")
     try:
         where = ancestry.attest()
     except ancestry.Unattested as why:

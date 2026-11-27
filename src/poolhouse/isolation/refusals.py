@@ -53,7 +53,7 @@ SENTENCES: dict[str, str] = {
     "not_placed": ("Refused: this process is marked as an agent's and the node finds no session above it, so it widens no coding session "
                    "and removes no project."),
     "unattended_caller": ("Refused: an agent that runs with nobody at it (a delegate, or a local agent of a board), and whatever it starts, "
-                          "launches no coding agent, widens nothing and registers or removes no project."),
+                          "starts no agent, widens nothing and changes no project's record."),
     "held_back": "Refused: widening a coding session is held back from agents on this computer.",
     "project_unregistered": ("Refused: this folder is not a registered project of this computer, and a process marked as an agent's that the "
                              "node finds no session above it registers none."),

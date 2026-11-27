@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from poolhouse import coding, isolation, roles
 from poolhouse.board import person
 from poolhouse.board.session import Session
+from poolhouse.caller import AgentRefused
 from poolhouse.errors import Denied
 from poolhouse.fleet.onboard.web import Call, Listener, Reply as WebReply
 from poolhouse.fleet.same_page import Reply, checked, reply
@@ -134,7 +135,7 @@ def respond(base: Path, session: Callable[[], Session], req: Request, body: byte
             return bad or reply(*_write(base, session, route, body))
         bad = checked(req.method, req.headers, req.port)
         return bad or reply(200, _read(base, route))
-    except Denied as err:
+    except (Denied, AgentRefused) as err:
         return reply(403, {"error": plain.line(err, 200)})
     except (ValueError, KeyError, isolation.IsolationRefused) as err:
         return reply(400, {"error": plain.line(err, 200)})

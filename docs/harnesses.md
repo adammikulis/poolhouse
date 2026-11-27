@@ -296,8 +296,8 @@ elsewhere) against a marked plumbing server.
 `poolhouse-delegate` is how a session (a Claude Code or Codex session or a helper of one, or any registered session) hands a task to a
 local coding agent and gets the answer, with no setup step; the session that starts it is its lead. Every delegate is OpenCode, through the
 isolated launcher, on the model this machine serves, so a server already up is taken as it stands and nothing else is loaded. A delegate,
-and whatever it starts, launches no agent or delegate, widens nothing and registers or removes no project, with a sandbox or without one
-(docs/design-isolated-launcher.md, 8.3).
+and whatever the process table shows below it, starts no agent, widens nothing and changes no project's record. With no sandbox a command
+whose parent has already ended is not recognised as the delegate's (docs/design-isolated-launcher.md, 8.3).
 
 ```
 poolhouse-delegate start --task "list the python files here and say what each does" [--project DIR] [--name LABEL] [--edit] [--max-turns N] [--model ID] [--as AGENT]

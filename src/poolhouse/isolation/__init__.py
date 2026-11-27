@@ -14,6 +14,7 @@ a rule, or refused with a plain reason that names the fact and never a command t
 
 from __future__ import annotations
 
+from poolhouse.isolation.ancestry import require_attended
 from poolhouse.isolation.attestation import Attestation, attest
 from poolhouse.isolation.capability import Report, capability, require_capable
 from poolhouse.isolation.confinement import (
@@ -33,7 +34,6 @@ from poolhouse.isolation.gate import (
            check_on,
            decide_launch,
            remove_project,
-           require_attended,
            require_widening,
 )
 from poolhouse.isolation.grants import Decision, Grant, Request, Rule, decide
