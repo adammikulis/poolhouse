@@ -16,7 +16,7 @@ from poolhouse import home
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import only_one, pid_alive
 
-__all__ = ["LOOPBACK", "bind", "for_url", "forget", "issue", "key_file", "write_key_file"]
+__all__ = ["LOOPBACK", "bind", "bound", "for_url", "forget", "issue", "key_file", "write_key_file"]
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 STARTING_S = 600
@@ -129,6 +129,12 @@ def bind(port: int, pid: int) -> None:
             _save(entries)
 
 
+def bound(port: int) -> int:
+    """The process the key of ``port`` is bound to, while this computer holds that key and the process lives; 0 otherwise."""
+    entry = _entries().get(str(int(port)))
+    return int(entry["pid"]) if isinstance(entry, dict) and entry.get("pid") and _live(entry) and _read(key_file(port)) else 0
+
+
 def for_url(url: str) -> str:
     """The key of the leased server at a loopback ``url``, or ``""`` when none is running there."""
     parts = urllib.parse.urlsplit(url)
@@ -138,6 +144,5 @@ def for_url(url: str) -> str:
         port = parts.port or (443 if parts.scheme == "https" else 80)
     except ValueError:
         return ""
-    entry = _entries().get(str(port))
     # Only a key bound to its server's process is sent: no health probe made before the listener is checked carries one.
-    return _read(key_file(port)) if isinstance(entry, dict) and entry.get("pid") and _live(entry) else ""
+    return _read(key_file(port)) if bound(port) else ""

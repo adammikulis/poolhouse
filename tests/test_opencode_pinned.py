@@ -38,8 +38,10 @@ from poolhouse import (
     procscan,
     serverkeys,
 )
-from poolhouse.serve.process import kill_process_tree
+from poolhouse.serve.leases import lease_file
+from poolhouse.serve.process import cmdline_digest, kill_process_tree, started_at
 from poolhouse.testing import canned
+from poolhouse.testing.registry import record_server
 
 pytest_plugins = ["node_kit", "delegate_kit", "tests.confined_kit"]
 
@@ -168,7 +170,8 @@ def test_an_edit_delegate_on_the_pinned_release_has_each_call_judged_a_denied_on
                          ("edit", {"path": "made.py", "oldString": "x = 1", "newString": "x = 2"}),
                          ("shell", {"command": "cat made.py; sleep 30", "timeout": 1000, "background": True}),
                          ("grep", {"pattern": "x = 2"})], "--edit")
-    assert ran.status == 0 and ran.row["state"] == "done", (ran.row, ran.log[-4000:])
+    assert ran.status == 1 and ran.row["state"] == "partial", (ran.row, ran.log[-4000:])
+    assert [(each["path"], each["tool"], each["by"]) for each in ran.row["refused_writes"]] == [("denied.txt", "bash", "rules")], ran.row
     asked, ended = judged(ran)
     assert [name for name, _ in asked] == ["Bash", "Write", "Edit", "Bash", "Grep"], ran.heard
     assert ended == [call for _, call in asked][1:], "a denied call never ran, so nothing ended it"
@@ -179,6 +182,20 @@ def test_an_edit_delegate_on_the_pinned_release_has_each_call_judged_a_denied_on
     assert ran.row["applied"] == ["made.py"] and (delegated.project / "made.py").read_text() == "x = 2\n"
     assert not (delegated.project / "denied.txt").exists(), "the refused command never ran"
     assert not (delegated.project / "PROJECT-PLUGIN-RAN").exists(), "the project's own plugin never ran"
+
+
+def test_the_writes_the_box_refuses_the_pinned_release_leave_the_delegate_partial_and_a_failing_command_does_not_count(delegated, served):
+    """The refusals are read from the release's own tool events: the scripted last words say nothing of them."""
+    ran = delegated.run([("write", {"path": "made.py", "content": "x = 1\n"}),
+                         ("write", {"path": ".claude/settings.local.json", "content": "{}\n"}),
+                         ("shell", {"command": "mkdir .claude"}),
+                         ("shell", {"command": "grep nothing-there made.py"}),
+                         ("edit", {"path": "made.py", "oldString": "not there", "newString": "x = 2"})], "--edit")
+    assert ran.row["applied"] == ["made.py"], (ran.row, ran.log[-4000:])
+    assert ran.status == 1 and ran.row["state"] == "partial", (ran.row, offered(served)[1], ran.log[-4000:])
+    assert [(each["path"], each["tool"], each["by"]) for each in ran.row["refused_writes"]] == [
+        (".claude/settings.local.json", "write", "sandbox"), (".claude", "bash", "sandbox")], (ran.row, offered(served)[1])
+    assert '2 writes refused by the sandbox: ".claude/settings.local.json", ".claude"' in ran.row["detail"], ran.row
 
 
 def test_a_plugin_the_pinned_release_cannot_load_is_named_in_the_delegates_log_and_the_run_fails(delegated, monkeypatch):
@@ -273,6 +290,7 @@ def at_home(release, served, tmp_path, monkeypatch):
     served.api_key = serverkeys.issue(served.port)
     serverkeys.write_key_file(served.port, served.api_key)   # as the start of a leased server does
     serverkeys.bind(served.port, os.getpid())
+    record_server(lease_file(), served.port, model="m.gguf", pid=os.getpid(), started=started_at(os.getpid()), cmdline=cmdline_digest(os.getpid()))
     monkeypatch.setattr(opencode, "alias_of", lambda *_: canned.CANNED_MODEL_ID)
     monkeypatch.setattr(opencode.harnessing, "window_of", lambda _: 32768)
     project = repository(tmp_path / "project").resolve()
@@ -403,7 +421,8 @@ def test_a_delegate_on_a_platform_with_no_sandbox_runs_the_pinned_release_on_the
     outside = tmp_path / "outside.txt"
     ran = delegated.run([("write", {"path": "made.py", "content": "x = 1\n"}), ("write", {"path": str(outside), "content": "x"}),
                          ("shell", {"command": "cat made.py"})], "--edit")
-    assert ran.status == 0 and ran.row["state"] == "done", (ran.row, ran.log[-4000:])
+    assert ran.status == 1 and ran.row["state"] == "partial", (ran.row, ran.log[-4000:])
+    assert [(each["path"], each["by"]) for each in ran.row["refused_writes"]] == [(str(outside), "rules")], ran.row
     assert [name for name, _ in judged(ran)[0]] == ["Write", "Write", "Bash"], (ran.heard, ran.log[-4000:])
     results = offered(served)[1]
     assert "poolhouse: " in results[1] and not outside.exists() and "x = 1" in results[2], (results, ran.log[-4000:])

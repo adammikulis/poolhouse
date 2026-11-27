@@ -153,8 +153,9 @@ def owns_connection(pid: int, local: tuple, remote: tuple) -> bool:
         return False
 
 
-def listens_on(pid: int | None, port: int) -> bool:
-    """Whether the process ``pid`` (or one of its children, for a sandbox wrapper) is alive and listens on ``port``.
+def listens_on(pid: int | None, port: int, address: str = "") -> bool:
+    """Whether the process ``pid`` (or one of its children, for a sandbox wrapper) is alive and listens on ``port``; with ``address``
+    (``127.0.0.1`` or ``::1``), on that address or on every address of its kind.
 
     The check made before a key is sent to whatever answers on a port a server was started for."""
     if not pid:
@@ -162,7 +163,8 @@ def listens_on(pid: int | None, port: int) -> bool:
     try:
         parent = psutil.Process(pid)
         found = [parent, *parent.children(recursive=True)]
-        return any(c.status == psutil.CONN_LISTEN and c.laddr and c.laddr.port == port
+        at = {address, "::" if ":" in address else "0.0.0.0"} if address else set()  # noqa: S104 - compared with, bound by nothing
+        return any(c.status == psutil.CONN_LISTEN and c.laddr and c.laddr.port == port and (not at or c.laddr.ip in at)
                    for one in found for c in one.net_connections(kind="inet"))
     except (psutil.Error, TypeError):
         return False

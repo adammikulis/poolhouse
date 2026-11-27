@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 from pathlib import Path
 
@@ -12,7 +13,10 @@ from poolhouse import home, secretpaths, serverkeys
 from poolhouse.http import build_request
 from poolhouse.serve import backend as be
 from poolhouse.serve.grant import broker_grant
+from poolhouse.serve.leases import lease_file
 from poolhouse.serve.policy import LocalPolicy
+from poolhouse.serve.process import cmdline_digest, started_at
+from poolhouse.testing.registry import record_server
 
 
 def test_a_key_is_found_by_the_url_of_its_port():
@@ -140,18 +144,22 @@ def test_start_issues_a_key_and_hands_it_to_the_server(monkeypatch, tmp_path):
 def test_claude_and_codex_run_with_the_servers_key(tmp_path, monkeypatch):
     from poolhouse import claude, codex, harnessid, harnessing
 
-    key = serverkeys.issue(8123)
-    serverkeys.bind(8123, os.getpid())
-    assert claude.environment("http://127.0.0.1:8123", "m", base={})["ANTHROPIC_AUTH_TOKEN"] == key
+    held = socket.create_server(("127.0.0.1", 0))   # the server's listener, in this process, and its lease record
+    port = held.getsockname()[1]
+    record_server(lease_file(), port, model="m.gguf", pid=os.getpid(), started=started_at(os.getpid()), cmdline=cmdline_digest(os.getpid()))
+    key = serverkeys.issue(port)
+    serverkeys.bind(port, os.getpid())
+    assert claude.environment(f"http://127.0.0.1:{port}", "m", base={})["ANTHROPIC_AUTH_TOKEN"] == key
     assert claude.environment("http://127.0.0.1:9", "m", base={})["ANTHROPIC_AUTH_TOKEN"] == "local"
     monkeypatch.setattr(codex, "alias_of", lambda *_: "m")
     monkeypatch.setattr(harnessing, "window_of", lambda _: 0)
     ran = []
-    assert codex.launch(["--on", "http://127.0.0.1:8123", "--project", str(tmp_path), "--codex", "true"], say=lambda _: None,
+    assert codex.launch(["--on", f"http://127.0.0.1:{port}", "--project", str(tmp_path), "--codex", "true"], say=lambda _: None,
                         session_factory=lambda name, *_: harnessid.HarnessSession(name), run_codex=lambda run: ran.append(run) or 0) == 0
     [named] = [word.partition("=")[2].strip('"') for word in ran[0].argv if word.startswith("model_providers.poolhouse.env_key=")]
     assert ran[0].env[named] == key
-    assert f'env_key = "{codex.KEY_ENV}"' in codex.config_toml("http://127.0.0.1:8123", "m", 0, ("a", "b", 1.0))
+    assert f'env_key = "{codex.KEY_ENV}"' in codex.config_toml(f"http://127.0.0.1:{port}", "m", 0, ("a", "b", 1.0))
+    held.close()
 
 
 def test_a_key_never_starts_with_a_dash(monkeypatch):

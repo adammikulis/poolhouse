@@ -38,12 +38,14 @@ from poolhouse.board.client import NodeError
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.client import is_healthy, refuses_key
 from poolhouse.errors import Denied
+from poolhouse.http import shown
 from poolhouse.hub.probe import MachineMemory
 from poolhouse.isolation import places
 from poolhouse.isolation.refusals import sentence
 from poolhouse.sandbox import run as sandbox_run
 from poolhouse.serve import admission, chat_template, leases, profile, suggest, wired
 from poolhouse.serve.matching import model_matches
+from poolhouse.serve.named import named as named_server
 from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.recent import note
 from poolhouse.serve.serving import Config, Serving, drafted, said_cache, served, serving_params
@@ -520,10 +522,19 @@ def serve_and_run(args: argparse.Namespace, name: str, say: Callable[[str], None
     """The model half of a launch: the server already up at ``--on``, else a lease for the model asked for (or the default), held for the run.
     ``run((base_url, alias, window))`` starts the harness."""
     if args.on:
-        base_url = args.on.rstrip("/")
+        target = named_server(args.on)
+        base_url = target.url
+        # every request to an address with a bound key carries it, so one not shown to be that server is asked nothing
+        if not target.ours and serverkeys.for_url(base_url):
+            say(f"error: no key is sent to {shown(base_url)}, and nothing was asked of it: {target.why}")
+            return 2
         alias = alias_of(base_url, "")
         if not alias:
-            say(f"error: {base_url} did not say what model it serves")
+            if refuses_key(base_url):
+                why = "it refuses the key this computer holds for it" if target.ours else target.why
+                say(f"error: {shown(base_url)} refuses a request without its key: {why}")
+            else:
+                say(f"error: {shown(base_url)} did not say what model it serves")
             return 2
         say(f"{name} on {base_url} as {alias!r}; this server was already up and is left up")
         return run((base_url, alias, window_of(base_url)))

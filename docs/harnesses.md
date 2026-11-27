@@ -14,6 +14,16 @@ poolhouse-claude --on http://127.0.0.1:8080 --permissions read-only -- -p "expla
 poolhouse-claude --sandbox -- -p "fix the failing test"
 ```
 
+### A server already up (`--on`)
+
+`--on URL` names a server that is running; it is left running. A server that asks for no key is used as it answers. A key this computer holds
+goes only to a server it can show is the one it started (`poolhouse.serve.named`), which takes all of: the address written as
+`http://127.0.0.1:PORT` (or `localhost`, `[::1]`), with no user name, query or backslash; a lease record for the port whose process is still the
+same one (start time and command line); the key bound to that process; and that process listening on the port at the address asked. It is then
+used at that address, so `localhost` cannot lead to another process on the other loopback address. Where a key is bound to the port and any of
+these cannot be shown, nothing is asked of the address and the launch fails saying which. A server that refuses a request and is given no key
+(one an earlier build left up, or one on another computer) fails the same way, with why. A project's files set none of this.
+
 ## In place
 
 Nothing of the person's or the project's configuration is written. What points a run at the model is on its command
