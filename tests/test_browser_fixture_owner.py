@@ -7,7 +7,8 @@ from types import SimpleNamespace
 import pytest
 import test_coding_browser as coding_fixtures
 import test_fleet_chat_browser as chat_fixtures
-from test_fleet_chat_browser import chat_browser  # noqa: F401
+from service_kit import one_node  # noqa: F401  (the founded node the coding daemon reads)
+from test_fleet_chat_browser import chat_browser, founded_node, governed  # noqa: F401
 from test_fleet_usability_browser import usability_page  # noqa: F401
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 
@@ -17,8 +18,14 @@ pytest_plugins = ['node_kit']
 ORIGIN = 'http://browser-fixture.invalid/'
 
 
+@pytest.fixture
+def coding_nodes(workspace_node, one_node):  # noqa: F811
+    """The two nodes the coding daemon fixture takes, in its order."""
+    return workspace_node, one_node
+
+
 @pytest.mark.parametrize('scenario', [('chat', 'page'), ('coding', 'page'), ('chat', 'route'), ('coding', 'route')])
-def test_browser_setup_failure_closes_daemon_and_driver(browser_owner, tmp_path, monkeypatch, workspace_node, scenario):
+def test_browser_setup_failure_closes_daemon_and_driver(browser_owner, tmp_path, monkeypatch, coding_nodes, scenario):
     kind, failure = scenario
     closed = []
     close = chat_fixtures.Serving.close
@@ -40,16 +47,16 @@ def test_browser_setup_failure_closes_daemon_and_driver(browser_owner, tmp_path,
 
     monkeypatch.setattr(chat_fixtures.Serving, 'close', close_served)
     monkeypatch.setattr(browser_owner, 'pages', broken_pages)
-    fixture = (coding_fixtures.coding_browser.__wrapped__(tmp_path, monkeypatch, browser_owner, workspace_node)
-               if kind == 'coding' else chat_fixtures.chat_browser.__wrapped__(tmp_path, browser_owner))
+    fixture = (coding_fixtures.coding_browser.__wrapped__(tmp_path, monkeypatch, browser_owner, *coding_nodes)
+               if kind == 'coding' else chat_fixtures.chat_browser.__wrapped__(tmp_path, browser_owner, coding_nodes[0]))
     with pytest.raises(RuntimeError, match='setup failed'):
         next(fixture)
     assert len(closed) == 1
     assert browser_owner.client is None
 
 
-def test_coding_then_chat_release_driver_and_isolate_contexts(browser_owner, tmp_path, monkeypatch, workspace_node):
-    coding = coding_fixtures.coding_browser.__wrapped__(tmp_path / 'coding', monkeypatch, browser_owner, workspace_node)
+def test_coding_then_chat_release_driver_and_isolate_contexts(browser_owner, tmp_path, monkeypatch, coding_nodes):
+    coding = coding_fixtures.coding_browser.__wrapped__(tmp_path / 'coding', monkeypatch, browser_owner, *coding_nodes)
     try:
         _served, first, _project = next(coding)
         first_context = first.context
@@ -68,7 +75,7 @@ def test_coding_then_chat_release_driver_and_isolate_contexts(browser_owner, tmp
         return 'driver released'
 
     assert asyncio.run(after_coding()) == 'driver released'
-    chat = chat_fixtures.chat_browser.__wrapped__(tmp_path / 'chat', browser_owner)
+    chat = chat_fixtures.chat_browser.__wrapped__(tmp_path / 'chat', browser_owner, coding_nodes[0])
     try:
         _served, second = next(chat)
         assert second.context is not first_context
@@ -86,7 +93,7 @@ def test_coding_then_chat_release_driver_and_isolate_contexts(browser_owner, tmp
     assert asyncio.run(after_coding()) == 'driver released'
 
 
-def test_coding_cancellation_failure_still_closes_daemon_and_driver(browser_owner, tmp_path, monkeypatch, workspace_node):
+def test_coding_cancellation_failure_still_closes_daemon_and_driver(browser_owner, tmp_path, monkeypatch, coding_nodes):
     closed = []
     close = coding_fixtures.Serving.close
 
@@ -98,7 +105,7 @@ def test_coding_cancellation_failure_still_closes_daemon_and_driver(browser_owne
         raise RuntimeError('cancellation failed')
 
     monkeypatch.setattr(coding_fixtures.Serving, 'close', close_served)
-    fixture = coding_fixtures.coding_browser.__wrapped__(tmp_path, monkeypatch, browser_owner, workspace_node)
+    fixture = coding_fixtures.coding_browser.__wrapped__(tmp_path, monkeypatch, browser_owner, *coding_nodes)
     served, page, _project = next(fixture)
     served.ui.coding_turns = SimpleNamespace(turns={'pending': SimpleNamespace(state='running', cancel=fail_cancel)})
     with pytest.raises(RuntimeError, match='cancellation failed'):

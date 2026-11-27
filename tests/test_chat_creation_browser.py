@@ -4,7 +4,8 @@ import threading
 
 import pytest
 from browser_expect import expect
-from test_fleet_chat_browser import chat_browser  # noqa: F401
+from node_kit import node_binary  # noqa: F401  (the founded node the daemon fixture reads)
+from test_fleet_chat_browser import chat_browser, founded_node, governed  # noqa: F401
 
 from poolhouse.fleet.conversation_routes import ConversationRoutes
 
