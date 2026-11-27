@@ -93,8 +93,8 @@ checks this against a fake server.
 `--profile chat` (default) and `--profile coding` differ in the model and the harness, not in limits: the context of both is the
 largest safe fit for the selected model on this device's memory (`serve.suggest.largest_fit`, one slot: the model's trained window,
 as much of it as the memory holds, the same answer `poolhouse-serve up` serves). `--ctx 256k` (k and K are accepted) overrides that
-choice. Coding prefers Qwen3.8-27B (Q4_K_XL first; `poolhouse-serve memory` rates it 27.2 GiB at 256K,
-q8_0 cache, MTP head shared) and has no task caps. A coding
+choice. Coding prefers Qwen3.8-27B (Q3_K_XL first, 13.1 GB of weights; `poolhouse-serve memory` rates what it
+needs at a context) and has no task caps. A coding
 agent runs on Pi by default through `poolhouse.coding.launch_coding_agent(model, role, project,
 harness='pi')`; Codex and Claude Code are also supported.
 Flash-Next is used only when named with `--model`. Before starting, the memory estimator checks the

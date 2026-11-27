@@ -285,6 +285,71 @@ def test_a_partly_downloaded_build_says_so(monkeypatch, capsys):
     assert "1/3 downloaded" in said and "ON THIS MACHINE" not in said
 
 
+def files_rows(capsys) -> dict[str, str]:
+    """`poolhouse-models files maker/thing-GGUF`, one line per build."""
+    import poolhouse.hub as hub
+
+    capsys.readouterr()
+    assert hub.main(["files", "maker/thing-GGUF"]) == 0
+    return {line.split()[1]: line for line in capsys.readouterr().out.splitlines()
+            if line.split()[1:2] and line.split()[1].startswith("thing-")}
+
+
+def test_a_file_the_repository_has_since_replaced_says_so_until_it_is_fetched_again(tmp_path, monkeypatch, capsys):
+    """A repository republished a build under the same name and the listing said the old bytes were on this machine. The files
+    are pulled from a local Hub, which then serves another size for one build and other bytes of the same size for one shard."""
+    import poolhouse.hub as hub
+    from poolhouse.hub import hfstore
+
+    repo = "maker/thing-GGUF"
+    held = {"thing-Q3.gguf": gguf(300), "thing-Q4.gguf": gguf(400),
+            "thing-Q5/thing-Q5-00001-of-00002.gguf": gguf(500), "thing-Q5/thing-Q5-00002-of-00002.gguf": gguf(600)}
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "cache"))
+    monkeypatch.setattr(hub, "room", lambda: 110 * 2**30)
+    with fake_hub({repo: dict(held)}) as server:
+        server.point(monkeypatch)
+        for name in held:
+            hub.fetch(f"hf:{repo}/{name}")
+        assert all("ON THIS MACHINE" in row and "DIFFERS" not in row for row in files_rows(capsys).values())
+
+        newer = next(n for n in range(1, 99) if server.commit(repo, n) > server.commit(repo, 0))
+        server.repos[repo]["thing-Q4.gguf"] = gguf(450)
+        server.repos[repo]["thing-Q5/thing-Q5-00002-of-00002.gguf"] = gguf(599) + b"\1"
+        server.moved[repo] = newer
+        rows = files_rows(capsys)
+        assert "DIFFERS" not in rows["thing-Q3.gguf"]
+        assert (f"ON THIS MACHINE, DIFFERS from the repository (thing-Q4.gguf: {len(gguf(400)):,} bytes here, "
+                f"{len(gguf(450)):,} served)") in rows["thing-Q4.gguf"]
+        other = "thing-Q5-00002-of-00002.gguf: same size, other content"
+        if hfstore.held_digest(hub.located("thing-Q5-00002-of-00002.gguf")):
+            assert f"DIFFERS from the repository (1 of 2 files; {other})" in rows["thing-Q5"]
+        else:  # a cache with no links (Windows without symlinks) names no content: only sizes are compared
+            assert "DIFFERS" not in rows["thing-Q5"]
+
+        hub.fetch(f"hf:{repo}/thing-Q4.gguf")
+        assert hub.located("thing-Q4.gguf").read_bytes() == gguf(450), "a bare name gets the bytes refs/main names"
+        assert hub.on_disk()["thing-Q4.gguf"] == len(gguf(450))
+        assert "DIFFERS" not in files_rows(capsys)["thing-Q4.gguf"]
+
+
+def test_a_newer_snapshot_missing_a_shard_does_not_displace_the_complete_build(tmp_path, monkeypatch):
+    import poolhouse.hub as hub
+    from poolhouse.hub import hfstore
+
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    root = tmp_path / "models--maker--thing-GGUF"
+    old, new = "a" * 40, "b" * 40
+    names = [f"thing-0000{i}-of-00002.gguf" for i in (1, 2)]
+    for commit, present in ((old, names), (new, names[:1])):
+        for name in present:
+            (root / "snapshots" / commit).mkdir(parents=True, exist_ok=True)
+            (root / "snapshots" / commit / name).write_bytes(commit.encode())
+    hfstore.point_ref("maker/thing-GGUF", "main", new)
+    assert hub.located(names[0]).parent.name == old
+    (root / "snapshots" / new / names[1]).write_bytes(new.encode())
+    assert hub.located(names[0]).parent.name == new
+
+
 def test_on_disk_resolves_symlinks_because_a_cache_is_made_of_them(tmp_path, monkeypatch):
     """A Hub cache is symlinks into blobs/, so `ls -l` reports 79 bytes for a 46G
     shard. Reading that as "not downloaded" is the same mistake wearing a different hat."""

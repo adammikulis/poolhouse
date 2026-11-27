@@ -542,7 +542,7 @@ class TestCodingAgent:
         monkeypatch.setattr(codex.shutil, "which", lambda n: str(binary))
         assert coding.launch_coding_agent("", coding_policy.Policy("guarded"), tmp_path / "proj", harness="codex", orders_from=["reviewer"],
                                           harness_args=["exec", "go"], say=lambda _: None, run_codex=run, sandbox=True) == 0
-        assert seen["model"] == harnessing.DEFAULT_MODEL == "Qwen3.8-27B-UD-Q4_K_XL.gguf"
+        assert seen["model"] == harnessing.DEFAULT_MODEL == "Qwen3.8-27B-UD-Q3_K_XL.gguf"
         assert seen["name"] == "local-qwen-27b-codex" and seen["project"] == (tmp_path / "proj").resolve()
         assert seen["claim"] == ("qwen-27b", "codex")
         assert "reviewer" in seen["agents"] and seen["command"][-2:] == ["exec", "go"]

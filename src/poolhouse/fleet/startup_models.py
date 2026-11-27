@@ -74,9 +74,7 @@ def choices(*, machine: MachineMemory | None = None, disk_gb: float = 0,
                         contexts(QWEN_27B_HEADER["qwen3_5.context_length"]))
                         if pick.params_b == 27 else 0,
                      "recommended": False})
-    preferred = next((row for row in rows if row["params_b"] == 27 and "UD-Q4_K_XL" in row["file"]), None)
-    if preferred is None:
-        preferred = next((row for row in rows if row["params_b"] == 27), None)
+    preferred = next((row for row in rows if row["params_b"] == 27), None)
     if preferred is None:
         preferred = next((row for row in reversed(rows) if row["family"] == "Qwen"), None)
     if preferred is not None:

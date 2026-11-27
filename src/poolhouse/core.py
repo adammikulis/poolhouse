@@ -1,6 +1,6 @@
 """The core of Poolhouse: serve one local model on this machine, with nothing of the pool.
 
-    path = core.resolve("Qwen3.8-27B-UD-Q4_K_XL.gguf")   # a name or a path to an installed GGUF
+    path = core.resolve("Qwen3.8-27B-UD-Q3_K_XL.gguf")   # a name or a path to an installed GGUF
     core.fit(path, 32768).said()                         # would it load, and if not why
     with core.serve(path, 32768) as server:              # admitted, started, healthy
         server.base_url, server.model_id, server.api_key

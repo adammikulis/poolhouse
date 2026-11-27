@@ -40,6 +40,7 @@ def installed_models_are_this_folder(monkeypatch, tmp_path):
     folder.mkdir()
     real = hub.discover
     monkeypatch.setattr(hub, "discover", lambda roots=None, **kw: real([folder], **kw))
+    monkeypatch.setattr(hub, "default_roots", lambda root: [folder])
     monkeypatch.setattr("poolhouse.limits.read", lambda: SimpleNamespace(memory_bytes=0))
     return folder
 
@@ -66,3 +67,10 @@ def test_a_delegate_with_nothing_served_takes_the_same_default(installed_models_
     monkeypatch.setattr("poolhouse.serve.suggest.machine_memory", lambda: mac(128))
     assert delegate.standing_model() == FLASH
     assert delegate.standing_model("named-by-the-lead.gguf") == "named-by-the-lead.gguf"
+
+
+def test_an_upgraded_install_goes_on_with_the_27b_it_has_until_the_new_default_is_installed(installed_models_are_this_folder):
+    for installed in ("Qwen3.8-27B-Q4_K_M.gguf", "Qwen3.8-27B-UD-Q4_K_XL.gguf", "Qwen3.8-27B-UD-Q3_K_XL.gguf"):
+        model_file(installed_models_are_this_folder, installed, 12)
+        assert harnessing.default_model(mac(32)) == installed
+        assert delegate.standing_model() == installed
