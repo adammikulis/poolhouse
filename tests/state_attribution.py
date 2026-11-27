@@ -38,18 +38,15 @@ def session_tree() -> set[int]:
     """This process, its ancestors that are part of the same test run, and their descendants."""
     me = psutil.Process()
     top = me
-    for parent in me.parents():
-        try:
-            line = " ".join(parent.cmdline())
-        except (psutil.Error, SystemError):
-            break
-        if not any(word in line for word in ("pytest", "scripts/test", "testslots")):
-            break
-        top = parent
     try:
+        for parent in me.parents():
+            line = " ".join(parent.cmdline())
+            if not any(word in line for word in ("pytest", "scripts/test", "testslots")):
+                break
+            top = parent
         return {top.pid, me.pid, *(p.pid for p in top.children(recursive=True))}
-    except psutil.Error:
-        return {me.pid}
+    except (psutil.Error, PermissionError, SystemError):   # a sandbox lists no processes
+        return {me.pid} if top is me else {top.pid, me.pid}
 
 
 def live_poolhouse_processes() -> list[Row]:

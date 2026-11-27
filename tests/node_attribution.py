@@ -48,16 +48,13 @@ def run_tree() -> set[int]:
     """This process, its ancestors that are pytest or the runner that starts it, and everything below the topmost of them."""
     me = psutil.Process()
     top = me
-    for parent in me.parents():
-        try:
+    try:
+        for parent in me.parents():
             if not _runner(parent.cmdline()):
                 break
-        except psutil.Error:
-            break
-        top = parent
-    try:
+            top = parent
         return {top.pid, me.pid, *(p.pid for p in top.children(recursive=True))}
-    except psutil.Error:
+    except (psutil.Error, PermissionError):   # a sandbox lists no processes
         return {me.pid}
 
 
