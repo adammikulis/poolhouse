@@ -154,10 +154,12 @@ def name_session(environment: dict, model: str, event: dict | None = None) -> st
     return name
 
 
-def persist_session(environment: dict) -> None:
+def persist_session(environment: dict, session: str = '') -> None:
+    """Append to the shell environment file the harness offers: the exports of ``environment`` and the line that gives each shell of
+    the session ``session`` the identity of its caller (`shell_identity.loader`), which must come after them."""
     target = os.environ.get('CLAUDE_ENV_FILE')
-    session = environment.get('POOLHOUSE_SESSION_ID')
-    if not target or not session:
+    session = environment.get('POOLHOUSE_SESSION_ID') or session
+    if not target or not isinstance(session, str) or not session:
         return
     try:
         root = Path(os.environ.get('CLAUDE_CONFIG_DIR', str(Path.home() / '.claude')))
@@ -165,24 +167,33 @@ def persist_session(environment: dict) -> None:
         parent = root / 'session-env' / session
         if Path(session).name != session or session in ('.', '..') or path.parent != parent:
             raise ValueError('CLAUDE_ENV_FILE is not in this native session directory')
+        owner = getattr(os, 'getuid', None)  # Windows has no owner or mode bits to read, and no directory descriptors
         for directory in (root, root / 'session-env', parent):
             info = directory.lstat()
-            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o022:
+            if not stat.S_ISDIR(info.st_mode) or (owner and (info.st_uid != owner() or info.st_mode & 0o022)):
                 raise ValueError('native session directory must be owned and not writable by other users')
-        descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW) if owner else None
         try:
-            file = os.open(path.name, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW,
-                           0o600, dir_fd=descriptor)
-            with os.fdopen(file, 'a') as output:
+            if path.is_symlink():
+                raise ValueError('native session exports must be a private owned regular file')
+            file = os.open(path.name if owner else path, os.O_WRONLY | os.O_APPEND | os.O_CREAT
+                           | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0), 0o600, dir_fd=descriptor)
+            with os.fdopen(file, 'a', newline='\n') as output:
                 info = os.fstat(output.fileno())
-                if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+                if not stat.S_ISREG(info.st_mode) or (owner and (info.st_uid != owner() or info.st_mode & 0o077)):
                     raise ValueError('native session exports must be a private owned regular file')
                 for name in ('POOLHOUSE_SESSION_ID', 'POOLHOUSE_SESSION_HARNESS', 'POOLHOUSE_WORKSPACE_AGENT'):
                     if name in environment:
                         output.write(f'export {name}={shlex.quote(environment[name])}\n')
+                import hook_state
+                import shell_identity
+                state = hook_state.state_dir()
+                output.write(shell_identity.loader(state) + '\n')
+            shell_identity.mark_installed(state, session)
         finally:
-            os.close(descriptor)
-    except (OSError, ValueError, AttributeError) as error:
+            if descriptor is not None:
+                os.close(descriptor)
+    except (ImportError, OSError, ValueError, AttributeError) as error:
         warning('SessionStart', error)
 
 

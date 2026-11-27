@@ -1,4 +1,4 @@
-"""A subagent's identity comes from the harness: the start hook registers every kind of subagent, even at the board's limit, and each command it runs is stamped as it, with no flag and no token typed."""
+"""A subagent's identity comes from the harness: the start hook registers every kind of subagent, even at the board's limit, and each command it runs is run as it, with no flag, no token typed and no change to the command."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -21,10 +22,18 @@ from poolhouse.caller import AgentRefused
 
 pytest_plugins = ["node_kit"]
 ROOT = Path(__file__).resolve().parents[1]
+LEAD = ""
+"""The agent id of a call of the lead's own session: its hook events carry none."""
+
+
+def wrapped(exports: str, command: str, cwd_file: Path) -> str:
+    """The text Claude Code gives the shell of a command: its environment file's lines, then the command quoted after `eval`."""
+    return (f"source /nonexistent/snapshot.sh 2>/dev/null || true && {exports}: && eval {shlex.quote(command)} < /dev/null "
+            f"&& pwd -P >| {cwd_file}")
 
 
 class Scene:
-    """A project, a real node with a lead session, and the real start, stop and Bash hooks run as Claude Code runs them."""
+    """A project, a real node with a lead session, and the real session, start, stop and Bash hooks run as Claude Code runs them."""
 
     def __init__(self, tmp_path: Path, node, monkeypatch) -> None:
         self.node, self.world = node, World(tmp_path, node)
@@ -46,6 +55,19 @@ class Scene:
         monkeypatch.setenv("POOLHOUSE_RUNTIME_ENSURE", "off")
         monkeypatch.setenv("POOLHOUSE_DEV_BRANCH", DEV)
         monkeypatch.chdir(tmp_path)
+        self.tmp = tmp_path
+        harness = tmp_path / "claude-config" / "session-env" / "sess1"
+        harness.mkdir(parents=True, mode=0o700)
+        self.exports = harness / "sessionstart-hook-0.sh"
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
+
+    def session_start(self) -> None:
+        """Run the session start hook with the shell environment file the harness offers it."""
+        event = {"session_id": "sess1", "cwd": str(self.world.proj.root), "model": "claude-sonnet-5-5"}
+        done = subprocess.run([sys.executable, str(self.hooks / "claude-session-start")], input=json.dumps(event), text=True,
+                              capture_output=True, timeout=90, check=False,
+                              env={**os.environ, **self.inherited(), "CLAUDE_ENV_FILE": str(self.exports)})
+        assert done.returncode == 0 and self.exports.is_file(), done.stderr
 
     def inherited(self) -> dict[str, str]:
         """The environment every command of the lead's session, and so of its subagents, starts with: the lead's name and the
@@ -83,22 +105,39 @@ class Scene:
     def name(self, agent: str) -> str:
         return board_session.find("claude-code", agent, client=self.node.client)
 
-    def run(self, agent: str, command: str, cwd: Path | None = None, tool: str = "Bash") -> subprocess.CompletedProcess:
-        """Run ``command`` as the Bash hook leaves it for the subagent ``agent`` (``tool`` is the tool that runs it), in the shell
-        the lead started."""
-        asked = {"tool_name": tool, "agent_id": agent, "session_id": "sess1", "cwd": str(cwd or self.world.proj.root),
-                 "tool_input": {"command": command, "description": "a step"}}
-        guard = self.hook("claude-bash-guard", asked)
-        assert guard.returncode == 0, guard.stderr
-        stamped = json.loads(guard.stdout)["hookSpecificOutput"]["updatedInput"]
-        assert stamped["description"] == "a step"
-        return subprocess.run(["/bin/sh", "-c", stamped["command"]], cwd=cwd or self.world.proj.root, env=self.inherited(),
+    def asked(self, agent: str, command: str, cwd: Path | None = None, **event: str) -> subprocess.CompletedProcess:
+        """The Bash hook's answer to a call, of the subagent ``agent`` or of the lead's own session when it is `LEAD`; ``event``
+        replaces fields of the hook's event."""
+        asked = {"tool_name": "Bash", "session_id": "sess1", "cwd": str(cwd or self.world.proj.root), "permission_mode": "auto",
+                 "tool_input": {"command": command, "description": "a step"}, **({"agent_id": agent} if agent else {}), **event}
+        return self.hook("claude-bash-guard", asked)
+
+    def allow(self, agent: str, command: str, cwd: Path | None = None, tool: str = "Bash") -> None:
+        guard = self.asked(agent, command, cwd, tool_name=tool)
+        assert guard.returncode == 0 and not guard.stdout.strip(), (guard.stdout, guard.stderr)
+
+    def shell(self, command: str, cwd: Path | None = None, program: str = "/bin/bash") -> subprocess.CompletedProcess:
+        """Run ``command`` unchanged in a shell the lead's session starts, wrapped as the harness wraps it."""
+        text = wrapped(self.exports.read_text(), command, self.tmp / "claude-0a1b-cwd")
+        return subprocess.run([program, "-c", text], cwd=cwd or self.world.proj.root, env=self.inherited(),
                               text=True, capture_output=True, timeout=120, check=False)
+
+    def run(self, agent: str, command: str, cwd: Path | None = None, tool: str = "Bash") -> subprocess.CompletedProcess:
+        """The call as it happens: the Bash hook allows it as written, then its shell runs it."""
+        self.allow(agent, command, cwd, tool)
+        return self.shell(command, cwd)
+
+    def lead_runs(self, command: str) -> subprocess.CompletedProcess:
+        """A call of the lead's own session, as it happens."""
+        self.allow(LEAD, command)
+        return self.shell(command)
 
 
 @pytest.fixture
 def scene(tmp_path, workspace_node, monkeypatch):
-    return Scene(tmp_path, workspace_node, monkeypatch)
+    made = Scene(tmp_path, workspace_node, monkeypatch)
+    made.session_start()
+    return made
 
 
 def test_a_general_purpose_subagent_with_an_empty_brief_is_registered_and_records_a_review_with_no_flag(scene):
@@ -251,46 +290,120 @@ def test_a_subagent_that_runs_a_command_through_the_monitor_tool_acts_as_the_sub
     assert done.returncode == 0 and json.loads(done.stdout)["id"] == child, done.stderr
 
 
-@pytest.mark.redteam
-def test_a_subagent_command_sent_again_as_the_hook_changed_it_runs_unchanged_and_nothing_else_may_begin_that_way(scene):
-    """A permission mode that refuses a command a hook changed lets the subagent send the changed command itself; the guard must take its own
-    first lines back, and nothing but exactly this subagent's own."""
+@pytest.mark.parametrize("mode", ["default", "acceptEdits", "auto", "bypassPermissions"])
+def test_the_bash_hook_never_changes_the_input_of_a_call(scene, mode):
+    """A harness reviews the input the agent wrote: a hook that changes it gets the call refused, and the agent told to send other text."""
+    scene.start("rev1")
+    for command in ("true", "poolhouse-workspace who worktree", "poolhouse-workspace inbox", "git -C /x commit -m y",
+                    "scripts/test all tests/test_x.py"):
+        for agent, tool in (("rev1", "Bash"), ("rev1", "Monitor"), (LEAD, "Bash")):
+            done = scene.asked(agent, command, tool_name=tool, permission_mode=mode)
+            assert done.returncode == 0 and not done.stdout.strip() and not done.stderr.strip(), (command, done.stdout, done.stderr)
+
+
+ASK = "poolhouse-workspace whoami --json"
+
+
+def who(done: subprocess.CompletedProcess) -> str:
+    """The name the command in a finished shell acted under."""
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)["id"]
+
+
+def nobody(done: subprocess.CompletedProcess, lead: str, why: str) -> None:
+    assert done.returncode != 0 and lead not in done.stdout, done.stdout
+    assert "no workspace identity" in done.stderr and why in done.stderr, done.stderr
+
+
+def test_calls_waiting_together_are_each_run_as_the_caller_that_issued_them(scene):
     scene.start("rev1")
     scene.start("rev2")
-    child, root = scene.name("rev1"), scene.world.proj.root
-
-    def ask(command: str, agent: str = "rev1") -> subprocess.CompletedProcess:
-        asked = {"tool_name": "Bash", "agent_id": agent, "session_id": "sess1", "cwd": str(root), "tool_input": {"command": command}}
-        return scene.hook("claude-bash-guard", asked)
-
-    asked = "poolhouse-workspace whoami --json"
-    changed = json.loads(ask(asked).stdout)["hookSpecificOutput"]["updatedInput"]["command"]
-    again = ask(changed)
-    assert again.returncode == 0 and not again.stdout.strip(), "the changed command, sent as it is, is let through and not changed again: " + again.stderr
-    ran = subprocess.run(["/bin/sh", "-c", changed], cwd=root, env=scene.inherited(), text=True, capture_output=True, timeout=120, check=False)
-    assert ran.returncode == 0 and json.loads(ran.stdout)["id"] == child, ran.stderr
-    own = changed.removesuffix(asked)
-    refused = (own + f"POOLHOUSE_WORKSPACE_AGENT={scene.lead.name} true", own + f"poolhouse-workspace inbox --agent {scene.lead.name}",
-               own + "poolhouse-workspace inbox --token-file /x", own + "export POOLHOUSE_SUBAGENT=other", own + "git push --force origin x",
-               own.replace(child, scene.lead.name) + "true", "true\n" + own + "true", own.replace("unset POOLHOUSE_WORKSPACE_TOKEN\n", "") + "true")
-    for command in refused:
-        done = ask(command)
-        assert done.returncode == 2, (command, done.stdout)
-    another = ask(changed, agent="rev2")
-    assert another.returncode == 2, "one subagent's stamp is not another's: " + another.stdout
+    commands = {"rev1": ASK, "rev2": ASK + " 2>/dev/null", LEAD: ASK + " | cat"}
+    for agent, command in commands.items():
+        scene.allow(agent, command)
+    names = {"rev1": scene.name("rev1"), "rev2": scene.name("rev2"), LEAD: scene.lead.name}
+    for agent in ("rev2", LEAD, "rev1"):
+        assert who(scene.shell(commands[agent])) == names[agent], agent
 
 
-@pytest.mark.parametrize("mode", ["default", "auto"])
-def test_in_auto_mode_only_a_subagent_command_that_acts_as_a_session_is_changed(scene, mode):
+def test_the_same_command_from_two_callers_in_two_folders_runs_each_as_itself(scene):
     scene.start("rev1")
-    for command, acts in (("true", False), ("ls /x/repos/poolhouse-fix/tests", False), ("scripts/test all tests/test_x.py", False),
-                          ("poolhouse-workspace whoami", True), ("/x/venv/bin/poolhouse-workspace inbox", True),
-                          ("python3 -m poolhouse.workspace whoami", True), ("git -C /x commit -m y", True)):
-        asked = {"tool_name": "Bash", "agent_id": "rev1", "session_id": "sess1", "cwd": str(scene.world.proj.root),
-                 "permission_mode": mode, "tool_input": {"command": command}}
-        done = scene.hook("claude-bash-guard", asked)
+    other = scene.world.proj.branch("agent-rev1", {"docs/a.md": "changed\n"})
+    scene.allow(LEAD, ASK)
+    scene.allow("rev1", ASK, cwd=other)
+    assert who(scene.shell(ASK, cwd=other)) == scene.name("rev1")
+    assert who(scene.shell(ASK)) == scene.lead.name
+
+
+@pytest.mark.redteam
+def test_the_same_command_from_two_callers_in_one_folder_names_nobody_and_then_clears(scene):
+    scene.start("rev1")
+    scene.allow(LEAD, ASK)
+    scene.allow("rev1", ASK)
+    for _ in range(2):
+        nobody(scene.shell(ASK), scene.lead.name, "two callers issued this same command")
+    assert who(scene.run("rev1", ASK)) == scene.name("rev1")
+    assert who(scene.lead_runs(ASK)) == scene.lead.name
+
+
+@pytest.mark.redteam
+def test_a_shell_no_record_matches_while_a_subagents_call_waits_names_nobody(scene):
+    """If the harness ever ran other text than it asked about, a subagent's shell must not fall back on the lead."""
+    scene.start("rev1")
+    scene.allow("rev1", ASK)
+    nobody(scene.shell(f"true; {ASK}"), scene.lead.name, "no record of its caller")
+    assert who(scene.shell(ASK)) == scene.name("rev1")
+
+
+@pytest.mark.redteam
+def test_a_record_holds_no_command_text_and_cannot_put_other_code_in_a_shell(scene, tmp_path):
+    scene.start("rev1")
+    scene.allow("rev1", "true synthetic-private-argument")
+    [held] = (tmp_path / "hookstate" / "shell").glob("*/call-*.json")
+    assert "synthetic-private-argument" not in held.read_text()
+    planted = tmp_path / "planted"
+    changed = {**json.loads(held.read_text()), "name": f"$(touch {planted})", "board": f"; touch {planted}",
+               "lines": f"touch {planted}"}
+    held.write_text(json.dumps(changed))
+    done = scene.shell("true synthetic-private-argument")
+    assert done.returncode == 0 and not planted.exists(), done.stderr
+
+
+@pytest.mark.parametrize("program", ["/bin/bash", "zsh"])
+def test_a_command_with_quotes_pipes_lines_and_a_heredoc_finds_its_caller(scene, program):
+    found = shutil.which(program)
+    if not found:
+        pytest.skip(f"{program} is not installed")
+    scene.start("rev1")
+    command = ("printf '%s' \"it's here\" >/dev/null\ncat <<'EOF' >/dev/null\nbody && eval 'nothing'\nEOF\n"
+               f"true && eval 'true' && {ASK} | cat")
+    scene.allow("rev1", command)
+    assert who(scene.shell(command, program=found)) == scene.name("rev1")
+
+
+def test_a_resumed_session_that_holds_the_loader_twice_still_runs_a_subagent_as_itself(scene):
+    scene.session_start()
+    assert scene.exports.read_text().count("_poolhouse_caller=") == 2
+    scene.start("rev1")
+    assert who(scene.run("rev1", ASK)) == scene.name("rev1")
+    assert who(scene.lead_runs(ASK)) == scene.lead.name
+
+
+@pytest.mark.redteam
+def test_before_a_sessions_shells_name_their_caller_a_subagents_command_runs_as_the_lead_and_is_told_so(scene):
+    """The protection a session begun before the loader does not have: nothing is refused, the command inherits the lead's identity."""
+    scene.start("rev1")
+    for agent, command, told in (("rev1", ASK, True), ("rev1", "git commit -m x", True), ("rev1", "ls", False), (LEAD, ASK, False)):
+        done = scene.asked(agent, command, session_id="an-earlier-session")
         assert done.returncode == 0, (command, done.stderr)
-        assert bool(done.stdout.strip()) is (acts or mode == "default"), (command, done.stdout)
+        said = json.loads(done.stdout)["hookSpecificOutput"] if done.stdout else {}
+        assert set(said) == ({"hookEventName", "additionalContext"} if told else set()), (command, said)
+        assert not told or "runs as the session that started you" in said["additionalContext"]
+    unnamed = subprocess.run(["/bin/sh", "-c", ASK], cwd=scene.world.proj.root, env=scene.inherited(), text=True,
+                             capture_output=True, timeout=120, check=False)
+    assert who(unnamed) == scene.lead.name
+    refused = scene.asked("rev1", f"poolhouse-workspace inbox --agent {scene.lead.name}", session_id="an-earlier-session")
+    assert refused.returncode == 2 and "you are" in refused.stderr
 
 
 @pytest.mark.redteam

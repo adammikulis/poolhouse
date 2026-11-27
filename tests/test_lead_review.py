@@ -188,7 +188,7 @@ def test_a_review_says_why_it_was_given(world):
 
 
 def test_a_subagent_running_the_review_in_auto_mode_acts_as_itself_and_not_as_its_lead(tmp_path, monkeypatch):
-    """The permission mode that changes only commands that act as a session changes this one: the author check reads who runs it."""
+    """The review is a command that acts as a session, so a subagent is told when no shell will name it: the author check reads who runs it."""
     monkeypatch.syspath_prepend(str(ROOT / "scripts" / "hooks"))
     import runpy
 

@@ -7,6 +7,9 @@ Set POOLHOUSE_GUARD=off to disable the soft rules for a session; the hard rules 
 force and deletions, minting identities, the person folder) stay in force. Every refusal is decided here, at once, and says why
 and what to do instead: nothing waits for a person.
 
+This hook never changes the input of a call: it allows it as written or refuses it with the reason. A subagent's identity reaches its
+shell through `shell_identity.py`, for which this hook records who issued each call.
+
 Wire it in as a PreToolUse hook on Bash and Monitor in a project's `.claude/settings.json`:
 
     {"hooks": {"PreToolUse": [{"matcher": "Bash|Monitor", "hooks": [
@@ -19,7 +22,6 @@ must not block every Bash call.
 
 import json
 import re
-import shlex
 import sys
 from pathlib import Path
 
@@ -171,12 +173,8 @@ HARD = (PUSH_FLAGS, MOVE_REMOTE_REFS, PUSH_MAIN, MINT, PERSON_STORE, SKIP_HOOKS,
 MESSAGE = re.compile(r"(-m|--message)(\s+|=)('[^']*'|\"[^\"]*\")")
 
 
-LEAD_SELECTORS = ("CLAUDE_CODE_SESSION_ID", "POOLHOUSE_SESSION_ID", "POOLHOUSE_SESSION_HARNESS", "CODEX_THREAD_ID")
-"""How the harness names the session that started a subagent. The shell inherits them; the stamp takes them out, so a command of
-the subagent that drops its own marker finds no identity to fall back on, and not the lead's."""
-
 SHELL_TOOLS = ("Bash", "Monitor")
-"""The tools that run a shell command in the environment of the session: both meet these rules and both are stamped."""
+"""The tools that run a shell command in the environment of the session: both meet these rules and both are recorded."""
 
 
 def subagent_naming_another(event: dict, command: str, rules) -> str:
@@ -190,32 +188,6 @@ def subagent_naming_another(event: dict, command: str, rules) -> str:
     return rules.protected().other_agent(command, str(subagent_records.load(agent).get("name") or ""))
 
 
-def stamp(agent: str) -> str:
-    """The lines, each ended, that set the identity of the subagent with harness id ``agent`` in the shell of its command."""
-    import subagent_records
-    record = subagent_records.load(agent)
-    lines = [f"export POOLHOUSE_SUBAGENT={shlex.quote(subagent_records.native_key(agent))}",
-             "unset POOLHOUSE_WORKSPACE_TOKEN", *(f"unset {name}" for name in LEAD_SELECTORS)]
-    lines.append(f"export POOLHOUSE_WORKSPACE_AGENT={shlex.quote(record['name'])}" if record.get("name")
-                 else "unset POOLHOUSE_WORKSPACE_AGENT")
-    if record.get("board"):
-        lines.append(f"export POOLHOUSE_BOARD={shlex.quote(record['board'])}")
-    return "".join(f"{line}\n" for line in lines)
-
-
-def unstamped(event: dict) -> dict | None:
-    """The event of a subagent's command that already begins with exactly this subagent's own stamp, holding the command after it;
-    None for any other. A permission mode that refuses a command a hook changed lets the subagent send the changed command itself:
-    those first lines are this guard's, so the rules judge what follows them and nothing is added a second time."""
-    agent, given = str(event.get("agent_id") or ""), event.get("tool_input")
-    command = given.get("command") if isinstance(given, dict) else None
-    if not agent or not isinstance(command, str) or not command.startswith("export POOLHOUSE_SUBAGENT="):
-        return None   # the record is read before the rules judge only for a command that could be a stamped one
-    if not command.startswith(own := stamp(agent)):
-        return None
-    return {**event, "tool_input": {**given, "command": command[len(own):]}}
-
-
 def unidentified(why: Exception) -> int:
     """Refuse a subagent's command that could not be judged or given its identity: a hook that crashes lets the command run, as the
     session that started the subagent."""
@@ -225,24 +197,40 @@ def unidentified(why: Exception) -> int:
 
 
 ACTS_AS_A_SESSION = re.compile(
-    r"(?:^|[\s;&|(`'\"=]|bin/)poolhouse(?:-[a-z]+)*(?=$|[\s;&|)`'\"<>])|-m\s*poolhouse\b|POOLHOUSE_|\bgit\b[^;&|\n]*\b(?:commit|push)\b"
+    r"(?:^|[\s;&|(`'\"=]|bin/)poolhouse(?:-[a-z]+)*(?=$|[\s;&|)`'\"<>])|-m\s*poolhouse\b|\bgit\b[^;&|\n]*\b(?:commit|push)\b"
     r"|\blead-review\b", re.M)
-"""A command that acts as a session: it runs a poolhouse program or module, reads a Poolhouse variable, commits or pushes (whose hooks do),
-or reviews a pull request (`scripts/lead-review` refuses the author, so it must know who runs it)."""
+"""A command that acts as a session: it runs a poolhouse program or module, commits or pushes (whose hooks do), or reviews a pull
+request (`scripts/lead-review` refuses the author, so it must know who runs it)."""
+
+UNNAMED = ("note: this session's shells cannot yet say which helper they run for (the session began before the line that does was added, or "
+           "the harness offered it no shell environment file), so this command runs as the session that started you: what it writes, "
+           "claims or reviews is recorded under that session. The line is added when a session starts, resumes or compacts.\n"
+           "(poolhouse scripts/hooks/claude-bash-guard. Nothing is refused for this.)")
 
 
-def subagent_stamped(event: dict, given: dict) -> dict | None:
-    """The tool input of a subagent's command with the subagent's identity set in the shell, or None for any other caller. The auto permission
-    mode refuses a command a hook changed, so there only a command that acts as a session (`ACTS_AS_A_SESSION`) is changed.
+def name_caller(event: dict) -> str:
+    """Record who issued the shell command of ``event``, for its shell to find; a note for a subagent whose command no shell will name,
+    else an empty string. The command itself is never changed and nothing is refused here.
 
-    The shell inherits the identity of the session that started the subagent; the start hook's record of the subagent
-    replaces it, and a subagent with no record has none, so its workspace commands are refused."""
-    agent, command = str(event.get("agent_id") or ""), given.get("command")
-    if not agent or not isinstance(command, str):
-        return None
-    if event.get("permission_mode") == "auto" and not ACTS_AS_A_SESSION.search(command):
-        return None
-    return {**given, "command": stamp(agent) + command}
+    A subagent's shell inherits the identity of the session that started it. The start hook's record of the subagent replaces it there,
+    and a subagent with no record has none, so its workspace commands are refused."""
+    import hook_state
+    import shell_identity
+    import subagent_records
+
+    given = event.get("tool_input")
+    command = given.get("command") if isinstance(given, dict) else None
+    if not isinstance(command, str):
+        return ""
+    agent, session, root = str(event.get("agent_id") or ""), str(event.get("session_id") or ""), hook_state.state_dir()
+    if not shell_identity.installed(root, session):
+        return UNNAMED if agent and ACTS_AS_A_SESSION.search(command) else ""
+    caller = ("", "", "")
+    if agent:
+        held = subagent_records.load(agent)
+        caller = (subagent_records.native_key(agent), held.get("name") or "", held.get("board") or "")
+    shell_identity.record(root, session, command, str(event.get("cwd") or ""), caller)
+    return ""
 
 
 def judge(event: dict, switched: bool, rules) -> str:
@@ -288,9 +276,8 @@ def main() -> int:
         print(rules_loader.NESTED, file=sys.stderr)
         return 2
     try:
-        own = unstamped(event)
-        refused = judge(own or event, switched, rules)
-        stamped = None if refused or own else subagent_stamped(event, event.get("tool_input") or {})
+        refused = judge(event, switched, rules)
+        note = "" if refused else name_caller(event)
     except Exception as why:
         if not event.get("agent_id"):
             raise
@@ -298,8 +285,8 @@ def main() -> int:
     if refused:
         print(refused, file=sys.stderr)
         return 2
-    if stamped:
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": stamped}}))
+    if note:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": note}}))
     return 0
 
 

@@ -7,7 +7,8 @@ here is a hard rule: POOLHOUSE_GUARD=off does not open it.
 
 A tool that is not listed is read by the shape of its input, so a tool added tomorrow is covered the day it appears: a string
 under a key that names a path is checked as the Read tool's path is, and a `command` meets the shell rules the Bash guard
-applies (a subagent's command in such a tool is refused, because only Bash and Monitor commands are stamped as the subagent).
+applies (a subagent's command in such a tool is refused, because only the shell of a Bash or Monitor command is given the subagent's
+identity).
 
 Wire it in as a PreToolUse hook on every tool in `.claude/settings.json` (it passes the tools the other two guards hold at once):
 
@@ -44,8 +45,8 @@ def command_refusal(event: dict, given: dict, rules) -> str:
     `script`, `argv`, a list of commands, one nested in another object): the rules that read a shell command apply to each."""
     texts = rules.protected().command_texts(given)
     if texts and event.get("agent_id"):
-        return ("blocked: a subagent's command is stamped as the subagent only when Bash or Monitor runs it; "
-                "run it with one of them.")
+        return ("blocked: a subagent's command runs as the subagent only in the shell of a Bash or Monitor call; this tool would run "
+                "it as the session that started you.")
     for text in texts:
         if refused := shell_guard().judge({**event, "tool_name": "Bash", "tool_input": {"command": text}},
                                           rules_loader.guard_off(), rules):
