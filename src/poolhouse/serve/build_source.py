@@ -73,6 +73,12 @@ def _checkout_commit(source: Path, commit: str, url: str = REPO_URL) -> None:
     _git("checkout", "FETCH_HEAD", cwd=source)
 
 
+def _clear(source: Path) -> None:
+    """Drop what the last build patched, or left unmerged, in a managed checkout: either would
+    stop it moving to a commit that changed one of those files."""
+    _git("reset", "--hard", "HEAD", cwd=source)
+
+
 def _short_commit(source: Path, rev: str = "HEAD") -> str:
     return _git("rev-parse", "--short", rev, cwd=source).stdout.strip()
 
@@ -123,6 +129,7 @@ def _sync_named_source(source: Path, repo: str, ref: str) -> None:
         source.parent.mkdir(parents=True, exist_ok=True)
         _git("clone", "--depth", "1", url, str(source), url=url)
     if ref:
+        _clear(source)
         _checkout_commit(source, ref, url)
 
 
@@ -208,6 +215,8 @@ def build_from_source(args) -> tuple[Path, str]:
         return dest, tag
 
     check_patches(source, _full_commit(source, rev), _git)
+    if not args.source:
+        _clear(source)
     if want:
         _git("checkout", "FETCH_HEAD", cwd=source)
     elif not args.source:
