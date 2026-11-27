@@ -1,5 +1,5 @@
-"""scripts/lead-review: the review of a pull request into the development branch. A real node, a real git repository and the
-script as a child process; `gh` answers canned replies (tests/github_support.py), so nothing reaches GitHub."""
+"""scripts/lead-review: the review of a pull request into the development branch or main. A real node, a real git repository and
+the script as a child process; PLUMBING ONLY: `gh` answers CANNED replies (tests/github_support.py), so nothing reaches GitHub."""
 
 from __future__ import annotations
 
@@ -164,10 +164,51 @@ def test_a_head_that_moved_since_the_review_needs_a_new_review(world):
     assert json.loads(last[2])["state"] == "success" and last[1].endswith(world.head)
 
 
-@pytest.mark.parametrize("change,why", [({"base": "main"}, "development branch"), ({"state": "MERGED"}, "is merged")])
-def test_only_an_open_pull_request_into_the_development_branch_is_reviewed(world, change, why):
+@pytest.mark.parametrize("change,why", [({"base": "feature/other"}, "or main"), ({"state": "MERGED"}, "is merged"),
+                                        ({"base": "main", "state": "CLOSED"}, "is closed")])
+def test_only_an_open_pull_request_into_the_development_branch_or_main_is_reviewed(world, change, why):
     world.answers(author_agent=world.author.name, **change)
     refused(world, run(world, world.lead), why)
+
+
+def guarded(world, who, command):
+    """The Bash guard's answer to ``who`` running ``command`` in the project's checkout."""
+    event = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(world.project.root)}
+    return subprocess.run([sys.executable, str(GUARD)], input=json.dumps(event), env=env(world, who), text=True,
+                          capture_output=True, timeout=120, check=False)
+
+
+def test_a_pull_request_into_main_gets_the_status_and_another_agent_than_its_reviewer_may_merge_it(world):
+    world.answers("main", author_agent=world.author.name)
+    done = run(world, world.lead)
+    assert done.returncode == 0, done.stderr
+    status = world.writes()[-1]
+    assert status[1].endswith(world.head)
+    assert (json.loads(status[2])["state"], json.loads(status[2])["context"]) == ("success", "lead-review")
+    command = next(line.strip() for line in done.stdout.splitlines() if line.strip().startswith("gh pr merge"))
+    assert command == f"gh pr merge 12 --merge --match-head-commit {world.head}", "the head branch is kept"
+    assert "other than this reviewer" in done.stdout and "owner" in done.stdout
+    world.answers("main", author_agent=world.author.name, review="SUCCESS")
+    assert guarded(world, world.lead, command).returncode == 2, "the reviewer's own accept does not release main"
+    other = guarded(world, world.other, command)
+    assert other.returncode == 0, other.stderr
+
+
+@pytest.mark.parametrize("who,why", [("author", "its own work"), ("child", "started by its author"),
+                                     ("sibling", "the agent that spawned")])
+def test_no_author_gets_its_own_work_accepted_into_main(world, who, why):
+    world.child = world.node.member("pr-authors-child", parent=world.author)
+    world.answers("main", author_agent=world.author.name)
+    refused(world, run(world, getattr(world, who)), why)
+
+
+def test_a_bots_pull_request_into_main_is_accepted_and_a_persons_naming_no_author_is_not(world):
+    world.answers("main")
+    refused(world, run(world, world.lead), "Author-agent:")
+    world.answers("main", bot=True)
+    done = run(world, world.lead)
+    assert done.returncode == 0, done.stderr
+    assert json.loads(world.writes()[-1][2])["state"] == "success"
 
 
 def test_a_review_the_node_refuses_writes_nothing_to_github(world):

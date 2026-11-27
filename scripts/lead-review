@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Review a pull request into the development branch: record the verdict on the board, comment on the pull request and set the
-`lead-review` status on the commit that was reviewed (docs/landing.md).
+"""Review a pull request into the development branch or main: record the verdict on the board, comment on the pull request and
+set the `lead-review` status on the commit that was reviewed (docs/landing.md).
 
     scripts/lead-review PR SHA --verdict accept|reject --note TEXT
 
@@ -41,10 +41,11 @@ def gh(*args: str, given: str) -> None:
 
 
 def reviewed(number: str, sha: str, found: dict) -> str:
-    """The full head commit of the pull request ``found``, which is open, targets development and is still at ``sha``."""
+    """The full head commit of the pull request ``found``, which is open, targets development or main and is still at ``sha``."""
     dev = devbranch.development_branch(Path.cwd())
-    if found.get("baseRefName") != dev:
-        raise Refused(f"pull request {number} targets {found.get('baseRefName')}; this reviews pull requests into the development branch {dev}")
+    if found.get("baseRefName") not in (dev, *devbranch.PROTECTED):
+        raise Refused(f"pull request {number} targets {found.get('baseRefName')}; this reviews pull requests into the "
+                      f"development branch {dev} or main")
     if found.get("state") != "OPEN":
         raise Refused(f"pull request {number} is {str(found.get('state')).lower()}")
     head = str(found.get("headRefOid"))
@@ -101,7 +102,17 @@ def review(args: argparse.Namespace) -> str:
     said = f"review recorded for pull request {args.number} at {head[:12]}: {word}"
     if args.verdict == "reject":
         return said
-    return f"{said}\nWhen the required checks pass, run this as the whole command:\n    gh pr merge {args.number} --merge --delete-branch --match-head-commit {head}"
+    return f"{said}\n{merge_step(args.number, str(found.get('baseRefName')), head)}"
+
+
+def merge_step(number: str, base: str, head: str) -> str:
+    """Who runs the merge of an accepted pull request into ``base``, and the whole command (`poolhouse.workspace.release_check`)."""
+    if base not in devbranch.PROTECTED:
+        return ("When the required checks pass, run this as the whole command:\n"
+                f"    gh pr merge {number} --merge --delete-branch --match-head-commit {head}")
+    return (f"A merge into {base} also needs the owner's authorization (AGENTS.md). When the checks pass, an agent other than "
+            f"this reviewer runs this as the whole command, from a clean checkout of {head}:\n"
+            f"    gh pr merge {number} --merge --match-head-commit {head}")
 
 
 def main(argv: list[str] | None = None) -> int:

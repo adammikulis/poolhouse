@@ -22,11 +22,12 @@ not write it. The owner is never required. One command records the verdict on th
 scripts/lead-review <PR> <SHA> --verdict accept|reject --note "what was read and why"
 ```
 
-It refuses a pull request that is not open into the development branch, or whose head is no longer `<SHA>`. It accepts
+It refuses a pull request that is not open into the development branch or `main`, or whose head is no longer `<SHA>`. It accepts
 nothing for an author the description names, for an agent that a subagent author started, or from a subagent that is not
 above a subagent author (a main session may review any subagent's work); a pull request that names no author is accepted
 only when a bot opened it. It then records the `land-review` verdict on the board, posts the note as a comment on the pull
-request (the repository is public) and sets the `lead-review` commit status on that commit. After an accept it prints:
+request (the repository is public) and sets the `lead-review` commit status on that commit. After an accept of a pull
+request into the development branch it prints (for `main`, "Pull requests into main" below):
 
 ```sh
 gh pr merge <PR> --merge --delete-branch --match-head-commit <SHA>
@@ -44,6 +45,39 @@ nothing there stops an agent from setting a status by hand, which the process fo
 description gives. `lead-review` records the process. It is
 not a security boundary. The attack pass (docs/agent-policy.md, "Attack first") stays advice, and an author still runs its
 own checks.
+
+## Pull requests into main
+
+A promotion, a release and a dependency update reach `main` by pull request. A merge into `main` needs the owner's
+authorization (AGENTS.md). GitHub requires no check on `main` today (docs/github-protection.md, "Main branch ruleset").
+
+`scripts/lead-review` reviews them under the same rules: the agents the description names do not accept it, and a
+description naming none is accepted only when a bot opened it. Only the named agents are left out, so a promotion's
+description names every agent whose accept must not count. After an accept it prints
+
+```sh
+gh pr merge <PR> --merge --match-head-commit <SHA>
+```
+
+for an agent other than that reviewer, from a clean checkout of `<SHA>`: the guard counts the standing `land-review`
+accepts of the checkout's commit and leaves out the caller's own.
+
+| Check | Where it comes from |
+| --- | --- |
+| `gates`, `privacy`, `licenses` | `ci.yml`, which runs on every pull request with no branch or path filter; `gates` and the privacy job run the base commit's checkers and hooks, so those `main` holds |
+| `lead-review` | the status `scripts/lead-review` sets; no workflow sets it |
+
+- **Promotion** (`promote/<date>`): the runs start with the pull request (read for #49, whose `gates`, `privacy` and
+  `licenses` reported). GitHub starts no `pull_request` run while the pull request conflicts with `main`.
+- **Dependency updates** (Dependabot): the runs start (read for #78).
+- **release-please**: its `pull_request` runs are held as `action_required` and run nothing. `release-please.yml`
+  dispatches `ci.yml` and `release-dry-run.yml` on the release branch; on #68 the dispatched `gates`, `privacy` and
+  `licenses` runs are on the head commit, and the pull request's check list is empty. Whether a required check accepts a
+  dispatched run, and whether closing and reopening the pull request starts runs that report, has not been tried. The
+  guard refuses an agent the API call that releases a held run.
+- GitHub reports an open pull request into `main` as `BLOCKED` (read for #68, which has no required check; the `update`
+  rule of `default` is the likely cause). `gh pr merge` on a blocked pull request asks for `--admin`, which no agent
+  uses; an agent's merge into `main` has not been tried.
 
 ## The push hook
 

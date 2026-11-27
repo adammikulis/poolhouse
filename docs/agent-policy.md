@@ -131,7 +131,8 @@ capabilities, not only the feature.
 
 **Every change to the development branch is reviewed on its pull request.** The agent that spawned the author reviews it,
 comments on the pull request and marks that exact commit passed or failed (`scripts/lead-review`, section 4, "Landing"); a
-new commit needs a new review. A main agent's own pull request is reviewed by an agent that did not write it. No agent
+new commit needs a new review. A pull request into `main` is reviewed with the same command (docs/landing.md, "Pull requests
+into main"). A main agent's own pull request is reviewed by an agent that did not write it. No agent
 accepts its own work, and the owner is never required. All agents use the owner's GitHub sign-in, so GitHub cannot record a
 formal approval: the required `lead-review` commit status records the process and is not a security boundary.
 

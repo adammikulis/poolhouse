@@ -107,8 +107,9 @@ What `setup` refuses, and what a person's gate means here:
 Workflows write is acceptable because nothing a workflow pushed to a branch can read is worth taking: the signing key
 is a secret of the `release` environment, which deploys from `main` only; no repository-level secret exists
 (`scripts/github-protection` reports any); and the way onto `main` is a pull request with required checks and a
-ruleset the identity cannot edit. The identity holds no right to edit rulesets, environments or secrets, so a ruleset
-without bypass actors binds it fully.
+ruleset the identity cannot edit. This describes the target: GitHub requires no pull request and no check on `main`
+today ([Main branch ruleset](#main-branch-ruleset)). The identity holds no right to edit rulesets, environments or
+secrets, so a ruleset without bypass actors binds it fully.
 
 The harness is started by the owner, at his terminal, with an environment that holds the agent token and nothing of
 his own:
@@ -185,8 +186,15 @@ id (the rollback line under each) and restore the old one with
 
 ### Main branch ruleset
 
-Blocks deleting `main` and rewriting its history, and requires a pull request whose required checks pass. It requires
-no approving review: the human gate on a promotion is described under [Who merges](#who-merges).
+**Not in force.** As read on 2026-11-27 (`gh api repositories/1342990396/rules/branches/main`), the only ruleset on
+`main` is `default`: `deletion`, `non_fast_forward`, `creation` and `update`, which the administrator role and the owner
+always bypass. GitHub requires no pull request and no check on `main`. `scripts/dev-branch-rule` covers `0.3dev` alone
+([Pull requests on 0.3dev](#pull-requests-on-03dev)). What each pull request into `main` reports today is in
+[landing.md](landing.md#pull-requests-into-main).
+
+The target, which `scripts/github-protection-apply` sets, blocks deleting `main` and rewriting its history, and requires
+a pull request whose required checks pass. It requires no approving review: the human gate on a promotion is described
+under [Who merges](#who-merges).
 
 ```sh
 gh api -X POST repos/$R/rulesets --input - <<'JSON'
@@ -229,8 +237,9 @@ workflow names change. The check reads the `gates`, `privacy` and `licenses` job
   would reduce a branch to one subject.
 - Nobody pushes to `main`. A direct push of it, approved through `person-consume` or not, is refused by GitHub once
   this ruleset is on; a promotion is a pull request.
-- A pull request opened by release-please gets no workflow runs from its own token, so its required checks never
-  report. Closing and reopening it as a user starts them.
+- The workflow runs of a pull request opened by release-please are held (`action_required`) and run nothing, because
+  the action opens it with its own token. What that means for required checks is in
+  [landing.md](landing.md#pull-requests-into-main).
 
 Optional: GitHub enforces the owner's approval. Run `scripts/github-protection-apply --repo $R --apply --owner-review`
 (it sets `required_approving_review_count` to 1 and `require_code_owner_review`, `dismiss_stale_reviews_on_push` and
@@ -274,7 +283,8 @@ A second ruleset, `0.3dev: pull request and checks`, requires a pull request (no
 signs in as the repository owner) and the checks `gates`, `privacy`, `licenses` and `lead-review`.
 `scripts/dev-branch-rule` prints it; `--apply` creates it, or adds what it lacks. An agent may run the script: the
 repository, branch, name and rules are constants in it, it runs isolated on the standard library, it removes nothing and
-it never changes another ruleset. An agent may not edit it, so a new development branch needs the owner's order.
+it never changes another ruleset. The edit guard refuses an agent's change to the script, with or without an order of the
+owner's, so another branch, `main` included, is not added to it by an agent.
 Administrators may bypass this ruleset only while merging a pull request, so a check broken on the base branch cannot
 block its own fix; the bypass reaches no other rule. `lead-review` records that the spawning agent reviewed the commit;
 it is no security boundary, since anything with the owner's sign-in can set it. Turn it on only once the pull request
@@ -406,9 +416,10 @@ Rollback: `scripts/github-protection-apply --restore <backup file> --apply`, or 
 
 ## Who merges
 
-`gh pr merge` merges on the server and needs no `git push`, so the push guards never see it. The main ruleset requires
-a pull request and passing checks and no review, so the credential an agent holds can merge a pull request whose
-checks are green. The human gate on a promotion to `main` is therefore ours, not GitHub's:
+`gh pr merge` merges on the server and needs no `git push`, so the push guards never see it. The target main ruleset
+requires a pull request and passing checks and no review, so the credential an agent holds could merge a pull request
+whose checks are green; it is not in force, and GitHub requires no check on `main` today
+([Main branch ruleset](#main-branch-ruleset)). The human gate on a promotion to `main` is therefore ours, not GitHub's:
 
 - The promotion is a pull request from a frozen snapshot branch of the development branch (`promote/<date>`, pushed
   by the agent; `scripts/hooks/pre-push` lets an agent create such a branch and nothing under `main`). The snapshot
