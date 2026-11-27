@@ -249,7 +249,7 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
             finally:
                 if not read:   # an error nothing here names is on its way out: closed now, so that leaving the block publishes nothing
                     confinement.close(publish=False, keep_patch=True)
-            answer = stream.answer(status, time.time() - began, why)
+            answer = stream.answer(status, time.time() - began, confinement.passed() or why)   # a resource bound is why, whatever ended after it
             if answer.is_error:
                 confinement.close(publish=False, keep_patch=True)
     answer.published = confinement.published()

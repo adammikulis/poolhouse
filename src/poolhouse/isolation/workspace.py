@@ -294,10 +294,11 @@ class Session:
         self._settle(keep=bool(self.decided) or bool(turn.deferred))
         return turn
 
-    def discard(self, tree: process_tree.Tree | None, *, stalled: float, keep_patch: bool = False) -> Turn:
+    def discard(self, tree: process_tree.Tree | None, *, stalled: float, keep_patch: bool = False, ended_by: str = "") -> Turn:
         """End every process of the session and drop the stage without publishing it: what the session of a stopped or failed launch had made and
         not yet published is not applied, and nothing of it is kept for a re-launch. The patches already kept for the session stay, with their
-        reports. With ``keep_patch`` (a failed launch) the unpublished changes are first written as one more patch, which the turn names."""
+        reports. With ``keep_patch`` (a failed launch) the unpublished changes are first written as one more patch, which the turn names.
+        ``ended_by`` is the launcher's own reason for ending the session (a resource bound): it is in the turn's words and reported at once."""
         if tree is not None:
             process_tree.end(tree, stalled=stalled)
             process_tree.release(tree)
@@ -306,6 +307,9 @@ class Session:
             if keep_patch:
                 with self.workspace.lock:
                     turn = self._withhold()
+            if ended_by:
+                text = f"{HEAD} {ended_by} {turn.text.removeprefix(HEAD).strip() or 'Nothing more was published.'}"
+                turn = replace(turn, text=text, report=self.reports.send([Refusal(ended_by, "limit")], text))
         finally:
             self._settle(keep=False)
         return turn

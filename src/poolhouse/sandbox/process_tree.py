@@ -26,7 +26,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import ClassVar
 
-__all__ = ["Ended", "Tree", "end", "flush", "follow", "release"]
+__all__ = ["Ended", "Tree", "end", "flush", "follow", "release", "usage"]
 
 logger = logging.getLogger("poolhouse.sandbox")
 
@@ -39,6 +39,11 @@ GRACE_S = 10.0
 """Seconds after a process ended that its pid still counts as the tree's: the kernel's report of what it
 refused can arrive after the process ended, and a pid is not given to another process at once."""
 WATCHED = (getattr(select, "KQ_NOTE_FORK", 0) | getattr(select, "KQ_NOTE_EXIT", 0))
+EXIT_STATUS = 0x04000000
+"""``NOTE_EXITSTATUS`` of ``sys/event.h``, which ``select`` has no name for: the exit report carries the wait status, of any process of
+this user and not only of a child."""
+FOOTPRINT_WORD = 9
+"""The word of ``rusage_info_v2`` that holds the memory the system charges a process (``ri_phys_footprint``, compressed pages included)."""
 RUSAGE_V2 = 2
 RUSAGE_WORDS = 64
 CHILD_WORDS = range(12, 18)
@@ -78,12 +83,14 @@ class Ended:
 class Tree:
     """The processes of one run: the process it started and every descendant seen starting.
     ``complete`` is False when a process could not be followed from its start and ``forks`` counts the
-    processes of the tree that forked (at least one for any fork; a count of notifications, not of children)."""
+    processes of the tree that forked (at least one for any fork; a count of notifications, not of children).
+    ``killed_by`` holds each signal that ended a process of the tree."""
 
     def __init__(self, root: int) -> None:
         self.root = root
         self.complete = True
         self.forks = 0
+        self.killed_by: set[int] = set()
         self._lock = threading.Lock()
         self._seen: dict[int, float | None] = {root: None}
         self._began: dict[int, float] = {}
@@ -242,9 +249,13 @@ class _Follower:
         with self._lock:
             self._owners[pid] = tree
         tree.begin(pid, self._began(pid))
-        event = select.kevent(pid, select.KQ_FILTER_PROC, select.KQ_EV_ADD | select.KQ_EV_CLEAR, WATCHED)
+        def ask(flags: int) -> None:
+            self._queue.control([select.kevent(pid, select.KQ_FILTER_PROC, select.KQ_EV_ADD | select.KQ_EV_CLEAR, flags)], 0, 0)
         try:
-            self._queue.control([event], 0, 0)
+            try:
+                ask(WATCHED | EXIT_STATUS)
+            except PermissionError:   # a process whose exit status this one may not read is followed all the same
+                ask(WATCHED)
         except OSError:
             with self._lock:
                 if self._owners.get(pid) is tree:
@@ -273,6 +284,19 @@ class _Follower:
             return False
         noted = tree.began(pid)
         return None if noted is None else noted == info.start_s + info.start_us / 1e6
+
+    def usage(self, tree: Tree) -> list[tuple[int, int]]:
+        """Each live member of ``tree`` with its memory footprint in bytes, once every fork and exit reported so far is taken in; empty
+        where nothing is followed."""
+        if not self._start():
+            return []
+        self.flush()
+        found = []
+        for pid in tree.pids():
+            words = (ctypes.c_uint64 * RUSAGE_WORDS)()
+            if self._alive(pid, tree) and self._libproc.proc_pid_rusage(pid, RUSAGE_V2, words) == 0:
+                found.append((pid, words[FOOTPRINT_WORD]))
+        return found
 
     def end(self, tree: Tree, stalled: float) -> Ended:
         """End every process of ``tree``: stop each member, and list again until a pass finds none that is new, so that none forks
@@ -376,6 +400,8 @@ class _Follower:
         if tree is None:
             return
         if event.fflags & select.KQ_NOTE_EXIT:
+            if event.fflags & EXIT_STATUS and os.WIFSIGNALED(event.data):
+                tree.killed_by.add(os.WTERMSIG(event.data))
             tree.ended(event.ident)
         if event.fflags & select.KQ_NOTE_FORK:
             tree.forked()
@@ -422,6 +448,11 @@ def release(tree: Tree) -> None:
 def flush() -> None:
     """Take in every fork and exit the kernel has reported so far."""
     _FOLLOWER.flush()
+
+
+def usage(tree: Tree) -> list[tuple[int, int]]:
+    """The live processes of ``tree``, each with its memory footprint in bytes (see `_Follower.usage`)."""
+    return _FOLLOWER.usage(tree)
 
 
 def end(tree: Tree, *, stalled: float) -> Ended:

@@ -142,6 +142,12 @@ _LIVE = [0]
 _LIVE_LOCK = threading.Lock()
 
 
+def live() -> int:
+    """The runs of this process alive now: the live confinements a launch shares the machine with."""
+    with _LIVE_LOCK:
+        return _LIVE[0]
+
+
 def fair_share() -> int | None:
     """How many more processes a run may start: the room the system leaves the user (its per-user process limit, or on Linux the highest
     pid when the limit is none, less what the user has now) divided by the runs of this process alive now plus one for the person
@@ -154,9 +160,7 @@ def fair_share() -> int | None:
             top = int(Path("/proc/sys/kernel/pid_max").read_text())
         except (OSError, ValueError):
             return None
-    with _LIVE_LOCK:
-        live = _LIVE[0]
-    return max(1, (top - _tasks_of_user()) // (live + 1))
+    return max(1, (top - _tasks_of_user()) // (live() + 1))
 
 
 def _ceiling(limits: Limits) -> int | None:

@@ -15,6 +15,7 @@ import signal
 import sys
 import threading
 import time
+from dataclasses import replace
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,7 +36,8 @@ from poolhouse import (
 )
 from poolhouse.board import place
 from poolhouse.harnesspolicy import LEAD_TOOLS
-from poolhouse.isolation import session_verbs
+from poolhouse.isolation import confinement as choke_point, session_verbs
+from poolhouse.isolation.bounds import PASSED
 from poolhouse.isolation.refusals import SENTENCES, IsolationRefused
 from tests import isolation_kit as kit
 from tests.sandbox_kit import AbsentBackend
@@ -87,6 +89,15 @@ if "mode:errors" in task:
 if "mode:dies" in task:
     said(CANNED + " half way", "Write")
     sys.exit(3)
+if "mode:hoards" in task:
+    said(CANNED + " half way", "Write")
+    held = []
+    for _ in range(48):
+        held.append(os.urandom(16 << 20))
+        time.sleep(0.05)
+    time.sleep(15)
+    ended(CANNED + " NOT ENDED")
+    sys.exit(0)
 if "mode:stalls" in task:
     said(CANNED + " about to stall", "Write")
     time.sleep(120)
@@ -419,6 +430,20 @@ def test_a_failed_edit_run_publishes_nothing_keeps_the_patch_and_names_its_place
     assert CANNED in run.row["text"], "what the agent had said is kept"
     [patch] = run.row["patches"]
     assert b"src/feature.py" in Path(patch).read_bytes() and patch in run.row["text"] and run.row["applied"] == []
+
+
+def test_a_resource_bound_that_ends_an_edit_delegate_leaves_it_failed_with_the_reason_and_the_patch(editing, monkeypatch):
+    derived = choke_point.derive
+    monkeypatch.setattr(choke_point, "derive", lambda volume: replace(derived(volume), memory_bytes=256 << 20))
+    run = ran(editing, "hoards")
+    assert run.status == 1 and run.row["state"] == "failed", run.row
+    assert PASSED in run.row["error"] and "bytes of memory" in run.row["error"] and "NOT ENDED" not in run.row["text"], run.row
+    assert not (run.project / "src").exists() and run.row["applied"] == [], "a session that passed a bound publishes nothing"
+    [patch] = run.row["patches"]
+    assert b"src/feature.py" in Path(patch).read_bytes() and patch in run.row["text"]
+    node, lead, _project = editing
+    reports = [e.text for e in node.session(lead).read(limit=100).entries if e.fields.get("subject") == "isolation.report"]
+    assert any(PASSED in each for each in reports), reports
 
 
 def test_a_harness_that_ends_while_its_child_holds_the_pipe_ends_the_run_and_the_child(editing):

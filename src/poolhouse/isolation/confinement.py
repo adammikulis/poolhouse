@@ -32,6 +32,7 @@ from typing import IO, Any
 from poolhouse import activity, coding_policy, home as state_home
 from poolhouse.isolation import client as client_module
 from poolhouse.isolation.attestation import attest
+from poolhouse.isolation.bounds import Bounds, Watch, derive
 from poolhouse.isolation.capability import require_capable
 from poolhouse.isolation.environment import Inputs, environment
 from poolhouse.isolation.grants import Grant
@@ -133,6 +134,8 @@ class Plan:
     conversation: str = ""
     extras: Mapping[str, str] = field(default_factory=dict)
     interactive: bool = False
+    bounds: Bounds | None = None
+    """What the session may take (`isolation.bounds`); ``None`` derives each from the machine at launch."""
 
 
 class Admission:
@@ -155,6 +158,7 @@ class Parts:
     scratch: list[str] = field(default_factory=list)
     admission: Admission = field(default_factory=Admission)
     turns: list[Turn] = field(default_factory=list)
+    watch: Watch | None = None
 
 
 @dataclass(slots=True)
@@ -174,6 +178,8 @@ class Made:
     timing: dict[str, float] = field(default_factory=dict)
     turns: list[Turn] = field(default_factory=list)
     """What each publication did, in order: one at every `Stop` event of the harness, and the last at the end of the session."""
+    watch: Watch | None = None
+    """The watcher of the session's resource bounds, where this platform has one."""
 
 
 def install_tree(binary: str) -> str:
@@ -237,6 +243,8 @@ class Confinement:
             raise RuntimeError("a confinement starts its harness once")
         self._started = spawn(self.argv, self.profile.policy, cwd=self.cwd, stdin=stdin, stdout=stdout, stderr=stderr)
         self.made.admission.tree = self._started.tree
+        if self.made.watch is not None:
+            self.made.watch.start(self._started.tree, self.stall)
         process = self._started.process
         deadline, seen = time.monotonic() + self.stall, attest(process.pid)
         while not seen.confined and process.poll() is None and time.monotonic() < deadline:
@@ -283,7 +291,11 @@ class Confinement:
         status = process.wait()
         for pump in pumps:
             pump.join(timeout=self.stall)
-        return status
+        return status or (1 if self.passed() else 0)
+
+    def passed(self) -> str:
+        """The resource bound that ended the session, in the parent's words, after a look now; empty while none was passed."""
+        return "" if self.made.watch is None else self.made.watch.check()
 
     def said(self) -> list[str]:
         """The words of every publication of this session that had something to say (what was applied, what was refused and where the patch is),
@@ -312,16 +324,22 @@ class Confinement:
     def close(self, *, publish: bool = True, keep_patch: bool = False) -> Turn:
         """End every process of the session, publish the last turn (the checks decide, not the exit status), stop the services and remove what the
         launch made. With ``publish`` false (the session is stopped by the one that started it, or it failed) nothing more is published: the stage's
-        unpublished work is dropped with the stage, after it is kept as a patch when ``keep_patch`` says so. Safe to call twice; the first call
-        decides."""
+        unpublished work is dropped with the stage, after it is kept as a patch when ``keep_patch`` says so. A session that passed a resource bound
+        publishes nothing more and keeps the patch, whatever the caller asked. Safe to call twice; the first call decides."""
         if self.closed:
             return self.turn or Turn()
         self.closed = True
         started = self._started
         try:
             tree = started.tree if started else None
+            passed = ""
+            if self.made.watch is not None:
+                self.end_processes()   # the last look is taken once nothing writes any more, and before anything is published
+                passed = self.made.watch.stop()
+            if passed:
+                publish, keep_patch = False, True
             self.turn = (self.session.finish(tree, stalled=self.stall, ended=None if started else process_tree.Ended()) if publish
-                         else self.session.discard(tree, stalled=self.stall, keep_patch=keep_patch))
+                         else self.session.discard(tree, stalled=self.stall, keep_patch=keep_patch, ended_by=passed))
             self.made.turns.append(self.turn)
         finally:
             if started is not None:
@@ -344,8 +362,9 @@ def _services(plan: Plan, session: Session, parts: Parts) -> tuple[ModelBridge, 
     parts.stack.append(model)
 
     def decide(event: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """A `stop` event is the end of a turn: the parent publishes what verified before the hook answers."""
-        if event == "stop":
+        """A `stop` event is the end of a turn: the parent publishes what verified before the hook answers, unless the session passed a resource
+        bound, which publishes nothing more."""
+        if event == "stop" and not (parts.watch is not None and parts.watch.check()):
             parts.turns.append(session.publish_turn())
         return answer(event, payload)
 
@@ -402,7 +421,9 @@ def prepare(plan: Plan) -> Confinement:
                     plan.policy, plan.interactive, tuple(frozen), rendering.listen)
         env = environment(Inputs(plan.harness, str(agent_home), search_path(spec, plan.grants), context.base_url, model.token, plan.lease.alias,
                                  plan.lease.window, plan.interactive, {}, plan.extras))
-        profile = build(spec, plan.grants, env)
+        bounds = plan.bounds or derive(stage)
+        parts.watch = None if bounds is None else Watch(bounds, (stage, str(agent_home)))
+        profile = build(spec, plan.grants, env, None if bounds is None else bounds.limits())
         proved = run_proof(profile, Services(model.port, bridge.path, tuple(grant.subject for grant in plan.grants if grant.kind == "toolchain")))
     finally:
         if proved is None:
@@ -410,4 +431,5 @@ def prepare(plan: Plan) -> Confinement:
     activity.record("isolation.launch", subject=plan.agent, outcome="proved",
                     meta={"digest": profile.digest, "proof_seconds": proved.seconds, "grants": [grant.fingerprint for grant in plan.grants]})
     timing = {"stage": round(staged - began, 3), "proof": proved.seconds, "prepare": round(time.monotonic() - began, 3)}
-    return Confinement(plan, Made(profile, proved, session, stack, scratch, parts.admission, agent_home, context.config, argv, timing, parts.turns), stage)
+    return Confinement(plan, Made(profile, proved, session, stack, scratch, parts.admission, agent_home, context.config, argv, timing, parts.turns,
+                                  parts.watch), stage)

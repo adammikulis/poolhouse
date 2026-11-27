@@ -49,6 +49,7 @@ test_redteam_isolation_hardening.py
 test_redteam_isolation_bridges_hardening.py
 test_isolation_workspace.py
 test_isolation_confinement.py
+test_isolation_bounds.py
 test_claude_launcher.py
 test_harness_rails.py
 test_coding_routes.py

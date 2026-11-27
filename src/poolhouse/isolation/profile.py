@@ -68,7 +68,8 @@ def _digest(policy: Policy, grants: Sequence[Grant], spec: Spec) -> str:
             "net": [policy.net.mode.value, policy.net.ports, policy.net.listen], "env": sorted(policy.env), "strict": policy.strict,
             "preferences": policy.preferences,
             "deny_write": policy.deny_write, "unix_sockets": policy.unix_sockets, "signal_children": policy.signal_children,
-            "limits": [policy.limits.processes, policy.limits.wall_seconds], "gpu": policy.gpu,
+            "limits": [policy.limits.processes, policy.limits.wall_seconds, policy.limits.cpu_seconds, policy.limits.file_bytes,
+                       policy.limits.open_files], "gpu": policy.gpu,
             "grants": sorted(f"{grant.kind}:{grant.subject}:{grant.fingerprint}" for grant in grants)}
     return hashlib.sha256(json.dumps(body, sort_keys=True, default=str).encode()).hexdigest()
 

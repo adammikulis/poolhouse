@@ -42,6 +42,7 @@ REASONS = {
     "collision": "a name that folds to the same name as another on this filesystem",
     "unread": "a project too large to read what names what, so nothing of it is applied",
     "withheld": "a change of a run that failed, which nothing publishes",
+    "limit": "a resource bound of the session that was passed, which ended it",
 }
 """One sentence the parent writes for each cause of a refusal: the classes of the classifier, and the causes that are not about a file's class."""
 RULED = frozenset({"program", "data"})
