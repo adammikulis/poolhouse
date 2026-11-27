@@ -196,19 +196,29 @@ def _mean(values: Sequence[float]) -> str:
     return "-" if got is None else f"{got[0]:.5g} [{got[1]:.5g}, {got[2]:.5g}]"
 
 
-def _verdict(first: str, second: str, got: tuple[float, float, float] | None, unit: str,
-             sides: tuple[str, str]) -> str:
-    """The plain sentence about ``first`` minus ``second``; ``sides`` says it when that is above and below zero."""
+def _verdict(first: str, second: str, got: tuple[float, float, float] | None, words: tuple[str, str, str],
+             floor: float | None = None) -> str:
+    """The plain sentence about ``first`` minus ``second``; ``words`` are the unit and what to say when that is above
+    and below zero. A difference no larger than the noise ``floor`` is not distinguishable, whatever its interval."""
+    unit, above, below = words
     if got is None:
         return f"{first} and {second}: too few shared results for an interval"
     mean, low, high = got
     span = f"difference {mean:+.5g} [{low:+.5g}, {high:+.5g}] {unit}"
+    measured = "no noise floor measured" if floor is None else f"noise floor {floor:.5g}"
     if low <= 0 <= high:
-        return f"{first} and {second} cannot be told apart: {span}"
-    return f"{first} {sides[0] if mean > 0 else sides[1]} {second}: {span}"
+        return f"{first} and {second} cannot be told apart: {span}; {measured}"
+    if floor is not None and abs(mean) <= floor:
+        return f"{first} and {second} are not distinguishable here: {span}, inside the noise floor of {floor:.5g}"
+    return f"{first} {above if mean > 0 else below} {second}: {span}; {measured}"
 
 
 # -- the plan -----------------------------------------------------------------------------
+
+def _floor_paths(args: Any) -> list[str]:
+    """The other ways each file is scored to measure what the path alone changes."""
+    return [path for path, left_out in (("cpu", args.no_cpu), ("single", args.no_single)) if not left_out]
+
 
 def _hours(seconds: float) -> str:
     return f"{seconds / 3600:.1f} h" if seconds >= 3600 else f"{seconds / 60:.0f} min"
@@ -221,11 +231,12 @@ def estimates(args: Any, plan: Comparison) -> dict[str, float]:
     quants = len(plan.chosen(args.only))
     tokens = args.chunks * args.ctx
     metal = rate["load_s"] + tokens / rate["prefill_tps"]
-    cpu = rate["load_s"] + tokens / rate["cpu_tps"]
-    both = 60.0
-    fidelity = len(CORPUS) * (metal + quants * (metal + (0 if args.no_cpu else cpu) + both))
+    cpu = 0 if args.no_cpu else rate["load_s"] + tokens / rate["cpu_tps"]
+    single = 0 if args.no_single else rate["load_s"] + tokens / rate["decode_tps"]
+    compared = 60.0
+    fidelity = len(CORPUS) * (quants + 1) * (metal + cpu + single + compared)
     item = rate["prompt_tokens"] / rate["prefill_tps"] + rate["answer_tokens"] / rate["decode_tps"]
-    tasks = (quants + 1) * (rate["load_s"] + args.items_planned * item)
+    tasks = (quants + 1 + bool(args.floor)) * (rate["load_s"] + args.items_planned * item)
     cell = sum(int(p) / rate["prefill_tps"] + args.generate / rate["decode_tps"] for p in args.prompts.split(","))
     speed = args.repeats * (quants + 1) * (rate["load_s"] + cell + args.settle)
     return {"fidelity": fidelity, "tasks": tasks, "speed": speed}
@@ -248,7 +259,7 @@ def show_plan(args: Any, plan: Comparison) -> int:
             say(f"      poolhouse-models fetch hf:{quant.repo}/{quant.shards[0]['path']}")
     scored = args.chunks * (args.ctx - 1 - args.ctx // 2)
     one = scored * (2 * VOCAB_GUESS + 8)
-    peak = one * (2 if args.no_cpu else 3)
+    peak = one * (2 + len(_floor_paths(args)))
     free = shutil.disk_usage(bench.home_dir().parent if bench.home_dir().parent.exists() else Path.cwd()).free
     say(f"download: {sum(needed.values()) / 1e9:.1f} GB (a shard several builds share is counted once)")
     say(f"logits on disk: {one / 1e9:.1f} GB a file at a vocabulary of {VOCAB_GUESS} (an estimate), "
@@ -267,7 +278,7 @@ def show_plan(args: Any, plan: Comparison) -> int:
              + (f" --cache-of {args.cache_of} --caches {args.caches}" if args.cache_of else ""))
     say("commands, from the checkout, one at a time on a quiet machine:")
     for line in ("build-tool", f"fidelity {words}",
-                 f"tasks {words} --items HumanEval.jsonl.gz --items mbpp.jsonl", f"speed {words}",
+                 f"tasks {words} --floor --items HumanEval.jsonl.gz --items mbpp.jsonl", f"speed {words}",
                  f"report {words}"):
         say(f"  PYTHONPATH=src python -m poolhouse.bench quants {line}")
     return 0
@@ -333,14 +344,14 @@ def corpus(args: Any, chars: int = CORPUS_CHARS) -> dict[str, Path]:
 
 
 def fidelity(args: Any, plan: Comparison) -> int:
-    """Each build's log probabilities on each backend, compared block by block with the reference and, on the same
-    file, Metal against the CPU. The files of log probabilities are removed once compared."""
+    """Each build's log probabilities on Metal compared block by block with the reference's, and each file, the
+    reference too, compared with itself scored on the CPU and one token at a time: the noise floor. The files of log
+    probabilities are removed once compared."""
     names = plan.chosen(args.only)
     paths = _require(plan, [plan.reference, *names])
     tool = home.expand(args.tool) if args.tool else logits.tool_path()
     if not tool.is_file():
         raise ValueError(f"no {logits.TOOL} at {tool}; 'python -m poolhouse.bench quants build-tool' compiles it")
-    backends = ["metal"] if args.no_cpu else ["metal", "cpu"]
     held = Path(args.logits_dir) if args.logits_dir else bench.home_dir() / "quants" / "logits"
     held.mkdir(parents=True, exist_ok=True)
     with _measuring(args), gpu.hold(f"bench quants fidelity {plan.id}"):
@@ -352,34 +363,39 @@ def fidelity(args: Any, plan: Comparison) -> int:
             reference = held / f"{plan.id}-{domain}-reference.logits"
             made: list[Path] = [reference]
 
-            def score(name: str, out: Path, backend: str, text: Path = text, domain: str = domain) -> float:
+            def score(name: str, out: Path, path: str, text: Path = text, domain: str = domain) -> float:
                 command = logits.argv(tool, paths[name], text, out, logits.Scoring(
-                    args.ctx, args.chunks, cpu=backend == "cpu", cache=plan.quants[name].cache or args.kv,
-                    extra=tuple(args.tool_arg)))
-                say(f"  {name} on {backend}, {domain}")
+                    args.ctx, args.chunks, cpu=path == "cpu", cache=plan.quants[name].cache or args.kv,
+                    ubatch=1 if path == "single" else 512, extra=tuple(args.tool_arg)))
+                say(f"  {name} on {path}, {domain}")
                 return logits.run(command, model_files=[paths[name]], corpus=text, out=out)
 
             try:
                 reference_seconds = score(plan.reference, reference, args.reference_backend)
-                for name in names:
-                    files = {b: held / f"{plan.id}-{domain}-{name}-{b}.logits" for b in backends}
-                    made += files.values()
-                    seconds = {b: score(name, files[b], b) for b in backends}
-                    rows = [{"against": "reference", "backend": b, **one}
-                            for b in backends for one in logits.blocks(logits.compare(reference, files[b]))]
-                    if "cpu" in files:
-                        rows += [{"against": "cpu", "backend": "metal", **one}
-                                 for one in logits.blocks(logits.compare(files["cpu"], files["metal"]))]
+                for name in [plan.reference, *names]:
+                    own = name == plan.reference
+                    if own and (args.reference_backend != "metal" or not _floor_paths(args)):
+                        continue
+                    base = reference if own else held / f"{plan.id}-{domain}-{name}-metal.logits"
+                    others = {p: held / f"{plan.id}-{domain}-{name}-{p}.logits" for p in _floor_paths(args)}
+                    made += [*others.values(), base]
+                    seconds = {"metal": reference_seconds if own else score(name, base, "metal"),
+                               **{p: score(name, out, p) for p, out in others.items()}}
+                    against = {} if own else {"metal": base, **{p: f for p, f in others.items() if p == "cpu"}}
+                    rows = [{"against": "reference", "backend": p, **one}
+                            for p, out in against.items() for one in logits.blocks(logits.compare(reference, out))]
+                    rows += [{"against": "self", "backend": p, **one}
+                             for p, out in others.items() for one in logits.blocks(logits.compare(base, out))]
                     save(args.kept, rows, kind=FIDELITY, label=f"{plan.id}:{name}:{domain}", server=_record(
-                        plan, name, paths[name], domain=domain, tool=str(tool),
-                        tool_sha256=sha256_file(tool), tool_args=list(args.tool_arg), context=args.ctx,
-                        chunks=args.chunks, cache_type=plan.quants[name].cache or args.kv,
-                        reference_cache_type=plan.quants[plan.reference].cache or args.kv, draft="none", template="none (raw text)",
-                        thinking="none (raw text)", corpus_sha256=sha256_file(text),
+                        plan, name, paths[name], domain=domain, tool=str(tool), tool_sha256=sha256_file(tool),
+                        tool_args=list(args.tool_arg), context=args.ctx, chunks=args.chunks,
+                        cache_type=plan.quants[name].cache or args.kv,
+                        reference_cache_type=plan.quants[plan.reference].cache or args.kv, draft="none",
+                        template="none (raw text)", thinking="none (raw text)", corpus_sha256=sha256_file(text),
                         reference_backend=args.reference_backend, reference_file=str(paths[plan.reference]),
-                        seconds={**seconds, "reference": reference_seconds}))
+                        seconds=seconds))
                     if not args.keep_logits:
-                        for one in files.values():
+                        for one in [*others.values(), *([] if own else [base])]:
                             one.unlink(missing_ok=True)
             finally:
                 if not args.keep_logits:
@@ -396,6 +412,8 @@ def lease_config(args: Any, model: Path, *, context: int, parallel: int, cache: 
              "--reasoning-budget", "0", "--serve-kv", cache or args.kv,
              *(["--binary", args.binary] if args.binary else [])]
     config = ops.swept(bench._parser().parse_args(words), str(model), None, context=context, head=args.draft)
+    if getattr(args, "single", False):
+        config = config.over(extra_args=("-ub", "1"))
     if cache:
         config = config.over(draft_cache_type=cache)
     return config.over(port=int(args.serve_port), timeout=float(args.timeout), n_predict=int(args.max_tokens),
@@ -455,19 +473,22 @@ def tasks(args: Any, plan: Comparison) -> int:
                 "temperature": 0.0, "binary": args.binary,
                 "before": hashlib.sha256(before.encode()).hexdigest()[:16] if before else ""}
     with _measuring(args):
-        for name in names:
+        floor = [(plan.reference, "single")] if args.floor else []
+        for name, route in [*((n, "batched") for n in names), *floor]:
             done = {row["item"] for r in _kept_runs(args, plan, TASKS)
-                    if r["server"]["quant"] == name and r["server"].get("settings") == settings for row in r["rows"]}
+                    if r["server"]["quant"] == name and r["server"].get("route") == route
+                    and r["server"].get("settings") == settings for row in r["rows"]}
             todo = [one for one in items if one.id not in done]
             if not todo:
-                say(f"{name}: all {len(items)} items are kept already")
+                say(f"{name} ({route}): all {len(items)} items are kept already")
                 continue
-            say(f"{name}: {len(todo)} item(s)")
+            say(f"{name} ({route}): {len(todo)} item(s)")
             cache = plan.quants[name].cache
-            with served(args, paths[name], context=context * args.parallel, parallel=args.parallel,
+            lease_args = argparse.Namespace(**{**vars(args), "single": route == "single"})
+            with served(lease_args, paths[name], context=context * args.parallel, parallel=args.parallel,
                         cache=cache) as (client, _lease, held):
                 record = _served_record(plan, name, paths[name], held, settings=settings, template=_template(client),
-                                        cache_type=cache or args.kv)
+                                        cache_type=cache or args.kv, route=route)
 
                 def ask(one: codeitems.Item, client: Any = client) -> dict[str, Any]:
                     began = time.time()
@@ -560,6 +581,24 @@ def _comparable(runs: list[dict[str, Any]]) -> list[Mapping[str, Any]]:
             for one in _latest([r for r in same if r["server"]["domain"] == domain], ("corpus_sha256",))]
 
 
+def _say_comparison(plan: Comparison, key: tuple[str, str, str], rows: Sequence[Mapping[str, Any]]) -> None:
+    """The figures of one build's blocks against the reference or against itself, and where the top tokens differ."""
+    quant, against, backend = key
+    if against == "reference":
+        what = f"{backend} against {plan.reference}"
+    else:
+        what = "against itself, " + ("on the CPU" if backend == "cpu" else "one token at a time")
+    tokens = sum(int(r["tokens"]) for r in rows)
+    kl, agree, text = (_mean([float(r[name]) for r in rows]) for name in ("kl", "agree", "dlogp"))
+    say(f"  {quant}, {what}: {tokens} tokens in {len(rows)} blocks; KL {kl} nats; same top token {agree}; "
+        f"log probability of the text {text}")
+    differ = sum(int(r["differ"]) for r in rows)
+    overall = sum(float(r["margin"]) * int(r["tokens"]) for r in rows) / tokens
+    near = f"{sum(float(r['differ_margin']) for r in rows) / differ:.4g}" if differ else "-"
+    say(f"    near ties: top tokens differ on {differ} of {tokens}; logit gap between the first two tokens there "
+        f"{near}, over all tokens {overall:.4g}")
+
+
 def report_fidelity(args: Any, plan: Comparison) -> None:
     say(f"fidelity of {plan.id} against {plan.reference}")
     runs = _kept_runs(args, plan, FIDELITY)
@@ -577,14 +616,17 @@ def report_fidelity(args: Any, plan: Comparison) -> None:
     def column(key: tuple[str, str, str], name: str, shared: Sequence[tuple[str, int, int]]) -> list[float]:
         return [float(found[key][at][name]) for at in shared]
 
-    for (quant, against, backend), rows in sorted(found.items()):
-        at = sorted(rows)
-        key = (quant, against, backend)
-        tokens = sum(int(rows[a]["tokens"]) for a in at)
-        what = f"{backend} against {plan.reference}" if against == "reference" else "Metal against CPU, same file"
-        say(f"  {quant}, {what}: {tokens} tokens in {len(at)} blocks; KL {_mean(column(key, 'kl', at))} nats; "
-            f"same top token {_mean(column(key, 'agree', at))}; log probability of the text "
-            f"{_mean(column(key, 'dlogp', at))}")
+    def floor(builds: Sequence[str], figure: str, routes: Sequence[str] = ("cpu", "single")) -> float | None:
+        """The most that ``figure`` moves when one of ``builds`` or the reference is only scored another way."""
+        moved = [column(key, figure, sorted(found[key])) for key in
+                 ((b, "self", route) for b in {*builds, plan.reference} for route in routes) if key in found]
+        means = [statistics.fmean(values) for values in moved]
+        return max((abs(m) if figure == "kl" else 1.0 - m for m in means), default=None)
+
+    for key, rows in sorted(found.items()):
+        _say_comparison(plan, key, list(rows.values()))
+    say(f"noise floor of the top token: {floor([k[0] for k in found], 'agree')} of tokens differ at most between "
+        f"two scorings of one file")
 
     for (quant, against, backend), rows in sorted(found.items()):
         last = max(at[2] for at in rows)
@@ -606,9 +648,10 @@ def report_fidelity(args: Any, plan: Comparison) -> None:
     for quant in sorted({k[0] for k in found}):
         extra = list(per_block(quant).values())
         if extra:
-            say("  " + _verdict(f"{quant} on Metal", "the same file on the CPU",
-                                difference(extra, [0.0] * len(extra)), "nats of KL from the reference",
-                                ("is further from the reference than", "is closer to the reference than")))
+            say("  " + _verdict(
+                f"{quant} on Metal", "the same file on the CPU", difference(extra, [0.0] * len(extra)),
+                ("nats of KL from the reference", "is further from the reference than",
+                 "is closer to the reference than"), floor([quant], "kl", ("single",))))
     say("IQ against K, over the same blocks:")
     for iq, k in plan.versus:
         sizes = f"({plan.quants[iq].bytes / 1e9:.1f} GB against {plan.quants[k].bytes / 1e9:.1f} GB)"
@@ -617,25 +660,30 @@ def report_fidelity(args: Any, plan: Comparison) -> None:
             at = sorted(set(found.get(a, {})) & set(found.get(b, {})))
             if at:
                 say(f"  [{backend}, {len(at)} blocks] " + _verdict(
-                    iq, k, difference(column(a, "kl", at), column(b, "kl", at)), "nats of KL",
-                    ("is further from the reference than", "is closer to the reference than")) + f" {sizes}")
+                    iq, k, difference(column(a, "kl", at), column(b, "kl", at)),
+                    ("nats of KL", "is further from the reference than", "is closer to the reference than"),
+                    floor([iq, k], "kl")) + f" {sizes}")
                 say(f"  [{backend}] top token: " + _verdict(
-                    iq, k, difference(column(a, "agree", at), column(b, "agree", at)), "share of tokens",
-                    ("agrees with the reference more often than", "agrees with the reference less often than")))
+                    iq, k, difference(column(a, "agree", at), column(b, "agree", at)),
+                    ("share of tokens", "agrees with the reference more often than",
+                     "agrees with the reference less often than"), floor([iq, k], "agree")))
         left, right = per_block(iq), per_block(k)
         at = sorted(set(left) & set(right))
         if at:
             say("  [what Metal adds] " + _verdict(
-                iq, k, difference([left[a] for a in at], [right[a] for a in at]), "nats of KL",
-                ("loses more on Metal than", "loses less on Metal than")))
+                iq, k, difference([left[a] for a in at], [right[a] for a in at]),
+                ("nats of KL", "loses more on Metal than", "loses less on Metal than"),
+                floor([iq, k], "kl", ("single",))))
 
 
 def report_tasks(args: Any, plan: Comparison) -> None:
     say(f"coding items of {plan.id}")
     runs = _latest(_kept_runs(args, plan, TASKS), ("settings", "llama_cpp"))
     passed: dict[str, dict[str, bool]] = {}
+    again: dict[str, dict[str, bool]] = {}
     for one in sorted(runs, key=lambda r: str(r.get("at") or "")):
-        passed.setdefault(one["server"]["quant"], {}).update({r["item"]: bool(r["passed"]) for r in one["rows"]})
+        into = again if one["server"].get("route") == "single" else passed
+        into.setdefault(one["server"]["quant"], {}).update({r["item"]: bool(r["passed"]) for r in one["rows"]})
     if not passed:
         say("  nothing kept yet")
         return
@@ -643,6 +691,15 @@ def report_tasks(args: Any, plan: Comparison) -> None:
         got, n = sum(passed[name].values()), len(passed[name])
         low, high = wilson(got, n, z=Z95)
         say(f"  {name}: {got}/{n} passed, {got / n:.1%} [{low:.1%}, {high:.1%}] (one greedy run)")
+    floors = []
+    for name, second in again.items():
+        shared = sorted(set(passed.get(name, {})) & set(second))
+        if shared:
+            flipped = sum(passed[name][i] != second[i] for i in shared)
+            floors.append(100.0 * flipped / len(shared))
+            say(f"  noise floor: {name} asked again with its prompts decoded one token at a time: {flipped} of "
+                f"{len(shared)} items change verdict ({floors[-1]:.2f} points)")
+    floor = max(floors, default=None)
     against = [(name, plan.reference) for name in passed if name != plan.reference]
     for first, second in [*plan.versus, *against]:
         shared = sorted(set(passed.get(first, {})) & set(passed.get(second, {})))
@@ -652,7 +709,7 @@ def report_tasks(args: Any, plan: Comparison) -> None:
         b = [100.0 * passed[second][i] for i in shared]
         differ = sum(x != y for x, y in zip(a, b, strict=True))
         say(f"  [{len(shared)} shared items, {differ} differ] " + _verdict(
-            first, second, difference(a, b), "points", ("passes more than", "passes fewer than")))
+            first, second, difference(a, b), ("points", "passes more than", "passes fewer than"), floor))
         if not differ:
             say(f"    no item differs; under {300 / len(shared):.1f}% would differ at 95% (rule of three)")
         else:
@@ -702,9 +759,8 @@ def report_speed(args: Any, plan: Comparison) -> None:
             shared = sorted(set(found[(iq, size, figure)]) & set(other))
             got = t_interval([found[(iq, size, figure)][r] - other[r] for r in shared])
             say(f"  [{size} tokens, {figure.removesuffix('_tps')}, {len(shared)} shared repeats] " + _verdict(
-                iq, k, got, "% of drafted tokens" if figure == "accepted" else "tok/s",
-                ("has more accepted than", "has fewer accepted than") if figure == "accepted"
-                else ("is faster than", "is slower than")))
+                iq, k, got, ("% of drafted tokens", "has more accepted than", "has fewer accepted than")
+                if figure == "accepted" else ("tok/s", "is faster than", "is slower than")))
 
 
 def report(args: Any, plan: Comparison, *, parts: Sequence[str] = ("fidelity", "tasks", "speed")) -> int:
@@ -750,6 +806,7 @@ def add_arguments(sub: Any) -> argparse.ArgumentParser:
     group.add_argument("--corpus", action="append", default=[], metavar="FILE",
                        help="a text file instead of the frozen code and prose; repeatable")
     group.add_argument("--no-cpu", action="store_true", help="leave out the CPU-only runs")
+    group.add_argument("--no-single", action="store_true", help="leave out the one-token-at-a-time runs")
     group.add_argument("--reference-backend", choices=("metal", "cpu"), default="metal")
     group.add_argument("--logits-dir", default="", metavar="DIR", help="where the log probabilities are written")
     group.add_argument("--keep-logits", action="store_true", help="do not remove them once compared")
@@ -765,6 +822,8 @@ def add_arguments(sub: Any) -> argparse.ArgumentParser:
     group.add_argument("--context", type=int, default=8192, metavar="N", help="context per slot")
     group.add_argument("--parallel", type=int, default=1, metavar="N",
                        help="items asked at once; above 1 greedy replies can vary with what shares the batch")
+    group.add_argument("--floor", action="store_true",
+                       help="ask the reference again with prompts decoded one token at a time, to measure the noise")
     group.add_argument("--long-context", type=int, default=0, metavar="TOKENS",
                        help="put about this much fixed text before every item")
     group = one.add_argument_group("speed")

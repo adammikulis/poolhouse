@@ -64,6 +64,27 @@ def test_a_difference_interval_leaves_out_zero_only_where_the_items_differ():
         intervals.difference([1.0, 2.0], [1.0])
 
 
+def test_a_difference_inside_the_noise_floor_is_not_distinguishable():
+    words = ("points", "passes more than", "passes fewer than")
+    inside = quants._verdict("IQ", "K", (-1.5, -2.0, -1.0), words, floor=2.2)
+    assert inside.startswith("IQ and K are not distinguishable here") and "noise floor of 2.2" in inside
+    outside = quants._verdict("IQ", "K", (-3.0, -4.0, -2.0), words, floor=2.2)
+    assert outside.startswith("IQ passes fewer than K") and "noise floor 2.2" in outside
+    assert "no noise floor measured" in quants._verdict("IQ", "K", (-3.0, -4.0, -2.0), words)
+
+
+def test_near_ties_are_counted_with_their_gap(tmp_path):
+    pytest.importorskip("numpy")
+    canned_logits(tmp_path / "a", 0.0)
+    canned_logits(tmp_path / "b", 1.0)
+    tokens = logits.compare(tmp_path / "a", tmp_path / "b")
+    one = logits.blocks(tokens)[0]
+    apart = [t for t in tokens if t["chunk"] == 0 and not t["agree"]]
+    assert one["differ"] == len(apart) > 0 and all(t["margin"] >= 0 for t in tokens)
+    assert one["differ_margin"] == pytest.approx(sum(t["margin"] for t in apart))
+    assert logits.argv(Path("t"), Path("m"), Path("c"), Path("o"), logits.Scoring(1024, 8, ubatch=1))[10] == "1"
+
+
 def test_the_items_needed_to_separate_a_few_points():
     assert quants.items_needed(3, 0.10) == 873
     assert quants.items_needed(5, 0.10) == 314
@@ -128,14 +149,16 @@ def test_fidelity_keeps_blocks_per_backend_and_says_which_build_is_further_off(t
     for domain in ("code", "prose"):
         (tmp_path / f"{domain}.txt").write_text(domain)
         texts += ["--corpus", str(tmp_path / f"{domain}.txt")]
-    noise = {"REF": (0.0, 0.0), "IQ": (1.5, 0.4), "K": (0.2, 0.2)}        # canned: (metal, cpu)
+    # canned: (metal, cpu, one token at a time); K moves no further than REF does when only the path changes
+    noise = {"REF": (0.0, 0.02, 0.01), "IQ": (1.5, 0.4, 1.5), "K": (0.2, 0.2, 0.2)}
     asked = []
 
     def wrote(command, *, model_files, corpus, out):
         name = model_files[0].stem
-        cpu = "--no-op-offload" in command
-        asked.append((name, "cpu" if cpu else "metal"))
-        canned_logits(out, noise[name][1 if cpu else 0])
+        single = command[command.index("-ub") + 1] == "1"
+        route = "cpu" if "--no-op-offload" in command else "single" if single else "metal"
+        asked.append((name, route))
+        canned_logits(out, noise[name][("metal", "cpu", "single").index(route)])
         return 0.0
 
     monkeypatch.setattr(quants.logits, "run", wrote)
@@ -146,15 +169,19 @@ def test_fidelity_keeps_blocks_per_backend_and_says_which_build_is_further_off(t
     assert quants.run(args) == 0
     said = capsys.readouterr().out
     assert asked.count(("REF", "metal")) == 2 and asked.count(("IQ", "cpu")) == 2
+    assert asked.count(("REF", "single")) == 2 and asked.count(("K", "single")) == 2
     assert not list((tmp_path / "logits").glob("*.logits")), "compared files are removed"
     kept = [r for r in bench.runs(args.kept) if r["kind"] == quants.FIDELITY]
-    assert len(kept) == 4 and kept[0]["server"]["draft"] == "none" and kept[0]["server"]["corpus_sha256"]
+    assert len(kept) == 6 and kept[0]["server"]["draft"] == "none" and kept[0]["server"]["corpus_sha256"]
     assert {r["server"]["cache_type"] for r in kept} == {"q8_0"}
-    assert {(r["against"], r["backend"]) for r in kept[0]["rows"]} == {
-        ("reference", "metal"), ("reference", "cpu"), ("cpu", "metal")}
+    assert {(one["server"]["quant"] == "REF", r["against"], r["backend"]) for one in kept for r in one["rows"]} == {
+        (True, "self", "cpu"), (True, "self", "single"), (False, "reference", "metal"), (False, "reference", "cpu"),
+        (False, "self", "cpu"), (False, "self", "single")}
+    assert "IQ, against itself, on the CPU" in said and "near ties: top tokens differ on" in said
     assert "[metal, 8 blocks] IQ is further from the reference than K" in said
     assert "IQ on Metal is further from the reference than the same file on the CPU" in said
     assert "K on Metal and the same file on the CPU cannot be told apart" in said
+    assert "IQ is further from the reference than K: difference" in said and "noise floor" in said
 
 
 def canned_served(replies):
@@ -187,6 +214,15 @@ def test_tasks_compares_the_same_items_and_does_not_ask_them_again(tmp_path, mon
     assert {r["server"]["settings"]["thinking"] for r in kept} == {"off"} and kept[0]["server"]["template"]
     assert quants.run(args) == 0
     assert "all 6 items are kept already" in capsys.readouterr().out and len(bench.runs(args.kept)) == len(kept)
+    # canned: the reference, asked another way, changes every verdict, so no difference clears the floor
+    monkeypatch.setattr(quants, "served", canned_served({"REF": WRONG}))
+    assert quants.run(args_for(tmp_path, "tasks", "--items", str(items), "--floor")) == 0
+    said = capsys.readouterr().out
+    assert "6 of 6 items change verdict (100.00 points)" in said
+    assert "IQ and K are not distinguishable here: difference -100" in said
+    alone = quants.lease_config(SimpleNamespace(**{**vars(args), "single": True}), tmp_path / "IQ.gguf",
+                                context=4096, parallel=1)
+    assert alone.serving.extra_args == ("-ub", "1")
 
 
 def test_speed_labels_a_contended_repeat_and_leaves_it_out_of_the_interval(tmp_path, monkeypatch, capsys):
@@ -233,7 +269,7 @@ def test_one_file_under_two_cache_types_is_scored_and_leased_with_each(tmp_path,
     monkeypatch.setattr(quants.logits, "run", wrote)
     monkeypatch.setattr(quants.gpu, "hold", lambda purpose: contextlib.nullcontext())
     quiet_machine(monkeypatch)
-    args = args_for(tmp_path, "fidelity", "--cache-of", "IQ", "--no-cpu", "--tool", str(tmp_path / "tool"), "--ctx",
+    args = args_for(tmp_path, "fidelity", "--cache-of", "IQ", "--no-cpu", "--no-single", "--tool", str(tmp_path / "tool"), "--ctx",
                     str(CONTEXT), "--chunks", str(CHUNKS), "--corpus", str(tmp_path / "code.txt"),
                     "--logits-dir", str(tmp_path / "logits"))
     assert quants.run(args) == 0

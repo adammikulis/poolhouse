@@ -41,12 +41,14 @@ class ToolFailed(RuntimeError):
 @dataclass(frozen=True)
 class Scoring:
     """How a text is scored: the context of a chunk and how many, the K and V cache type, whether every layer and
-    operation stays off the GPU, and more words for the tool."""
+    operation stays off the GPU, the tokens decoded together (1 decodes one at a time), and more words for the
+    tool."""
 
     context: int
     chunks: int
     cpu: bool = False
     cache: str = "q8_0"
+    ubatch: int = 512
     extra: tuple[str, ...] = ()
 
 
@@ -90,7 +92,7 @@ def argv(tool: Path, model: Path, corpus: Path, out: Path, how: Scoring) -> list
     """The command that writes ``model``'s log probabilities of ``corpus`` to ``out``. The batch stays at 2048, so a
     long context is decoded in parts."""
     command = [str(tool), "-m", str(model), "-f", str(corpus), "-c", str(how.context),
-               "-b", str(min(2048, how.context)), "-ub", str(min(512, how.context)), "--chunks", str(how.chunks),
+               "-b", str(min(2048, how.context)), "-ub", str(min(how.ubatch, how.context)), "--chunks", str(how.chunks),
                "-ctk", how.cache, "-ctv", how.cache, "--save-all-logits", str(out)]
     if how.cpu:
         command += ["-ngl", "0", "--device", "none", "--no-op-offload"]
@@ -167,7 +169,8 @@ def header(path: Path) -> Header:
 def compare(reference: Path, other: Path) -> list[dict[str, float]]:
     """One record per scored token of two logits files over the same text: ``kl`` (nats, of ``other`` from
     ``reference``), ``agree`` (both rank the same token first), ``dlogp`` (``other`` minus ``reference`` for the
-    token the text holds) and the chunk and position it came from. One token is in memory at a time."""
+    token the text holds), ``margin`` (the logit gap between ``reference``'s first and second token, small at a near
+    tie) and the chunk and position it came from. One token is in memory at a time."""
     import numpy as np
 
     a, b = header(reference), header(other)
@@ -188,16 +191,18 @@ def compare(reference: Path, other: Path) -> list[dict[str, float]]:
                 base, got = row(left), row(right)
                 target = a.tokens[chunk * a.context + a.first + position + 1]
                 held = base > FLOOR
+                second, first = np.partition(base, -2)[-2:]
                 out.append({"chunk": chunk, "position": position,
                             "kl": float(np.sum(np.exp(base[held]) * (base[held] - got[held]))),
                             "agree": float(int(base.argmax()) == int(got.argmax())),
-                            "dlogp": float(got[target] - base[target])})
+                            "dlogp": float(got[target] - base[target]), "margin": float(first - second)})
     return out
 
 
 def blocks(tokens: Sequence[dict[str, float]], *, size: int = BLOCK) -> list[dict[str, float]]:
     """``tokens`` as the means of consecutive blocks of about ``size`` within each chunk, the unit an interval
-    resamples and two quants are paired on."""
+    resamples and two builds are compared on, with how many top tokens differ in it and the sum of the margins
+    there."""
     chunks: dict[int, list[dict[str, float]]] = {}
     for one in tokens:
         chunks.setdefault(int(one["chunk"]), []).append(one)
@@ -206,6 +211,8 @@ def blocks(tokens: Sequence[dict[str, float]], *, size: int = BLOCK) -> list[dic
         count = max(1, len(rows) // size)
         for n in range(count):
             part = rows[n * len(rows) // count:(n + 1) * len(rows) // count]
-            out.append({"chunk": chunk, "block": n, "tokens": len(part),
-                        **{key: sum(r[key] for r in part) / len(part) for key in ("kl", "agree", "dlogp")}})
+            apart = [r for r in part if not r["agree"]]
+            out.append({"chunk": chunk, "block": n, "tokens": len(part), "differ": len(apart),
+                        "differ_margin": sum(r["margin"] for r in apart),
+                        **{key: sum(r[key] for r in part) / len(part) for key in ("kl", "agree", "dlogp", "margin")}})
     return out

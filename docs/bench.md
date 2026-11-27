@@ -541,7 +541,7 @@ suggest. It runs from a checkout, as every bench command does (the wheel leaves 
 PYTHONPATH=src python -m poolhouse.bench quants plan --set qwen3.8-27b
 PYTHONPATH=src python -m poolhouse.bench quants build-tool
 PYTHONPATH=src python -m poolhouse.bench quants fidelity --set qwen3.8-27b
-PYTHONPATH=src python -m poolhouse.bench quants tasks --set qwen3.8-27b --items HumanEval.jsonl.gz --items mbpp.jsonl
+PYTHONPATH=src python -m poolhouse.bench quants tasks --set qwen3.8-27b --floor --items HumanEval.jsonl.gz --items mbpp.jsonl
 PYTHONPATH=src python -m poolhouse.bench quants speed --set qwen3.8-27b
 PYTHONPATH=src python -m poolhouse.bench quants report --set qwen3.8-27b
 ```
@@ -561,6 +561,14 @@ revision than the published one, with the command that fetches it, and the disk 
   CPU on the same file, and the divergence Metal adds over the CPU. The default is 8 chunks of 1024 tokens per
   domain, whose second halves are scored (8176 tokens). The run holds the broker's `gpu-training` claim. The
   files of log probabilities (about 2 GB each) are removed once compared.
+- **noise floor.** Each file, the reference too, is also scored on the CPU and one token at a time (`-ub 1`)
+  and compared with its own batched Metal scoring. A difference between two builds no larger than the most a figure
+  moves in those self-comparisons is reported as not distinguishable, whatever its interval; what Metal adds over
+  the CPU is judged against the one-token-at-a-time shift. Every comparison also counts the tokens whose top choice
+  differs and gives the logit gap between the first two tokens there and over all tokens: a small gap there is a
+  near tie. `--no-cpu` and `--no-single` leave a run out. `tasks --floor` asks the reference's items again with
+  prompts decoded one token at a time, and the share of items that change verdict is the floor for task
+  differences.
 - **tasks.** HumanEval (164 items, `HumanEval.jsonl.gz` from `openai/human-eval`) and MBPP (974 items,
   `mbpp.jsonl` from `google-research/google-research`) as files you name; each is graded by its own tests in the
   deny-default sandbox with no network. Greedy, one slot, thinking off, no draft head, no profile, q8_0 cache.
