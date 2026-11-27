@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate `contracts/language-kinds.json`, the language registry snapshot `guard.runs_later` reads (docs/design-isolated-launcher.md, 4.4.2).
+"""Regenerate `contracts/language-kinds.json`, the language registry snapshot `guard.runs_later` reads (docs/design-isolated-launcher.md, 4.4.1).
 
 The snapshot is generated from GitHub's public language registry (`languages.yml` of github-linguist/linguist) and records the registry
 revision and the digest of the file it was made from, so a change of the registry is a reviewed diff and never a silent drift.
@@ -29,7 +29,7 @@ REGISTRY = "lib/linguist/languages.yml"
 SNAPSHOT = ROOT / "contracts" / "language-kinds.json"
 KINDS = ("programming", "markup", "prose", "data")
 STRICTNESS = {kind: rank for rank, kind in enumerate(("prose", "markup", "programming", "data"))}
-"""An extension two languages claim takes the strictest kind of its claimants: one data claimant makes it data."""
+"""A name two languages claim takes the strictest kind of its claimants: one data claimant makes it data."""
 
 
 def fetch(revision: str) -> tuple[bytes, str]:
@@ -40,22 +40,19 @@ def fetch(revision: str) -> tuple[bytes, str]:
 
 
 def build(raw: bytes, revision: str) -> dict:
-    """The snapshot for the registry bytes ``raw`` read at ``revision``: the kind of each extension and each name the registry assigns."""
-    extensions: dict[str, str] = {}
+    """The snapshot for the registry bytes ``raw`` read at ``revision``: the kind of each file name the registry assigns to a language."""
     names: dict[str, str] = {}
     for language, entry in yaml.safe_load(raw).items():
         kind = entry.get("type", "")
         if kind not in KINDS:
             raise ValueError(f"{language}: type {kind!r} is not one of {KINDS}")
-        for table, keys in ((extensions, entry.get("extensions", ())), (names, entry.get("filenames", ()))):
-            for key in keys:
-                key = key.lower()
-                if key not in table or STRICTNESS[kind] > STRICTNESS[table[key]]:
-                    table[key] = kind
+        for key in entry.get("filenames", ()):
+            key = key.lower()
+            if key not in names or STRICTNESS[kind] > STRICTNESS[names[key]]:
+                names[key] = kind
     return {"registry": {"repository": f"https://github.com/{REPOSITORY}", "file": REGISTRY, "revision": revision,
                          "digest": hashlib.sha256(raw).hexdigest()},
-            "plain_kinds": ["programming", "markup", "prose"],
-            "extensions": dict(sorted(extensions.items())), "names": dict(sorted(names.items()))}
+            "names": dict(sorted(names.items()))}
 
 
 def text(snapshot: dict) -> str:

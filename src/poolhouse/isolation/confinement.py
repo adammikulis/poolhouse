@@ -40,7 +40,6 @@ from poolhouse.isolation.model_bridge import Lease, ModelBridge
 from poolhouse.isolation.notices import Notice
 from poolhouse.isolation.profile import Profile, build, search_path
 from poolhouse.isolation.proof import Proof, Services, run as run_proof
-from poolhouse.isolation.publish import bind
 from poolhouse.isolation.refusals import IsolationFailed
 from poolhouse.isolation.session_bridge import Handlers, SessionBridge, Terms
 from poolhouse.isolation.spec import Spec
@@ -394,8 +393,7 @@ def prepare(plan: Plan) -> Confinement:
     in both the harness does not exist."""
     began = time.monotonic()
     require_capable(Spec(plan.harness, "", "", "", 0, project=plan.project, interactive=plan.interactive))
-    rules = tuple(bind(plan.project, grant.subject) for grant in plan.grants if grant.kind == "publish")
-    session = Session.begin(Launch(plan.project, str(state_home.state("isolation")), plan.agent, plan.notice, plan.conversation, rules))
+    session = Session.begin(Launch(plan.project, str(state_home.state("isolation")), plan.agent, plan.notice, plan.conversation))
     parts = Parts()
     stack, scratch = parts.stack, parts.scratch
     staged = time.monotonic()

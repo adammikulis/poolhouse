@@ -23,7 +23,7 @@ from poolhouse.isolation import ancestry
 
 __all__ = ["ProjectPolicy", "Unregistered", "key_of", "load", "path_of", "save"]
 
-KINDS = ("read", "toolchain", "net", "publish")
+KINDS = ("read", "toolchain", "net")
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +33,6 @@ class ProjectPolicy:
     read: tuple[str, ...] = ()
     toolchain: tuple[str, ...] = ()
     net: tuple[str, ...] = ()
-    publish: tuple[str, ...] = ()
     in_place: bool = False
 
     def names(self, kind: str, subject: str) -> bool:

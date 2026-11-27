@@ -187,10 +187,10 @@ def test_the_projects_environments_are_read_run_and_on_the_path_never_written_an
 
 def test_a_kept_stage_that_is_launched_again_still_reads_the_environment(box):
     venv = with_environments(box)
-    out, _, first = shelled(box, "printf 'all:\\n\\ttrue\\n' > Makefile\n", conversation="again")
+    out, _, first = shelled(box, "echo '{}' > opencode.json\n", conversation="again")
     assert first.turn.refused, out
     out, _, second = shelled(box, "python -c 'import pytest, sys; print(sys.prefix)'\n", conversation="again")
-    assert str(venv) in out and not [each for each in second.turn.refused if each.path != "Makefile"], out
+    assert str(venv) in out and not [each for each in second.turn.refused if each.path != "opencode.json"], out
 
 
 def test_an_environment_link_the_box_replaced_is_reported_and_nothing_of_it_is_written_into_the_environment(box):
@@ -237,7 +237,8 @@ def test_a_shell_in_the_box_reaches_nothing_it_was_not_given(box):
             """)
         assert "OPEN " not in out and out.count("shut ") == 12 and "NOT-A-REAL-KEY" not in out and "ran" in out, out
         assert outsider.poll() is None and boxed.poll() is None and siblings[0].process.poll() is None
-        assert "a-binary" not in confinement.turn.applied and "a-script" not in confinement.turn.applied, confinement.turn
+        later = {path for path, _ in confinement.turn.runs_later}
+        assert {"a-binary", "a-script"} <= set(confinement.turn.applied) & later, "applied, and named as of the kind that runs later"
     finally:
         for each in siblings:
             each.process.kill()

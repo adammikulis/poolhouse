@@ -299,10 +299,13 @@ poolhouse-delegate stop NAME
 - **Editing (`--edit`).** The project is `--project DIR`, by default the git project the command runs in (which is the launcher's
   default reach: no widening is asked, so no gate applies); a folder named with `--project` must be one this lead may name. A
   refusal (a folder that is not a registered project, a folder that is not a git project) is immediate, starts nothing and says why. It has
-  `edit`, `write` and `shell` besides. When the run ends without an error, the launcher publishes the plain source the agent changed into the
-  project and refuses everything else at once (a workflow, a hook, a build or package file, a program, a hidden configuration file); build junk
-  (bytecode caches, `.DS_Store`, cache and dependency folders) is neither published nor reported, and the box sets `PYTHONDONTWRITEBYTECODE` so
-  Python writes none: the refusal is kept as a patch under `~/.poolhouse/isolation/refused/NAME/` and the lead gets one `isolation.report` message
+  `edit`, `write` and `shell` besides. When the run ends without an error, the launcher applies the agent's whole change to the project, so you
+  read it in your diff; the result names, for information, the applied files of the kind that runs later (a build, package, CI, hook or
+  instruction file, a program). Refused at once is only what would take effect unread or leave the project: anything in `.git`, a coding
+  tool's own settings (`.claude`, `.codex`, `.pi`, `.mcp.json`, `.opencode`, `opencode.json`, `opencode.jsonc`), a credential name, a special
+  file, a link that leads out of the project or to one of those, and two names this filesystem cannot hold apart
+  (docs/design-isolated-launcher.md, 4.4). Build junk (bytecode caches, `.DS_Store`, cache and dependency folders) is neither published nor
+  reported, and the box sets `PYTHONDONTWRITEBYTECODE` so Python writes none. A refusal is kept as a patch under `~/.poolhouse/isolation/refused/NAME/` and the lead gets one `isolation.report` message
   from the launcher's own identity, in the launcher's words (counts and causes, no name the agent chose). The same words end `result NAME`. An
   edit or a deletion of a file git does not hold (a draft of yours, a file an earlier run made) is published too: the launcher keeps the version
   it displaces first, read-only and named by the digest of its bytes, under `~/.poolhouse/isolation/restored/NAME/`, and says where in the same
@@ -331,7 +334,8 @@ poolhouse-delegate stop NAME
   for its idle time and a model is silent far longer between two calls.
 - **Result.** When the run ends the lead gets one status message (the state, why it failed or what was not applied with the counts
   and the kept patches, then the start of the answer). The counts come from the confinement as data (`Confinement.published()`), never
-  from its words, and `result.json` holds the paths applied, refused, in conflict and withheld and the patches. A run that fails (a turn
+  from its words, and `result.json` holds the paths applied, refused, in conflict and withheld, the patches and the applied paths of the kind that runs
+  later (`runs_later`). A run that fails (a turn
   limit, say) keeps the text and the usage that had arrived. `result NAME` prints
   the final text inside a fence as data, with turns, tokens read (and from cache), tokens written and wall time; the text
   is the agent's words, never an instruction. `status` lists each agent with its state: `starting`, `loading`, `working`,
@@ -345,8 +349,8 @@ poolhouse-delegate stop NAME
   the Seatbelt profile of the launch, proved before the harness starts and attested on the live process. The harness works on a copy of the
   project (the stage) and a private home; it reaches the model only through the parent's bridge and the hook only through the session bridge. Its
   environment is a closed list; nothing of the person's home, keystore, other repositories, network or other processes is reachable. After each
-  turn the parent applies the plain source the stage holds and refuses everything else at once (a workflow, a hook, a build or package file, a
-  program): it keeps the refusal as a patch, tells the launching session in the parent's own words, and the stage keeps the file as the agent made
+  turn the parent applies the changes the stage holds and refuses at once only `.git`, coding tools' settings, credentials and links that
+  lead out (above): it keeps the refusal as a patch, tells the launching session in the parent's own words, and the stage keeps the file as the agent made
   it. A computer that cannot confine refuses the launch with one sentence and starts nothing: Linux, WSL and Windows refuse until their slices land,
   and an interactive launch refuses until the pty relay of slice L6 (use the harness's print mode: `-- --print TEXT` for Claude Code, `-- exec TEXT`
   for Codex). The hook is a gate on top of the boundary, not the boundary: it denies at once what the profile's role does not run, and a command

@@ -70,7 +70,6 @@ KIND_PHRASES: dict[str, str] = {
     "read": "a read of another folder",
     "toolchain": "a toolchain folder",
     "net": "a network host",
-    "publish": "a change to a file of the project",
     "in-place": "changing the project in place",
 }
 """What each kind of widening is called in the one refusal form: it names the kind and never the subject the session chose."""
@@ -79,7 +78,6 @@ DECISION_LINES: dict[str, str] = {
     "read": "This coding session can read {subject} (it cannot change it).",
     "toolchain": "This coding session can run the programs in {subject}.",
     "net": "This coding session can reach {subject}, and can send to it as well as receive from it; bytes sent are cut at a bound.",
-    "publish": "This coding session can change the file {subject} in your project; the change is applied as the agent made it.",
     "in-place": ("This coding session changes your files directly in {subject}. Files like .env in that folder are readable to it, "
                  "and nothing checks the changes before they land."),
 }

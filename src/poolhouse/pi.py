@@ -19,7 +19,7 @@ from poolhouse.serve import provenance
 __all__ = ["INSTRUCTIONS", "extension", "launch", "models"]
 
 INSTRUCTIONS = harnesses.RECORDS["pi"]
-"""The instruction and settings names Pi reads from a project; `guard.runs_later` refuses a change to one at any depth."""
+"""The instruction and settings names Pi reads from a project (`guard.harnesses`)."""
 
 
 def models(base_url: str, alias: str, window: int, max_output_tokens: int | None = None, key: str = "local") -> str:

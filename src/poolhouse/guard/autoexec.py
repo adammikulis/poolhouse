@@ -1,6 +1,6 @@
 """Writes that put code where something runs it later: git hooks, build and test files, shell startup files, agent settings.
 
-`path_reason` says why a path runs by itself, from `guard.runs_later.classify` and the records it reads (the language registry snapshot, the
+`path_reason` says why a path runs by itself, from `guard.runs_later.why` and the records it reads (the language registry snapshot, the
 harness and ecosystem records); no list of names is kept here. `write_findings` reads the files a Write, Edit, MultiEdit,
 NotebookEdit or apply_patch call would change and returns one finding per file.
 """
@@ -60,7 +60,7 @@ def path_reason(path: str, roots: Sequence[str] = ()) -> str:
 
 def _reason(path: str, roots: Sequence[str]) -> str:
     parts = _parts(path, roots)
-    return runs_later.classify("/".join(parts)).runs if parts else ""
+    return runs_later.why("/".join(parts)) if parts else ""
 
 
 def _patch(text: str) -> Iterator[tuple[str, str]]:

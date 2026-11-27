@@ -1,9 +1,9 @@
 """The oracle of docs/design-isolated-launcher.md 4.4.2: run the real tool on a marker-writing payload at each candidate name.
 
-Every name a tool ran without being told to must be non-plain by `guard.runs_later` (structure, the registry, a harness or an ecosystem
-record, or the files a non-plain file names). A name that left a marker and is plain fails the test, and the fix is to add it to the record
-of its ecosystem (`guard/ecosystems.py`). The oracle measures what tools do; the classifier never reads its output at run time. Source a
-tool only runs because something imports it or the person asks for it (a test file, a module) is plain source by design and not a candidate.
+Every name a tool ran without being told to must get a reason from `guard.runs_later` (a harness or an ecosystem record, the registry or its
+shape). A name that left a marker and gets none fails the test, and the fix is to add it to the record of its ecosystem
+(`guard/ecosystems.py`). The oracle measures what tools do; nothing reads its output at run time. Source a tool only runs because
+something imports it or the person asks for it (a test file, a module) is ordinary source and not a candidate.
 """
 
 from __future__ import annotations
@@ -23,7 +23,6 @@ PYTHON_PAYLOAD = "import os\nopen(os.path.join(os.environ['ORACLE_MARKERS'], {sl
 MAKE_PAYLOAD = "$(shell touch \"$(ORACLE_MARKERS)/{slug}\")\nall: ;\n"
 SHELL_PAYLOAD = "#!/bin/sh\ntouch \"$ORACLE_MARKERS/{slug}\"\n"
 RUST_PAYLOAD = "fn main() {{ std::fs::write(std::env::var(\"ORACLE_MARKERS\").unwrap() + \"/{slug}\", \"\").unwrap(); }}\n"
-JS_PAYLOAD = "require('fs').writeFileSync(process.env.ORACLE_MARKERS + '/{slug}', '');\n"
 CLEAN = {"PATH": os.environ.get("PATH", ""), "LC_ALL": "C", "PYTHONDONTWRITEBYTECODE": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_SYSTEM": os.devnull}
 
 
@@ -48,9 +47,9 @@ def fired(markers: Path) -> set[str]:
     return {entry.name.replace("__", "/") for entry in markers.iterdir()}
 
 
-def must_be_non_plain(names: set[str], root: Path) -> None:
-    plain = [name for name in sorted(names) if runs_later.classify(name, (root / name).read_bytes(), (root / name).stat().st_mode, 1).plain]
-    assert not plain, f"a tool ran {plain} and the classifier calls them plain source: add them to the record of their ecosystem"
+def must_run_later(names: set[str], root: Path) -> None:
+    quiet = [name for name in sorted(names) if not runs_later.why(name, (root / name).read_bytes(), (root / name).stat().st_mode)]
+    assert not quiet, f"a tool ran {quiet} and nothing says they run later: add them to the record of their ecosystem"
 
 
 @pytest.fixture
@@ -62,7 +61,7 @@ def scratch(tmp_path):
     return root, markers
 
 
-def test_every_name_python_and_pytest_run_without_being_asked_is_non_plain(scratch):
+def test_every_name_python_and_pytest_run_without_being_asked_runs_later(scratch):
     root, markers = scratch
     names = ["conftest.py", "tests/conftest.py", "sitecustomize.py", "usercustomize.py", "setup.py", "noxfile.py", "pytest_plugin.py", "plugins/helper.py",
              "src/sitecustomize.py", "manage.py", "tasks.py", "fabfile.py", "wsgi.py", "app.py", "main.py", "run.py", "__main__.py"]
@@ -75,10 +74,10 @@ def test_every_name_python_and_pytest_run_without_being_asked_is_non_plain(scrat
     run([sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", "tests"], root, markers, **path)
     ran = fired(markers)
     assert {"conftest.py", "tests/conftest.py", "sitecustomize.py", "setup.py"} <= ran, f"the oracle ran nothing it should have: {sorted(ran)}"
-    must_be_non_plain(ran, root)
+    must_run_later(ran, root)
 
 
-def test_every_name_make_runs_without_being_asked_is_non_plain(scratch):
+def test_every_name_make_runs_without_being_asked_runs_later(scratch):
     root, markers = scratch
     found = set()
     for index, name in enumerate(("Makefile", "makefile", "GNUmakefile")):
@@ -90,26 +89,8 @@ def test_every_name_make_runs_without_being_asked_is_non_plain(scratch):
         shutil.rmtree(markers)
         markers.mkdir()
         planted = fresh / name
-        assert not runs_later.classify(name, planted.read_bytes(), planted.stat().st_mode, 1).plain, name
+        assert runs_later.why(name, planted.read_bytes(), planted.stat().st_mode), name
     assert len(found) == 3, f"make ran {sorted(found)}"
-
-
-def test_a_file_a_makefile_and_a_package_manifest_name_is_non_plain_because_the_tool_runs_what_they_name(scratch):
-    root, markers = scratch
-    plant(root, "Makefile", "all:\n\tsh scripts/build.sh\n")
-    plant(root, "scripts/build.sh", SHELL_PAYLOAD)
-    plant(root, "scripts/plain-looking.py", PYTHON_PAYLOAD)
-    plant(root, "package.json", '{{"scripts": {{"test": "node tools/check.js"}}}}\n')
-    plant(root, "tools/check.js", JS_PAYLOAD)
-    run(["make"], root, markers)
-    run(["npm", "test", "--offline", "--no-audit", "--no-fund", "--no-update-notifier"], root, markers, npm_config_cache=str(root / "npmcache"))
-    ran = fired(markers)
-    assert ran == {"scripts/build.sh", "tools/check.js"}, sorted(ran)
-    paths = ["Makefile", "scripts/build.sh", "scripts/plain-looking.py", "package.json", "tools/check.js"]
-    verdicts = runs_later.tree(paths, lambda path: ((root / path).read_bytes(), (root / path).stat().st_mode, 1))
-    assert not verdicts["scripts/build.sh"].plain and not verdicts["tools/check.js"].plain
-    assert verdicts["tools/check.js"].klass == "named", "a .js file is source by its extension and non-plain only because package.json names it"
-    assert verdicts["scripts/plain-looking.py"].plain, "a file nothing names stays plain"
 
 
 def usable(program: str) -> bool:
@@ -118,7 +99,7 @@ def usable(program: str) -> bool:
 
 
 @pytest.mark.skipif(not usable("cargo"), reason="the oracle runs the tools the machine has: cargo is absent or has no toolchain here")
-def test_every_name_cargo_runs_without_being_asked_is_non_plain(scratch):
+def test_every_name_cargo_runs_without_being_asked_runs_later(scratch):
     root, markers = scratch
     (root / "Cargo.toml").write_text('[package]\nname = "probe"\nversion = "0.1.0"\nedition = "2021"\n')
     plant(root, "src/main.rs", "fn main() {{}}\n")
@@ -129,10 +110,10 @@ def test_every_name_cargo_runs_without_being_asked_is_non_plain(scratch):
     ran = fired(markers)
     assert built.returncode == 0, built.stderr.decode(errors="replace")[-800:]
     assert ran == {"build.rs"}, sorted(ran)
-    must_be_non_plain(ran, root)
+    must_run_later(ran, root)
 
 
-def test_a_git_hook_runs_and_every_hook_path_is_non_plain(scratch):
+def test_a_git_hook_runs_and_every_hook_path_runs_later(scratch):
     root, markers = scratch
     env = {"GIT_AUTHOR_NAME": "o", "GIT_AUTHOR_EMAIL": "o@example.invalid", "GIT_COMMITTER_NAME": "o", "GIT_COMMITTER_EMAIL": "o@example.invalid"}
     run(["git", "init", "-q"], root, markers, **env)
@@ -144,4 +125,4 @@ def test_a_git_hook_runs_and_every_hook_path_is_non_plain(scratch):
     run(["git", "commit", "-q", "-m", "probe"], root, markers, **env)
     ran = fired(markers)
     assert ran == set(names), sorted(ran)
-    must_be_non_plain(ran, root)
+    must_run_later(ran, root)

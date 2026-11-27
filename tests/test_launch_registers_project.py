@@ -186,10 +186,10 @@ def test_the_state_root_of_this_computer_and_a_folder_inside_it_are_refused_as_a
 def test_registering_a_project_widens_nothing_every_widening_still_needs_its_own_decision(lead, terminal, tmp_path):
     named = fresh(tmp_path)
     house = tmp_path / "home"
-    arguments = Arguments(project=named, read=(str(house / ".ssh"),), allow_net=("pypi.org",), publish=(".github/workflows/x.yml",), in_place=True)
+    arguments = Arguments(project=named, read=(str(house / ".ssh"),), allow_net=("pypi.org",), in_place=True)
     launch = decide_launch(arguments, project=named)
     assert held(named) != "" and not launch.widened and launch.grants == ()
-    assert [each.granted for each in launch.decisions] == [False, False, False, False], "a credential folder, a host beside in-place, a governing file, in-place"
+    assert [each.granted for each in launch.decisions] == [False, False, False], "a credential folder, a host beside in-place, in-place"
 
 
 def test_in_the_prod_preset_the_lead_registers_the_project_it_works_in_and_every_widening_is_still_held_back(lead, terminal, tmp_path):

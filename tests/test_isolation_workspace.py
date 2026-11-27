@@ -91,25 +91,20 @@ def test_a_survivor_or_an_incomplete_tree_skips_publication_keeps_the_stage_and_
     assert unfollowed.deferred, "a tree nobody followed is never taken as ended"
 
 
-def test_a_relaunch_of_the_same_conversation_reuses_the_kept_stage_and_a_rule_naming_the_refused_files_exactly_publishes_them_without_rework(project, tmp_path):
-    from poolhouse.isolation import publish
-
+def test_a_relaunch_of_the_same_conversation_reuses_the_kept_stage_and_a_file_refused_before_is_not_reported_again(project, tmp_path):
     first_sink = Sink()
     first = begin(project, tmp_path, first_sink, conversation="c1")
+    write(first, "opencode.json", "{}\n")
     write(first, "data/table.json", '{"rows": [3]}\n')
-    write(first, "other.json", "{}\n")
-    write(first, "src/ok.py", "ok = 1\n")
     write(first, "scratch.log", "marker\n")
     turn = first.publish_turn()
-    assert turn.applied == ("src/ok.py",) and {each.path for each in turn.refused} == {"data/table.json", "other.json"} and len(first_sink.posts) == 1
+    assert turn.applied == ("data/table.json",) and [each.path for each in turn.refused] == ["opencode.json"] and len(first_sink.posts) == 1
     first.finish(None, stalled=1.0, ended=process_tree.Ended())
-    assert (project / "data" / "table.json").read_bytes() == b'{"rows": []}\n'
     second_sink = Sink()
-    second = begin(project, tmp_path, second_sink, session="s2", conversation="c1", rules=(publish.bind(project, "data/table.json"),))
+    second = begin(project, tmp_path, second_sink, session="s2", conversation="c1")
     assert (second.stage.physical / "scratch.log").read_bytes() == b"marker\n", "the kept stage is the working copy again, not a rebuild from the master"
     again = second.publish_turn()
-    assert again.applied == ("data/table.json",) and (project / "data" / "table.json").read_bytes() == b'{"rows": [3]}\n'
-    assert [(each.path, each.klass) for each in again.refused] == [("other.json", "data")], "the file the rule does not name stays refused"
+    assert again.applied == () and [(each.path, each.klass) for each in again.refused] == [("opencode.json", "settings")]
     assert again.report == "folded" and second_sink.posts == [], "and is not reported again"
     assert not list((tmp_path / "state" / "kept").iterdir()), "a kept stage is used once"
     unrelated = begin(project, tmp_path, Sink(), session="s3", conversation="other")
@@ -150,7 +145,7 @@ def test_the_refused_patch_directory_and_the_environment_links_are_read_only_to_
     (project / ".venv").mkdir()
     (project / ".venv" / "pyvenv.cfg").write_text("home = /usr/bin\n")
     session = begin(project, tmp_path, Sink())
-    write(session, "evil.json", "{}\n")
+    write(session, "opencode.json", "{}\n")
     write(session, "notes/todo.md", "changed\n")
     turn = session.publish_turn()
     [(_, name)] = turn.restored

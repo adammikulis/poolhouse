@@ -55,7 +55,7 @@ def changes(state: str, found: Any) -> str:
 def _outcome(answer: harness.Answer | None, why: str, began: float) -> dict[str, Any]:
     spent = answer.spent if answer else harness.Usage()
     found = answer.published if answer else None
-    published = {name: list(getattr(found, name, ())) for name in ("applied", "refused", "conflicts", "withheld", "patches")}
+    published = {name: list(getattr(found, name, ())) for name in ("applied", "refused", "conflicts", "withheld", "patches", "runs_later")}
     return {**published, "text": answer.text if answer else "", "error": why, "turns": spent.turns, "input_tokens": spent.input_tokens,
             "output_tokens": spent.output_tokens, "cache_read_tokens": spent.cache_read_tokens,
             "cache_creation_tokens": spent.cache_creation_tokens, "model_seconds": spent.seconds,

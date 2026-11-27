@@ -36,7 +36,7 @@ from tests.sandbox_kit import policy
 
 pytest_plugins = ["node_kit"]
 MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "POOLHOUSE_SESSION_ID")
-EVERY = Arguments(read=("/usr/share",), toolchain=("/usr/bin",), allow_net=("pypi.org",), publish=("src/app.py",), in_place=True,
+EVERY = Arguments(read=("/usr/share",), toolchain=("/usr/bin",), allow_net=("pypi.org",), in_place=True,
                   project="/tmp", protect=("/tmp/x",))
 
 
@@ -106,7 +106,7 @@ def pty_report(project: str, tmp_path: Path, confined: bool, root: Path | None =
     """What a process that holds a pty as all of its stdio, a master answering yes and no marker finds when it asks to widen a session."""
     arguments = [(label, f"Arguments({field}={value!r})") for label, field, value in (
         ("read", "read", ("/usr/share",)), ("toolchain", "toolchain", ("/usr/bin",)), ("net", "allow_net", ("pypi.org",)),
-        ("publish", "publish", ("src/app.py",)), ("in-place", "in_place", True), ("project", "project", "/tmp"), ("protect", "protect", ("/tmp/x",)),
+        ("in-place", "in_place", True), ("project", "project", "/tmp"), ("protect", "protect", ("/tmp/x",)),
         ("on", "on", "http://127.0.0.1:1"), ("as", "parent", "somebody"))]
     code = PROGRAM % {"markers": MARKERS, "project": project, "arguments": "[" + ", ".join(f"({a!r}, {b})" for a, b in arguments) + "]"}
     argv = [os.path.realpath(sys.executable), "-I", "-c", f"import sys; sys.path.insert(0, {SOURCE!r})\n" + code]
@@ -172,7 +172,7 @@ def test_a_non_loopback_server_is_refused_for_every_caller_and_a_numeric_loopbac
 
 def test_a_launcher_run_by_any_agent_but_the_lead_or_inside_a_confinement_refuses_every_widening_argument_and_unregistered_projects_and_a_non_loopback_on(
         terminal, tmp_path, monkeypatch, request):
-    for field, value in (("read", ("/usr/share",)), ("toolchain", ("/usr/bin",)), ("allow_net", ("pypi.org",)), ("publish", ("src/app.py",)),
+    for field, value in (("read", ("/usr/share",)), ("toolchain", ("/usr/bin",)), ("allow_net", ("pypi.org",)),
                          ("in_place", True), ("project", "/tmp"), ("protect", ("/tmp/x",))):
         with pytest.raises(AgentRefused):  # a caller outside the lead: marked, and no session the node knows
             monkeypatch.setenv("CLAUDECODE", "1")
@@ -243,12 +243,10 @@ def become(kind: str, request) -> None:
 @pytest.mark.parametrize("kind", ["terminal", "lead"])
 @pytest.mark.parametrize("source", ["task", "policy"])
 def test_the_caps_hold_for_every_caller_and_every_source(terminal, request, monkeypatch, kind, source):
-    named = ProjectPolicy(net=("evil.example", "pypi.org"), publish=("Makefile", "src/app.py", "package.json", ".github/CODEOWNERS"),
-                          read=("/etc",), in_place=True)
+    named = ProjectPolicy(net=("evil.example", "pypi.org"), read=("/etc",), in_place=True)
     policies.save(terminal, named)
     become(kind, request)
-    attempts = [Arguments(in_place=True, allow_net=("pypi.org",)), Arguments(allow_net=("evil.example",)), Arguments(publish=("Makefile",)),
-                Arguments(publish=("package.json",)), Arguments(publish=(".github/CODEOWNERS",)), Arguments(read=("/etc",))]
+    attempts = [Arguments(in_place=True, allow_net=("pypi.org",)), Arguments(allow_net=("evil.example",)), Arguments(read=("/etc",))]
     for arguments in attempts:
         launch = decide_launch(replace(arguments, source=source), project=terminal)
         assert not launch.widened and [each for each in launch.decisions if each.grant is not None] == [], arguments
@@ -256,7 +254,7 @@ def test_the_caps_hold_for_every_caller_and_every_source(terminal, request, monk
     assert in_place_only.widened and in_place_only.unusual, "alone it is allowed by a policy that names it, and it is marked unusual"
 
 
-def test_every_widened_launch_sends_the_sentinel_one_signal_and_in_place_and_net_with_publish_are_marked_unusual(terminal):
+def test_every_widened_launch_sends_the_sentinel_one_signal_and_in_place_is_marked_unusual(terminal):
     node = sentinel.default()
     heard = []
     node.bus.subscribe(heard.append)
@@ -266,7 +264,7 @@ def test_every_widened_launch_sends_the_sentinel_one_signal_and_in_place_and_net
     assert first.widened and len(ours) == 1 and asked["n"] == "isolation.widened"
     assert ours[0].severity.name == "NOTICE" and not first.unusual
     assert set(ours[0].evidence["kinds"]) <= {"net", "read"} and "pypi.org" not in json.dumps(ours[0].evidence), "digests, never subjects"
-    for arguments in (Arguments(in_place=True), Arguments(allow_net=("pypi.org",), publish=("src/app.py",))):
+    for arguments in (Arguments(in_place=True),):
         heard.clear()
         launch = decide_launch(arguments, project=terminal)
         assert launch.unusual and len([event for event in heard if event.kind == "isolation.widened"]) == 1
