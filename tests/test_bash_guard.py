@@ -1,4 +1,4 @@
-"""The Claude Code hook that refuses shells which should have been poolhouse commands.
+"""The Claude Code hook that refuses shells which harm other agents' work, the broker or the repository.
 
 Every rule it enforces was written after the thing it refuses cost real time, and the guard
 itself has one property worth testing hard: it must not fire on text being *written*. It
@@ -33,13 +33,12 @@ def guard(command: str, tool: str = "Bash", **env: str) -> int:
 
 
 @pytest.mark.parametrize("command, why", [
-    ('until ! pgrep -f bench; do sleep 20; done', "a waiter that can never fire"),
-    ('nohup python3 run.py &', "a background job nobody watches"),
-    ('echo hi; nohup ./x &', "still a nohup after a semicolon"),
     ('/opt/homebrew/bin/llama-server --port 8080 -m x.gguf', "a server started by hand"),
-    ('curl -s http://127.0.0.1:8080/v1/chat/completions -d "{}"', "an ad-hoc model probe"),
-    ('hf download unsloth/Qwen3.5-4B-GGUF', "a download by hand"),
     ('pkill -f llama-server', "a kill that leaves the lease behind"),
+    ('grep -n "x" f && git push -f origin 0.2dev', "a search does not hide the push after it"),
+    ('bash -c "grep x" && git push --force origin "main"', "a closing quote does not start a search pattern"),
+    ('echo \\" "; grep x" && git push --force origin "main"', "an escaped quote opens nothing"),
+    ('grep "$(true; git push --force origin 0.2dev)" f', "a pattern that runs a command is not read as text"),
     ('SKIP_NAME_CHECK=1 git commit -m x', "the name hook is not an agent's to skip"),
     ('SKIP_BUDGETS=1 git commit -m x', "the budgets hook is not an agent's to skip"),
     ('git commit --no-verify -m x', "no hook at all"),
@@ -89,7 +88,6 @@ def guard(command: str, tool: str = "Bash", **env: str) -> int:
     ('FOO=1 git push --force origin main', "an assignment in front is still a forced push"),
     ('FOO=1 git add -A', "and still stages everything"),
     ('CUDA_VISIBLE_DEVICES=0 llama-server -m model.gguf', "and still starts a server by hand"),
-    ('FOO=1 nohup poolhouse-bench run &', "and still backgrounds a job nobody watches"),
     ('./build/bin/llama-server -m x.gguf --port 8081', "a built binary run by hand"),
     ('sudo llama-server -m x.gguf', "through sudo"),
     ('exec llama-server', "no arguments at all"),
@@ -133,6 +131,13 @@ def test_the_shells_that_should_have_been_commands_are_refused(command, why):
     'git rev-list --left-right --count origin/main...main',
     'PYTHONPATH=src python3 -m pytest tests -q -n 4',
     'POOLHOUSE_WINDOW_POSITION=3460,20 poolhouse-scrape look https://example.invalid',
+    'until ! pgrep -f bench; do sleep 20; done',
+    'nohup python3 run.py &',
+    'curl -s http://127.0.0.1:8080/v1/chat/completions -d "{}"',
+    'hf download unsloth/Qwen3.5-4B-GGUF',
+    'grep -n -E "one|git stash|two" scripts/hooks/claude-bash-guard',
+    'git -C /w grep -n -E "x; git push --force|y" docs',
+    "rg 'a && git add -A' docs",
 ])
 def test_ordinary_work_is_not_refused(command):
     """A guard that fires on ordinary commands is a guard that gets switched off."""
@@ -140,7 +145,7 @@ def test_ordinary_work_is_not_refused(command):
 
 
 @pytest.mark.parametrize("body", [
-    'never nohup a job &',
+    'never run git add -A',
     'SKIP_NAME_CHECK=1 is a person\'s to set, not an agent\'s',
     'do not run llama-server by hand',
     'no pkill -f llama-server either',
@@ -157,7 +162,7 @@ def test_a_heredoc_body_does_not_hide_a_real_command_after_it():
 
 
 def test_only_bash_is_guarded():
-    assert guard("nohup python3 run.py &", tool="Read") == ALLOWED
+    assert guard("pkill -f llama-server", tool="Read") == ALLOWED
 
 
 def test_the_guard_can_be_switched_off_for_a_session():

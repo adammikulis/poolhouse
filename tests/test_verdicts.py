@@ -19,12 +19,12 @@ from poolhouse.testing.verdicts import Attack, Cache, Limits, Subject, Verdict
 
 GUARD = Path(__file__).resolve().parent.parent / "scripts" / "hooks" / "claude-bash-guard"
 REFUSED = {
-    "nohup": "nohup python3 run.py &",
+    "broker-local": "POOLHOUSE_BROKER_LOCAL=1 poolhouse-serve up m.gguf",
     "server": "/opt/homebrew/bin/llama-server --port 8080 -m x.gguf",
     "stage-all": "git add -A && git commit -m x",
     "push-main": "git push origin main",
     "force": "git push --force origin 0.2dev",
-    "probe": 'curl -s http://127.0.0.1:8080/v1/chat/completions -d "{}"',
+    "kill": "pkill -f llama-server",
 }
 
 
@@ -34,6 +34,13 @@ def guard(tmp_path) -> Path:
     shutil.copy2(GUARD, copy)
     shutil.copy2(GUARD.parent / "rules_loader.py", tmp_path / "rules_loader.py")  # the guard imports its sibling
     return copy
+
+
+def break_the_broker_rule(guard: Path) -> None:
+    text = guard.read_text(encoding="utf-8")
+    broken = text.replace('r"\\bPOOLHOUSE_BROKER_LOCAL="', 'r"\\bPOOLHOUSE_BROKER_LOCALL="')
+    assert broken != text
+    guard.write_text(broken, encoding="utf-8")
 
 
 def attacks_on(guard: Path) -> list[Attack]:
@@ -77,23 +84,21 @@ def test_a_broken_guard_is_not_hidden_by_a_cached_pass(tmp_path, guard) -> None:
     ran: list[str] = []
     cache = Cache(tmp_path / "cache")
     verdicts.run(attacks_on(guard), executor(guard, ran), SUBJECT, cache=cache)
-    guard.write_text(guard.read_text(encoding="utf-8").replace('r"nohup\\b"', 'r"nohupp\\b"'),
-                     encoding="utf-8")
+    break_the_broker_rule(guard)
     ran.clear()
     after = verdicts.run(attacks_on(guard), executor(guard, ran), SUBJECT, cache=cache)
     assert set(ran) == set(REFUSED), "a changed guard invalidates every attack that touches it"
-    assert [o.attack for o in after if not o.verdict.passed] == ["nohup"]
+    assert [o.attack for o in after if not o.verdict.passed] == ["broker-local"]
     assert not any(o.cached for o in after)
 
 
 def test_a_failing_verdict_is_run_again_every_time(tmp_path, guard) -> None:
-    guard.write_text(guard.read_text(encoding="utf-8").replace('r"nohup\\b"', 'r"nohupp\\b"'),
-                     encoding="utf-8")
+    break_the_broker_rule(guard)
     ran: list[str] = []
     cache = Cache(tmp_path / "cache")
     for _ in range(2):
         verdicts.run([attacks_on(guard)[0]], executor(guard, ran), SUBJECT, cache=cache)
-    assert ran == ["nohup", "nohup"]
+    assert ran == ["broker-local", "broker-local"]
 
 
 @pytest.mark.parametrize("change", ["model", "guard", "attack", "surface"])
