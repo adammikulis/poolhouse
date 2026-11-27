@@ -1,7 +1,7 @@
-"""A launch registers the project it works in: the lead (or a terminal) names a git repository, by `--project` or by the folder it runs in, and the
-node holds it when the launch ends; a subagent or an agent the node cannot place gets no registration. Registering widens nothing, what no session
-is given is refused at once with its reason, and a project can be removed at once. A real node, real git and real processes; nothing waits and
-no test answers anything. No model is involved: the gate decides before one is leased.
+"""A launch registers the project it works in: an agent the node places in a session (a lead or a helper), or a terminal, names a git repository, by
+`--project` or by the folder it runs in, and the node holds it when the launch ends; an agent the node cannot place gets no registration.
+Registering widens nothing, what no session is given is refused at once with its reason, and a project can be removed at once. A real node, real
+git and real processes; nothing waits and no test answers anything. No model is involved: the gate decides before one is leased.
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from tests.isolation_world import git
 pytest_plugins = ["node_kit"]
 MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "POOLHOUSE_SESSION_ID")
 REGISTERED = "isolation.project_registered"
-REFUSED = r"not a registered project|only the session that launches"
+REFUSED = r"not a registered project|finds no session above it"
 NOW = 15.0
 """The longest any decision of this file may take: a few git and node calls, never a wait."""
 
@@ -76,8 +76,8 @@ def fresh(tmp_path: Path, name: str = "accept-repo") -> str:
 
 
 def become(kind: str, request) -> None:
-    if kind == "lead":
-        request.getfixturevalue("lead")
+    if kind != "terminal":
+        request.getfixturevalue(kind)
 
 
 def held(path: str) -> str:
@@ -106,8 +106,8 @@ def test_the_lead_names_a_repository_and_the_launch_registers_it_logs_it_and_tel
     assert again.decisions == () and held(named) == board and told == [REGISTERED], "a second launch finds the project and signals nothing"
 
 
-@pytest.mark.parametrize("kind", ["terminal", "lead"])
-def test_a_launch_in_a_repository_the_node_does_not_hold_registers_it_for_the_lead_and_for_a_terminal(kind, terminal, request, tmp_path):
+@pytest.mark.parametrize("kind", ["terminal", "lead", "subagent"])
+def test_a_launch_in_a_repository_the_node_does_not_hold_registers_it_for_a_session_and_for_a_terminal(kind, terminal, request, tmp_path):
     become(kind, request)
     folder = fresh(tmp_path, "scratch-repo")
     decide_launch(Arguments(), project=folder)
@@ -120,20 +120,15 @@ def test_a_launch_in_a_repository_the_node_does_not_hold_registers_it_for_the_le
     assert held(sibling) == held(folder) and told == [], "a worktree of a registered project is that project"
 
 
-def test_a_subagent_or_an_agent_the_node_cannot_place_gets_no_registration_and_a_plain_reason(terminal, tmp_path, monkeypatch, request):
+def test_an_agent_the_node_cannot_place_gets_no_registration_and_a_plain_reason(terminal, tmp_path, monkeypatch):
     named = fresh(tmp_path)
     monkeypatch.setenv("CLAUDECODE", "1")  # marked, and in no tree of a session the node holds
-    for arguments in (Arguments(), Arguments(project=named)):
-        with pytest.raises(AgentRefused, match=REFUSED):
-            decide_launch(arguments, project=named)
-    monkeypatch.delenv("CLAUDECODE")
-    request.getfixturevalue("subagent")
     for arguments in (Arguments(), Arguments(project=named)):
         began = time.monotonic()
         with pytest.raises(AgentRefused, match=REFUSED):
             decide_launch(arguments, project=named)
         assert time.monotonic() - began < NOW
-    assert held(named) == "", "the node holds nothing for either"
+    assert held(named) == "", "the node holds nothing for it"
     decide_launch(Arguments(), project=terminal)  # its own registered project: the default reach, as before
 
 
@@ -226,16 +221,17 @@ def run(*argv: str, capsys) -> tuple[int, str]:
     return code, said.out + said.err
 
 
-def test_the_project_command_lists_and_removes_for_the_lead_and_a_terminal_and_refuses_every_other_agent(terminal, tmp_path, capsys, request, monkeypatch):
+def test_the_project_command_lists_and_removes_for_a_helper_and_refuses_an_agent_the_node_cannot_place(terminal, tmp_path, capsys, request, monkeypatch):
     named = fresh(tmp_path)
     decide_launch(Arguments(), project=named)
     board = held(named)
     code, shown = run("list", capsys=capsys)
     assert code == 0 and board in shown and named in shown
-    request.getfixturevalue("subagent")
+    monkeypatch.setenv("CLAUDECODE", "1")  # marked, and in no tree of a session the node holds
     code, shown = run("remove", board, capsys=capsys)
-    assert code == 3 and held(named) == board, "a subagent removes nothing"
-    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", request.getfixturevalue("lead").name)
+    assert code == 3 and held(named) == board and "finds no session above it" in shown, "an agent the node cannot place removes nothing"
+    monkeypatch.delenv("CLAUDECODE")
+    request.getfixturevalue("subagent")
     code, shown = run("remove", "no-such-project", capsys=capsys)
     assert code == 3 and "could not remove" in shown
     code, shown = run("remove", named, capsys=capsys)

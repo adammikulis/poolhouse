@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 
 from poolhouse import authority, node_launch
-from poolhouse.caller import AgentRefused
 from poolhouse.isolation import Arguments, IsolationRefused, decide_launch, policy as policies
 from poolhouse.isolation.policy import ProjectPolicy
 from tests.isolation_kit import SOURCE, person_home, registered_project
@@ -102,15 +101,17 @@ def test_a_process_that_is_not_in_the_leads_tree_does_not_become_the_lead_by_nam
     inside = descendant(GATE % {"project": terminal}, bare(workspace_node, **named))
     assert said(inside).startswith("passed"), "the control: the lead's own process passes"
     _, shown, errors = workspace_node.terminal(program=program(GATE % {"project": terminal}), env=named)
-    assert said(shown).startswith("refused") and "only the session that launches" in shown, (shown, errors)
+    assert said(shown).startswith("refused") and "finds no session above it" in shown, (shown, errors)
 
 
-def test_a_subagents_marker_or_a_helpers_name_narrows_the_lead_and_never_widens_it(terminal, workspace_node):
+def test_a_helpers_marker_or_name_passes_in_a_sessions_tree_and_places_no_process_outside_it(terminal, workspace_node):
     lead_session = workspace_node.member("lead")
     kid = workspace_node.member("kid", parent=lead_session)
     for more in ({"POOLHOUSE_SUBAGENT": "kid"}, {"POOLHOUSE_WORKSPACE_AGENT": kid.name}):
         shown = descendant(GATE % {"project": terminal}, bare(workspace_node, **more))
-        assert said(shown).startswith("refused") and "only the session that launches" in shown, (more, shown)
+        assert said(shown).startswith("passed"), (more, shown)
+        _, outside, errors = workspace_node.terminal(program=program(GATE % {"project": terminal}), env={"CLAUDECODE": "1", **more})
+        assert said(outside).startswith("refused") and "finds no session above it" in outside, (more, outside, errors)
     assert said(descendant(GATE % {"project": terminal}, bare(workspace_node))).startswith("passed"), "no marker: the lead's own tree"
 
 
@@ -156,20 +157,15 @@ def test_a_worktree_of_the_registered_project_in_the_temp_folder_has_the_project
         assert launch.decisions[0].cause == "outside the project policy", "the person's policy bounds the read a task names"
 
 
-def test_a_copy_of_the_project_is_a_project_of_its_own_that_only_the_lead_registers_and_a_folder_that_is_no_repository_is_refused(
+def test_a_copy_of_the_project_is_a_project_of_its_own_that_a_helper_registers_and_a_folder_that_is_no_repository_is_refused(
         lead, terminal, workspace_node, tmp_path, monkeypatch):
     copy = tmp_path / "copy"
     subprocess.run(["cp", "-R", terminal, str(copy)], check=True)
     assert policies.key_of(str(copy)) == "", "a copy holds its own git directory: another repository, which the node does not hold"
     kid = workspace_node.member("kid", parent=lead)
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", kid.name)
-    for arguments in (Arguments(read=("/usr/share",)), Arguments(project=str(copy)), Arguments()):
-        with pytest.raises(AgentRefused):
-            decide_launch(arguments, project=str(copy))
-    assert policies.key_of(str(copy)) == "", "a subagent registers nothing"
-    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", lead.name)
     decide_launch(Arguments(read=("/usr/share",)), project=str(copy))
-    assert policies.key_of(str(copy)) not in ("", policies.key_of(terminal)), "the lead's launch made the copy a project of its own"
+    assert policies.key_of(str(copy)) not in ("", policies.key_of(terminal)), "the helper's launch made the copy a project of its own"
     nowhere = Path(tempfile.gettempdir()).resolve() / "ph-attack-not-registered"
     nowhere.mkdir(exist_ok=True)
     with pytest.raises(IsolationRefused, match="this folder is not one"):

@@ -10,7 +10,7 @@ from local_kit import team  # noqa: F401
 from node_kit import node_binary, workspace_node  # noqa: F401
 from test_fleet_ui import Serving
 from test_workspace_board_ui import browser
-from test_workspace_local_agent import PICK, sleeper
+from test_workspace_local_agent import PICK, sleeper, unconfinable
 
 from poolhouse.fleet import extension_routes
 from poolhouse.workspace import agent_routes, localagent, localmodel, localprofile, localstart
@@ -42,7 +42,7 @@ def served(team, tmp_path, monkeypatch):  # noqa: F811
 
 
 @pytest.mark.redteam
-def test_actual_fleet_controls_require_auth_origin_header_and_typed_person_payload(served):
+def test_actual_fleet_controls_require_auth_origin_header_and_typed_person_payload(served, monkeypatch):
     server, kit, children, worker = served
     origin = {'Origin': f'http://127.0.0.1:{server.port}'}
     body = {'name':'local-worker','model':PICK.ref,'profile':'coding','harness':'claude',
@@ -55,9 +55,10 @@ def test_actual_fleet_controls_require_auth_origin_header_and_typed_person_paylo
     status_path=localagent.folder(kit.base)/"local-worker.status.json"
     status_path.write_text(json.dumps({"state":"stopped","beat":1,"tasks":99,"lease":{"id":"old"}}))
     before = localagent.load(kit.base, 'local-worker')
+    sentence = unconfinable(monkeypatch)
     for _ in range(2):
         code, result, _ = server.call('/ui/agents/start', method='POST', body=body, headers=origin)
-        assert code == 400 and 'isolated session permissions' in result['error']
+        assert code == 400 and result == {'error': sentence}, (code, result)
     assert not children
     assert localagent.load(kit.base, 'local-worker') == before
     assert json.loads(status_path.read_text()) == {"state":"stopped","beat":1,"tasks":99,"lease":{"id":"old"}}
@@ -68,8 +69,9 @@ def test_actual_fleet_controls_require_auth_origin_header_and_typed_person_paylo
 
 
 @pytest.mark.slow
-def test_person_board_controls_preserve_saved_settings_when_native_start_is_unavailable(served, browser):
+def test_person_board_controls_preserve_saved_settings_when_native_start_is_unavailable(served, browser, monkeypatch):
     server, kit, children, _ = served
+    sentence = unconfinable(monkeypatch)
     page = browser.new_page()
     try:
         page.goto(f'http://127.0.0.1:{server.port}/ui/#chat')
@@ -94,7 +96,7 @@ def test_person_board_controls_preserve_saved_settings_when_native_start_is_unav
         page.screenshot(path='/private/tmp/poolhouse-coding-contract-configured.png')
         before = localagent.load(kit.base, 'local-worker')
         controls.get_by_role('button',name='Start a local agent',exact=True).click()
-        page.wait_for_function("() => document.querySelector('poolhouse-agents')?.shadowRoot?.querySelector('.note[role=status]')?.textContent.includes('isolated session permissions')")
+        page.wait_for_function("said => document.querySelector('poolhouse-agents')?.shadowRoot?.querySelector('.note[role=status]')?.textContent.includes(said)", arg=sentence)
         page.screenshot(path='/private/tmp/poolhouse-coding-contract-refused.png')
         assert not children
         assert localagent.load(kit.base, 'local-worker') == before

@@ -10,6 +10,7 @@ from typing import Any
 from poolhouse import hub, optional
 from poolhouse.hub.naming import _SHARD
 from poolhouse.log import say, warn
+from poolhouse.serve.tensors import resident_bytes
 from poolhouse.units import human_bytes
 
 
@@ -154,14 +155,34 @@ def _fetch(args) -> int:
 
 
 def _builds(repo: str, ending: str, listing: list[tuple[str, int]]) -> None:
-    """One line per build: its total, whether it fits here and whether it is downloaded."""
+    """One line per build: its total, whether it fits here and whether it is downloaded.
+
+    What must fit is the build less its gathered lookup table, which a server reads from disk. Only a downloaded build's header says how
+    big that table is, so a build that is not here and fits only without one says so."""
     fits = hub.room()
     mine = hub.on_disk()
     if fits:
         say(f"this machine can serve about {human_bytes(fits)}\n")
-    for name, size, shards in hub.builds(repo, ending=ending):
-        downloaded = sum(1 for f, _s in hub.build_files(repo, name, ending) if f in mine)
-        mark = "" if not fits else ("  fits" if size < fits * 0.95 else "  TOO BIG")
+    here = {path.name: path for path in reversed(hub.weight_paths())}
+    rows = [(name, size, shards, sorted(f for f, _s in hub.build_files(repo, name, ending)))
+            for name, size, shards in hub.builds(repo, ending=ending)]
+    tables = {name: size - resident_bytes(size, here[files[0]]) for name, size, shards, files in rows
+              if files and sum(f in mine and f in here for f in files) >= shards}
+    known = max(tables.values(), default=0)
+    limit = fits * 0.95
+    for name, size, shards, files in rows:
+        downloaded = sum(1 for f in files if f in mine)
+        table = tables.get(name, 0)
+        if not fits:
+            mark = ""
+        elif size < limit:
+            mark = "  fits"
+        elif size - table < limit:
+            mark = f"  fits ({human_bytes(table)} lookup table read from disk)"
+        elif not downloaded and size - known < limit:
+            mark = f"  may fit: needs a lookup table read from disk, {human_bytes(known)} in a downloaded build"
+        else:
+            mark = "  TOO BIG"
         if downloaded:
             mark = ("  ON THIS MACHINE" if downloaded >= shards
                     else f"  {downloaded}/{shards} downloaded") + mark

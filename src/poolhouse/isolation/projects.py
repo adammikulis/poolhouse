@@ -1,4 +1,4 @@
-"""The projects of this computer that a launch registers and that the lead removes (docs/design-isolated-launcher.md, 8.3).
+"""The projects of this computer that a launch registers and that a session removes (docs/design-isolated-launcher.md, 8.3).
 
 A coding session works on a confined copy of one git project and publishes its plain changes: naming a project is the base reach of a launch, so
 the launching session's own project, or the one the person asked it to work on, is registered by the launch itself with the node's place verb.
@@ -62,7 +62,7 @@ def register(path: str, *, issuer: str, source: str, emit: Emit) -> str:
 
 def remove(target: str, *, issuer: str) -> str:
     """Forget the registered project ``target`` names (its id, or a folder of it, one that is gone included) and return its board. The caller has
-    been checked as the lead or a terminal by the caller of this function. A target that names no project is `IsolationRefused`."""
+    been checked by the launch gate (`gate.remove_project`) before this function. A target that names no project is `IsolationRefused`."""
     client = board_client.Client(ancestry.node_state())
     try:
         board = place.remove(client, target)

@@ -164,12 +164,14 @@ class Job:
     jobs: int
     tools: Toolchain
     wall_seconds: float = WALL_SECONDS
+    target: str = CMAKE_TARGET
 
 
 def compile_source(job: Job, say: Callable[[str], None] = lambda _text: None) -> Path:
     """Configure and build ``job.source`` with fixed cmake arguments inside the sandbox: it reads
     the source tree and the toolchain, writes only ``job.work``, and has no network. Returns the
-    built server binary; `BuildFailed` carries the tail of the output otherwise."""
+    built binary of ``job.target`` (the server's unless a tool is named); `BuildFailed` carries the
+    tail of the output otherwise."""
     tools = job.tools
     work, source = Path(os.path.realpath(job.work)), Path(os.path.realpath(job.source))
     policy = _policy(tools, source, work, job.wall_seconds)
@@ -179,7 +181,7 @@ def compile_source(job: Job, say: Callable[[str], None] = lambda _text: None) ->
         ("configure", [tools.cmake, "-S", str(source), "-B", str(build), *FIXED_FLAGS, *tools.arguments(),
                        *cmake_flags(), "-DLLAMA_CURL=OFF", *version, f"-DLLAMA_BUILD_COMMIT={job.commit[:9]}"]),
         ("compile", [tools.cmake, "--build", str(build), "--config", "Release", "--target",
-                     CMAKE_TARGET, "-j", str(job.jobs)]),
+                     job.target, "-j", str(job.jobs)]),
     )
     cached = tools.ccache
     say(f"  ccache: {cached.exe}, cache {cached.directory} (limit {llamacpp_ccache.MAX_SIZE})" if cached
@@ -194,7 +196,8 @@ def compile_source(job: Job, say: Callable[[str], None] = lambda _text: None) ->
             raise BuildFailed(f"{name} failed ({'timed out' if done.timed_out else done.returncode}):\n{tail}")
     if cached:
         say(f"  {cached.summary(work.parent)}")
-    built = build / "bin" / server_name()
+    name = server_name() if job.target == CMAKE_TARGET else job.target + Path(server_name()).suffix
+    built = build / "bin" / name
     if not built.is_file():
-        raise BuildFailed(f"the build produced no {server_name()} in {built.parent}")
+        raise BuildFailed(f"the build produced no {name} in {built.parent}")
     return built

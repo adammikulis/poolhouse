@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A PreToolUse hook on Bash and Monitor that refuses shell commands that should be poolhouse commands.
+"""A PreToolUse hook on Bash and Monitor that refuses shell commands that harm other agents' work, the broker or the repository.
 
 Claude Code runs this before every Bash and Monitor call. Exit 2 blocks the command and hands the
 message back.
@@ -70,15 +70,6 @@ REFUSE = [
      "under somebody else's commit message. Name the files you mean: `git add path/one.py "
      "path/two.py`."),
     (STASH, STASH_MESSAGE),
-    (r"until\s*!\s*pgrep|while\s+pgrep|until\s+pgrep",
-     "Do not hand-write a waiter. `pgrep -f` matches the waiting shell's own command line, "
-     "so the loop never exits -- two of them spun for an afternoon and the work queued "
-     "behind them never ran. `python -m poolhouse.bench run|sweep|drafts` now takes a lock and waits "
-     "for whoever is measuring (`poolhouse.lock.only_one`); just start it."),
-    (RUN + r"nohup\b",
-     "Do not `nohup ... &`. Use the Bash tool's run_in_background, which reports the exit "
-     "code and keeps the output, or `python -m poolhouse.bench sweep --serve`, which puts one model up "
-     "at a time on purpose. Backgrounded jobs have died silently here before."),
     (RUN + r"(sudo\s+|env\s+|time\s+|nice\s+|nohup\s+)*(\S*/)?llama-server(\s|$)",
      "Do not start llama-server by hand. `poolhouse-serve up MODEL --context 256k` asks the "
      "broker for a lease: it checks the memory, queues behind other leases, picks the port "
@@ -93,18 +84,6 @@ REFUSE = [
      r"--unmanaged|--no-queue)\b",
      "`poolhouse-serve up` is a lease and no flag skips the broker. Drop the flag: "
      "`poolhouse-serve up MODEL --context N` (add --no-wait to return while it is queued)."),
-    (r"\bfind\b[^|;]*\.gguf|\bls\b[^|;]*\*\.gguf",
-     "Do not hunt for GGUFs with find/ls. `poolhouse-models find <words>` searches the Hub "
-     "and `poolhouse-models files <repo>` lists what is already on this machine -- a Hub "
-     "cache is symlinks into blobs/, so `ls -l` reports 79 bytes for a 46G shard and reading "
-     "that as 'not downloaded' nearly re-fetched 87G."),
-    (r"\bhuggingface-cli\s+download\b|\bhf\s+download\b",
-     "Do not download by hand. `poolhouse-serve up hf:owner/repo/file` fetches on first use, "
-     "into the same cache, and `poolhouse-models files <repo>` says what is already here."),
-    (r"\bcurl\b[^|;]*(127\.0\.0\.1|localhost)[^|;]*(/v1/|/props|/slots|/completion)",
-     "Do not probe the model with curl. `poolhouse.client.Client` carries the sampling and "
-     "the budgets, and `python -m poolhouse.bench` records what it measured. Ad-hoc curl probes have "
-     "produced numbers that went nowhere and an 80-token budget that returned empty text."),
     (r"\bpkill\b[^|;]*llama|\bkillall\b[^|;]*llama",
      "Do not pkill llama-server. `poolhouse-serve down --port N` releases the lease too; "
      "killing the process leaves the lease behind and the next `up` refuses."),
@@ -165,8 +144,21 @@ def without_heredocs(command: str) -> str:
 SEARCHERS = r"grep|egrep|fgrep|rg|ag|ack|awk|sed|comm|diff"
 
 
+QUOTED = r"'[^']*'|\"(?:\\.|[^\"\\])*\""
+SEARCH = re.compile(rf"(?P<outside>\\.|{QUOTED})|\b(?:grep|egrep|fgrep|rg)\b(?:\\.|{QUOTED}|[^|;&\n'\"\\])*")
+"""A grep or rg command with its quoted patterns read whole, or a quoted or escaped text outside one, which is consumed so that a closing
+quote is never read as the start of a pattern."""
+
+
 def without_search_patterns(command: str) -> str:
-    """Drop the quoted arguments of a search command, which are text being looked for."""
+    """Drop the quoted arguments of a search command, which are text being looked for. A pattern given to grep or rg may hold `|`, `;` or
+    `&`; a double-quoted one that runs a command (`$(`, a backtick) is not read whole."""
+    def blank(quoted: re.Match) -> str:
+        text = quoted.group(0)
+        return text if text.startswith('"') and ("$(" in text or "`" in text) else "''"
+
+    command = SEARCH.sub(lambda found: found.group(0) if found.group("outside") else re.sub(QUOTED, blank, found.group(0)), command)
+
     def strip(match: re.Match) -> str:
         head = match.group(0)
         return re.sub(r"'[^']*'|\"[^\"]*\"", "''", head)

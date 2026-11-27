@@ -27,7 +27,7 @@ def test_metadata_registration_never_exports_source(repository, tmp_path, monkey
     assert registry.candidates() == [{"id": identifier, "name": "project"}]
     assert registry.list() == []
     assert registry.catalogue()["projects"] == []
-    assert registry.boards() == [{"id": identifier, "name": "project", "machine": "device"}]
+    assert registry.boards() == [{"id": identifier, "name": "project", "machine": "device", "available": True, "preferred": True}]
     assert not (tmp_path / "registry" / "project-bundles").exists()
     with pytest.raises(source.ProjectError, match="not shared"):
         registry.snapshot(identifier, "")
@@ -58,7 +58,7 @@ def test_checkout_with_a_valid_identity_marker_is_registered_under_it(repository
     write_json(repository / ".poolhouse-project.json", {"kind": "project-checkout", "project_id": identifier})
     registry = ProjectRegistry(tmp_path / "registry", "device", (repository,))
     assert registry.candidates() == [{"id": identifier, "name": "project"}]
-    assert registry.boards() == [{"id": identifier, "name": "project", "machine": "device"}]
+    assert registry.boards() == [{"id": identifier, "name": "project", "machine": "device", "available": True, "preferred": True}]
 
 
 @pytest.mark.redteam
@@ -103,13 +103,13 @@ def test_register_native_project_is_metadata_only_and_persistent(repository, tmp
     nested.mkdir()
     identifier = identity(repository)
     registry = ProjectRegistry(tmp_path / "registry", "device")
-    assert registry.register(nested, identifier) == {"id": identifier, "name": "project", "machine": "device"}
+    assert registry.register(nested, identifier) == {"id": identifier, "name": "project", "machine": "device", "available": True, "preferred": True}
     assert registry.get(identifier).root == str(repository)
     assert registry.list() == []
     assert not (registry.root / "project-bundles").exists()
     with pytest.raises(source.ProjectError, match="not shared"):
         registry.snapshot(identifier, "")
-    assert registry.register(repository, identifier) == {"id": identifier, "name": "project", "machine": "device"}
+    assert registry.register(repository, identifier) == {"id": identifier, "name": "project", "machine": "device", "available": True, "preferred": True}
     loaded = ProjectRegistry(registry.root, "device")
     assert loaded.get(identifier).root == str(repository)
     assert loaded.list() == []
@@ -138,13 +138,13 @@ def test_native_registration_refuses_unbounded_or_relative_path(tmp_path, root):
 def test_person_workspace_catalogue_includes_every_unshared_local_project(repository, tmp_path, monkeypatch):
     registry = ProjectRegistry(tmp_path / 'registry', 'device', (repository,))
     identifier = identity(repository)
-    monkeypatch.setattr(project_client, 'members', lambda: [])
+    monkeypatch.setattr(project_client, 'members', lambda ui: [])
     monkeypatch.setattr(source, 'build', lambda *args: pytest.fail('workspace catalogue published source'))
     result = project_client.available(SimpleNamespace(projects=registry))
     assert registry.get(identifier).shared is False
     assert result['projects'] == result['local'] == []
     assert registry.catalogue()['projects'] == []
-    assert result['workspaces'] == [{'id': identifier, 'name': 'project', 'machine': 'device', 'is_self': True}]
+    assert result['workspaces'] == [{'id': identifier, 'name': 'project', 'machine': 'device', 'available': True, 'preferred': True, 'is_self': True}]
     assert not (tmp_path / 'registry' / 'project-bundles').exists()
 
 
@@ -155,4 +155,4 @@ def test_registry_loads_projects_saved_with_fields_it_does_not_know(tmp_path):
         "authority_machine": "retired", "board_host": "https://device:8770"}]})
     registry = ProjectRegistry(tmp_path, "device")
     assert registry.get(identifier).name == "old"
-    assert registry.boards() == [{"id": identifier, "name": "old", "machine": "device"}]
+    assert registry.boards() == [{"id": identifier, "name": "old", "machine": "device", "available": False, "preferred": False}]
