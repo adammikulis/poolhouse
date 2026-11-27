@@ -73,7 +73,9 @@ class Nodes:
         approve(asking, "service_bind", narrowed={"resource": draft["resource"], "uses": 1})
         key = serialization.load_pem_private_key(identity.keyfile.read_bytes(), password=None)
         proof = key.sign(bytes.fromhex(draft["proof_bytes"]), ec.ECDSA(hashes.SHA256())).hex()   # the node binds only who holds the key
-        return asking.call("service_bind", token=asking.token, challenge=draft["challenge"], proof=proof, **params)
+        bound = asking.call("service_bind", token=asking.token, challenge=draft["challenge"], proof=proof, **params)
+        device.client.call("retire", BOARD, asking.token, target="")   # a board holds only so many live main sessions, and a module binds more times
+        return bound
 
     def serve(self, *ports: int, host: str = "127.0.0.1") -> None:
         """Bind each node's service at its port on ``host`` and wait until every node lists them all."""
