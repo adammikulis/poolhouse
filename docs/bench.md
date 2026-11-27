@@ -534,8 +534,7 @@ the build is over 24 hours old and behind; it never updates the build
 ## Quantisations of one model, compared here
 
 `quants` asks whether a build, IQ ones in particular, does worse on this machine than charts made elsewhere
-suggest. It runs from a checkout, as every bench command does (the wheel leaves the bench out, so an installed
-`poolhouse-bench` is a launcher left over from an older runtime and fails on import):
+suggest. It runs from a checkout, as every bench command does; the wheel leaves the bench out.
 
 ```
 PYTHONPATH=src python -m poolhouse.bench quants plan --set qwen3.8-27b
