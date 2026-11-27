@@ -551,6 +551,7 @@ def _no_real_cache_or_ports(monkeypatch, tmp_path):
 
 
 from real_machine_guard import _keyring_never_resolves_a_real_backend  # noqa: E402, F401
+from testagentenv_pytest import _no_agent_markers  # noqa: E402, F401  (without `scripts/test` too)
 
 REAL_KEYSTORES = (("macOS", "Keyring"), ("SecretService", "Keyring"), ("Windows", "WinVaultKeyring"),
                   ("kwallet", "DBusKeyring"), ("libsecret", "Keyring"))

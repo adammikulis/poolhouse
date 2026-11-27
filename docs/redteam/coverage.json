@@ -1,10 +1,10 @@
 {
- "surfaces": 877,
+ "surfaces": 894,
  "by_status": {
-  "covered": 559,
-  "partial": 180,
+  "covered": 565,
+  "partial": 189,
   "uncovered": 51,
-  "n/a": 87,
+  "n/a": 89,
   "unmapped": 0
  },
  "by_kind": {
@@ -26,7 +26,7 @@
    "covered": 10,
    "partial": 0,
    "uncovered": 4,
-   "n/a": 19,
+   "n/a": 20,
    "unmapped": 0
   },
   "desktop": {
@@ -37,8 +37,8 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 61,
-   "partial": 45,
+   "covered": 63,
+   "partial": 46,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 0
@@ -58,7 +58,7 @@
    "unmapped": 0
   },
   "keystore": {
-   "covered": 2,
+   "covered": 4,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -68,7 +68,7 @@
    "covered": 7,
    "partial": 3,
    "uncovered": 0,
-   "n/a": 31,
+   "n/a": 33,
    "unmapped": 0
   },
   "mcp-tool": {
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 88,
+   "covered": 89,
    "partial": 0,
    "uncovered": 47,
    "n/a": 0,
@@ -100,10 +100,10 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 102,
-   "partial": 61,
+   "covered": 103,
+   "partial": 69,
    "uncovered": 0,
-   "n/a": 4,
+   "n/a": 3,
    "unmapped": 0
   }
  },
@@ -973,6 +973,16 @@
    "note": "prompts built from the person's own benchmark questions, canaries and fixed smoke checks"
   },
   {
+   "id": "context:bench/quants.py",
+   "kind": "context",
+   "source": "bench/quants.py",
+   "trust": "tool results, pages, files, members, stored facts",
+   "attacker": "text from outside is read by a model as an instruction",
+   "status": "n/a",
+   "tests": [],
+   "note": "prompts built from the person's own benchmark questions, canaries and fixed smoke checks"
+  },
+  {
    "id": "context:bench/speed.py",
    "kind": "context",
    "source": "bench/speed.py",
@@ -1494,6 +1504,18 @@
    "id": "egress:client/health.py:is_healthy",
    "kind": "egress",
    "source": "client/health.py:is_healthy",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "partial",
+   "tests": [
+    "tests/test_net_no_bypass.py"
+   ],
+   "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
+  },
+  {
+   "id": "egress:client/health.py:refuses_key",
+   "kind": "egress",
+   "source": "client/health.py:refuses_key",
    "trust": "addresses and redirects named by pages, repositories and members",
    "attacker": "a redirect or address sends the request somewhere the person did not choose",
    "status": "partial",
@@ -2170,6 +2192,21 @@
    "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
   },
   {
+   "id": "egress:harnessing.py:serve_and_run",
+   "kind": "egress",
+   "source": "harnessing.py:serve_and_run",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_launch_on.py::test_a_listener_this_computer_cannot_show_is_its_server_is_sent_no_key",
+    "tests/test_launch_on.py::test_the_key_never_goes_to_the_other_loopback_address_another_process_holds",
+    "tests/test_launch_on.py::test_an_address_two_programs_could_read_differently_is_given_no_key_even_for_our_server",
+    "tests/test_launch_on.py::test_a_request_to_this_computer_never_goes_through_a_proxy_of_the_environment"
+   ],
+   "note": "an address given with --on that is not shown to be this computer's keyed server is asked nothing, and no proxy of the environment is handed a key"
+  },
+  {
    "id": "egress:http.py:_addresses",
    "kind": "egress",
    "source": "http.py:_addresses",
@@ -2296,6 +2333,21 @@
    "id": "egress:net/browserguard.py:allowed",
    "kind": "egress",
    "source": "net/browserguard.py:allowed",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_no_bypass.py",
+    "tests/test_httpguard.py",
+    "tests/test_net_download.py",
+    "tests/test_net_untrusted.py"
+   ],
+   "note": ""
+  },
+  {
+   "id": "egress:net/download.py:_bring",
+   "kind": "egress",
+   "source": "net/download.py:_bring",
    "trust": "addresses and redirects named by pages, repositories and members",
    "attacker": "a redirect or address sends the request somewhere the person did not choose",
    "status": "covered",
@@ -4405,6 +4457,18 @@
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
   },
   {
+   "id": "keystore:guard/unboxed.py:<module>",
+   "kind": "keystore",
+   "source": "guard/unboxed.py:<module>",
+   "trust": "the process environment and the files on disk",
+   "attacker": "a failure path leaks, downgrades or overwrites a secret",
+   "status": "covered",
+   "tests": [
+    "tests/test_delegate_unsandboxed_blocks.py::test_a_read_of_a_common_credential_store_is_refused"
+   ],
+   "note": "the module only names the credential-store commands it refuses, opens no keystore and holds no secret; a call that reads a common credential store is refused"
+  },
+  {
    "id": "keystore:installed.py:<module>",
    "kind": "keystore",
    "source": "installed.py:<module>",
@@ -4420,6 +4484,24 @@
    "id": "keystore:keystore.py:<module>",
    "kind": "keystore",
    "source": "keystore.py:<module>",
+   "trust": "the process environment and the files on disk",
+   "attacker": "a failure path leaks, downgrades or overwrites a secret",
+   "status": "covered",
+   "tests": [
+    "tests/test_keystore.py",
+    "tests/test_keystore_gate.py",
+    "tests/test_redteam_keystore.py",
+    "tests/test_memory_vault.py::test_no_keystore_fails_closed_without_writing_a_key",
+    "tests/test_memory_vault.py::test_the_key_is_never_written_beside_the_data",
+    "tests/test_credentials.py",
+    "tests/test_no_real_keychain.py"
+   ],
+   "note": "refusal, rate ceiling, background process, other-purpose key, label collision, master in no file or log"
+  },
+  {
+   "id": "keystore:keystore.py:Keystore._ring",
+   "kind": "keystore",
+   "source": "keystore.py:Keystore._ring",
    "trust": "the process environment and the files on disk",
    "attacker": "a failure path leaks, downgrades or overwrites a secret",
    "status": "covered",
@@ -4690,9 +4772,9 @@
    "note": "outbound HTTP sockets bind an optional source address; they never listen or accept connections"
   },
   {
-   "id": "listener:isolation/confinement.py:prepare",
+   "id": "listener:isolation/ports.py:PortBridge._bound",
    "kind": "listener",
-   "source": "isolation/confinement.py:prepare",
+   "source": "isolation/ports.py:PortBridge._bound",
    "trust": "anything that can connect to the address",
    "attacker": "an unauthenticated or cross-origin client reaches the port",
    "status": "n/a",
@@ -4700,9 +4782,9 @@
    "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
   },
   {
-   "id": "listener:isolation/grants.py:_file",
+   "id": "listener:isolation/ports.py:PortBridge.start",
    "kind": "listener",
-   "source": "isolation/grants.py:_file",
+   "source": "isolation/ports.py:PortBridge.start",
    "trust": "anything that can connect to the address",
    "attacker": "an unauthenticated or cross-origin client reaches the port",
    "status": "n/a",
@@ -4723,6 +4805,16 @@
    "id": "listener:isolation/probe.py:p09.bind",
    "kind": "listener",
    "source": "isolation/probe.py:p09.bind",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
+  },
+  {
+   "id": "listener:isolation/probe.py:p09.listen",
+   "kind": "listener",
+   "source": "isolation/probe.py:p09.listen",
    "trust": "anything that can connect to the address",
    "attacker": "an unauthenticated or cross-origin client reaches the port",
    "status": "n/a",
@@ -4753,6 +4845,16 @@
    "id": "listener:log.py:to",
    "kind": "listener",
    "source": "log.py:to",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
+  },
+  {
+   "id": "listener:loopback_window.py:install.bound",
+   "kind": "listener",
+   "source": "loopback_window.py:install.bound",
    "trust": "anything that can connect to the address",
    "attacker": "an unauthenticated or cross-origin client reaches the port",
    "status": "n/a",
@@ -7456,6 +7558,18 @@
    "id": "parser:workspace/nudge.py",
    "kind": "parser",
    "source": "workspace/nudge.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_workspace_rules.py"
+   ],
+   "note": ""
+  },
+  {
+   "id": "parser:workspace/release_check.py",
+   "kind": "parser",
+   "source": "workspace/release_check.py",
    "trust": "files, pages and archives from outside",
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
@@ -10273,6 +10387,18 @@
    "note": ""
   },
   {
+   "id": "spawn:activity/gate.py:_own_store",
+   "kind": "spawn",
+   "source": "activity/gate.py:_own_store",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
    "id": "spawn:activity/gate.py:_seed_index",
    "kind": "spawn",
    "source": "activity/gate.py:_seed_index",
@@ -10283,14 +10409,16 @@
    "note": "fixed git argv over the checkout scripts/test is run in, in a throwaway index; no model, member or file name reaches it"
   },
   {
-   "id": "spawn:activity/gate.py:tree_hash",
+   "id": "spawn:activity/gate.py:_written",
    "kind": "spawn",
-   "source": "activity/gate.py:tree_hash",
+   "source": "activity/gate.py:_written",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "n/a",
-   "tests": [],
-   "note": "fixed git argv over the checkout scripts/test is run in, in a throwaway index; no model, member or file name reaches it"
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
    "id": "spawn:app_bundle.py:tool",
@@ -10467,6 +10595,18 @@
     "tests/test_redteam_delegate_folder.py::test_a_hostile_folder_and_temporary_folder_reach_git_as_one_argument_and_a_link_is_not_followed"
    ],
    "note": "git init gets the scratch folder as one argument with no shell; the source folder is copied with its links as links, so nothing outside it is read into the copy"
+  },
+  {
+   "id": "spawn:delegate_candidate.py:git",
+   "kind": "spawn",
+   "source": "delegate_candidate.py:git",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
    "id": "spawn:devbranch.py:development_branch",
@@ -11334,6 +11474,30 @@
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
+   "id": "spawn:isolation/history.py:_git",
+   "kind": "spawn",
+   "source": "isolation/history.py:_git",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
+   "id": "spawn:isolation/ports.py:in_use",
+   "kind": "spawn",
+   "source": "isolation/ports.py:in_use",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
    "id": "spawn:isolation/probe.py:said_by",
    "kind": "spawn",
    "source": "isolation/probe.py:said_by",
@@ -11598,6 +11762,18 @@
    "note": "Poolhouse.app is built, signed and launched with argv lists only (codesign, security, openssl, open, the bundle executable); a hostile path or member address is one argument, and the certificate name, bundle id and requirement are constants"
   },
   {
+   "id": "spawn:opencode.py:_own_server",
+   "kind": "spawn",
+   "source": "opencode.py:_own_server",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
    "id": "spawn:pi_tools.py:_inspect",
    "kind": "spawn",
    "source": "pi_tools.py:_inspect",
@@ -11731,6 +11907,22 @@
     "tests/test_darwin_group.py"
    ],
    "note": "worker configuration remains one JSON argument; actual HTTPS transport uses only child credentials and a verified CA; transport cleanup retains the owned leader until complete group verification and kills TERM-resistant helpers"
+  },
+  {
+   "id": "spawn:provision.py:_install",
+   "kind": "spawn",
+   "source": "provision.py:_install",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_provision.py::test_the_installer_takes_no_destination_or_module_path_from_the_environment",
+    "tests/test_provision.py::test_a_system_python_is_never_installed_into",
+    "tests/test_provision.py::test_an_extra_follows_the_extras_it_names_keeps_its_markers_and_never_names_poolhouse",
+    "tests/test_provision.py::test_what_the_lock_does_not_hold_is_not_installed",
+    "tests/test_provision.py::test_a_locked_install_is_held_to_its_digests_by_uv_and_by_pip"
+   ],
+   "note": "The only process started is the environment's own interpreter running ensurepip with a fixed argument list. What is installed is what the project declares for an extra, at the releases and digests of the project's lock, never a name from input and never poolhouse from an index; a system interpreter is refused, and variables that move the destination or the module path are removed."
   },
   {
    "id": "spawn:redact/added.py:_renamed_from",
@@ -12165,9 +12357,9 @@
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
-   "id": "spawn:serve/python_runtime.py:command",
+   "id": "spawn:serve/python_runtime.py:command.ready",
    "kind": "spawn",
-   "source": "serve/python_runtime.py:command",
+   "source": "serve/python_runtime.py:command.ready",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",
@@ -12374,6 +12566,18 @@
    "note": "source Git reads discard configuration and replacement refs; actual maintained hook execution precedes private mint and fixed-target push, and hook refusal or a remote race prevents both"
   },
   {
+   "id": "spawn:workspace/integration_git.py:_gh",
+   "kind": "spawn",
+   "source": "workspace/integration_git.py:_gh",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
    "id": "spawn:workspace/integration_git.py:ancestor",
    "kind": "spawn",
    "source": "workspace/integration_git.py:ancestor",
@@ -12441,6 +12645,18 @@
     "tests/test_release_check.py::test_the_commit_with_a_standing_independent_accept_may_be_merged"
    ],
    "note": "fixed git argument vectors with a timeout read the commit and the dirtiness a merge into a protected branch is judged on; a failure to read is a refusal"
+  },
+  {
+   "id": "spawn:workspace/release_check.py:pull_request",
+   "kind": "spawn",
+   "source": "workspace/release_check.py:pull_request",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
    "id": "spawn:worktreerules.py:_blob",

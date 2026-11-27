@@ -343,10 +343,17 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
   refusal; probe P-codex) and the permission profile is enforced by the mount (I13, 8.1). The hook is the gate for what the
   boundary cannot express.
 - Claude Code's built-in sandbox is off in the launcher's settings (it is today); `claude` is never given `sandbox.enabled`.
-- A shell inside the confinement needs a real `git`: Apple's `/usr/bin/git` is a shim that asks `xcode-select` through a Mach
-  service the profile refuses. `PATH` puts the resolved git first; with only Apple's command-line developer tools installed, the profile reads and executes
-  `/Library/Developer/CommandLineTools/usr` (a system tree). `/usr/bin/python3` is a shim of the same kind and does not run; the
-  command-line tools' `usr/bin` precedes `/usr/bin` on `PATH`.
+- A shell inside the confinement has a `git` for every program: `PATH` puts the resolved git first, and Apple's `/usr/bin/git`,
+  which a program reaches by its path or with the system's `PATH` and no environment, runs too. The shim reads where
+  `/private/var/db/xcode_select_link` points and ends at once when it may not, so the profile lets a session look at that link
+  (`toolchain.developer_selection`, metadata only; the folder it names gains no grant, and one the session cannot read is passed
+  over for `/Library/Developer/CommandLineTools`, a system tree). `/usr/bin/python3`, a shim of the same kind, runs the
+  command-line tools' own; their `usr/bin` precedes `/usr/bin` on `PATH`. A shim run with no `TMPDIR` says on its error output
+  that it could not keep its cache, and works. With Xcode installed and no command-line tools, the shim finds nothing the box
+  reads (verified on a Mac with both; the Xcode-only case is not verified).
+- **The runtime interpreter** (it runs the bridge client and the probe) of a macOS framework build, as python.org's installer,
+  Apple's and Homebrew's are, starts the app binary of its framework, so the profile runs that one file beside the interpreter's
+  own binary (`profile.interpreter_programs`).
 - **The stage's `.git` is read-only** (`profile.GIT_DIRECTORY`, a frozen name like the control names, with every ancestor): the
   launcher reads its index after the run, so the box cannot write, remove, rename, link or redirect it. `git status` and
   `git diff` work; a commit fails.
@@ -976,7 +983,7 @@ The sandbox never gets the model server's port. It gets the **bridge**, a parent
 | Headers | forwarded: `Content-Type`, `Accept`, `Anthropic-Version`, `User-Agent`; added: the server's key. All others are dropped. The list is completed per harness by running it against the bridge (a header the harness needs shows as a failed real-model test); nothing is added on a guess. |
 | Authentication | `Authorization` or `x-api-key` must equal the session's bridge token (random, 32 bytes); the harness holds only that. The server's key (`serverkeys.for_url`) never leaves the parent. |
 | Body | JSON only, at most the served window times 4 bytes (a code point is at most 4 bytes and a token is at least one: 17). `model` must equal the leased alias (rewritten if empty, refused if different). `id_slot` and `lora` are removed. Streaming responses pass through unbuffered. |
-| Concurrency | requests in flight to the server at most the lease's slot count; beyond it the bridge answers 429 and never queues, since the server queues per slot. `GET /health` is answered by the bridge and is not counted. |
+| Concurrency | requests in flight to the server at most the lease's slot count; the others wait their turn at the bridge, in the order they came, each for as long as its client stays connected. A client that goes away leaves the line, or, once its request is with the server, has the connection to the server closed at once (also before the server has sent a head, while it reads a long prompt), so the server stops working for it and the slot is free. A stopped bridge ends every wait and every request in flight. `GET /health` is answered by the bridge and is not counted. Tests: `requests_that_find_every_slot_busy_wait_their_turn_and_are_served_in_the_order_they_came`, `a_client_that_leaves_while_the_server_reads_its_prompt_frees_its_slot_at_once_and_the_server_hears_it_left`, `a_request_whose_client_leaves_while_it_waits_never_reaches_the_server_and_the_next_has_its_turn`, `a_stopped_bridge_ends_every_wait_and_sends_the_server_nothing_more`. |
 | Records | method, route, status, bytes, duration. No body is kept. A refused route is counted and reported to the sentinel as a probe. |
 | Waiting | `serving.IDLE_SECONDS` (180 s) bounds the client's silence while it sends a head or a body (a 408 past it); it never bounds the server's answer. Once the request is read the bridge waits on the server without a limit of its own (a cold prompt is read by the model for minutes before its first byte, which is the model working and not the client idle), and ends only when the server or the client closes. A request the bridge cannot read through a fault of its own is answered 500 with a fixed sentence and its traceback goes to the launcher's stderr, never a bare reset: the harness reports a reset as `ECONNRESET` and retries ten times, which is how an unhashable `type` in a tool's schema (`_media` read it as a content part's type) looked on 2026-11-25 as a 191 s failed delegate with no request ever reaching the server. Tests: `a_tool_whose_schema_has_a_property_named_type_is_served_and_the_connection_is_never_dropped`, `an_upstream_that_is_silent_for_longer_than_the_idle_limit_is_waited_for_and_the_client_is_served`, `a_client_that_sends_nothing_is_cut_at_the_idle_limit_and_never_reaches_the_server`, `a_fault_in_reading_a_request_is_answered_500_and_never_ends_in_a_reset`. |
 | Upstream | `--on URL` must name loopback (a numeric `127.0.0.1` or `::1`, never a name); anything else is refused with the sentence of section 9. A model on another member is reached through that member's pool offer on this device's loopback, never by a remote URL in the profile. |
@@ -987,7 +994,7 @@ names its model file, the account it runs under and its size) and is never forwa
 forwarded because it is unknown. A picture, sound, video or file named by anything but its own bytes (a URL that is not `data:`, a file id) is refused with a fixed sentence, so
 the one process that has the network never fetches an address the model named. **Not verified here:** the pinned llama-server's request parser was not read, so the lists come from
 the three message routes of the harnesses and not from the parser; whether the pinned build fetches a remote `image_url` is unconfirmed, and the refusal holds either way.
-A busy model waits at most `SLOT_WAIT_SECONDS` for a slot and then answers 429 with `Retry-After`, which the harnesses honour; it waits for a slot, never for a person.
+A request for a busy model waits for a slot, never for a person, and is never answered 429: OpenCode gives a step up after about ten of those, which one long request in the one slot (a background compaction) outlasts. Its config gives a reply's head no time limit (`opencode.config`, `headerTimeout`), since the release's own 300 s would end a wait the bridge keeps.
 
 ### 6.2 How the sandbox reaches it, per platform
 

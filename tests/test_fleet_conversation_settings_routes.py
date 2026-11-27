@@ -4,12 +4,18 @@ from __future__ import annotations
 import pytest
 from launch_support import browser, sign_in, signed
 from test_fleet_ui import Serving
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: this test's own node)
+    founded_node,
+    governed,
+)
 
 from poolhouse.fleet.conversations import Conversations
 
+pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture
+
 
 @pytest.fixture
-def conversation_api(tmp_path):
+def conversation_api(tmp_path, governed):  # noqa: F811 - a conversation is bound to the pool the node names
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
     served.ui.root = served.files.parent

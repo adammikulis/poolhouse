@@ -867,9 +867,10 @@ no shape this repository has decided to live with. Budgets and red-team debt onl
   the revision the locked Playwright release names, with no digest held here. What cannot be pinned (no prebuilt wheel,
   a source address, another package index) is not installed unless somebody asks for it by name. A pinned download is
   kept on a device with no virus scanner; one a scanner flags is refused.
-- Writes are refused when they add a function whose body already exists elsewhere, a raw HTTP call, a docstring over
-  twelve lines, a signature over eight parameters, or a write that takes a file over its line limit or makes an
-  already-over file longer (`scripts/install-hooks.sh` installs the pre-commit chain).
+- A write is never held back for code quality. Claude Code's edit guard (`scripts/hooks/claude-edit-guard`) tells the
+  agent beside the edit when it adds a function whose body already exists elsewhere, a raw HTTP call, a docstring over
+  twelve lines or a signature over eight parameters, or takes a file over its line limit or makes an already-over file
+  longer; the gates judge it before the work merges (`scripts/install-hooks.sh` installs the pre-commit chain).
 
 ## 6. Models and GPU
 
