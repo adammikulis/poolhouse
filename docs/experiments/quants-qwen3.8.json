@@ -1,0 +1,87 @@
+{
+  "published": "sizes and sha256 prefixes read from the Hugging Face file listing on 2026-11-27 (the UD 3.1 files)",
+  "sets": {
+    "qwen3.8-27b": {
+      "repo": "unsloth/Qwen3.8-27B-GGUF",
+      "reference": "BF16",
+      "rates": {"load_s": 40, "prefill_tps": 200, "decode_tps": 20, "cpu_tps": 40},
+      "versus": [["UD-IQ3_XXS", "UD-Q2_K_XL"], ["UD-IQ3_S", "UD-Q3_K_XL"], ["UD-IQ4_XS", "UD-Q4_K_S"]],
+      "quants": {
+        "BF16": [
+          {"path": "BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf", "bytes": 49986159616, "sha256": "b9966e82b7a4"},
+          {"path": "BF16/Qwen3.8-27B-BF16-00002-of-00002.gguf", "bytes": 4671576000, "sha256": "92e3943c4f9b"}
+        ],
+        "UD-Q2_K_XL": [{"path": "Qwen3.8-27B-UD-Q2_K_XL.gguf", "bytes": 9948666784, "sha256": "18f1187f38e7"}],
+        "UD-IQ3_XXS": [{"path": "Qwen3.8-27B-UD-IQ3_XXS.gguf", "bytes": 10934860704, "sha256": "c0b7c3038681"}],
+        "UD-Q3_K_XL": [{"path": "Qwen3.8-27B-UD-Q3_K_XL.gguf", "bytes": 13146393504, "sha256": "7b20f0679da6"}],
+        "UD-IQ3_S": [{"path": "Qwen3.8-27B-UD-IQ3_S.gguf", "bytes": 12040883104, "sha256": "d847e2c1e4aa"}],
+        "UD-Q4_K_S": [{"path": "Qwen3.8-27B-UD-Q4_K_S.gguf", "bytes": 15358213024, "sha256": "75bc9c8adba2"}],
+        "UD-IQ4_XS": [{"path": "Qwen3.8-27B-UD-IQ4_XS.gguf", "bytes": 14352911264, "sha256": "4b194b34ecec"}],
+        "UD-Q4_K_XL": [{"path": "Qwen3.8-27B-UD-Q4_K_XL.gguf", "bytes": 17659407264, "sha256": "2a5f3565f39c"}]
+      }
+    },
+    "qwen3.8-flash-next": {
+      "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+      "reference": "UD-Q4_K_XL",
+      "note": "The reference, UD-Q4_K_XL, is itself a quant: divergence from it says how close a build is to a larger quant, not what the model lost from full precision, and a build that errs the way the reference does reads closer than it is. The CPU-against-Metal comparison of one file needs no reference.",
+      "rates": {"load_s": 150, "prefill_tps": 300, "decode_tps": 20, "cpu_tps": 15},
+      "versus": [["UD-IQ2_XS", "UD-Q2_K_XL"], ["UD-IQ3_XXS", "UD-Q3_K_XL"]],
+      "quants": {
+        "UD-Q4_K_XL": [
+          {"path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf", "bytes": 10946618, "sha256": "acc44040"},
+          {"path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf", "bytes": 49720539552, "sha256": "45792ae8"},
+          {"path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf", "bytes": 32803030176, "sha256": "8c76e79d"},
+          {"path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf", "bytes": 28800138432, "sha256": "5de8b5db"}
+        ],
+        "UD-IQ2_XS": [
+          {"path": "UD-IQ2_XS/Qwen3.8-Flash-Next-UD-IQ2_XS-00001-of-00003.gguf", "bytes": 10946618, "sha256": "91e8dc8f"},
+          {"path": "UD-IQ2_XS/Qwen3.8-Flash-Next-UD-IQ2_XS-00002-of-00003.gguf", "bytes": 47021008288, "sha256": "11a67c82"},
+          {"path": "UD-IQ2_XS/Qwen3.8-Flash-Next-UD-IQ2_XS-00003-of-00003.gguf", "bytes": 28800138432, "sha256": "05716382"}
+        ],
+        "UD-Q2_K_XL": [
+          {"path": "UD-Q2_K_XL/Qwen3.8-Flash-Next-UD-Q2_K_XL-00001-of-00004.gguf", "bytes": 10946618, "sha256": "297e174d"},
+          {"path": "UD-Q2_K_XL/Qwen3.8-Flash-Next-UD-Q2_K_XL-00002-of-00004.gguf", "bytes": 49732486272, "sha256": "a4782511"},
+          {"path": "UD-Q2_K_XL/Qwen3.8-Flash-Next-UD-Q2_K_XL-00003-of-00004.gguf", "bytes": 1037181344, "sha256": "4dffc4a1"},
+          {"path": "UD-Q2_K_XL/Qwen3.8-Flash-Next-UD-Q2_K_XL-00004-of-00004.gguf", "bytes": 28800138432, "sha256": "5de8b5db"}
+        ],
+        "UD-IQ3_XXS": [
+          {"path": "UD-IQ3_XXS/Qwen3.8-Flash-Next-UD-IQ3_XXS-00001-of-00004.gguf", "bytes": 10946618, "sha256": "9d5644b3"},
+          {"path": "UD-IQ3_XXS/Qwen3.8-Flash-Next-UD-IQ3_XXS-00002-of-00004.gguf", "bytes": 49946027488, "sha256": "aacaff3b"},
+          {"path": "UD-IQ3_XXS/Qwen3.8-Flash-Next-UD-IQ3_XXS-00003-of-00004.gguf", "bytes": 4869325888, "sha256": "ef8f14e7"},
+          {"path": "UD-IQ3_XXS/Qwen3.8-Flash-Next-UD-IQ3_XXS-00004-of-00004.gguf", "bytes": 28800138432, "sha256": "5de8b5db"}
+        ],
+        "UD-Q3_K_XL": [
+          {"path": "UD-Q3_K_XL/Qwen3.8-Flash-Next-UD-Q3_K_XL-00001-of-00004.gguf", "bytes": 10946618, "sha256": "7666000b"},
+          {"path": "UD-Q3_K_XL/Qwen3.8-Flash-Next-UD-Q3_K_XL-00002-of-00004.gguf", "bytes": 49742117248, "sha256": "e954cb30"},
+          {"path": "UD-Q3_K_XL/Qwen3.8-Flash-Next-UD-Q3_K_XL-00003-of-00004.gguf", "bytes": 10911746208, "sha256": "fcce26b1"},
+          {"path": "UD-Q3_K_XL/Qwen3.8-Flash-Next-UD-Q3_K_XL-00004-of-00004.gguf", "bytes": 28800138432, "sha256": "5de8b5db"}
+        ]
+      }
+    },
+    "qwen3.8-flash-next-round2": {
+      "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+      "reference": "UD-Q4_K_XL",
+      "note": "The reference, UD-Q4_K_XL, is itself a quant: divergence from it says how close a build is to a larger quant, not what the model lost from full precision, and a build that errs the way the reference does reads closer than it is. The CPU-against-Metal comparison of one file needs no reference.",
+      "rates": {"load_s": 150, "prefill_tps": 300, "decode_tps": 20, "cpu_tps": 15},
+      "versus": [["UD-IQ1_S", "UD-Q2_0"]],
+      "quants": {
+        "UD-Q4_K_XL": [
+          {"path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf", "bytes": 10946618, "sha256": "acc44040"},
+          {"path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf", "bytes": 49720539552, "sha256": "45792ae8"},
+          {"path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf", "bytes": 32803030176, "sha256": "8c76e79d"},
+          {"path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf", "bytes": 28800138432, "sha256": "5de8b5db"}
+        ],
+        "UD-IQ1_S": [
+          {"path": "UD-IQ1_S/Qwen3.8-Flash-Next-UD-IQ1_S-00001-of-00003.gguf", "bytes": 10946618, "sha256": "df6ba2c0"},
+          {"path": "UD-IQ1_S/Qwen3.8-Flash-Next-UD-IQ1_S-00002-of-00003.gguf", "bytes": 37568095648, "sha256": "7101e65f"},
+          {"path": "UD-IQ1_S/Qwen3.8-Flash-Next-UD-IQ1_S-00003-of-00003.gguf", "bytes": 28800138432, "sha256": "05716382"}
+        ],
+        "UD-Q2_0": [
+          {"path": "UD-Q2_0/Qwen3.8-Flash-Next-UD-Q2_0-00001-of-00003.gguf", "bytes": 10946618, "sha256": "38803c4e"},
+          {"path": "UD-Q2_0/Qwen3.8-Flash-Next-UD-Q2_0-00002-of-00003.gguf", "bytes": 41738806688, "sha256": "57af2020"},
+          {"path": "UD-Q2_0/Qwen3.8-Flash-Next-UD-Q2_0-00003-of-00003.gguf", "bytes": 28800138432, "sha256": "05716382"}
+        ]
+      }
+    }
+  }
+}

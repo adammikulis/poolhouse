@@ -1,10 +1,11 @@
 """The launcher's choke point: who may widen a coding session, the checks on every launch argument, the log and the sentinel's signal.
 
 One function, `decide_launch`, runs before any launch argument reaches a launcher's parser (docs/design-isolated-launcher.md, 8.3). It
-decides each widening at once and never waits: a process the operating system reports as confined is refused every control, an agent that is
-not the lead is refused every widening argument, the `isolation.grant` gate is read at once (`delegated` passes only the lead, `person`
-passes only a terminal outside any agent), and then the grants are decided under the caps, logged, and reported to the sentinel as one
-signal. A project the launch works in that the node does not hold is registered by the launch for the lead and for a terminal outside any agent
+decides each widening at once and never waits: a process the operating system reports as confined is refused every control, whatever an
+unattended agent's runner started is refused the whole launch, a marked agent the node places in no session is refused every widening argument,
+the `isolation.grant` gate is read at once (`delegated` passes every agent the node places in a session, a lead and its helpers alike, and a
+terminal outside any agent; `person` passes only such a terminal), and then the grants are decided under the caps, logged, and reported to the
+sentinel as one signal. A project the launch works in that the node does not hold is registered by the launch for the same callers
 (`projects`): naming a project is the base reach and widens nothing. Nothing is typed, confirmed or pasted, and no token is issued.
 """
 
@@ -20,6 +21,7 @@ from urllib.parse import urlparse
 from poolhouse import activity, authority, caller, home
 from poolhouse.contracts.loader import ContractError
 from poolhouse.isolation import ancestry, egress, policy, projects, toolchain
+from poolhouse.isolation.ancestry import refusal as _refuse, require_attended
 from poolhouse.isolation.grants import Decision, Grant, Request, Rule, decide, fingerprint
 from poolhouse.isolation.refusals import IsolationRefused, sentence
 from poolhouse.sandbox.confinement import confined
@@ -96,13 +98,6 @@ def registered_by_the_node(path: str) -> bool:
     return bool(policy.key_of(path))
 
 
-def _refuse(action: str, key: str) -> caller.AgentRefused:
-    """The refusal of ``action`` with the sentence ``key``, audited; a confinement that cannot write the audit log is refused all the same."""
-    with contextlib.suppress(OSError):
-        caller.record("refused", action=action, why=key)
-    return caller.AgentRefused(sentence(key))
-
-
 def _attest() -> ancestry.Ancestry:
     """Who runs this process, as the node attests it from the process tree; a node that cannot say refuses the launch at once, audited."""
     try:
@@ -114,30 +109,32 @@ def _attest() -> ancestry.Ancestry:
 
 
 def _caller(action: str) -> ancestry.Ancestry:
-    """Who runs this process for ``action``: a process inside a confinement is refused whatever its markers say, and the rest is read from the
-    process tree by the node."""
+    """Who runs this process for ``action``: a process inside a confinement is refused whatever its markers say, so is one an unattended agent's
+    runner started, and the rest is read from the process tree by the node."""
     if confined():
         raise _refuse(action, "confined_caller")
+    require_attended(action)
     return _attest()
 
 
 @home.real_roots
 def remove_project(target: str, env: Mapping[str, str] | None = None) -> str:
-    """Forget the registered project ``target`` names (its id, or a folder of it) and return its board, at once. Only the lead and a terminal
-    outside every agent may: any other agent, a process inside a confinement or a node that cannot say who asks is refused, audited."""
+    """Forget the registered project ``target`` names (its id, or a folder of it) and return its board, at once. An agent the node places in a
+    session and a terminal outside every agent may: any other agent, a process inside a confinement or under an unattended agent's runner, and a
+    caller the node cannot say anything of are refused, audited."""
     action = "removing a project of this computer"
     if not _caller(action).may_launch(env):
-        raise _refuse(action, "not_the_lead")
+        raise _refuse(action, "not_placed")
     return projects.remove(target, issuer=caller.who(env))
 
 
 @home.real_roots
 def require_widening(action: str, env: Mapping[str, str] | None = None, project: str = "") -> ancestry.Ancestry:
-    """The `isolation.grant` gate, decided at once. A process inside a confinement is refused whatever its markers say. Whether the caller is an
-    agent, the lead or a terminal is read from its process tree by the node (`ancestry`), and the environment only narrows that. With the gate
-    `person` (the `prod` preset) an agent is refused, the lead included, and a terminal outside any agent passes; with it `delegated` only
-    the lead passes among the agents: any other agent is refused, whether it is a subagent, a tool, an agent the node does not know, or an
-    agent that runs the launcher outside the owner's sandbox. The ancestry the decision was made on is returned."""
+    """The `isolation.grant` gate, decided at once. A process inside a confinement is refused whatever its markers say, and so is whatever an
+    unattended agent's runner started. Whether the caller is an agent or a terminal is read from its process tree by the node (`ancestry`), and
+    the environment only narrows that. With the gate `person` (the `prod` preset) every agent is refused and a terminal outside any agent passes;
+    with it `delegated` every agent the node places in a session passes, a lead and a helper of one alike, and a marked agent it places in none is
+    refused. The ancestry the decision was made on is returned."""
     where = _caller(action)
     scope = authority.Scope(project=project)
     seen = "an agent's process tree runs it" if where.agent else ""
@@ -145,7 +142,7 @@ def require_widening(action: str, env: Mapping[str, str] | None = None, project:
         authority.require(GATE, action, env, scope=scope, attested=seen)
         return where
     if not where.may_launch(env):
-        raise _refuse(action, "not_the_lead")
+        raise _refuse(action, "not_placed")
     authority.require(GATE, action, env, scope=scope, attested=seen)
     return where
 
@@ -167,9 +164,9 @@ def _unregistered(arguments: Arguments, project: str, registered: Callable[[str]
 
 
 def _admit_projects(missing: dict[str, str], where: ancestry.Ancestry | None, env: Mapping[str, str] | None, on_event: Events | None) -> None:
-    """Make every folder of ``missing`` a registered project: the node adds a git project it does not hold, for the lead and for a terminal outside
-    any agent, because naming a project is the base reach of a launch and widens nothing (8.3). What no session is given (`places`) is refused with
-    its reason, and any other agent works only in a project the node already holds."""
+    """Make every folder of ``missing`` a registered project: the node adds a git project it does not hold, for an agent it places in a session and
+    for a terminal outside any agent, because naming a project is the base reach of a launch and widens nothing (8.3). What no session is given
+    (`places`) is refused with its reason, and any other agent works only in a project the node already holds."""
     if missing and confined():
         raise _refuse("registering a project", "confined_caller")
     if missing and not (where or _attest()).may_launch(env):
@@ -205,10 +202,12 @@ def decide_launch(arguments: Arguments, *, project: str, env: Mapping[str, str] 
                   registered: Callable[[str], bool] | None = None) -> Launch:
     """Decide every widening of one launch at once, or refuse the launch with the reason.
 
-    Raises `AgentRefused` for a confined caller and for a caller the `isolation.grant` gate does not pass (or one the node cannot attest), and
-    `IsolationRefused` for a launcher control the deputy checks refuse. The grants it returns are scoped to the one session this launch starts."""
+    Raises `AgentRefused` for a confined caller, for one an unattended agent's runner started and for one the `isolation.grant` gate does not
+    pass (or one the node cannot attest), and `IsolationRefused` for a launcher control the deputy checks refuse. The grants it returns are scoped
+    to the one session this launch starts."""
     if confined() and arguments.controls:
         raise _refuse("launching a coding agent with launcher controls", "confined_caller")
+    require_attended("launching a coding agent")
     where = require_widening("launching a coding agent with a wider reach than the default", env, project) if arguments.widening else None
     _controls(arguments)
     _admit_projects(_unregistered(arguments, project, registered or registered_by_the_node), where, env, on_event)

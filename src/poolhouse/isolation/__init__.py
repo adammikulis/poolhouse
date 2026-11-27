@@ -14,6 +14,7 @@ a rule, or refused with a plain reason that names the fact and never a command t
 
 from __future__ import annotations
 
+from poolhouse.isolation.ancestry import require_attended
 from poolhouse.isolation.attestation import Attestation, attest
 from poolhouse.isolation.capability import Report, capability, require_capable
 from poolhouse.isolation.confinement import (
@@ -48,4 +49,5 @@ from poolhouse.isolation.spec import Spec
 __all__ = ["SERVER", "Arguments", "Attestation", "Confinement", "Context", "Decision", "EgressProxy", "Grant", "Handlers", "Inputs", "IsolationFailed",
            "IsolationRefused", "Launch", "Lease", "ModelBridge", "Notice", "Plan", "Profile", "Proof", "Rendering", "Report", "Reporter", "Request",
            "Rule", "Services", "SessionBridge", "Spec", "Terms", "Wiring", "allowed", "attest", "build", "capability", "check_on", "decide",
-           "decide_launch", "environment", "install_tree", "prepare", "remove_project", "require_capable", "require_widening", "run_proof"]
+           "decide_launch", "environment", "install_tree", "prepare", "remove_project", "require_attended", "require_capable", "require_widening",
+           "run_proof"]

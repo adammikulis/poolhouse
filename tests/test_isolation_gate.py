@@ -1,4 +1,4 @@
-"""Who may widen a coding session: the confined, the agents that are not the lead, the lead, a terminal, and the `prod` preset.
+"""Who may widen a coding session: the confined, the agents the node places nowhere, the lead and its helpers, a terminal, and the `prod` preset.
 
 Real processes and a real node: a confined caller is a real child under the real Seatbelt with a real pty, and the lead and a subagent are
 sessions registered on a real node. A refusal is immediate and carries a plain sentence; nothing waits and no test answers anything.
@@ -25,13 +25,16 @@ from poolhouse.isolation import (
     check_on,
     decide_launch,
     policy as policies,
+    remove_project,
     require_widening,
 )
 from poolhouse.isolation.policy import ProjectPolicy
 from poolhouse.isolation.refusals import sentence
 from poolhouse.platform import start_process
 from poolhouse.sandbox import wrapped
+from tests.confined_kit import repository
 from tests.isolation_kit import SOURCE, person_home, registered_project
+from tests.isolation_world import git
 from tests.sandbox_kit import policy
 
 pytest_plugins = ["node_kit"]
@@ -170,11 +173,11 @@ def test_a_non_loopback_server_is_refused_for_every_caller_and_a_numeric_loopbac
         assert not decide_launch(Arguments(on=url), project=terminal).widened
 
 
-def test_a_launcher_run_by_any_agent_but_the_lead_or_inside_a_confinement_refuses_every_widening_argument_and_unregistered_projects_and_a_non_loopback_on(
-        terminal, tmp_path, monkeypatch, request):
+def test_a_marked_agent_the_node_places_nowhere_and_a_confined_process_are_refused_every_widening_argument_project_and_control(
+        terminal, tmp_path, monkeypatch):
     for field, value in (("read", ("/usr/share",)), ("toolchain", ("/usr/bin",)), ("allow_net", ("pypi.org",)),
                          ("in_place", True), ("project", "/tmp"), ("protect", ("/tmp/x",))):
-        with pytest.raises(AgentRefused):  # a caller outside the lead: marked, and no session the node knows
+        with pytest.raises(AgentRefused, match="finds no session above it"):  # marked, and no session the node knows
             monkeypatch.setenv("CLAUDECODE", "1")
             decide_launch(Arguments(**{field: value}), project=terminal)
         monkeypatch.delenv("CLAUDECODE")
@@ -182,10 +185,27 @@ def test_a_launcher_run_by_any_agent_but_the_lead_or_inside_a_confinement_refuse
     (tmp_path / "state").mkdir(exist_ok=True)
     inside = pty_report(terminal, tmp_path, confined=True)
     assert {state for label, state in inside.items() if label != "tty"} == {"refused"}, "a confined caller gets none of the arguments or controls"
-    subagent = request.getfixturevalue("subagent")
-    with pytest.raises(AgentRefused, match="only the session that launches coding agents"):
-        decide_launch(EVERY, project=terminal)
+
+
+@pytest.mark.parametrize("says", ["by its name", "by a subagent's marker"])
+def test_a_helper_the_node_places_widens_registers_and_removes_a_project_as_the_lead_does(says, subagent, terminal, tmp_path, monkeypatch):
     assert subagent.parent, "a helper of the lead, which the node knows by its parent"
+    if says == "by a subagent's marker":
+        monkeypatch.setenv("POOLHOUSE_SUBAGENT", subagent.name)
+    launch = decide_launch(Arguments(allow_net=("pypi.org",)), project=terminal)
+    assert launch.widened and [each.granted for each in launch.decisions] == [True]
+    copy = repository(tmp_path / "helpers-own").resolve()
+    git(copy, "commit", "-q", "-m", "one file")
+    decide_launch(Arguments(project=str(copy)), project=str(copy))
+    assert policies.key_of(str(copy)) not in ("", policies.key_of(terminal)), "the helper's launch made the repository a project"
+    assert remove_project(str(copy)) and policies.key_of(str(copy)) == ""
+    (tmp_path / "state").mkdir(exist_ok=True)
+    inside = pty_report(terminal, tmp_path, confined=True)
+    assert {state for label, state in inside.items() if label != "tty"} == {"refused"}, "the same helper in a confinement gets nothing"
+    authority.set_state(["isolation.grant"], authority.PERSON, by="lead", env={})
+    for refused in (lambda: require_widening("a wider launch", None, terminal), lambda: decide_launch(EVERY, project=terminal)):
+        with pytest.raises(AgentRefused, match="held back from agents"):
+            refused()
 
 
 def test_the_lead_passes_what_its_task_names_and_is_refused_a_folder_that_is_no_git_project_or_a_server_outside_this_computer(lead, terminal):

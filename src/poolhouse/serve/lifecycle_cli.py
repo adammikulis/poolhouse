@@ -157,9 +157,9 @@ def _asked_spec(args: argparse.Namespace, model: str, extra: tuple[str, ...]) ->
         lookup_dynamic=str(getattr(args, "lookup_cache", "") or "") or None,
         override_tensor=tuple(getattr(args, "on_cpu", []) or ()),
         reasoning_budget=getattr(args, "reasoning_budget", None),
-        # llama-server's own flags, which only a profile carries: `up` has no flag of its
-        # own for `-ub 2048`
-        extra_args=extra,
+        # the server's own flags: a profile's (`up` has no flag of its own for `-ub 2048`),
+        # and the MLX tree server's `--ngram-rows`
+        extra_args=(*extra, *(("--ngram-rows",) if getattr(args, "ngram_rows", False) else ())),
         cpu_moe=bool(getattr(args, "cpu_moe", False)),
         n_cpu_moe=getattr(args, "n_cpu_moe", None))
 
@@ -251,6 +251,11 @@ OPTIONS_UP = [
               "--on-cpu / --n-cpu-moe / --cpu-moe to what fits, and print what was chosen "
               "(`poolhouse-serve plan MODEL` shows the same placement for any machine). A "
               "placement flag given here wins and nothing is set"),
+    flag("--ngram-rows", action="store_true",
+         help="mlx: models with an n-gram table, off by default: also write the table as "
+              "one record a row and read that (about 32 GB of disk and 70 s once for "
+              "Qwen3.8-Flash-Next, kept for later loads; no end-to-end MLX timing exists, "
+              "docs/serving.md)"),
     flag("--lookup-cache", default="", metavar="FILE",
          help="an n-gram cache kept on disk and updated as it generates, so what was "
               "learnt answering one question speculates the next. Only the ngram-cache "

@@ -50,10 +50,13 @@ SENTENCES: dict[str, str] = {
     "proof_failed": ("Poolhouse could not confirm that the safety box holds on this computer (it allowed {attempt}), so the coding "
                      "agent was not started."),
     "confined_caller": "Refused: a coding session cannot change what another coding session may reach; this process runs inside one.",
-    "not_the_lead": "Refused: only the session that launches coding agents for the person can widen what one may reach.",
+    "not_placed": ("Refused: this process is marked as an agent's and the node finds no session above it, so it widens no coding session "
+                   "and removes no project."),
+    "unattended_caller": ("Refused: an agent that runs with nobody at it (a delegate, or a local agent of a board), and whatever it starts, "
+                          "starts no agent, widens nothing and changes no project's record."),
     "held_back": "Refused: widening a coding session is held back from agents on this computer.",
-    "project_unregistered": ("Refused: this folder is not a registered project of this computer, and only the session that launches coding "
-                             "agents for the person registers one."),
+    "project_unregistered": ("Refused: this folder is not a registered project of this computer, and a process marked as an agent's that the "
+                             "node finds no session above it registers none."),
     "project_home": "Refused: a coding session cannot work in your home folder or a folder around it.",
     "project_state": "Refused: a coding session cannot work in the folder where Poolhouse keeps its own state or around it.",
     "project_system": "Refused: a coding session cannot work in a folder of the operating system.",

@@ -1,7 +1,7 @@
 """The `project` command of `poolhouse-workspace`: the projects this computer holds, and the removal of one.
 
 A launch registers the project it works in by itself (docs/design-isolated-launcher.md, 8.3); `remove` forgets one at once, so its folder is free
-for another project, and is the lead's or a terminal's, as a launch is. Nothing is asked and nothing waits.
+for another project, and is a session's (a lead's or a helper's) or a terminal's, as a launch is. Nothing is asked and nothing waits.
 """
 
 from __future__ import annotations

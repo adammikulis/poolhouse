@@ -30,6 +30,7 @@ from poolhouse.bench.efficiency import (
     row_cells,
     with_rates,
 )
+from poolhouse.bench.intervals import BOOTSTRAP, BOOTSTRAP_SEED, resample
 from poolhouse.bench.keep import SHORT
 from poolhouse.bench.record import of
 from poolhouse.log import warn
@@ -246,8 +247,6 @@ def _precision(row: Mapping[str, Any]) -> float:
 # Seeded, because a band that moves when nothing was measured is a band nobody can quote.
 # One resample serves all four figures, so F1, recall, precision and s/q are drawn from the
 # same questions each time, which is what they were measured on.
-BOOTSTRAP = 1000
-BOOTSTRAP_SEED = 20260902
 
 # Bands cost a thousand resamples and `derived` is called several times per run by every
 # table, ranking and frontier, so each is computed once. Keyed on the per-question figures
@@ -257,20 +256,13 @@ _BANDS: dict[Any, dict[str, tuple[float, float]]] = {}
 _BANDS_CAP = 512
 
 
-def _pct(sorted_values: Sequence[float], share: float) -> float:
-    """The value at ``share`` of the way through values already sorted."""
-    last = len(sorted_values) - 1
-    return sorted_values[min(last, max(0, round(share * last)))]
-
-
 def bands(rows: Sequence[Mapping[str, Any]], *, draws: int = BOOTSTRAP,
           seed: int = BOOTSTRAP_SEED) -> dict[str, tuple[float, float]]:
     """The 95% bootstrap interval each of a run's means sits in, over its own questions.
 
     ``{"right": (lo, hi), "recall": ..., "precision": ..., "seconds_per_question": ...}``,
-    from resampling ``rows`` with replacement ``draws`` times. Empty for a run of one
-    question: one question has no spread, and an interval of zero width would claim a
-    precision that is not there.
+    from `resample` over ``rows``. Empty for a run of one question: one question has no
+    spread, and an interval of zero width would claim a precision that is not there.
 
     The s/q band is over the per-question seconds whatever `wall_of` says, because it is
     the per-question spread being asked about; a run asked concurrently has a wall clock
@@ -278,26 +270,14 @@ def bands(rows: Sequence[Mapping[str, Any]], *, draws: int = BOOTSTRAP,
     """
     per = tuple((round(_hit(r), 6), round(_recall(r), 6), round(_precision(r), 6),
                  round(float(r.get("seconds") or 0.0), 6)) for r in rows)
-    n = len(per)
-    if n < 2:
+    if len(per) < 2:
         return {}
     key = (draws, seed, per)
     got = _BANDS.get(key)
     if got is not None:
         return got
-    import random
-
-    rand = random.Random(seed)  # noqa: S311 - a sample, not a secret
-    means: tuple[list[float], ...] = ([], [], [], [])
-    pool = range(n)
-    for _ in range(draws):
-        picked = [per[i] for i in rand.choices(pool, k=n)]
-        for axis in range(4):
-            means[axis].append(sum(p[axis] for p in picked) / n)
-    out = {}
-    for axis, name in enumerate(("right", "recall", "precision", "seconds_per_question")):
-        drawn = sorted(means[axis])
-        out[name] = (_pct(drawn, 0.025), _pct(drawn, 0.975))
+    out = dict(zip(("right", "recall", "precision", "seconds_per_question"),
+                   resample(per, draws=draws, seed=seed), strict=True))
     if len(_BANDS) >= _BANDS_CAP:
         _BANDS.clear()
     _BANDS[key] = out
