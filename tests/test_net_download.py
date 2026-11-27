@@ -5,12 +5,15 @@ import hashlib
 import io
 import struct
 import tarfile
+import time
 import zipfile
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import files, home, net
+from poolhouse import files, home, httpguard, net
 from poolhouse.httpguard import Limits, Refused, TooLarge
 from poolhouse.net import provenance
 from poolhouse.net.download import Cancel, accept
@@ -273,7 +276,7 @@ def test_a_truncated_download_resumes_from_the_bytes_already_there(tmp_path, sit
     body = gguf_bytes(extra=200_000)
     route = site.add("/m.gguf", body, headers={"ETag": '"v1"'}, ranges=True, cut_at=50_000)
     with pytest.raises(net.Truncated):
-        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf")
+        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(tries=1))
     assert not (tmp_path / "m.gguf").exists()
     assert any(p.stat().st_size == 50_000 for p in staging_dir().glob("*.part"))
     route.cut_at = None
@@ -286,7 +289,7 @@ def test_a_server_that_ignores_range_restarts_the_file(tmp_path, site, pipe):
     body = gguf_bytes(extra=100_000)
     route = site.add("/m.gguf", body, headers={"ETag": '"v1"'}, cut_at=30_000)
     with pytest.raises(net.Truncated):
-        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf")
+        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(tries=1))
     route.cut_at = None
     pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(sha256=SHA(body)))
     assert (tmp_path / "m.gguf").read_bytes() == body
@@ -297,7 +300,7 @@ def test_a_resumed_file_that_changed_on_the_server_fails_its_hash(tmp_path, site
     new = bytes([old[0] ^ 0]) + old[1:-1] + b"Z"
     route = site.add("/m.gguf", old, headers={"ETag": '"v1"'}, ranges=True, cut_at=30_000)
     with pytest.raises(net.Truncated):
-        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf")
+        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(tries=1))
     route.body, route.cut_at = new, None
     with pytest.raises(net.ChecksumMismatch):
         pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(sha256=SHA(new)[:-1] + "0"))
@@ -317,10 +320,106 @@ def test_a_declared_size_over_the_cap_is_refused_before_the_body(tmp_path, site,
         pull(pipe, site, "/big.gguf", tmp_path / "b.gguf", net.Want(max_bytes=1000))
 
 
-def test_a_slow_loris_server_hits_the_deadline(tmp_path, site, pipe):
-    site.add("/slow.gguf", gguf_bytes(extra=300), drip_s=0.05)
-    with pytest.raises(Refused, match="out of time"):
-        pull(pipe, site, "/slow.gguf", tmp_path / "s.gguf", net.Want(deadline_s=1.0))
+SLOW = {"min_rate": 1000, "rate_window_s": 0.3, "tries": 2}
+
+
+@pytest.mark.parametrize("trickle", [{"drip_s": 0.05}, {"drip_head_s": 0.05}], ids=["body", "headers"])
+def test_a_trickling_server_is_given_up_on_and_said_plainly(tmp_path, site, pipe, trickle):
+    route = site.add("/slow.gguf", gguf_bytes(extra=300), **trickle)
+    pipe.sleep = lambda _: None
+    started = time.monotonic()
+    with pytest.raises(net.Truncated, match=r"gave up: 2 attempt.*stalled.*under 1000 bytes a second"):
+        pull(pipe, site, "/slow.gguf", tmp_path / "s.gguf", net.Want(**SLOW))
+    assert len(route.seen) == 2 and time.monotonic() - started < 4.0
+    assert not (tmp_path / "s.gguf").exists()
+
+
+def test_a_download_that_keeps_arriving_has_no_total_time_limit(tmp_path, site, pipe, monkeypatch):
+    """The clock is a stand-in: it moves on as if the file came at 9,000 bytes a second, over an hour in all."""
+    body = gguf_bytes(extra=34 * 1024 * 1024)
+    route = site.add("/m.gguf", body)
+    arrived = [0]
+    monkeypatch.setattr(httpguard, "time", SimpleNamespace(monotonic=lambda: arrived[0] / 9000))
+    pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(sha256=SHA(body)),
+         progress=lambda done, _total: arrived.__setitem__(0, done))
+    assert arrived[0] / 9000 > 3600 and len(route.seen) == 1
+    assert files.sha256_file(tmp_path / "m.gguf") == SHA(body)
+
+
+def test_dropped_connections_are_taken_up_again_within_the_same_call(tmp_path, site, pipe):
+    body = gguf_bytes(extra=900_000)
+    route = site.add("/m.gguf", body, headers={"ETag": '"v1"'}, ranges=True, cut_at=70_000)
+    pipe.sleep = lambda _: None
+    out = pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(sha256=SHA(body)))
+    assert out.sha256 == SHA(body) and (tmp_path / "m.gguf").read_bytes() == body
+    assert [seen.get("range") for seen in route.seen] == [
+        None, *(f"bytes={at}-" for at in range(70_000, len(body), 70_000))]
+
+
+def test_a_connection_that_goes_silent_is_taken_up_again(tmp_path, site, pipe):
+    body = gguf_bytes(extra=300_000)
+    route = site.add("/m.gguf", body, headers={"ETag": '"v1"'}, ranges=True, hang_at=100_000, hang_s=1.5)
+    pipe.limits, pipe.sleep = replace(pipe.limits, timeout=0.4), lambda _: None
+    pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(sha256=SHA(body)))
+    assert (tmp_path / "m.gguf").read_bytes() == body
+    assert [seen.get("range") for seen in route.seen] == [None, "bytes=100000-"]
+
+
+def test_a_busy_server_part_way_through_is_waited_out(tmp_path, site, pipe):
+    body = gguf_bytes(extra=300_000)
+    route = site.add("/m.gguf", body, headers={"ETag": '"v1"'}, ranges=True, cut_at=100_000)
+    pipe.sleep = lambda _: None
+    waits = []
+
+    def waiting(name):
+        if name == "waiting":
+            waits.append(name)
+            route.status, route.cut_at = (503, None) if len(waits) == 1 else (200, None)
+
+    pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(sha256=SHA(body)), phase=waiting)
+    assert len(waits) == 2 and len(route.seen) == 3 and route.seen[-1]["range"] == "bytes=100000-"
+
+
+@pytest.mark.parametrize("case", [(0, 4, "nothing was kept"), (1000, 10, "1000 bytes that arrived are kept")],
+                         ids=["never-started", "under-way"])
+def test_attempts_that_bring_nothing_back_off_then_end_in_a_plain_message(tmp_path, site, pipe, case):
+    held, attempts, kept = case
+    route = site.add("/m.gguf", gguf_bytes(extra=100_000), headers={"ETag": '"v1"'}, ranges=True, cut_at=held)
+    slept, waits = [0.0], []
+    pipe.sleep = lambda seconds: slept.__setitem__(-1, slept[-1] + seconds)
+
+    def waiting(_name):
+        waits.append(slept[-1])
+        slept.append(0.0)
+        route.cut_at = 0
+
+    with pytest.raises(net.Truncated, match=f"gave up: {attempts} attempt.*{kept}"):
+        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", phase=waiting)
+    assert len(route.seen) == attempts
+    assert [round(one) for one in slept[1:]] == [1, 2, 4, 8, 16, 30, 30, 30, 30][:attempts - 1]
+
+
+def test_a_cancel_while_waiting_to_try_again_ends_the_download(tmp_path, site, pipe):
+    route = site.add("/m.gguf", gguf_bytes(extra=100_000), cut_at=1000)
+    cancel, slept = Cancel(), []
+
+    def sleep(seconds):
+        slept.append(seconds)
+        cancel.cancelled = True
+
+    pipe.sleep = sleep
+    with pytest.raises(net.Truncated, match="cancelled"):
+        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", cancel=cancel)
+    assert len(route.seen) == 1 and len(slept) == 1
+
+
+def test_a_resume_the_server_answers_with_the_whole_file_stays_within_the_cap(tmp_path, site, pipe):
+    body = gguf_bytes(extra=200_000)
+    route = site.add("/m.gguf", body, headers={"ETag": '"v1"'}, cut_at=100_000)
+    pipe.sleep = lambda _: None
+    pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(sha256=SHA(body), max_bytes=len(body)),
+         phase=lambda name: setattr(route, "cut_at", None))
+    assert (tmp_path / "m.gguf").read_bytes() == body and len(route.seen) == 2
 
 
 def test_a_host_that_is_not_listed_needs_a_recorded_approval(tmp_path, site, pipe):
@@ -467,7 +566,6 @@ def test_failures_are_deleted_and_recorded_with_an_event_and_nothing_waits_for_a
 
 def test_stale_partial_files_are_swept(tmp_path):
     import os
-    import time
 
     part = staging_dir() / "old.part"
     part.write_bytes(b"x")
@@ -483,10 +581,10 @@ def test_a_server_that_resumes_at_the_wrong_offset_is_not_trusted(tmp_path, site
     body = gguf_bytes(extra=100_000)
     route = site.add("/m.gguf", body, headers={"ETag": '"v1"'}, ranges=True, cut_at=30_000)
     with pytest.raises(net.Truncated):
-        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf")
+        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(tries=1))
     route.cut_at, route.shift = None, 7
     with pytest.raises(net.Truncated, match="another offset"):
-        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf")
+        pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(tries=1))
     assert not list(staging_dir().glob("*.part"))
     route.shift = 0
     pull(pipe, site, "/m.gguf", tmp_path / "m.gguf", net.Want(sha256=SHA(body)))

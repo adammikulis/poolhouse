@@ -3,6 +3,10 @@
 Nothing reaches its final path until its size, SHA-256 (when one is pinned), format and scan
 have passed. A file that fails is deleted, its refusal raised and recorded, and never
 promoted; nothing is quarantined for a person to release. Nothing downloaded is executed or imported here.
+
+A download has no total time limit. A connection that drops, goes silent or trickles is closed
+and the file taken up again from the bytes already staged; the download gives up only after a run
+of attempts that brought nothing new.
 """
 
 from __future__ import annotations
@@ -14,8 +18,9 @@ import logging
 import re
 import shutil
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field, replace
+from http.client import HTTPException
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +42,14 @@ logger = logging.getLogger(__name__)
 
 MOST_BYTES = 1 << 30
 STALE_S = 7 * 86400.0
+TRIES = 10
+"""Attempts in a row without new data after which a download that had begun gives up."""
+FIRST_TRIES = 4
+"""The same for a download of which no byte has ever arrived."""
+PROGRESS_BYTES = 64 * 1024
+"""New bytes that count as getting somewhere, which starts the count of attempts again."""
+FIRST_WAIT_S, MOST_WAIT_S, WAIT_STEP_S = 1.0, 30.0, 0.2
+BUSY_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 RANGE = re.compile(r"bytes (\d+)-(\d+)/(\d+|\*)")
 
 
@@ -57,7 +70,8 @@ class NoDigest(Refused):
 
 
 class Truncated(Refused):
-    """The connection ended before the whole file came. The partial file is kept for a retry."""
+    """The whole file did not come: the download was cancelled, or its connection kept failing.
+    The partial file is kept, and the next call takes it up."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +82,9 @@ class Want:
     headers)`` picks the file name once the answer is known. ``reputation`` is whether a failed check counts against the host in
     the reputation ledger, whose only remedy is a person (a Hub download says no: its own retry and refusal protect the file).
     ``pin_notes`` (``publisher``, ``commit``,
-    ``source_ref``, ``host``, ``note``) are recorded in the pin of a model that is kept."""
+    ``source_ref``, ``host``, ``note``) are recorded in the pin of a model that is kept.
+    A connection averaging under ``min_rate`` bytes a second over ``rate_window_s`` is closed, and
+    ``tries`` attempts in a row without new data end the download."""
 
     kind: str = ""
     sha256: str = ""
@@ -76,7 +92,9 @@ class Want:
     require_digest: bool = False
     allow_unscanned: bool = False
     max_bytes: int = MOST_BYTES
-    deadline_s: float = 3600.0
+    min_rate: float = httpguard.DOWNLOAD.min_rate
+    rate_window_s: float = httpguard.DOWNLOAD.rate_window_s
+    tries: int = TRIES
     token: str = ""
     headers: dict[str, str] = field(default_factory=dict)
     purpose: str = "download"
@@ -100,7 +118,8 @@ Progress = Callable[[int, int], None]
 @dataclass(frozen=True, slots=True)
 class Hooks:
     """A ``cancel`` flag, a ``progress(done, total)`` callback and a ``phase(name)`` callback
-    (``verifying``) for a download."""
+    (``waiting`` before another attempt, ``verifying``, ``scanning``, ``installing``) for a
+    download."""
 
     cancel: Cancel | None = None
     progress: Progress | None = None
@@ -147,8 +166,9 @@ def _stream_to(pipe: Pipeline, url: str, part: Path, want: Want,
     """Append the body to ``part``; the shown answer (without its chunks) is returned."""
     sent, offset = _resume_headers(part, want)
     sent = bearer(url, {**want.headers, **sent}, want.token, pipe.plain())
-    limits = pipe.limited(want.purpose, admit=want.admit,
-                          max_bytes=max(1, want.max_bytes - offset), deadline_s=want.deadline_s)
+    limits = pipe.limited(want.purpose, admit=want.admit, max_bytes=want.max_bytes,
+                          deadline_s=httpguard.DOWNLOAD.deadline_s, min_rate=want.min_rate,
+                          rate_window_s=want.rate_window_s)
     host_vet = limits.vet
 
     def vet(target: str) -> None:
@@ -160,7 +180,7 @@ def _stream_to(pipe: Pipeline, url: str, part: Path, want: Want,
     with httpguard.stream(url, headers=sent, limits=replace(limits, vet=vet)) as shown:
         if shown.status == 416:
             part.unlink(missing_ok=True)
-            raise Truncated("the partial file did not fit the server's; it was discarded, retry")
+            raise Truncated("the partial file did not fit the server's; it was discarded")
         if shown.status >= 400:
             raise http.ServerError(f"{http.shown(url)} -> HTTP {shown.status}",
                                    status=shown.status, headers=shown.headers)
@@ -180,9 +200,10 @@ def _stream_to(pipe: Pipeline, url: str, part: Path, want: Want,
             encoding="utf-8")
         with part.open("ab" if resumed else "wb") as out:
             part.chmod(0o600)
-            for block in shown.chunks:
-                if hooks.cancel is not None and hooks.cancel.cancelled:
-                    raise Truncated("cancelled; the partial file is kept")
+            for block in _arriving(shown.chunks):
+                _check_cancel(hooks.cancel)
+                if got + len(block) > want.max_bytes:
+                    raise TooLarge(f"the file is over {want.max_bytes} bytes")
                 out.write(block)
                 got += len(block)
                 if hooks.progress:
@@ -191,6 +212,63 @@ def _stream_to(pipe: Pipeline, url: str, part: Path, want: Want,
             raise Truncated(f"{got} of {total} bytes arrived; the partial file is kept")
         _check_cancel(hooks.cancel)
         return shown
+
+
+def _arriving(chunks: Iterator[bytes]) -> Iterator[bytes]:
+    """The body's blocks, a failure of the connection raised as `Truncated`; a failure to write
+    them is not one, and stays what it is."""
+    try:
+        yield from chunks
+    except (OSError, HTTPException) as exc:
+        raise Truncated(f"the connection was lost ({str(exc) or type(exc).__name__})") from exc
+
+
+def _held(part: Path) -> int:
+    try:
+        return part.stat().st_size
+    except FileNotFoundError:
+        return 0
+
+
+def _bring(pipe: Pipeline, url: str, part: Path, want: Want,
+           hooks: Hooks) -> httpguard.Streaming:
+    """`_stream_to` until the file is whole, taking it up again after a connection that failed.
+
+    Each attempt is checked like the first. A refusal, a cancel and a full disk end it at once; so
+    does an HTTP error status, unless it says the server is busy and bytes have already come."""
+    mark = _held(part)
+    begun, idle = mark > 0, 0
+    while True:
+        try:
+            return _stream_to(pipe, url, part, want, hooks)
+        except (Truncated, httpguard.Interrupted, HTTPException, http.ServerError) as exc:
+            _check_cancel(hooks.cancel)
+            held = _held(part)
+            begun = begun or held > 0
+            if isinstance(exc, http.ServerError) and not (begun and exc.status in BUSY_STATUS):
+                raise
+            if held >= mark + PROGRESS_BYTES:
+                mark, idle = held, 0
+            else:
+                idle += 1
+            if idle >= (want.tries if begun else min(want.tries, FIRST_TRIES)):
+                kept = f"the {held} bytes that arrived are kept" if held else "nothing was kept"
+                raise Truncated(f"the download gave up: {idle} attempt(s) in a row brought no real "
+                                f"progress, the last because {exc}; {kept}") from exc
+            wait = min(FIRST_WAIT_S * 2 ** max(0, idle - 1), MOST_WAIT_S)
+            logger.warning("%s: %s; %d bytes are here, trying again in %.0f s",
+                           http.shown(url), exc, held, wait)
+            _pause(pipe, wait, hooks)
+
+
+def _pause(pipe: Pipeline, seconds: float, hooks: Hooks) -> None:
+    """Wait before another attempt, ending as soon as the download is cancelled."""
+    if hooks.phase:
+        hooks.phase("waiting")
+    for _ in range(round(seconds / WAIT_STEP_S)):
+        _check_cancel(hooks.cancel)
+        pipe.sleep(WAIT_STEP_S)
+    _check_cancel(hooks.cancel)
 
 
 def _total(shown: httpguard.Streaming, offset: int) -> int:
@@ -235,8 +313,9 @@ def download(url: str, dest: Path | str, want: Want | None = None, pipeline: Pip
     """``url`` saved at ``dest`` after every check; its `Provenance` is written beside it.
 
     `NoDigest` before any request when ``want.require_digest`` and no ``sha256`` was given;
-    `Truncated` when the connection ended early (the partial file stays in staging and the
-    next call resumes it); `ChecksumMismatch` or `Blocked` when the file failed a check and was deleted.
+    `Truncated` when cancelled or when attempt after attempt brought nothing (the partial file
+    stays in staging and the next call resumes it); `ChecksumMismatch` or `Blocked` when the file
+    failed a check and was deleted.
     """
     want = want or Want()
     pipe = pipeline or named()
@@ -248,7 +327,7 @@ def download(url: str, dest: Path | str, want: Want | None = None, pipeline: Pip
     key = _key(url, final)
     part = staged_part(url, final)
     try:
-        shown = _stream_to(pipe, url, part, want, hooks)
+        shown = _bring(pipe, url, part, want, hooks)
     except TooLarge:
         part.unlink(missing_ok=True)
         _meta(part).unlink(missing_ok=True)

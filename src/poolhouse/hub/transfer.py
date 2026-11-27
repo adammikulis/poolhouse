@@ -6,8 +6,8 @@ Files land in the standard Hugging Face hub cache (`poolhouse.hub.hfstore`: ``bl
 ``pull`` takes ``hf:owner/repo/file.gguf`` (every shard of that build comes down),
 ``hf:owner/repo:Q4_K_M`` or a folder-less file reference. Safetensors references
 retrieve the complete snapshot folder; GGUF references return the first file.
-A transfer interrupted by a cancel, a dropped connection or a crash continues from the
-bytes already on disk.
+A dropped or stalled connection is taken up again within the same pull (`poolhouse.net.download`); a pull
+ended by a cancel, a crash or a connection that stays down continues from the bytes already on disk.
 """
 
 from __future__ import annotations
@@ -208,8 +208,11 @@ def _fetch(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Meter) -> N
     cancel = meter.cancel
     url, auth = _url(parsed, one), remote.token()
     meter.resumed += _staged(url, final)
+    def phase(name: str) -> None:
+        meter.send(name, one, _staged(url, final) if name == "waiting" else one.size, force=True)
+
     hooks = net.Hooks(cancel=cancel, progress=lambda done, _t: meter.send("downloading", one, done),
-                      phase=lambda name: meter.send(name, one, one.size, force=True))
+                      phase=phase)
     want = _want(parsed, one, auth, meter.note)
     try:
         try:
