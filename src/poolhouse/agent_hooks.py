@@ -63,9 +63,10 @@ def targets(project: Path, only: tuple[str, ...] = AGENTS) -> dict[str, Path]:
     folders = _user_folders()
     out = {}
     for agent in only:
-        path = Path(os.path.realpath(root.joinpath(*FILES[agent])))
-        if not path.is_relative_to(root):
-            raise ValueError(f"{root.joinpath(*FILES[agent])} is a link that leaves the project, so it is not written")
+        folder, name = FILES[agent]
+        path = root / folder / name
+        if any(part.is_symlink() for part in (path.parent, path)) or Path(os.path.realpath(path)) != path:
+            raise ValueError(f"{path} is a link or is reached through one, so it is not written")
         if any(_same(parent, folder) for parent in path.parents for folder in folders):
             raise ValueError(f"{path} is among the user's own settings, which are never written")
         out[agent] = path

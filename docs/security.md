@@ -239,8 +239,8 @@ runner, not here.
 - Deserialization: no `pickle`, `marshal`, `yaml.load`, `torch.load`, `eval` or `exec` of data
   anywhere in `src`; weights are read as safetensors or GGUF; `from_pretrained` never sets
   `trust_remote_code`; `np.load` is called without `allow_pickle`.
-- Shelling out: one `shell=True` (`checks.ask`, a fix line shown to and confirmed by the
-  person); everything else is an argument list, and llama-server's arguments are built as a
+- Shelling out: no `shell=True`. `poolhouse-setup` and `poolhouse-doctor` show a fix and run none; every
+  process is started from an argument list, and llama-server's arguments are built as a
   list from validated values.
 - `fleet/files.py:safe_relpath` refuses absolute paths, `..`, odd characters and escapes after
   `resolve()`; tar extraction was already filtered.

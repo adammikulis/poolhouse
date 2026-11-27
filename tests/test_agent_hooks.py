@@ -97,10 +97,24 @@ def test_a_project_link_into_the_users_settings_is_refused_before_either_file_is
     target = machine / "home" / link.replace("settings.local.json", "settings.json")
     (project / link).parent.mkdir(parents=True, exist_ok=True)
     (project / link).symlink_to(target)
-    with pytest.raises(ValueError, match="leaves the project"):
+    with pytest.raises(ValueError, match="is a link"):
         agent_hooks.install(project)
     assert user_files(machine) == USERS_OWN
     assert not [p for p in project.rglob("*") if p.is_file() and not p.is_symlink()]
+
+
+@pytest.mark.parametrize("link, target", [(".claude/settings.local.json", "made-by-install.json"),
+                                          (".codex/config.toml", "made-by-install.toml"),
+                                          (".claude", "other-folder"), (".claude/settings.local.json", "kept.json")])
+def test_a_committed_link_inside_the_project_is_refused_and_its_target_is_neither_made_nor_changed(machine, link, target):
+    project = machine / "project"
+    (project / "kept.json").write_text("{}")
+    (project / link).parent.mkdir(parents=True, exist_ok=True)
+    (project / link).symlink_to(project / target)
+    with pytest.raises(ValueError, match="is a link"):
+        agent_hooks.install(project)
+    assert sorted(p.name for p in project.rglob("*") if p.is_file() and not p.is_symlink()) == ["kept.json"]
+    assert (project / "kept.json").read_text() == "{}" and not (project / "other-folder").exists()
 
 
 @pytest.mark.parametrize("variable, agent, folder", [("CLAUDE_CONFIG_DIR", "claude-code", ".claude"), ("CODEX_HOME", "codex", ".codex")])

@@ -12,7 +12,7 @@ from pathlib import Path
 from poolhouse import home
 from poolhouse.files import read_json, write_json
 
-__all__ = ["HOOKS", "Problem", "context", "digest", "inspect", "line", "remember", "remembered"]
+__all__ = ["HOOKS", "Problem", "context", "digest", "inert", "inspect", "line", "remember", "remembered"]
 
 HOOKS = ("pre-commit", "commit-msg", "pre-push", "post-merge", "post-commit")
 SCRIPTS = "scripts/hooks"
@@ -30,8 +30,28 @@ class Problem:
     kind: str = "install"
 
 
-def _git(repo: Path, *words: str) -> str | None:
-    done = subprocess.run(["git", "-C", str(repo), *words], capture_output=True, text=True, timeout=30)
+def inert(repo: Path) -> tuple[list[str], dict[str, str]]:
+    """The words and environment of a `git` that looks at ``repo`` and starts no program the repository supplies: no filesystem
+    monitor, no filter its own configuration names, and no index write that would run one of its hooks."""
+    words = ["git", "--no-optional-locks", "-c", "core.fsmonitor=false", "-C", str(repo)]
+    listed = subprocess.run([*words, "config", "--list", "--show-scope", "--name-only", "-z"], capture_output=True, text=True, timeout=30)
+    items = listed.stdout.split("\0")
+    drivers = sorted({key.rpartition(".")[0] for scope, key in zip(items[::2], items[1::2], strict=False)
+                      if scope in ("local", "worktree") and key.startswith("filter.") and key.count(".") > 1})
+    env = dict(os.environ)
+    first = int(env.get("GIT_CONFIG_COUNT") or 0)
+    off = [(f"{driver}.{what}", value) for driver in drivers
+           for what, value in (("clean", ""), ("smudge", ""), ("process", ""), ("required", "false"))]
+    for number, (key, value) in enumerate(off, first):
+        env[f"GIT_CONFIG_KEY_{number}"], env[f"GIT_CONFIG_VALUE_{number}"] = key, value
+    if off:
+        env["GIT_CONFIG_COUNT"] = str(first + len(off))
+    return words, env
+
+
+def _git(repo: Path, *args: str) -> str | None:
+    words, env = inert(repo)
+    done = subprocess.run([*words, *args], capture_output=True, text=True, timeout=30, env=env)
     return done.stdout.strip() if done.returncode == 0 else None
 
 

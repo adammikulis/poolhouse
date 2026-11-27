@@ -20,7 +20,7 @@ from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
 from poolhouse import home, runtime_identity
-from poolhouse.checks import Finding, ask, checkout, tilde
+from poolhouse.checks import Finding, checkout, show, tilde
 from poolhouse.fleet.onboard.lan import can_bind
 from poolhouse.installed import standard
 from poolhouse.log import say
@@ -326,17 +326,14 @@ def _commands_finding() -> Finding:
     """Which of the package's commands are on PATH, and the line that puts the rest there."""
     wanted = _scripts()
     missing = [name for name in wanted if not shutil.which(name)]
-    where = checkout()
     return Finding(
         name="commands on PATH",
         good=not missing,
         said=(f"{len(wanted)} command(s) found" if not missing
               else "not found: " + ", ".join(missing)),
-        fix=[] if not missing or where is None else ["pip", "install", "-e", str(where)],
         note=(", ".join(wanted) if not missing else
               "an entry point added to pyproject.toml is not a command until the package "
-              "is reinstalled and the shims rehashed; a queue step that names one dies "
-              "on 'command not found'"))
+              "is installed again; a queue step that names one dies on 'command not found'"))
 
 
 def _firewall_rule_present(name: str) -> bool:
@@ -505,7 +502,7 @@ def main(argv: list[str] | None = None) -> int:
         findings = findings + look_checkouts(
             repositories(args.repo) if args.repo else None,
             bench_home=Path(args.bench_home).expanduser() if args.bench_home else None)
-    ask(findings)
+    show(findings)
     if not args.quiet:
         explain()
     return 0 if all(f.good for f in findings) else 1

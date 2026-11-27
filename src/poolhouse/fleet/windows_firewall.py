@@ -42,7 +42,7 @@ def rules() -> list[tuple[str, str, int]]:
 
 def line() -> str:
     """The rule as one line a person can paste into an administrator's prompt."""
-    return " && ".join(f'netsh advfirewall firewall add rule name="{name}" dir=in action=allow protocol={proto} localport={port}'
+    return " && ".join(f'netsh advfirewall firewall add rule name="{name}" dir=in action=allow profile=private protocol={proto} localport={port}'
                        for name, proto, port in rules())
 
 

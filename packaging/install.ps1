@@ -98,7 +98,7 @@ function Open-Firewall {
         -not (Get-NetFirewallRule -DisplayName $_.Name -ErrorAction SilentlyContinue) })
     if ($missing.Count -eq 0) { return }
     $lines = ($missing | ForEach-Object {
-        "netsh advfirewall firewall add rule name=`"$($_.Name)`" dir=in action=allow " +
+        "netsh advfirewall firewall add rule name=`"$($_.Name)`" dir=in action=allow profile=private " +
         "protocol=$($_.Protocol) localport=$($_.Port)" }) -join " ; "
     $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
         [Security.Principal.WindowsBuiltInRole]::Administrator)

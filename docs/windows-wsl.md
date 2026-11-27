@@ -80,9 +80,9 @@ networkingMode=mirrored
 ```
 
 then in PowerShell run `wsl --shutdown` and start WSL again (Windows 11 22H2 or newer). Or run, on the WSL device,
-`python -m poolhouse.device_setup`, which writes that setting (keeping the old file beside it), adds the Windows firewall
-rules and restarts WSL (`--dry-run` lists these first). If other devices still cannot dial it, allow inbound traffic to the WSL
-virtual machine in an administrator PowerShell: `Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow`.
+`python -m poolhouse.device_setup`, which never writes that file: once the line is there it adds the firewall rules, for
+private networks only, and restarts WSL (`--dry-run` lists these first). The rules cover the node's two ports, on Windows and for
+the WSL virtual machine; nothing allows all inbound traffic.
 
 The pool says how each member is reached: `poolhouse-pool members` has a `REACH` column and `ph.pool.members()` has `reach` and
 `reach_hint`. `direct`: this device dialed the member and it answered. `channel`: this device cannot dial it; it is reached over the

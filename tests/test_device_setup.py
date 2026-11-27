@@ -74,7 +74,10 @@ def test_the_kind_of_machine_comes_from_the_platform_and_the_kernel(platform, ve
 def test_the_firewall_script_covers_both_ports_and_the_vm():
     script = device_host.rules_script()
     assert f"-LocalPort {node_join.DEFAULT_PORT}" in script and f"-LocalPort {node_join.DEFAULT_BEACON_PORT}" in script
-    assert device_host.HYPERV_ID in script and "-Profile Private" in script
+    assert device_host.HYPERV_ID in script
+    assert "DefaultInboundAction" not in script, "nothing allows all inbound traffic to the WSL machine"
+    added = [step for step in script.split("New-NetFirewall")[1:] if "-Action Allow" in step]
+    assert len(added) == 4 and all("-Profile Private" in step or "-Profiles Private" in step for step in added)
 
 
 def test_a_dry_run_lists_the_changes_and_makes_none(monkeypatch, capsys):

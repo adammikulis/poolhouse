@@ -1228,11 +1228,6 @@ status = "covered"
 tests = ["tests/test_sandbox_redteam.py", "tests/test_pdf_engine.py", "tests/test_net_scan.py"]
 
 [[group]]
-match = ["spawn:checks.py:ask"]
-status = "covered"
-tests = ["tests/test_redteam_spawn.py::test_a_fix_line_is_shown_and_runs_with_nothing_asked_and_never_through_a_shell"]
-
-[[group]]
 match = ["spawn:jobs.py:detach", "spawn:serve/backend.py:launch", "spawn:bench/queue.py:*",
          "spawn:fleet/measuring.py:detach_bench"]
 status = "covered"

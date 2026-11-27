@@ -21,7 +21,7 @@ TIMEOUT = 600
 NOT_ELEVATED = ("the Windows firewall rules need an administrator's PowerShell, and nothing in Poolhouse asks for one: run this from an administrator "
                 "PowerShell once, or add the rules there yourself")
 _ELEVATED = "([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)"
-_HYPERV_PRESENT = "(Get-Command Get-NetFirewallHyperVVMSetting -ErrorAction SilentlyContinue)"
+_HYPERV_PRESENT = "(Get-Command New-NetFirewallHyperVRule -ErrorAction SilentlyContinue)"
 
 
 def host_kind(platform: str, proc_version: str) -> str:
@@ -48,18 +48,27 @@ def _powershell(script: str) -> str:
 
 
 def rules_script() -> str:
-    """PowerShell that adds each missing inbound rule and lets the WSL VM receive them."""
+    """PowerShell that adds each missing inbound rule, on private networks only, for Windows and for the same ports of the WSL VM."""
     adds = "; ".join(f"if (-not (Get-NetFirewallRule -DisplayName '{name}' -ErrorAction SilentlyContinue)) "
                      f"{{ New-NetFirewallRule -DisplayName '{name}' -Direction Inbound -Action Allow -Profile Private -Protocol {proto} -LocalPort {port} | Out-Null }}"
                      for name, proto, port in RULES)
-    return f"{adds}; if ({_HYPERV_PRESENT}) {{ Set-NetFirewallHyperVVMSetting -Name '{HYPERV_ID}' -DefaultInboundAction Allow }}"
+    vm = "; ".join(f"if (-not (Get-NetFirewallHyperVRule -Name '{_vm_rule(name)}' -ErrorAction SilentlyContinue)) "
+                   f"{{ New-NetFirewallHyperVRule -Name '{_vm_rule(name)}' -DisplayName '{name}' -Direction Inbound -Action Allow -Profiles Private "
+                   f"-VMCreatorId '{HYPERV_ID}' -Protocol {proto} -LocalPorts {port} | Out-Null }}"
+                   for name, proto, port in RULES)
+    return f"{adds}; if ({_HYPERV_PRESENT}) {{ {vm} }}"
+
+
+def _vm_rule(name: str) -> str:
+    return name.replace(" ", "-") + "-wsl"
 
 
 def firewall_missing() -> bool:
-    """Whether the inbound rules (or the Hyper-V default) still need adding."""
+    """Whether the inbound rules (Windows's or the WSL VM's) still need adding."""
     names = ",".join(f"'{name}'" for name, _, _ in RULES)
+    vm_names = ",".join(f"'{_vm_rule(name)}'" for name, _, _ in RULES)
     script = (f"$m = @({names}) | Where-Object {{ -not (Get-NetFirewallRule -DisplayName $_ -ErrorAction SilentlyContinue) }}; "
-              f"$h = {_HYPERV_PRESENT} -and ((Get-NetFirewallHyperVVMSetting -Name '{HYPERV_ID}' -ErrorAction SilentlyContinue).DefaultInboundAction -ne 'Allow'); "
+              f"$h = if ({_HYPERV_PRESENT}) {{ @({vm_names}) | Where-Object {{ -not (Get-NetFirewallHyperVRule -Name $_ -ErrorAction SilentlyContinue) }} }}; "
               "if ($m -or $h) { 'missing' } else { 'ok' }")
     return _powershell(script) != "ok"
 
