@@ -6,8 +6,8 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
-from poolhouse import harnessing
 from poolhouse.files import stat_signature
+from poolhouse.hub.naming import DENSE_27B
 from poolhouse.hub.probe import machine_memory
 from poolhouse.serve.broker import BrokerError
 from poolhouse.serve.estimate import Setup, estimate
@@ -377,12 +377,11 @@ def choices_for(ui):
 
 def _held_default(preferred, rows):
     """``preferred``, unless it is a default 27B and one is installed: then the installed one, one that fits first and in
-    `harnessing.default_model`'s order. A new default's name never turns an installed 27B into a recommended download."""
-    names = (harnessing.DEFAULT_MODEL, *harnessing.FORMER_DEFAULTS)
-    if preferred is None or preferred['file'] not in names:
+    `DENSE_27B`'s order. A new default's name never turns an installed 27B into a recommended download."""
+    if preferred is None or preferred['file'] not in DENSE_27B:
         return preferred
-    held = [row for row in rows if row['installed'] and row['file'] in names]
-    return min(held, key=lambda row: (row['fits_now'] is not True, names.index(row['file'])), default=preferred)
+    held = [row for row in rows if row['installed'] and row['file'] in DENSE_27B]
+    return min(held, key=lambda row: (row['fits_now'] is not True, DENSE_27B.index(row['file'])), default=preferred)
 
 
 def selected_model(ui, model_id):

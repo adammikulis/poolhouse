@@ -7,6 +7,7 @@ import pytest
 from poolhouse.fleet import updates
 from poolhouse.fleet.daemon import DaemonRuntime
 from poolhouse.fleet.setup_jobs import Jobs
+from poolhouse.hub import uploads
 from poolhouse.lock import only_one
 
 OLD, NEW = "1" * 40, "2" * 40
@@ -132,7 +133,11 @@ def test_daemon_wires_shared_update_admission(tmp_path, monkeypatch, tracked):
     captured = {}
     monkeypatch.setattr(updates, 'track', lambda source, **kwargs: captured.update(kwargs))
     monkeypatch.setattr(updates, 'watch', lambda **kwargs: captured.update(kwargs))
+    daemon.announcer = lambda boards: 'the handed-in notice'
+    uploads_watched = []
+    monkeypatch.setattr(uploads, 'watch', uploads_watched.append)
     daemon.updates()
+    assert uploads_watched == ['the handed-in notice'], 'the daily model upload check starts with the daemon'
     assert not captured['idle']()
     daemon.settings.setup_done = True
     assert captured['idle']()

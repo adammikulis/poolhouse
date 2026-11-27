@@ -173,7 +173,7 @@ def due(now: float = 0.0) -> bool:
     return enabled() and (now or time.time()) - float(_kept().get("checked_at") or 0) >= EVERY_S
 
 
-def watch(post: Callable[[str], object], *, first_after_s: float = FIRST_AFTER_S, look_s: float = LOOK_S,
+def watch(post: Callable[[str], object] | None = None, *, first_after_s: float = FIRST_AFTER_S, look_s: float = LOOK_S,
           rounds: int = 0) -> threading.Thread:
     """`check` once a day for as long as this process runs; the time of the last one is kept, so restarts add no checks."""
     def loop() -> None:

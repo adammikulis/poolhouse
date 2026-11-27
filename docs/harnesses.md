@@ -60,7 +60,7 @@ needs no install step; a missing SDK is reported as a defective install, never a
    262144 --kv q8_0` says what the 27B needs (its weights are 13.1 GB). The default model is
    `Qwen3.8-Flash-Next-UD-IQ2_XS` when it is installed and `suggest.largest_fit` rates it green at 262,144 tokens
    (`harnessing.default_model()`; measured 2026-11-25 on the 128 GB machine: 56.8 GiB wired, 48 GiB resident, n-gram
-   table on SSD), else the 27B. An install that has the 27B default of an earlier version (`harnessing.FORMER_DEFAULTS`)
+   table on SSD), else the 27B. An install that has the 27B default of an earlier version (`hub.naming.DENSE_27B`)
    and not this one goes on using it: an upgrade starts no download. The larger Flash-Next quants still do not fit this machine and are never the default.
    `--ctx N` is the total across `--slots` (default 1); `--on URL` uses a server already up.
    A server already up on the same weights is taken as it serves them, whatever its port, window,

@@ -7,7 +7,7 @@ import pytest
 from node_kit import node_binary, workspace_node  # noqa: F401 - fixtures
 
 from poolhouse import hub
-from poolhouse.fleet import model_uploads
+from poolhouse.board import model_uploads
 from poolhouse.fleet.models import Models
 from poolhouse.hub import uploads
 from poolhouse.testing.fakehub import fake_hub
