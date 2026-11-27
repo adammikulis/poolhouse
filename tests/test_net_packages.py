@@ -79,21 +79,15 @@ def test_unchecked_source_configuration_is_refused(monkeypatch, tmp_path, option
     assert len(calls) == 1
 
 
-def test_standard_package_provider_is_scoped_and_keeps_distrust_refusals(monkeypatch, tmp_path):
-    from types import SimpleNamespace
-
-    from poolhouse.net.policy import Distrusted
-    from poolhouse.sentinel import observers
-
+def test_the_standard_provider_and_any_https_index_the_user_names_install(monkeypatch, tmp_path):
     calls = capture(monkeypatch, tmp_path)
+    monkeypatch.setattr(policy, "default", lambda: policy.Policy(path=tmp_path / "approvals"))
     packages.run("python", ["install", "tensor"], timeout=5, env={})
     assert calls[-1][0][4:6] == ["--index-url", "https://pypi.org/simple"]
-    assert not policy.default().listed("pypi.org")
-    monkeypatch.setattr(observers, "gate", lambda kind, key: SimpleNamespace(since=1, reason="distrusted"))
-    calls.clear()
-    with pytest.raises(Distrusted):
-        packages.run("python", ["install", "tensor"], timeout=5, env={})
-    assert len(calls) == 1
+    packages.run("python", ["install", "--index-url", "https://mirror.acme.example/simple", "tensor"], timeout=5, env={})
+    assert calls[-1][0][4:6] == ["--index-url", "https://mirror.acme.example/simple"]
+    with pytest.raises(Refused, match="HTTPS"):
+        packages.run("python", ["install", "--index-url", "http://mirror.acme.example/simple", "tensor"], timeout=5, env={})
 
 
 @pytest.mark.parametrize("source", ["file://foreign/share/wheel.whl", "//foreign/share", "\\\\foreign\\share"])

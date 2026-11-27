@@ -13,7 +13,6 @@ import pytest
 from poolhouse import chatpolicy, net, reputation, roles
 from poolhouse.httpguard import Limits
 from poolhouse.interventions import Call, Context
-from poolhouse.net.policy import Distrusted
 from poolhouse.reputation import hooks, model
 from poolhouse.reputation.store import Ledger
 from poolhouse.sentinel import observers
@@ -106,42 +105,13 @@ def test_a_third_party_cannot_make_a_good_source_look_bad(ledger, clock):
     assert (after.state, after.short, after.long, after.clean) == (before.state, before.short, before.long, before.clean)
 
 
-def test_a_watched_host_is_refused_until_it_is_approved(ledger, clock, tmp_path):
-    policy = net.Policy(allowed=["good.example"], path=tmp_path / "a.jsonl", clock=clock)
-    assert policy.admit("https://good.example/x") == "good.example"
-    make_established(ledger, clock, "host", "good.example")
-    ledger.observe("host", "good.example", "hash_change")
-    with pytest.raises(Distrusted, match=r"good\.example is watch"):
-        policy.admit("https://good.example/x")
-    clock.advance(10)
-    policy.approve("good.example", by="person")
-    assert policy.admit("https://good.example/x") == "good.example"
-
-
-def test_a_watched_host_is_held_back_for_an_hour_and_then_fetched_from_again_with_nobody_asked(ledger, clock, tmp_path):
+@pytest.mark.parametrize("event", ["hash_change", "scan_hit"])
+def test_a_verdict_against_a_host_holds_no_fetch_back(ledger, clock, tmp_path, event):
     policy = net.Policy(allowed=["good.example"], path=tmp_path / "a.jsonl", clock=clock)
     make_established(ledger, clock, "host", "good.example")
-    ledger.observe("host", "good.example", "hash_change")
-    with pytest.raises(Distrusted, match="ends by itself"):
-        policy.admit("https://good.example/x")
-    clock.advance(net.policy.HOLD_S["watch"] - 5)
-    with pytest.raises(Distrusted):
-        policy.admit("https://good.example/x")
-    clock.advance(10)
-    assert policy.admit("https://good.example/x") == "good.example", "the hold lapsed by itself"
+    ledger.observe("host", "good.example", event)
+    assert policy.admit("https://good.example/x") == "good.example"
     assert policy.approvals() == [], "nobody approved anything"
-
-
-def test_a_bad_host_is_held_back_for_a_day_not_for_good(ledger, clock, tmp_path):
-    policy = net.Policy(allowed=["bad.example"], path=tmp_path / "a.jsonl", clock=clock)
-    ledger.observe("host", "bad.example", "scan_hit")
-    with pytest.raises(Distrusted):
-        policy.admit("https://bad.example/x")
-    clock.advance(net.policy.HOLD_S["watch"] + 1)
-    with pytest.raises(Distrusted):
-        policy.admit("https://bad.example/x")
-    clock.advance(net.policy.HOLD_S["bad"])
-    assert policy.admit("https://bad.example/x") == "bad.example"
 
 
 def test_reputation_never_admits_a_host_the_policy_refuses(ledger, clock, tmp_path):
@@ -151,11 +121,13 @@ def test_reputation_never_admits_a_host_the_policy_refuses(ledger, clock, tmp_pa
         policy.admit("https://unlisted.example/")
 
 
-def test_a_bad_host_fetch_is_refused_in_the_pipeline(ledger, site, pipe, clock):
+def test_a_bad_host_is_fetched_and_its_file_still_has_to_match_its_pin(ledger, site, pipe, clock, tmp_path):
     ledger.observe("host", "127.0.0.1", "scan_hit")
     site.routes["/a"] = Route(body=b"hello")
-    with pytest.raises(Distrusted):
-        pipe.get(f"http://127.0.0.1:{site.port}/a")
+    assert pipe.get(f"http://127.0.0.1:{site.port}/a").body == b"hello"
+    with pytest.raises(net.ChecksumMismatch):
+        net.download(f"http://127.0.0.1:{site.port}/a", tmp_path / "a.bin",
+                     net.Want(sha256=hashlib.sha256(b"other").hexdigest()), pipe)
 
 
 def test_the_pipeline_reports_what_it_saw(ledger, site, pipe, clock):
