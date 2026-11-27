@@ -62,6 +62,26 @@ def asked(name, **given):
 
 
 line("step_start")
+if "mode:call:" in task:   # one shell line, asked of the real hook and never run
+    hook("post", {{"loaded": True}})
+    asked("Bash", command=task.split("mode:call:", 1)[1].split("\n")[0].replace("OUTSIDE", {outside!r}))
+    line("step_finish", reason="stop", tokens={{"input": 1, "output": 1}})
+    sys.exit(0)
+if "mode:surrogate" in task:   # a name and a last word that no text file can hold as they are
+    hook("post", {{"loaded": True}})
+    asked("Write", file_path=os.environ["POOLHOUSE_STAND_IN_STATE"] + "/\ud800")
+    line("text", text="done \ud800")
+    line("step_finish", reason="stop", tokens={{"input": 1, "output": 1}})
+    sys.exit(0)
+if "mode:retries" in task or "mode:only-refused" in task:
+    hook("post", {{"loaded": True}})
+    asked("Write", file_path={outside!r})
+    if "mode:retries" in task:   # denied, then let through under the same name: the write was not refused in the end
+        assert asked("Bash", command="rm -rf held") == "deny"
+        assert asked("Write", file_path="held") == "allow"
+        line("tool_use", id="Write" + str({{"file_path": "held"}}), tool="write", state={{"status": "completed", "input": {{"path": "held"}}}})
+    line("step_finish", reason="stop", tokens={{"input": 1, "output": 1}})
+    sys.exit(0)
 if "mode:linger" in task:
     hook("post", {{"loaded": True}})
     line("step_finish", reason="tool-calls", tokens={{"input": 10, "output": 1}})
@@ -124,7 +144,7 @@ def unsandboxed(lead_node, detached, tmp_path, monkeypatch):
 
     monkeypatch.setattr(delegate_confined, "leased", leased)
     monkeypatch.setattr(delegate_run.delegate_unboxed.harnessing, "binary_for", lambda _name, **_: str(script))
-    monkeypatch.setattr(delegate_run.delegate_unboxed.claude, "alias_of", lambda _url, _model: kit.MODEL)
+    monkeypatch.setattr(delegate_confined.claude, "alias_of", lambda _url, _model: kit.MODEL)
     monkeypatch.setattr(lead_bridge, "POLL_S", 0.05)
     monkeypatch.setenv("POOLHOUSE_HOME", str(node.state.parent))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "a-hosted-key")
@@ -159,7 +179,13 @@ def test_a_delegate_on_a_computer_that_cannot_sandbox_starts_read_only_on_the_fo
 
 def test_an_edit_delegate_with_no_sandbox_warns_edits_the_folder_is_blocked_outside_it_and_reaches_its_lead(unsandboxed, capsys):
     node, lead, project, outside = unsandboxed
-    _name, row = ran(node, lead, "--task", "add a module", "--project", str(project), "--edit")
+    name, row = ran(node, lead, "--task", "add a module", "--project", str(project), "--edit", state="partial")
+    assert [(each["path"], each["by"]) for each in row["refused_writes"]] == [(str(outside), "rules")], row
+    notice = "\n".join(e.text for e in node.session(lead).read(limit=100).entries if e.sender == name)
+    assert "not every change was made in the folder" in row["detail"] and "1 write refused by Poolhouse's tool rules" in row["detail"], row
+    [ended] = [e.text.split("\n", 1)[1] for e in node.session(lead).read(limit=100).entries
+               if e.sender == name and e.fields.get("subject", "").startswith("delegate ")]
+    assert ended.startswith("partial: ") and "1 write refused by Poolhouse's tool rules" in ended, notice
     told = said(capsys)
     assert told.count("warning:") == 1 and "not a boundary" in told and "Only a sandbox stops that" in told
     found = json.loads(row["text"].split("\n\nThis run had no sandbox")[0])
@@ -171,6 +197,45 @@ def test_an_edit_delegate_with_no_sandbox_warns_edits_the_folder_is_blocked_outs
     assert found["keys"] == [], "no key or login of the starting process"
     assert found["base"].startswith("http://127.0.0.1:") and not found["base"].startswith("http://127.0.0.1:9/") and len(found["token"]) >= 32
     assert "--standalone" in found["argv"] and "no sandbox" in found["system"]
+
+
+def test_a_delegate_with_no_sandbox_whose_only_write_was_refused_ends_unapplied(unsandboxed):
+    node, lead, project, outside = unsandboxed
+    _name, row = ran(node, lead, "--task", "mode:only-refused", "--project", str(project), "--edit", state="unapplied")
+    assert [each["path"] for each in row["refused_writes"]] == [str(outside)] and "nothing was changed in the folder" in row["detail"], row
+
+
+def test_a_denied_write_that_is_let_through_afterwards_is_not_reported(unsandboxed):
+    node, lead, project, outside = unsandboxed
+    _name, row = ran(node, lead, "--task", "mode:retries", "--project", str(project), "--edit", state="partial")
+    assert [each["path"] for each in row["refused_writes"]] == [str(outside)], "`held` was let through on the second try"
+
+
+@pytest.mark.parametrize("command", [
+    "sh -c 'echo x > OUTSIDE'", "find /etc/poolhouse-plumbing -delete", "ls | xargs rm -rf", "git config --global user.name x",
+    "git -C /etc -c a.b=c commit -m x", "sudo tee OUTSIDE", "curl -o OUTSIDE https://example.test/x"])
+def test_a_shell_write_the_blocks_deny_however_it_is_wrapped_is_a_refused_write(unsandboxed, command):
+    node, lead, project, _outside = unsandboxed
+    _name, row = ran(node, lead, "--task", f"mode:call:{command}", "--project", str(project), "--edit", state="unapplied")
+    assert row["refused_writes"] and {each["by"] for each in row["refused_writes"]} == {"rules"}, row
+    assert "refused by Poolhouse's tool rules" in row["detail"], row
+
+
+@pytest.mark.parametrize("command", ["cat ~/.ssh/id_ed25519", "gh auth token", "git push --force"])
+def test_a_denied_call_that_writes_no_file_leaves_the_delegate_done(unsandboxed, command):
+    node, lead, project, _outside = unsandboxed
+    _name, row = ran(node, lead, "--task", f"mode:call:{command}", "--project", str(project), "--edit")
+    assert row["refused_writes"] == [], row
+
+
+def test_a_path_no_file_can_hold_as_written_is_still_reported_and_the_lead_is_told(unsandboxed, monkeypatch):
+    node, lead, project, _outside = unsandboxed
+    monkeypatch.setenv("POOLHOUSE_STAND_IN_STATE", str(node.state.parent))
+    monkeypatch.setattr(delegate_run.delegate_unboxed, "KEPT", (*delegate_run.delegate_unboxed.KEPT, "POOLHOUSE_STAND_IN_STATE"))
+    name, row = ran(node, lead, "--task", "mode:surrogate", "--project", str(project), "--edit", state="unapplied")
+    assert row["refused_writes"][0]["path"].endswith(chr(0xFFFD)) and "done " in row["text"], row
+    told = [e.text for e in node.session(lead).read(limit=100).entries if e.sender == name and e.fields.get("subject", "").startswith("delegate ")]
+    assert len(told) == 1 and "refused by Poolhouse's tool rules" in told[0], told
 
 
 def test_a_delegate_whose_plugin_never_asked_the_hook_is_ended_as_failed(unsandboxed):

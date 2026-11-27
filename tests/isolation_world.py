@@ -59,6 +59,14 @@ def make_project(tmp_path: Path) -> Path:
     return root
 
 
+def linked_worktree(main: Path, at: Path, branch: str = "side") -> Path:
+    """A real linked worktree of ``main`` at ``at``, as `git worktree add` makes one: it holds what git holds and no ignored folder."""
+    if subprocess.run([str(source.actual_git()), "rev-parse", "-q", "--verify", "HEAD"], cwd=main, capture_output=True).returncode:
+        git(main, "commit", "-qm", "base")
+    git(main, "worktree", "add", "-q", "-b", branch, str(at))
+    return at.resolve()
+
+
 def holds(root: Path, name: str) -> bool:
     """Whether the project's own git index holds ``name`` (the test of a file git can give back)."""
     return bool(source.git_output(["ls-files", "-z", "--", name], cwd=root))
