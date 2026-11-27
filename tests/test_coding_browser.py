@@ -1,4 +1,4 @@
-"""Coding controls preserve conversations when a turn is refused."""
+"""Coding controls preserve conversations when native isolation is unavailable."""
 from __future__ import annotations
 
 import pytest
@@ -11,6 +11,8 @@ from test_fleet_ui import Serving
 from poolhouse.fleet.conversation_settings import DEFAULTS
 from poolhouse.fleet.conversations import Conversations
 from poolhouse.workspace import coding_turns
+from tests.isolation_kit import without_a_sandbox
+from tests.sandbox_kit import AbsentBackend
 
 pytestmark = pytest.mark.slow
 
@@ -18,8 +20,9 @@ pytestmark = pytest.mark.slow
 @pytest.fixture
 def coding_browser(tmp_path, monkeypatch, browser_owner, workspace_node, one_node):  # noqa: F811
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_HOME", str(tmp_path / "workspace"))
+    without_a_sandbox(monkeypatch, AbsentBackend)  # a computer that cannot confine: the real capability check refuses every turn at once
     monkeypatch.setattr(coding_turns, "worker", fixture_worker)
-    monkeypatch.setattr(coding_turns.harnessing, "binary_for", lambda name: "")  # no runtime installed: every turn is refused at once
+    monkeypatch.setattr(coding_turns.harnessing, "binary_for", lambda name: "fixture-cli" if name == "codex" else "")
     served = Serving(tmp_path)
     try:
         served.ui.settings.setup_done = True
@@ -55,7 +58,7 @@ def refused(page, composer, prompt):
 
     composer.fill(prompt)
     composer.press("Enter")
-    expect(page.locator("#chat-note")).to_contain_text("the selected tool runtime is not installed")
+    expect(page.locator("#chat-note")).to_contain_text("This Mac cannot confine coding agents: its built-in sandbox tool is missing.")
     expect(composer).to_have_value(prompt)
     expect(page.get_by_role("button", name="Stop", exact=True)).to_be_hidden()
 

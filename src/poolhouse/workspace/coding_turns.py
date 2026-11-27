@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import coding, coding_policy, harnessing
+from poolhouse import coding, coding_policy, harnessing, isolation
 from poolhouse.board import person
 from poolhouse.fleet import conversation_graph as graph
 from poolhouse.fleet.conversation_types import safe
@@ -85,6 +85,7 @@ class Manager:
     def start(self, cid: str, prompt: str) -> Turn:
         if not safe(cid) or not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 200000:
             raise ValueError("a turn needs an existing conversation and a nonempty message under 200000 characters")
+        isolation.require_capable()
         conversation = self.store.get(cid)
         if conversation is None:
             raise ValueError("choose an existing conversation first")
@@ -179,7 +180,7 @@ class Manager:
             turn.emit({"state": "starting"})
             harness = settings["harness"]
             if harness == "pi":
-                args = ["--mode", "json", "--print", "--no-session"]
+                args = []
             elif harness == "codex":
                 args = ["exec", "--json", "--color", "never", "--skip-git-repo-check", "-"]
                 if turn.session:
@@ -189,7 +190,8 @@ class Manager:
                 if turn.session:
                     args += ["--resume", turn.session]
             args = self._arguments(harness, args)
-            launch_options = {"protected_paths": self._protected_paths(home), **({"sandbox": True} if self._sandboxed() else {})}
+            # a turn is reached through Poolhouse's own web surface, so it is always sandboxed; only a launch typed here runs in place
+            launch_options = {"protected_paths": self._protected_paths(home), "sandbox": True}
             if harness != "pi" and (extras := self._extras(harness)):
                 launch_options["extras"] = extras
             if harness == "pi":
@@ -217,10 +219,6 @@ class Manager:
                 store.put_doc(f"coding:{conversation.id}", {**store.get_doc(f"coding:{conversation.id}", {}), "version": 1, "session": turn.session,
                     "fingerprint": fingerprint, "state": turn.state, "updated": time.time()})
             turn.emit({"state": turn.state, "done": True})
-
-    def _sandboxed(self) -> bool:
-        """Whether the turn runs in the sandbox: a turn a person started works on the project folder with their own settings."""
-        return False
 
     def _protected_paths(self, _home: Path) -> tuple[str, ...]:
         return ()
@@ -260,19 +258,18 @@ class Manager:
             turn.emit(payload)
 
     def _process(self, turn, confinement, context) -> int:
-        """Start the harness in ``confinement`` for one turn, with pipes and never a terminal. A sandboxed run has a config folder of its own: the
-        conversation's saved history is copied into it before the harness starts and what it wrote comes back after, so a native session resumes. A
-        run in place keeps its history in the harness's own folders."""
+        """Start the harness in ``confinement`` for one turn: the conversation's saved history is copied into the harness's config folder in the
+        agent home before it starts, and what it wrote comes back after, so a native session resumes. The harness gets pipes, never a terminal."""
         home, harness, prompt, _folder = context
         config = confinement.config
-        if config is not None and harness in ("codex", "claude"):
+        if harness in ("codex", "claude"):
             for path in home.iterdir():
                 destination = config / path.name
                 if path.is_dir():
                     shutil.copytree(path, destination, dirs_exist_ok=True)
                 elif not destination.exists():
                     shutil.copy2(path, destination)
-        if config is not None and harness == "claude":
+        if harness == "claude":
             self._relocate(config / "projects", confinement.cwd)
         if turn.cancelled.is_set():
             return 0
@@ -301,7 +298,7 @@ class Manager:
                     kill_process_tree(process.pid, grace_s=2)
                     process.wait()
                 turn.process = None
-                if config is not None and harness in ("codex", "claude"):
+                if harness in ("codex", "claude"):
                     for path in config.iterdir():
                         if path.name in ("config.toml", "AGENTS.md", "auth.json"):
                             continue
