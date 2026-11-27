@@ -330,11 +330,16 @@ jobs:
       # owner-only by ACL. The crate's own tests run here, then the launcher starts the real
       # binary under its supervisor and stops it by the stop events (tests/test_node_windows.py).
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+      # Every test binary runs, also after one fails. The dependencies are optimized, as the tests sign, verify and encrypt thousands
+      # of times, and no debug symbols are written; debug assertions and overflow checks stay on.
       - name: crate tests of poolhouse-node
         shell: pwsh
         working-directory: app
-        run: cargo test --locked -p poolhouse-node
+        env:
+          CARGO_PROFILE_DEV_DEBUG: "0"
+        run: cargo test --locked -p poolhouse-node --no-fail-fast --config "profile.dev.package.'*'.opt-level=2"
       - name: the node starts under its supervisor and stops on its event
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
@@ -344,6 +349,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "the Windows node tests failed" }
 
       - name: install.ps1 -Headless against a scratch prefix
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
