@@ -894,6 +894,99 @@ buffer headroom, uniform expert use, every tokens/s and prompt figure above. Unm
 needing a GPU lease from the owner: a real `--n-cpu-moe` load on a CUDA card, decode and prompt
 speed on any machine class above, compute buffers at 128k, the router's expert skew.
 
+#### The n-gram table
+
+A fresh token reads sixteen rows of Flash-Next's 320M-row table (2-gram and 3-gram, eight
+heads each), so 4,096 tokens read about 54,000 distinct pages.
+
+**llama.cpp.** The GGUF stores a row as 90 contiguous bytes (IQ4_NL), one read a lookup, and
+the operating system's page cache is the row cache: llama.cpp has no row cache of its own and
+no flag for either one. The `unsloth` build asks for a micro-batch's rows with
+`posix_madvise(WILLNEED)` before computing it. llama.cpp's own source asks on Linux and
+Windows only (`llama_prefetch` in `src/llama-mmap.cpp` is empty on macOS) and gathers on one
+thread (`GGML_OP_GET_ROWS` takes `n_tasks = 1`), so on a Mac such a build waits for each page
+in turn. The head build on that Mac (`b11577-cbe28bb3c`) imports `posix_madvise` and no
+`madvise`, as that source does; it has not been timed. Closing the gap needs
+`llama_prefetch` compiled for `__APPLE__` as it is for Linux.
+
+Measured 2026-11-27 on a 128 GB Mac, `Qwen3.8-Flash-Next-UD-IQ2_XS` served at 262,144 tokens
+by `unsloth-b10715-mix-86bd2d3`, 4,096-token prompts of repository text sent to `/completion`
+as token ids with `cache_prompt` false, each once and then again:
+
+| rows in the page cache before | pairs | first send | second send (all cached) |
+|---|---|---|---|
+| 21% to 38% | 6 | 7.85 to 8.36 s, 496 to 695 MB read | 7.48 to 7.68 s, 0 MB |
+| 90% | 2 | 7.55 and 7.66 s, 98 and 148 MB read | 7.50 and 7.59 s |
+
+A prefill there is compute-bound: the table adds 0.4 to 0.7 s in 4,096 tokens (5% to 9%) when
+most rows are on disk. A further pair, the first after other work had pushed the server's
+pages out, read 20 GB (13.2 s against 7.5 s); the table is at most 1.8 GB of that.
+
+The storage cost alone, on a clone of the table's shard (cold: `msync(MS_INVALIDATE)`, 0% of
+pages resident by `mincore`), rows of real text computed with the model's hash, gathered as
+`get_rows` does; median and range of 7 runs, 4,096 tokens, other work on the machine
+(load 10 to 31):
+
+| gather | seconds | MB read |
+|---|---|---|
+| 1 thread, no read-ahead (llama.cpp's source on macOS) | 7.6 (5.4 to 10.2) | 1,757 |
+| 1 thread, `MADV_RANDOM` | 6.6 (4.7 to 10.6) | 878 |
+| 1 thread after `madvise(WILLNEED)` of the micro-batch | 0.55 (0.43 to 1.16) | 878 |
+| 12 threads, no read-ahead | 0.75 (0.66 to 1.23) | 1,757 |
+| table resident | 0.04 (0.03 to 7.0) | 0 |
+
+Reading the whole 28.8 GB table ahead (`warm.prefault_ranges`) takes 9.6 s from cold and
+leaves it resident 70 s later. Resident pages are the page cache's to take back: straight
+after a sequential read on a busy machine, three of seven runs had lost 2% to 4% of them, and
+those gathers took 0.5 to 7 s on one thread. Poolhouse does not read the whole table ahead.
+
+**MLX.** `QuantizedMMapNGramEmbedding` reads a row from three tensors (weights, scales,
+biases) with numpy on one thread. Every MLX load gives the table `spec.ple.ReadAhead`, which
+faults the wanted rows in on 16 threads before the gather.
+
+A second layout is **opt-in and off by default**: `poolhouse-serve up mlx:MODEL
+--ngram-rows` also writes the table as one 100-byte record a row and reads that
+(`spec.ple.interleave`).
+
+- Disk: as many bytes again as the table, 32.0 GB for Flash-Next
+  (`<cache>/spec/weights/<model>/ple-q4.rows`). The load is refused when the disk lacks that
+  and 20 GB over.
+- Time: written once, during the first load that asks for it; 68 s from a cold source on the
+  128 GB Mac below.
+- Once written, every later load of that view reads it, with or without the flag. Deleting
+  the view's folder removes it; the next load links the view again from the checkpoint.
+- Gain: storage reads only (the table below). **No end-to-end MLX timing exists**, with the
+  store or without it.
+
+Measured 2026-11-27 on the same Mac with mlx-vlm's storage class and a table of the real
+shape filled with synthetic bytes (the checkpoint's table shards 2 to 6 are not on that
+machine, so this times reads and no model), cold, 4,096 tokens, median and range of 5 runs:
+
+| layout | one thread | `MADV_RANDOM` | 16 threads read ahead | resident |
+|---|---|---|---|---|
+| checkpoint (three reads a row) | 10.3 s (9.5 to 15.1), 4.8 GB | 12.8 s (9.9 to 17.2), 2.4 GB | 1.67 s (1.48 to 2.75) | 0.14 s |
+| one record a row | 6.4 s (5.4 to 9.4), 1.8 GB | 6.1 s (4.9 to 9.9), 0.9 GB | 0.61 s (0.51 to 1.03) | 0.12 s |
+
+`cache_rows` (mlx-vlm's in-process row cache) is left at 0. Six consecutive 4,096-token
+prompts of repository text on the one-record layout, one thread, medians over the five later
+prompts; `lru` is the share of a prompt's rows found in the cache.
+
+| table pages | `cache_rows` | runs | s (range) | MB read | lru | process memory | load |
+|---|---|---|---|---|---|---|---|
+| cold at the start, then kept | 0 | 3 | 4.4 (2.8 to 5.8) | 1,255 | 0% | 184 MB | 6 to 9 |
+| cold at the start, then kept | 65,536 | 2 | 5.2 (3.1 to 8.8) | 1,294 | 10% | 263 MB | 6 to 29 |
+| cold at the start, then kept | 1,048,576 | 1 | 8.3 (5.7 to 10.9) | 1,300 | 13% | 340 MB | 21 to 36 |
+| dropped before every prompt | 0 | 1 | 8.1 (6.2 to 10.9) | 1,673 | 0% | 169 MB | 30 to 40 |
+| dropped before every prompt | 1,048,576 | 1 | 7.7 (4.1 to 7.8) | 1,454 | 13% | 338 MB | 27 to 51 |
+| resident | 0 | 1 | 0.12 (0.08 to 0.78) | 4 | 0% | 175 MB | 39 to 41 |
+| resident | 65,536 | 1 | 0.10 (0.07 to 0.10) | 0 | 10% | 261 MB | 36 to 39 |
+| resident | 1,048,576 | 1 | 0.09 (0.07 to 0.10) | 0 | 13% | 337 MB | 34 |
+
+With the pages kept, the rows the cache holds are rows the page cache holds, and it saves no
+disk read. With the pages dropped between prompts it saves the reads of the rows it holds
+(13% of rows); the time difference is inside the spread of the runs. Resident, the difference
+is within noise. Times under different loads are not comparable; the MB columns are.
+
 #### Warm manifest
 
 The n-gram table and the cold experts are mmapped, so the first tokens after a load wait for
