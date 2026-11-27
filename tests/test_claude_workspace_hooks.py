@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -140,6 +141,28 @@ def test_subagent_event_includes_brief_and_actual_primary_branch_rules(commands,
     assert records[0]['session'] == 'native-parent' and records[0]['harness'] == 'claude-code'
     assert records[0]['agent'] == records[1]['agent'] != child
     assert records[2]['agent'] == child
+
+
+def test_the_module_every_hook_imports_loads_none_of_the_package():
+    # Hooks run on each prompt and tool call under a time limit; the board client alone is hundreds of modules.
+    code = (f'import sys; sys.path.insert(0, {str(HOOKS)!r}); import workspace_hook; '
+            "print(sorted(m for m in sys.modules if m == 'poolhouse' or m.startswith('poolhouse.')))")
+    done = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, timeout=60, check=False)
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == '[]'
+
+
+def test_an_attention_event_with_no_check_due_loads_no_board_client(tmp_path, monkeypatch):
+    monkeypatch.setenv('POOLHOUSE_HOOK_STATE', str(tmp_path))
+    (tmp_path / 'attention').mkdir()
+    (tmp_path / 'attention' / 'quiet').write_text(str(time.time()))
+    done = subprocess.run([sys.executable, '-X', 'importtime', str(HOOKS / 'claude-lead-attention')],
+                          input=json.dumps({'hook_event_name': 'PostToolUse', 'session_id': 'quiet'}),
+                          capture_output=True, text=True, timeout=60, check=False)
+    assert done.returncode == 0 and done.stdout == ''
+    loaded = {line.rsplit('|', 1)[-1].strip() for line in done.stderr.splitlines() if line.startswith('import time:')}
+    assert 'workspace_hook' in loaded
+    assert not loaded & {'poolhouse.board', 'poolhouse.board.client', 'poolhouse.guard.secrets'}
 
 
 @pytest.mark.parametrize('stage', ['SessionStart', 'SubagentStart'])

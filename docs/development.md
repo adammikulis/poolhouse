@@ -278,10 +278,3 @@ A test that needs a model's HTTP server and tests no model behaviour (ports, que
 must parse); the header, the model id and the metadata stay. The `model-replies` gate refuses a model-shaped reply
 built anywhere else under `tests/`, and `scripts/gates/model_replies.txt` lists the files that still build them and
 only shrinks.
-
-## Commit history by type
-
-`python3 scripts/commit_types_chart.py [--branch 0.2dev] [--bucket day|week|month] [--out commit-types.png]`
-draws the share of each commit type (feat, fix, chore, and the rest) over time as a 100% stacked
-area chart from `git log`, with no network. It writes the PNG to the current directory by default.
-Needs the `plot` extra (matplotlib).

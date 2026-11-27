@@ -2,14 +2,18 @@
 
 `fetch` resolves the host once, refuses any address that is not on the public internet,
 connects to that address (so a second DNS answer cannot redirect it), and follows redirects
-by hand, checking each hop the same way. The body is capped in bytes and in time, and a
-compressed body is capped after it is expanded.
+by hand, checking each hop the same way. The body is capped in bytes, and a compressed body
+is capped after it is expanded. A page is capped in total time; a file saved to disk has no
+total time, and is dropped when it stops arriving or arrives too slowly.
 """
 
 from __future__ import annotations
 
+import functools
 import http.client
+import io
 import ipaddress
+import math
 import os
 import socket
 import ssl
@@ -28,6 +32,7 @@ __all__ = [
     "DOWNLOAD",
     "MOST_BYTES",
     "Fetched",
+    "Interrupted",
     "Limits",
     "Refused",
     "Streaming",
@@ -47,6 +52,9 @@ CHUNK = 64 * 1024
 MOST_RATIO = 200
 REDIRECTS = {301, 302, 303, 307, 308}
 USER_AGENT = "poolhouse"
+MIN_RATE = 8 * 1024
+"""The fewest bytes of body a second a file may average over a window before its connection is
+dropped."""
 SECRET_HEADERS = {"authorization", "cookie", "proxy-authorization", "x-api-key"}
 NAT64 = ipaddress.ip_network("64:ff9b::/96")
 
@@ -62,13 +70,20 @@ class TooLarge(Refused):
     """A body, once expanded, over the cap."""
 
 
+class Interrupted(Refused):
+    """A connection that could not be made or was too slow to keep; asking again may work."""
+
+
 @dataclass(frozen=True, slots=True)
 class Limits:
     """What a fetch may spend: bytes, redirects, and time (``timeout`` per socket wait,
-    ``deadline_s`` for the whole). ``allow_hosts`` names hosts, by name or address, that may
-    be private because the caller means to reach them (a member on the LAN); a redirect to any
-    other host is checked as usual. ``resolver`` answers for DNS. ``vet`` is called with every
-    URL before it is connected to, the first and each redirect target, and raises to refuse.
+    ``deadline_s`` for the whole, and, when ``min_rate`` is set, at least that many bytes of
+    body a second averaged over each ``rate_window_s``; headers, chunk framing and compressed
+    bytes that expand to nothing do not count). ``allow_hosts`` names hosts, by name or address,
+    that may be private because the caller means to reach them (a member on the LAN); a redirect
+    to any other host is checked as usual. ``resolver`` answers for DNS. ``vet`` is called with
+    every URL before it is connected to, the first and each redirect target, and raises to refuse.
+    ``check`` is called before every read of an answer and raises to end it (a cancel).
     ``follow_redirects=False`` returns the first answer without visiting its Location."""
 
     max_bytes: int = MOST_BYTES
@@ -80,23 +95,69 @@ class Limits:
     context: ssl.SSLContext | None = None
     vet: Callable[[str], None] | None = None
     follow_redirects: bool = True
+    min_rate: float = 0.0
+    rate_window_s: float = 60.0
+    check: Callable[[], None] | None = None
 
 
 DEFAULT = Limits()
-DOWNLOAD = Limits(max_bytes=1 << 30, deadline_s=3600.0)
-"""The limits of a file saved to disk."""
+DOWNLOAD = Limits(max_bytes=1 << 30, deadline_s=math.inf, min_rate=MIN_RATE)
+"""The limits of a file saved to disk: one that keeps arriving may take as long as it takes."""
+
+
+class _Pace:
+    """What an answer must keep to at every read of its connection: ``limits.check``, and
+    ``min_rate`` bytes of delivered body a second over each window. The first window covers all
+    that comes before the body; the next ones start with its first byte."""
+
+    def __init__(self, limits: Limits) -> None:
+        self.limits = limits
+        self.since: float | None = None
+        self.got = 0
+        self.delivering = False
+        self.failed: Refused | None = None
+
+    def delivered(self, count: int) -> None:
+        if not self.delivering:
+            self.delivering, self.since, self.got = True, time.monotonic(), 0
+        self.got += count
+
+    def before_read(self) -> None:
+        try:
+            if self.limits.check is not None:
+                self.limits.check()
+            self._keeping_up()
+        except Refused as exc:
+            self.failed = exc
+            raise
+
+    def _keeping_up(self) -> None:
+        if not self.limits.min_rate:
+            return
+        now = time.monotonic()
+        if self.since is None:
+            self.since = now
+            return
+        took = now - self.since
+        if took >= self.limits.rate_window_s:
+            if self.got < self.limits.min_rate * took:
+                raise Interrupted(f"the connection stalled: {self.got} bytes of the file in "
+                                  f"{took:.1f} s, under {self.limits.min_rate:.0f} bytes a second")
+            self.since, self.got = now, 0
 
 
 @dataclass(frozen=True, slots=True)
 class Trip:
-    """One fetch under way: its limits and the moment it must be over."""
+    """One fetch under way: its limits, the moment it must be over and the pace it must keep."""
 
     limits: Limits
     deadline: float
+    pace: _Pace | None = None
 
     @classmethod
     def begin(cls, limits: Limits) -> Trip:
-        return cls(limits, time.monotonic() + limits.deadline_s)
+        paced = limits.min_rate or limits.check is not None
+        return cls(limits, time.monotonic() + limits.deadline_s, _Pace(limits) if paced else None)
 
     def left(self) -> float:
         """Seconds until the deadline; `Refused` once it has passed."""
@@ -148,7 +209,7 @@ def _system_resolver(host: str, port: int) -> list[str]:
         return sorted({info[4][0] for info in socket.getaddrinfo(host, port,
                                                                  type=socket.SOCK_STREAM)})
     except socket.gaierror as exc:
-        raise Refused(f"cannot resolve {host!r}: {exc}") from None
+        raise Interrupted(f"cannot resolve {host!r}: {exc}") from None
 
 
 def resolve(host: str, port: int, limits: Limits = DEFAULT) -> list[str]:
@@ -204,6 +265,33 @@ class _Pinned(http.client.HTTPConnection):
             self.sock = self.context.wrap_socket(self.sock, server_hostname=self.host)
 
 
+class _Paced(io.RawIOBase):
+    """A socket's bytes, held to a `_Pace`. Every read of an answer passes here, so interim
+    answers, headers, chunk sizes and trailers cannot go on past it."""
+
+    def __init__(self, raw: io.RawIOBase, pace: _Pace) -> None:
+        super().__init__()
+        self.raw, self.pace = raw, pace
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: bytearray | memoryview) -> int | None:
+        self.pace.before_read()
+        return self.raw.readinto(buffer)
+
+    def close(self) -> None:
+        self.raw.close()
+        super().close()
+
+
+def _paced(pace: _Pace, sock: socket.socket, *args: object,
+           **named: object) -> http.client.HTTPResponse:
+    response = http.client.HTTPResponse(sock, *args, **named)  # type: ignore[arg-type]
+    response.fp = io.BufferedReader(_Paced(response.fp.detach(), pace))
+    return response
+
+
 def _expanded(chunks: Iterator[bytes], encoding: str, most: int) -> Iterator[bytes]:
     """The body, undone from gzip or deflate, refusing a bomb: over ``most`` bytes out, or
     over `MOST_RATIO` times the bytes in."""
@@ -219,6 +307,8 @@ def _expanded(chunks: Iterator[bytes], encoding: str, most: int) -> Iterator[byt
         data = chunk
         while data:
             out = inflater.decompress(data, CHUNK)
+            if inflater.unused_data:
+                raise Refused("the answer has bytes after its compressed body ends")
             data = inflater.unconsumed_tail
             given += len(out)
             if given > most:
@@ -237,7 +327,12 @@ def _expanded(chunks: Iterator[bytes], encoding: str, most: int) -> Iterator[byt
 def _chunks(response: http.client.HTTPResponse, trip: Trip) -> Iterator[bytes]:
     while True:
         trip.left()
-        data = response.read1(CHUNK)
+        try:
+            data = response.read1(CHUNK)
+        except http.client.HTTPException:
+            if trip.pace and trip.pace.failed:   # read as a bad chunk size, which it was not
+                raise trip.pace.failed from None
+            raise
         if not data:
             return
         yield data
@@ -256,6 +351,8 @@ def _hop(url: str, method: str, data: bytes | None, headers: dict[str, str],
         if limits.vet is not None:
             limits.vet(url)
         conn = _Pinned(host, port, address, min(limits.timeout, trip.left()), tls)
+        if trip.pace:
+            conn.response_class = functools.partial(_paced, trip.pace)  # type: ignore[assignment]
         try:
             target = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
             conn.request(method, target, body=data, headers=headers)
@@ -263,7 +360,11 @@ def _hop(url: str, method: str, data: bytes | None, headers: dict[str, str],
         except OSError as exc:
             conn.close()
             last = exc
-    raise Refused(f"cannot reach {host}: {last}")
+        except (Refused, http.client.HTTPException):
+            conn.close()
+            raise
+    refusal = Refused if isinstance(last, ssl.SSLCertVerificationError) else Interrupted
+    raise refusal(f"cannot reach {host}: {last}")
 
 
 def _open(url: str, method: str, data: bytes | None, sent: dict[str, str], trip: Trip) -> tuple[
@@ -301,6 +402,8 @@ def _body(response: http.client.HTTPResponse, trip: Trip) -> Iterator[bytes]:
         total += len(piece)
         if total > most:
             raise TooLarge(f"the answer is over {most} bytes")
+        if trip.pace:
+            trip.pace.delivered(len(piece))
         yield piece
 
 

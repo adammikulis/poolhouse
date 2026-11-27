@@ -8,12 +8,12 @@ the lease. Only a process the record proves is the server this machine started, 
 
 from __future__ import annotations
 
-import os
 import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from poolhouse.client.health import refuses_key
+from poolhouse.serve import inuse
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.leases import recorded_servers, same_process
 from poolhouse.serve.matching import model_matches
@@ -53,27 +53,16 @@ def settle(broker: Broker, spec: ServerSpec, say: Callable[[str], Any]) -> None:
 
 
 def _in_use(broker: Broker, port: int, entry: dict) -> str:
-    """Who or what still uses the server on ``port``, in words; empty when only the server holds itself and no request is on it."""
-    pid, owner = entry["pid"], entry.get("owner_pid")
+    """Who or what still uses the server on ``port``, by every record and a look for a request (`inuse.why_in_use`)."""
     with broker._cond:
         known = broker.servers.get(port)
         holders = dict(known.holders) if known else {}
-    for lease, who in (broker._read_held().get(port, {}).get("holders") or {}).items():
-        holders.setdefault(lease, (int(who[0]), str(who[1])))
-    live = {lease: who for lease, who in holders.items() if who[0] != pid and broker.alive(who[0])}
-    if not live and isinstance(owner, int) and owner not in (pid, os.getpid()) and broker.alive(owner):
-        live = {str(entry.get("lease") or f"recorded-{port}"): (owner, "recorded owner")}
-    if live:
-        return "it is still held by " + ", ".join(f"lease {lease} of pid {who}" + (f" ({label})" if label else "")
-                                                  for lease, (who, label) in live.items())
-    busy = request_on(pid, port)
-    if busy is None:
-        return "whether a request is on it cannot be read"
-    return "a request is in progress on it" if busy else ""
+    return inuse.why_in_use(port, entry, broker.manager.state_file, inuse.Asking(holders, alive=broker.alive), requests=request_on)
 
 
 def _stop(broker: Broker, port: int, entry: dict) -> None:
     """Stop the server on ``port``, which `settle` has shown to be ours and unused, and take it off every record."""
+    inuse.stopped(port, entry["pid"], "it refuses this build's key, nothing holds it and no request is on it; a new one replaces it")
     kill_process_tree(int(entry["pid"]))
     if pid_exists(entry["pid"]):
         raise ServerFailed(f"port {port}: the server (pid {entry['pid']}) refuses this build's key and did not stop")

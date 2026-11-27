@@ -1,4 +1,8 @@
-"""Nonblocking workspace calls and redacted warnings for Claude notification hooks."""
+"""Nonblocking workspace calls and redacted warnings for Claude notification hooks.
+
+Every hook imports this module, some on each prompt or tool call, so it loads only the standard library: the board client and
+the secret scanner take hundreds of modules (seconds on a busy machine), and each function that needs one imports it itself.
+"""
 
 from __future__ import annotations
 
@@ -11,13 +15,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
-from poolhouse.board import client
-from poolhouse.guard.secrets import env_secrets, redact
-from poolhouse.workspace.notification_context import existing_board
 
 
 def redacted(reason: object) -> str:
     """``reason`` on one line with the secrets of the environment and any token in it removed."""
+    from poolhouse.guard.secrets import env_secrets, redact
     text, _ = redact(str(reason), env_secrets(os.environ))
     return ' '.join(text.split())
 
@@ -79,6 +81,8 @@ def refresh_runtime(stage: str, checkout: Path | None = None, agent: str = '') -
 
 
 def session_environment(value: dict, stage: str) -> dict | None:
+    from poolhouse.board import client
+    from poolhouse.workspace.notification_context import existing_board
     try:
         node = client.Client(autostart=False, timeout=2.0)
         board = existing_board(node, Path(str(value.get('cwd') or Path.cwd())))
@@ -109,6 +113,8 @@ def agent_name(native_id: str, cwd: str = '') -> str:
     working directory), or an empty string."""
     if not native_id:
         return ''
+    from poolhouse.board import client
+    from poolhouse.workspace.notification_context import existing_board
     try:
         node = client.Client(autostart=False, timeout=2.0)
         board = existing_board(node, Path(cwd or Path.cwd()))
@@ -132,6 +138,8 @@ def name_session(environment: dict, model: str, event: dict | None = None) -> st
     if not session:
         warning('SessionStart', 'no native session id; the session cannot be given its own name')
         return ''
+    from poolhouse.board import client
+    from poolhouse.workspace.notification_context import existing_board
     try:
         from poolhouse.board import session as board_session
         node = client.Client(autostart=False, timeout=2.0)

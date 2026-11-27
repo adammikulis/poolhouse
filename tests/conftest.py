@@ -96,7 +96,7 @@ from environ_guard import (  # noqa: E402,F401  (autouse fixtures)
     environment_is_restored,
     nodes_stop_with_this_process,
 )
-from machine_guard import signals_refused  # noqa: E402,F401  (an autouse fixture)
+from machine_guard import installed_ports, signals_refused  # noqa: E402,F401  (an autouse fixture)
 from network_guard import nothing_beyond_loopback  # noqa: E402,F401  (an autouse fixture)
 from signal_guard import signal_handlers_are_restored  # noqa: E402,F401  (an autouse fixture)
 from system_guard import no_system_probes  # noqa: E402,F401  (an autouse fixture)
@@ -755,7 +755,8 @@ def _call_site() -> str:
 
 @pytest.fixture(autouse=True)
 def _no_real_ports(request):
-    """No test binds a privileged or 8080-8099 port, or connects to one on loopback: the call is refused, and the test fails.
+    """No test binds a privileged or 8080-8099 port, or connects on loopback to 8080-8099 or to a port the machine's model servers and installed
+    Poolhouse services listen on: the call is refused, and the test fails.
 
     2026-09-03: a test started a fake server on the default port through the real
     backend and killed the real Flash-Next that had been reading textbooks for
@@ -768,6 +769,7 @@ def _no_real_ports(request):
         yield []
         return
 
+    installed_ports()   # read before the test can replace what lists the processes
     violations: list[str] = []
     real_bind = socket.socket.bind
     real_connect = socket.socket.connect
@@ -788,7 +790,7 @@ def _no_real_ports(request):
         def go(self, address):
             if isinstance(address, tuple) and len(address) >= 2:
                 host, port = address[0], address[1]
-                if host in ("127.0.0.1", "localhost", "::1", "") and port in _GUARDED_PORTS:
+                if host in ("127.0.0.1", "localhost", "::1", "") and (port in _GUARDED_PORTS or port in installed_ports()):
                     refuse(f"connect to {host}:{port}")
             return real(self, address)
         return go
