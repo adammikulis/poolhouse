@@ -30,16 +30,17 @@ from pathlib import Path
 from typing import IO, Any
 
 from poolhouse import activity, coding_policy, home as state_home
-from poolhouse.isolation import client as client_module, toolchain
+from poolhouse.isolation import client as client_module, history, preflight, toolchain
 from poolhouse.isolation.attestation import attest
 from poolhouse.isolation.bounds import Bounds, Watch, derive
 from poolhouse.isolation.capability import require_capable
 from poolhouse.isolation.environment import Inputs, environment
 from poolhouse.isolation.grants import Grant
 from poolhouse.isolation.model_bridge import Lease, ModelBridge
-from poolhouse.isolation.notices import Notice
+from poolhouse.isolation.notices import HEAD, Notice
 from poolhouse.isolation.profile import Profile, build, search_path
 from poolhouse.isolation.proof import Proof, Services, run as run_proof
+from poolhouse.isolation.publication import Refusal
 from poolhouse.isolation.refusals import IsolationFailed
 from poolhouse.isolation.session_bridge import Handlers, SessionBridge, Terms
 from poolhouse.isolation.spec import Spec
@@ -77,8 +78,6 @@ class Context:
     window: int
     token: str = ""
     """The bridge token the harness holds, for a harness that reads its key from a file and not from a variable (Pi). Never printed, never logged."""
-    note: str = ""
-    """What the harness's brief says of the box before its first turn (`workspace.Session.note`); empty when there is nothing to say."""
 
     def client_argv(self, *words: str) -> list[str]:
         """The command a confined process runs to reach the session bridge: ``words`` are the client's own (`hook pre`, `workspace inbox`, `mcp`)."""
@@ -113,6 +112,8 @@ class Rendering:
     files: Mapping[str, str] = field(default_factory=dict)
     listen: tuple[int, ...] = ()
     """Loopback ports the harness's own server binds and is reached on (OpenCode's), chosen by the launcher: the profile opens these and no other."""
+    noted: Callable[[str], Mapping[str, str]] | None = None
+    """The files to write again when the box lacks something, given the sentence the harness's brief is to say; ``None`` where it has no brief."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +182,10 @@ class Made:
     """What each publication did, in order: one at every `Stop` event of the harness, and the last at the end of the session."""
     watch: Watch | None = None
     """The watcher of the session's resource bounds, where this platform has one."""
+    lacks: str = ""
+    """What the box lacks, in plain words (the project's environments and the preflight's findings); empty when nothing."""
+    untested: str = ""
+    """Why the preflight could not start the project's tests in the box; empty when it did, or had none to start."""
 
 
 def install_tree(binary: str) -> str:
@@ -299,9 +304,14 @@ class Confinement:
         return "" if self.made.watch is None else self.made.watch.check()
 
     def said(self) -> list[str]:
-        """What the box lacked (`workspace.Session.note`), then the words of every publication of this session that had something to say (what
-        was applied, what was refused and where the patch is), in order: the lines a launch ends with."""
-        return [each for each in (self.session.note(), *(turn.text for turn in self.made.turns)) if each]
+        """What the box lacked, then the words of every publication of this session that had something to say (what was applied, what was
+        refused and where the patch is), in order: the lines a launch ends with."""
+        return [each for each in (self.made.lacks, *(turn.text for turn in self.made.turns)) if each]
+
+    @property
+    def untested(self) -> str:
+        """Why the preflight could not start the project's tests in the box; empty otherwise."""
+        return self.made.untested
 
     def published(self) -> Published:
         """What every publication of this session came to, as data: no caller reads it from `said`."""
@@ -400,6 +410,7 @@ def prepare(plan: Plan) -> Confinement:
     stack, scratch = parts.stack, parts.scratch
     staged = time.monotonic()
     proved: Proof | None = None
+    lacks = ""
     try:
         agent_home = Path(os.path.realpath(tempfile.mkdtemp(prefix="poolhouse-home-")))
         scratch.append(str(agent_home))
@@ -410,7 +421,7 @@ def prepare(plan: Plan) -> Confinement:
         _write(client, Path(client_module.__file__).read_text(encoding="utf-8"))
         stage = str(session.stage.physical)
         context = Context(agent_home, agent_home / HARNESS_DIRECTORIES[plan.harness], stage, os.path.realpath(sys.executable), str(client), bridge.path,
-                          os.getpid(), f"http://127.0.0.1:{model.port}", plan.lease.alias, plan.lease.window, model.token, session.note())
+                          os.getpid(), f"http://127.0.0.1:{model.port}", plan.lease.alias, plan.lease.window, model.token)
         rendering = plan.render(context)
         argv = (os.path.realpath(rendering.argv[0]), *rendering.argv[1:])   # the harness is run by its real path: its link is the person's
         frozen = [str(client), str(agent_home / "bin")]
@@ -426,6 +437,13 @@ def prepare(plan: Plan) -> Confinement:
         profile = build(spec, plan.grants, env, None if bounds is None else bounds.limits())
         granted = toolchain.runnable(grant.subject for grant in plan.grants if grant.kind == "toolchain")
         proved = run_proof(profile, Services(model.port, bridge.path, granted))
+        found = preflight.run(profile, history.committed(session.root))
+        if lacks := " ".join(each for each in (session.note(), found.words()) if each):
+            # said at once to the launching session, then in the brief (before the harness reads its files) and in the result
+            session.reports.send([Refusal("(preflight)", "preflight")], f"{HEAD} {lacks}")
+            for name, text in (rendering.noted(lacks) if rendering.noted else {}).items():
+                (agent_home / name).chmod(stat.S_IRUSR | stat.S_IWUSR)
+                _write(agent_home / name, text)
     finally:
         if proved is None:
             _abandon(session, stack, scratch)
@@ -433,4 +451,4 @@ def prepare(plan: Plan) -> Confinement:
                     meta={"digest": profile.digest, "proof_seconds": proved.seconds, "grants": [grant.fingerprint for grant in plan.grants]})
     timing = {"stage": round(staged - began, 3), "proof": proved.seconds, "prepare": round(time.monotonic() - began, 3)}
     return Confinement(plan, Made(profile, proved, session, stack, scratch, parts.admission, agent_home, context.config, argv, timing, parts.turns,
-                                  parts.watch), stage)
+                                  parts.watch, lacks, found.untested), stage)

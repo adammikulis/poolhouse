@@ -24,7 +24,7 @@ from poolhouse.activity import source_snapshot
 from poolhouse.activity.source_snapshot import Capture, CaptureEntry
 from poolhouse.coding_workspace import Stage, Workspace, between
 from poolhouse.coding_workspace_state import CONTROL_PREFIXES
-from poolhouse.isolation import environments, places, publication, toolchain
+from poolhouse.isolation import environments, history, places, publication, toolchain
 from poolhouse.isolation.notices import HEAD, Directory, Kept, Notice, Patch, Reports, Result, words
 from poolhouse.isolation.publication import Refusal, fold
 from poolhouse.sandbox import process_tree
@@ -183,6 +183,8 @@ class Session:
         workspace = Workspace(root)
         resumed = cls._resume(launch, workspace)
         stage, base, reported = resumed or (workspace.begin(), workspace.initial, [])
+        if not resumed:
+            history.give(root, stage.physical, workspace.excluded)   # what it could not give, the preflight finds in the box and says
         session = cls(launch, workspace, stage, base)
         session.reports.seen.update(reported)
         return session

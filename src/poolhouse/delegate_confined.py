@@ -112,8 +112,8 @@ a file. Two of them reach {lead}:
 """
 SHELL_WORK = """\
 shell runs in the same working copy, inside a sandbox with these limits: no network; no localhost port can be opened, and no localhost port of
-this computer reached by a test; no Poolhouse node; no nested sandbox; and no real model. The project's .venv, venv and node_modules and the
-.git folder are read-only (git status and git diff work, a commit fails). A command ends at its timeout ({default}s unless you give another as
+this computer reached by a test; no Poolhouse node; no nested sandbox; and no real model. The project's environments (its main checkout's
+where this copy has none) and the .git folder are read-only (git status, diff, log and show work, a commit fails). A command ends at its timeout ({default}s unless you give another as
 `timeout`, in milliseconds, at most {most}s) and never runs in the background. A test that needs what the sandbox lacks cannot run here: in your
 result, name every test you could not run and why.
 When your turn ends your changes are applied to the project; only changes to .git, to a coding tool's settings, to credential files and
@@ -125,7 +125,10 @@ configuration, force-pushes or deletes something on a remote is refused. A comma
 `timeout`, in milliseconds, at most {most}s) and never runs in the background. What you change is changed in the folder at once: change only what
 the task asks.
 """
-READ_WORK = "You have no shell and no tool that changes a file, and nothing you do is written to the folder.\n"
+READ_WORK = """\
+You have no shell and no tool that changes a file, and nothing you do is written to the folder. What git showed of a project when you started is
+in .git/poolhouse-review: status.txt (git status), changes.diff (git diff HEAD) and log.txt (the last commits and their files).
+"""
 WEDGED = "this model's server could not be taken: its configuration exceeds this device's wired-memory limit"
 
 
@@ -661,6 +664,7 @@ class _Boxed:
                          tried=answer.tried or self.tried)
         if self.rec.edit and self.box is not None:
             answer.published = self.box.published()
+            answer.untested = self.box.untested
             applied = answer.published.applied
             answer.refused_writes = tuple({each.path: each for seen in self.writes for each in seen.refused(applied)}.values())
             said = self.box.said()

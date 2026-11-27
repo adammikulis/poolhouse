@@ -56,7 +56,7 @@ def ended(answer: harness.Answer) -> str:
     kept_back = bool(found.refused or found.conflicts or found.deferred or refused)
     if not found.applied and (kept_back or answer.tried):
         return "unapplied"
-    return "partial" if kept_back else "done"
+    return "partial" if kept_back or (answer.untested and found.applied) else "done"
 
 
 def changes(state: str, found: Any, refused: Sequence[delegate_refusals.Refused] = (), review: Any = None) -> str:
@@ -135,6 +135,8 @@ def run(name: str) -> int:
         say(why)
     found, refused = (answer.published, answer.refused_writes) if answer else (None, ())
     detail = changes(state, found, refused, answer.review if answer else None)
+    if answer and answer.untested:   # first, so a cut notice never drops it
+        detail = "; ".join(each for each in (f"untested: the sandbox could not start the project's tests ({answer.untested})", detail) if each)
     row = safetext.utf8({**_outcome(answer, why, began), "detail": detail})   # the model's text reaches the board
     row["phases"] = store.graded(name)["run"].get("phases", [])
     if rec.branch:   # commit what stands to its branch, keep a patch of anything else, and remove the worktree

@@ -31,6 +31,7 @@ from poolhouse import (
     delegate_confined,
     delegate_run,
     delegate_store as store,
+    harness,
     harnessing,
     home,
     isolation,
@@ -775,3 +776,10 @@ def test_the_wait_for_the_model_and_for_the_lead_is_not_counted_as_no_progress(e
     row = store.result(name)
     assert "model=200" in row["text"] and "main.py" in row["text"], row
     assert row["model_seconds"] >= 3, "the time the model server had the turn"
+
+
+def test_an_edit_run_that_could_not_test_does_not_end_as_plainly_done():
+    applied = isolation.workspace.Published(applied=("src/app.py",))
+    tested = harness.Answer("done", harness.Usage(), published=applied)
+    untested = harness.Answer("done", harness.Usage(), published=applied, untested="`python -m pytest` failed")
+    assert delegate_run.ended(tested) == "done" and delegate_run.ended(untested) == "partial"
