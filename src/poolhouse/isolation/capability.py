@@ -123,6 +123,13 @@ class Report:
                 return each.reason or sentence("service_failed", name=each.id)
         return self.launch[0] if self.launch else ""
 
+    @property
+    def no_sandbox(self) -> str:
+        """Why this platform has no sandbox at all, as one sentence; empty on a platform that has one (`ENFORCED_BY`), whatever stops it being
+        used here (a nested sandbox, a missing tool, a probe that fails): those refuse a launch, and never stand for having none."""
+        why = self.enforcement_error
+        return "" if self.platform in ENFORCED_BY or why == sentence("nested") else why
+
     def to_dict(self) -> dict[str, Any]:
         """The whole report as JSON-ready data, for the catalogue and the details view."""
         return {"platform": self.platform, "backend": self.backend, "backend_version": self.backend_version, "os_build": self.os_build,

@@ -1,11 +1,10 @@
 """A delegate: OpenCode in the isolated launcher's confinement, and the two tools it reaches its lead by.
 
-Every `poolhouse-delegate` runs here, in the confined stage of its folder behind a Seatbelt profile proved before it starts (`poolhouse.isolation`).
-One that edits (``--edit``) has read, glob, grep, edit, write and a shell the same profile holds; when it ends the launcher publishes its whole change
-and refuses at once only `.git`, coding tools' settings, credentials and links that lead out, keeping a refusal as a patch under the
-state root and reporting it to the lead in its own `isolation.report` message. One that only reads has read, glob and grep, its stage is read-only and
-nothing is published. Either reaches its lead by two tools over the session bridge and nothing else (`ask(question)` waits for the answer,
-`note(text)` returns at once; both go to the lead), and every message is labelled as data twice. Nothing waits for a person or reads a terminal.
+A platform with a sandbox runs every delegate here, in the confined stage of its folder behind a proved profile (`poolhouse.isolation`); one with none
+runs it in `poolhouse.delegate_unboxed`. One that edits has a shell besides the file tools; when it ends the launcher publishes its whole change but
+`.git`, coding tools' settings, credentials and links that lead out, which it refuses at once, keeps as a patch and reports to the lead in its own
+`isolation.report` message. One that only reads has read, glob and grep on a read-only stage and publishes nothing. Either reaches its lead by two
+tools over the session bridge and nothing else (`ask(question)` waits, `note(text)` returns at once), each message labelled as data twice.
 
 ``opencode run --format json`` prints one JSON line per event, so the status carries the turns and the last tool while it runs, and poolhouse's plugin
 (`poolhouse.opencode`) tells the parent of every tool call before it runs. A run that ends in an error, reaches its limit of turns, runs without that
@@ -149,9 +148,9 @@ def arguments(rec: store.Delegate) -> argparse.Namespace:
 
 
 def unsandboxable() -> str:
-    """Why this computer cannot sandbox a delegate, as one sentence; empty when it can. A folder a capable computer cannot stage is no such
-    reason: `admit` refuses it."""
-    return isolation.capability().enforcement_error
+    """Why this platform has no sandbox at all, as one sentence; empty on one that has one. A sandbox that cannot be used here (nested, its tool
+    missing, a probe that fails) and a folder it cannot stage are no such reason: `admit` refuses the delegate with them."""
+    return isolation.capability().no_sandbox
 
 
 def admit(rec: store.Delegate, asked: str) -> None:

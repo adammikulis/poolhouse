@@ -1,5 +1,5 @@
-"""A delegate on a computer that cannot sandbox it: it starts read-only, a higher tier is the lead's own argument and says one warning, and it runs
-on the folder itself with the hook asked before every call.
+"""A delegate on a platform that has no sandbox: it starts read-only, a higher tier is the lead's own argument and says one warning, and it runs
+on the folder itself with the hook asked before every call. A computer whose sandbox cannot be used refuses it, and runs nothing.
 
 PLUMBING ONLY: no model is served and no OpenCode runs. A marked script stands in OpenCode's place; it reads the config and the plugin the delegate
 wrote, asks the hook the plugin names and starts the MCP server the config names, as OpenCode would.
@@ -27,17 +27,19 @@ from poolhouse import (
     delegate_store as store,
     lead_bridge,
 )
+from poolhouse.isolation.refusals import sentence
 from tests import isolation_kit as kit
-from tests.sandbox_kit import AbsentBackend
+from tests.sandbox_kit import AbsentBackend, UnloggedBackend
 
-pytest_plugins = ["node_kit", "delegate_kit"]
+pytest_plugins = ["node_kit", "delegate_kit", "tests.confined_kit"]
+CAPABILITY = sys.modules["poolhouse.isolation.capability"]
 
 STAND_IN = r'''#!{python}
 # PLUMBING ONLY: not OpenCode, and no model
 import json, os, re, subprocess, sys
 
 config = json.load(open(os.environ["OPENCODE_CONFIG"]))
-plugin = open(os.path.join(os.path.dirname(os.environ["OPENCODE_CONFIG"]), "poolhouse-plugin.js")).read()
+plugin = open(os.path.join(config["plugins"][0], "index.js")).read()
 cfg = json.loads(re.search(r"^const cfg = (.*);$", plugin, re.M).group(1))
 task = sys.stdin.read()
 
@@ -88,11 +90,17 @@ line("step_finish", reason="stop", tokens={{"input": 1, "output": 1}})
 '''
 
 
+def on(monkeypatch, platform, backend):
+    """This computer as one of ``platform`` whose sandbox backend is ``backend``, read again."""
+    monkeypatch.setattr(CAPABILITY, "_family", lambda: platform)
+    kit.without_a_sandbox(monkeypatch, backend)
+
+
 @pytest.fixture
 def unsandboxed(lead_node, detached, tmp_path, monkeypatch):
-    """A lead on a computer with no sandbox, with the marked script in OpenCode's place and a server address that is never asked."""
+    """A lead on a platform with no sandbox, with the marked script in OpenCode's place and a server address that is never asked."""
     node, lead, project = lead_node
-    kit.without_a_sandbox(monkeypatch, AbsentBackend)
+    on(monkeypatch, "win32", AbsentBackend)
     project = project.resolve()
     outside = tmp_path / "elsewhere" / "planted"
     outside.parent.mkdir()
@@ -189,6 +197,34 @@ def test_a_computer_that_can_sandbox_keeps_every_tier_sandboxed(lead_node, detac
     [name] = agent_names(node, lead)
     assert store.load(name).sandboxed is True and "warning:" not in said(capsys)
     assert delegate.tier_of(False, "") == "read-only"
+
+
+@pytest.mark.redteam
+@pytest.mark.usefixtures("from_a_terminal")
+@pytest.mark.parametrize("case", [("darwin", AbsentBackend, False, "no_sandbox_tool"), ("darwin", UnloggedBackend, True, "nested"),
+                                  ("linux", AbsentBackend, False, "userns_off"), ("win32", UnloggedBackend, True, "nested")],
+                         ids=["the-tool-is-missing", "a-nested-sandbox", "the-probe-failed", "nested-where-there-is-none"])
+def test_a_computer_whose_sandbox_cannot_be_used_refuses_the_delegate_and_runs_nothing(lead_node, detached, capsys, monkeypatch, case):
+    node, lead, project = lead_node
+    platform, backend, nested, why = case
+    on(monkeypatch, platform, backend)
+    monkeypatch.setattr(CAPABILITY, "confined", lambda: nested)
+    for words in ([], ["--permissions", "yolo"]):
+        assert started("--task", "do things", "--project", str(project), *words) == 2
+        assert sentence(why) in said(capsys)
+    assert agent_names(node, lead) == [] and detached == []
+
+
+@pytest.mark.usefixtures("from_a_terminal")
+def test_a_folder_a_capable_computer_cannot_stage_is_refused_and_never_runs_unsandboxed(lead_node, detached, capsys, monkeypatch, tmp_path):
+    node, lead, _project = lead_node
+    on(monkeypatch, "darwin", UnloggedBackend)
+    monkeypatch.setattr(CAPABILITY, "confined", lambda: False)
+    plain = tmp_path / "plain-folder"
+    plain.mkdir()
+    assert started("--task", "do things", "--edit", "--project", str(plain)) == 2
+    assert sentence("not_a_repository") in said(capsys)
+    assert agent_names(node, lead) == [] and detached == []
 
 
 def answered(tmp_path, tier, name, **given):
