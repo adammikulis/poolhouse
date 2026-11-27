@@ -212,9 +212,11 @@ def edit_refusal(paths: Iterable[str], cwd: str, owns: Callable[[str], bool] | N
     base = Path(cwd or Path.cwd())
     for raw in filter(None, paths):
         target = base / _unquote(raw)
-        found = checkouts(target.parent)
-        if found and _enforced(found[1]) and _branch(found[0]) == "main":
-            return f"{target} is on main; development changes require a development branch."
+        # A link is written where it leads: the path as named and the path it resolves to are both judged.
+        for place in dict.fromkeys((target, Path(os.path.realpath(target)))):
+            found = checkouts(place.parent)
+            if found and _enforced(found[1]) and _branch(found[0]) == "main":
+                return f"{place} is on main; development changes require a development branch."
     return ""
 
 

@@ -12,32 +12,27 @@ two checks above are what notice it doing so.
 
 from __future__ import annotations
 
-import contextlib
-from collections.abc import Iterator
-from contextvars import ContextVar
+from contextlib import AbstractContextManager
+
+from poolhouse.scopedflag import ScopedFlag
 
 __all__ = ["NoGrant", "broker_grant", "granted", "require"]
 
-_OPEN: ContextVar[bool] = ContextVar("poolhouse_broker_grant", default=False)
+_OPEN = ScopedFlag("poolhouse_broker_grant")
 
 
 class NoGrant(RuntimeError):
     """A server start with no lease from the broker behind it."""
 
 
-@contextlib.contextmanager
-def broker_grant() -> Iterator[None]:
+def broker_grant() -> AbstractContextManager[None]:
     """Mark the code inside as acting on a lease the broker granted. The broker's alone."""
-    token = _OPEN.set(True)
-    try:
-        yield
-    finally:
-        _OPEN.reset(token)
+    return _OPEN.held()
 
 
 def granted() -> bool:
     """Whether the caller is inside a broker grant."""
-    return _OPEN.get()
+    return _OPEN.is_set()
 
 
 def require(lease: object = None, kind: type | None = None) -> None:
