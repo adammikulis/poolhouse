@@ -24,6 +24,7 @@ from pathlib import Path
 
 from poolhouse import files, hub
 from poolhouse.hub import remote
+from poolhouse.hub.naming import _SHARD
 from poolhouse.safenames import safe_filename, safe_join
 
 COMMIT = re.compile(r"[a-f0-9]{40}")
@@ -37,12 +38,14 @@ __all__ = [
     "cache_problem",
     "digest_of",
     "git_blob_sha1",
+    "held_digest",
     "identify",
     "link",
     "main_commit",
     "point_ref",
     "repo_root",
     "same_bytes",
+    "superseded",
     "tidy",
     "volume",
 ]
@@ -97,11 +100,40 @@ def link(target: Path, blob: Path) -> None:
 def main_commit(repo: str) -> str:
     """The commit ``refs/main`` of ``repo`` names, or '' when there is none or the file holds anything
     but a commit id: the cache is a folder another tool writes, and what is read from it is not trusted."""
+    return _main_of(repo_root(repo))
+
+
+def _main_of(root: Path) -> str:
     try:
-        text = (repo_root(repo) / "refs" / "main").read_text(encoding="utf-8").strip()
+        text = (root / "refs" / "main").read_text(encoding="utf-8").strip()
     except OSError:
         return ""
     return text if COMMIT.fullmatch(text) else ""
+
+
+def held_digest(path: Path) -> str:
+    """The digest a Hub cache already names the bytes of ``path`` by, the ``blobs/`` file its link leads to; '' when it
+    names none (a hard link or a copy, or a file outside a cache). Nothing is hashed."""
+    real = path.resolve()
+    return real.name if real.parent.name == "blobs" and DIGEST.fullmatch(real.name) else ""
+
+
+def superseded(path: Path) -> bool:
+    """Whether ``path`` is a snapshot file that the snapshot ``refs/main`` names holds too, with every shard of its
+    build: an older copy, which a bare file name is not answered with first. False for any other path."""
+    found = identify(path)
+    if found is None or not found[2]:
+        return False
+    _repo, commit, file = found
+    snapshots = path.parents[file.count("/") + 1]
+    main = _main_of(snapshots.parent)
+    if not main or main == commit:
+        return False
+    newer = snapshots / main / file
+    shard = _SHARD.search(newer.name)
+    total = int(shard.group()[-5:]) if shard else 0
+    names = [_SHARD.sub(f"-{index:05d}-of-{total:05d}", newer.name) for index in range(1, total + 1)]
+    return all(newer.with_name(name).is_file() for name in names or [newer.name])
 
 
 def point_ref(repo: str, revision: str, commit: str) -> None:

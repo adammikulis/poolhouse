@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import hub, optional
+from poolhouse.hub import hfstore, remote
 from poolhouse.hub.naming import _SHARD
 from poolhouse.log import say, warn
 from poolhouse.serve.tensors import resident_bytes
@@ -155,7 +156,8 @@ def _fetch(args) -> int:
 
 
 def _builds(repo: str, ending: str, listing: list[tuple[str, int]]) -> None:
-    """One line per build: its total, whether it fits here and whether it is downloaded.
+    """One line per build: its total, whether it fits here, whether it is downloaded and whether what is here differs
+    from what the repository serves now.
 
     What must fit is the build less its gathered lookup table, which a server reads from disk. Only a downloaded build's header says how
     big that table is, so a build that is not here and fits only without one says so."""
@@ -164,8 +166,9 @@ def _builds(repo: str, ending: str, listing: list[tuple[str, int]]) -> None:
     if fits:
         say(f"this machine can serve about {human_bytes(fits)}\n")
     here = {path.name: path for path in reversed(hub.weight_paths())}
-    rows = [(name, size, shards, sorted(f for f, _s in hub.build_files(repo, name, ending)))
-            for name, size, shards in hub.builds(repo, ending=ending)]
+    served = {name: (size, shards, dict(hub.build_files(repo, name, ending))) for name, size, shards in hub.builds(repo, ending=ending)}
+    rows = [(name, size, shards, sorted(files)) for name, (size, shards, files) in served.items()]
+    unlike = _unlike(repo, {name: files for name, (_size, _shards, files) in served.items()}, mine, here)
     tables = {name: size - resident_bytes(size, here[files[0]]) for name, size, shards, files in rows
               if files and sum(f in mine and f in here for f in files) >= shards}
     known = max(tables.values(), default=0)
@@ -184,8 +187,11 @@ def _builds(repo: str, ending: str, listing: list[tuple[str, int]]) -> None:
         else:
             mark = "  TOO BIG"
         if downloaded:
-            mark = ("  ON THIS MACHINE" if downloaded >= shards
-                    else f"  {downloaded}/{shards} downloaded") + mark
+            state = "ON THIS MACHINE" if downloaded >= shards else f"{downloaded}/{shards} downloaded"
+            if other := unlike.get(name):
+                counted = f"{len(other)} of {shards} files; " if shards > 1 else ""
+                state += f", DIFFERS from the repository ({counted}{other[0]})"
+            mark = f"  {state}{mark}"
         many = f"  {shards} shards" if shards > 1 else ""
         # IQ builds decode through lookup tables Metal runs slowly: on a Mac the
         # smaller IQ file was the slower model (README, "What this measured")
@@ -194,7 +200,33 @@ def _builds(repo: str, ending: str, listing: list[tuple[str, int]]) -> None:
     for name, size in listing:
         if hub.aside(name):
             say(f"{human_bytes(size):>8}  {hub.ref(repo, name)}  (alongside)")
+    if unlike:
+        say(f"\nDIFFERS: `poolhouse-models fetch hf:{repo}/<file>` downloads what the repository serves now.")
     say(f"\npoolhouse-models files {repo} --every  for individual files")
+
+
+def _unlike(repo: str, served: dict[str, dict[str, int]], mine: dict[str, int], here: dict[str, Path]) -> dict[str, list[str]]:
+    """Per build, what differs in each file held here that is not the bytes the repository serves now: another size, or,
+    where the Hub cache already names the content (`hfstore.held_digest`), another digest. No model file is hashed, and
+    the digests are asked of the Hub only when the cache names one to compare."""
+    listed: list[remote.RemoteFile] | None = None
+    out: dict[str, list[str]] = {}
+    for build, files in served.items():
+        for name, size in sorted(files.items()):
+            if name not in mine:
+                continue
+            if mine[name] != size:
+                out.setdefault(build, []).append(f"{name}: {mine[name]:,} bytes here, {size:,} served")
+                continue
+            held = hfstore.held_digest(here[name]) if name in here else ""
+            if not held:
+                continue
+            listed = remote.listing(repo) if listed is None else listed
+            digests = {digest for one in listed if one.name == name for digest in (one.sha256, one.oid)
+                       if len(digest) == len(held)}
+            if digests and held not in digests:
+                out.setdefault(build, []).append(f"{name}: same size, other content")
+    return out
 
 
 def _files(args) -> int:
