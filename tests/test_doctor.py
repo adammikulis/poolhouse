@@ -26,7 +26,6 @@ from poolhouse.doctor import (
     bench_of,
     builds_of,
     hooks_of,
-    install_of,
     look_checkouts as look,
     main,
     repositories,
@@ -207,50 +206,6 @@ def test_a_worktree_at_head_is_not_stale_and_none_says_nothing(tmp_path):
     assert worktrees_of(repo)[0].said == f"holds {head[:7]}, at HEAD"
 
 
-# -- the editable install --------------------------------------------------------------
-
-def fake_python(repo: Path, prints: str, *, fails: bool = False) -> Path:
-    body = "echo 'ModuleNotFoundError: No module named poolhouse' >&2\nexit 1\n" if fails \
-        else f"echo {prints}\n"
-    return _script(repo / ".venv" / "bin" / "python", body)
-
-
-def test_an_install_under_the_checkout_is_good_and_reports_the_path(tmp_path):
-    checkout = tmp_path / "checkout"
-    ask = checkout / "src" / "poolhouse" / "graph" / "ask.py"
-    ask.parent.mkdir(parents=True)
-    ask.write_text("")
-    repo = make_repo(tmp_path / "quenlow")
-    fake_python(repo, str(ask))
-    found = install_of(repo, checkout=checkout)
-    assert found.good
-    assert found.said == str(ask)
-    assert found.fix == []
-
-
-def test_an_install_in_site_packages_is_a_copy_with_pip_e_as_the_fix(tmp_path):
-    checkout = tmp_path / "checkout"
-    checkout.mkdir()
-    copy = tmp_path / "venv" / "lib" / "site-packages" / "poolhouse" / "graph" / "ask.py"
-    copy.parent.mkdir(parents=True)
-    copy.write_text("")
-    repo = make_repo(tmp_path / "quenlow")
-    python = fake_python(repo, str(copy))
-    found = install_of(repo, checkout=checkout)
-    assert not found.good
-    assert found.said == str(copy)
-    assert found.fix == [str(python), "-m", "pip", "install", "-e", str(checkout)]
-    assert "imports a copy" in found.note
-
-
-def test_an_import_that_fails_says_why(tmp_path):
-    repo = make_repo(tmp_path / "quenlow")
-    python = fake_python(repo, "", fails=True)
-    found = install_of(repo, checkout=tmp_path / "checkout")
-    assert not found.good
-    assert found.said == f"{python}: import poolhouse fails -- ModuleNotFoundError: No module named poolhouse"
-
-
 # -- the bench -----------------------------------------------------------------------
 
 def dead_pid() -> int:
@@ -409,20 +364,6 @@ def test_repositories_are_those_given_or_named_by_the_environment(tmp_path, monk
     assert repositories([str(tmp_path / "a"), str(tmp_path / "a")]) == [tmp_path / "a"]
 
 
-def test_the_install_is_checked_against_the_poolhouse_checkout_examined(tmp_path, monkeypatch):
-    app = make_repo(tmp_path / "quenlow")
-    library = make_repo(tmp_path / "library")
-    imported = library / "src" / "poolhouse" / "graph" / "conversation.py"
-    imported.parent.mkdir(parents=True)
-    imported.write_text("")
-    fake_python(app, str(imported))
-    fake_python(library, str(imported))
-    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "poolhouse"))
-    found = {f.name: f for f in look([app, library], bench_home=tmp_path / "bench")}
-    assert found["quenlow: editable install"].good
-    assert found["library: editable install"].good
-
-
 def test_a_directory_an_installer_ran_from_is_not_a_checkout(tmp_path, monkeypatch):
     """`install.sh` runs `poolhouse-doctor` from wherever it was started, often no repository."""
     (tmp_path / "home").mkdir()
@@ -448,17 +389,11 @@ def test_a_relative_repository_is_named_by_its_directory(tmp_path, monkeypatch):
 def everything(tmp_path, monkeypatch):
     """A whole working state, all of it wrong: hooks missing, a dead lock, a stale build."""
     repo = make_repo(tmp_path / "quenlow")
-    checkout = tmp_path / "checkout"
-    ask = checkout / "src" / "poolhouse" / "graph" / "ask.py"
-    ask.parent.mkdir(parents=True)
-    ask.write_text("")
-    fake_python(repo, str(ask))
     home = make_bench(tmp_path / "bench", lock_pid=dead_pid())
     from poolhouse.serve import binary
 
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "poolhouse"))
     make_build(binary.managed_current(), commit="old0000", days_old=40)
-    monkeypatch.setattr("poolhouse.checks.checkout", lambda: checkout)
     return repo, home
 
 
@@ -467,7 +402,7 @@ def test_look_names_everything_and_main_exits_one_until_it_is_fixed(everything, 
     found = look([repo], bench_home=home)
     assert [f.name for f in found] == [
         "quenlow: hooks", "quenlow: working tree", "quenlow: branch",
-        "quenlow: editable install", "bench: measuring", "llama.cpp: current"]
+        "bench: measuring", "llama.cpp: current"]
     assert [f.name for f in found if not f.good] == [
         "quenlow: hooks", "llama.cpp: current"]
     assert main(["--repo", str(repo), "--bench-home", str(home)]) == 1
@@ -478,26 +413,34 @@ def test_look_names_everything_and_main_exits_one_until_it_is_fixed(everything, 
     assert "ok  quenlow: working tree: clean" in out
 
 
-def test_yes_runs_the_fixes_it_can_and_does_not_touch_the_build(everything, capsys, monkeypatch):
-    """Installing the hooks is safe; ``poolhouse-serve build`` is a compile, and the test
-    replaces it with a record of having been asked."""
+def test_the_doctor_runs_no_fix_and_installs_nothing(everything, capsys):
     repo, home = everything
-    asked: list[list[str]] = []
-    real = subprocess.run
-
-    def run(cmd, *args, **kwargs):
-        if cmd == ["poolhouse-serve", "build"]:
-            asked.append(cmd)
-            return subprocess.CompletedProcess(cmd, 0)
-        return real(cmd, *args, **kwargs)
-
-    monkeypatch.setattr(subprocess, "run", run)
     assert main(["--repo", str(repo), "--bench-home", str(home)]) == 1
-    assert asked == [["poolhouse-serve", "build"]]
-    assert (home / "measuring.json").exists(), "nothing deletes what says what ran last"
-    assert hooks_of(repo).good
-    found = look([repo], bench_home=home)
-    assert [f.name for f in found if not f.good] == ["llama.cpp: current"]
+    assert "fix: cd " in capsys.readouterr().out
+    assert not hooks_of(repo).good and (home / "measuring.json").exists()
+
+
+def test_the_doctor_runs_nothing_an_untrusted_repository_supplies(tmp_path, monkeypatch, capsys):
+    """A clone can carry an interpreter, an installer, a hook and git settings that name programs: looking at it starts none."""
+    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "poolhouse"))
+    repo = make_repo(tmp_path / "quenlow")
+    marker = tmp_path / "ran"
+    program = _script(tmp_path / "program", f"echo run >> {marker}\ncat\n")
+    (repo / "tracked.txt").write_text("one\n")
+    git(repo, "add", "tracked.txt")
+    git(repo, "commit", "-q", "-m", "chore: tracked")
+    internal = repo / ".git"
+    for planted in (repo / ".venv" / "bin" / "python", repo / "scripts" / "install-hooks.sh", internal / "hooks" / "post-index-change"):
+        _script(planted, f"echo {planted.name} >> {marker}\n")
+    (internal / "info").mkdir(exist_ok=True)
+    (internal / "info" / "attributes").write_text("*.txt filter=planted\n")
+    for key in ("filter.planted.clean", "filter.planted.process", "core.fsmonitor"):
+        git(repo, "config", key, str(program))
+    (repo / "tracked.txt").write_text("two\n")
+    marker.unlink(missing_ok=True)  # setting the repository up may have run its own programs
+    main(["--repo", str(repo), "--bench-home", str(tmp_path / "bench")])
+    capsys.readouterr()
+    assert not marker.exists(), marker.read_text()
 
 
 def test_a_path_that_is_not_a_repository_is_said(tmp_path, capsys):

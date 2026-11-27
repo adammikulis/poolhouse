@@ -140,7 +140,7 @@ daemon's TCP 8770 inbound by default**, so `poolhouse-pool members` on
 another machine sees nothing until, in a prompt opened as administrator:
 
 ```
-netsh advfirewall firewall add rule name="Poolhouse" dir=in action=allow protocol=TCP localport=8770
+netsh advfirewall firewall add rule name="Poolhouse" dir=in action=allow profile=private protocol=TCP localport=8770
 ```
 
 `poolhouse-setup` prints that line as a finding until the rule exists. The first time on a

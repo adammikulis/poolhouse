@@ -1,21 +1,19 @@
 """A finding, and how one is shown.
 
-`Finding` is what `poolhouse.setup` and `poolhouse.doctor` both produce. `ask()` prints
-each and offers its fix, never reading a password -- a fix that needs root runs through
-`sudo`, which prompts on the terminal itself.
+`Finding` is what `poolhouse.setup` and `poolhouse.doctor` both produce. `show()` prints each with the command that repairs it and
+runs none: looking at a machine or a repository changes nothing.
 """
 
 from __future__ import annotations
 
 import shlex
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from poolhouse import home
 from poolhouse.log import say
 
-__all__ = ["Finding", "ask", "checkout", "line", "tilde"]
+__all__ = ["Finding", "checkout", "line", "show", "tilde"]
 
 
 @dataclass
@@ -27,7 +25,7 @@ class Finding:
     said: str
     fix: list[str] = field(default_factory=list)  # the command that repairs it, as an argument vector
     cwd: str = ""            # the directory that command runs in
-    root: bool = False       # whether that command needs sudo
+    root: bool = False       # whether that command needs an administrator
     note: str = ""
 
 
@@ -51,8 +49,8 @@ def checkout() -> Path | None:
     return here if (here / "pyproject.toml").is_file() else None
 
 
-def ask(findings: list[Finding]) -> int:
-    """Show what was found and run each fix, one at a time. Nothing is asked: a fix that needs `sudo` is refused at once with the reason."""
+def show(findings: list[Finding]) -> int:
+    """Show what was found and the command that repairs each; 1 when one has such a command. Nothing is run and nothing is asked."""
     worst = 0
     for one in findings:
         mark = "ok  " if one.good else "  ! "
@@ -62,9 +60,5 @@ def ask(findings: list[Finding]) -> int:
         if one.good or not one.fix:
             continue
         worst = 1
-        say(f"      fix: {line(one.fix, one.cwd)}")
-        if "sudo" in one.fix:
-            say("      not run: it needs `sudo`, which would wait for a password; run it as an administrator yourself")
-            continue
-        subprocess.run(one.fix, cwd=one.cwd or None, check=False)
+        say(f"      fix{' (as an administrator)' if one.root else ''}: {line(one.fix, one.cwd)}")
     return worst

@@ -12,8 +12,8 @@ from poolhouse.workspace import device_metadata
 
 HOOKS = {
     "claude-code": """\
-Add this to ~/.claude/settings.json (or the project's .claude/settings.json), merging it with any
-"hooks" you already have. Nothing is written for you.
+Add this to the project's .claude/settings.local.json, merging it with any "hooks" it already has.
+Nothing is written for you.
 {
   "hooks": {
     "PostToolUse": [
@@ -27,7 +27,7 @@ Add this to ~/.claude/settings.json (or the project's .claude/settings.json), me
     ]
   }
 }
-`poolhouse-workspace install-hooks` writes the hooks for Claude Code and Codex.
+`poolhouse-workspace install-hooks --project DIR` writes the hooks for Claude Code and Codex into that project.
 """,
 
 }
@@ -126,10 +126,9 @@ def hello(s: Session, name: str) -> dict[str, object]:
 
 
 def doctor(s: Session) -> list[Finding]:
-    """Check the session's setup: the node answers for its token, the board's logs are whole, the hooks are current;
-    each failed finding says what to run."""
+    """Check the session's setup: the node answers for its token and the board's logs are whole; each failed finding
+    says what to run."""
     found = [Finding(True, f"the node accepts this session's token as {s.name}")]
     board = s.status()
     found.append(Finding(not board["damaged"], "the board's logs are whole", "poolhouse-workspace status"))
-    found.extend(Finding(f.good, f"{f.name}: {f.said}", " ".join(f.fix)) for f in agent_hooks.findings())
     return found

@@ -257,7 +257,7 @@ def test_wsl_start_preserves_service_setup_and_closes_owned_resources(monkeypatc
     monkeypatch.setattr(wsl, "_bridge", lambda *args: bridge)
     monkeypatch.setattr(wsl, "command", lambda *args: ["wsl.exe", "--exec", *args])
     monkeypatch.setattr(wsl, "launch", owned_launch)
-    monkeypatch.setattr(wsl.windows_firewall, "ensure", lambda: events.append("firewall"))
+    monkeypatch.setattr(wsl.windows_firewall, "check", lambda: events.append("firewall"))
     monkeypatch.setattr(wsl.subprocess, "run", unexpected_process)
     monkeypatch.delenv("POOLHOUSE_HOME", raising=False)
     monkeypatch.delenv("POOLHOUSE_CACHE", raising=False)

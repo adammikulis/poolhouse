@@ -52,19 +52,12 @@ def finding(marker: Path) -> checks.Finding:
     return checks.Finding(name="x", good=False, said="broken", fix=["touch", str(marker)])
 
 
-def test_a_fix_line_is_shown_and_runs_with_nothing_asked_and_never_through_a_shell(tmp_path, monkeypatch, capsys):
-    marker = tmp_path / "ran"
-    for terminal in (False, True):
-        monkeypatch.setattr("sys.stdin", types.SimpleNamespace(isatty=lambda terminal=terminal: terminal))
-        monkeypatch.setattr("builtins.input", lambda _prompt="": pytest.fail("nothing is asked"))
-        marker.unlink(missing_ok=True)
-        checks.ask([finding(marker)])
-        assert marker.exists(), "the shown line runs whatever the terminal, with nothing asked"
-        assert not (tmp_path / "injected").exists(), "no shell was involved"
-    assert f"fix: touch {marker}" in capsys.readouterr().out
+def test_a_fix_line_is_shown_quoted_and_never_run(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda _prompt="": pytest.fail("nothing is asked"))
     hostile = tmp_path / "ran; touch injected"
-    checks.ask([finding(hostile)])
-    assert hostile.exists() and not (tmp_path / "injected").exists(), "the argument is one argument: no shell splits it"
+    assert checks.show([finding(hostile)]) == 1
+    assert not hostile.exists() and not (tmp_path / "injected").exists(), "looking changes nothing"
+    assert f"fix: touch '{hostile}'" in capsys.readouterr().out
 
 
 class Recorded:

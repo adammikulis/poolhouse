@@ -156,9 +156,9 @@ early. The app builds its own environment on 3.13 (`fleet.environment.PYTHON`, t
 ## WSL development environment
 
 Run `scripts/setup-wsl-dev` from the primary checkout in WSL. It fills the persistent
-`~/.venvs/poolhouse-dev` environment with the compatible `[wsl-dev]` dependency bundle using a
-regular wheel install, then configures Bash to use that environment and the checkout's live `src/`
-tree. It also adds existing Windows model stores and Hugging Face, Ollama, LM Studio, llama.cpp,
+`~/.poolhouse/wsl-dev-venv` environment with the compatible `[wsl-dev]` dependency bundle using a
+regular wheel install, then writes `~/.poolhouse/wsl-dev.sh`, which points a shell at that environment
+and the checkout's live `src/` tree. No shell file is changed. It also adds existing Windows model stores and Hugging Face, Ollama, LM Studio, llama.cpp,
 and Jan caches to `POOLHOUSE_MODEL_PATHS`, so WSL reuses downloaded weights.
 
 `[wsl-dev]` includes the Linux-compatible runtime and test extras plus the pinned Ruff and Pyright
@@ -167,8 +167,8 @@ revision pinned in [the Gym guide](studio-gym.md). `[viz]` conflicts with `[gym-
 `[privacy-transformers]` conflicts with `[train-lora]`; those optional combinations stay in
 separate environments. The Apple-only `[mlx]` and opt-in `[pdf-agpl]` are also excluded.
 
-The setup is repeatable after dependency changes. Open a new shell or run `source ~/.bashrc`
-after the first setup. `POOLHOUSE_WSL_VENV` selects another persistent venv, and
+The setup is repeatable after dependency changes. Run `. ~/.poolhouse/wsl-dev.sh` in each shell
+that should use it. `POOLHOUSE_WSL_VENV` selects another persistent venv, and
 `POOLHOUSE_WINDOWS_USER` selects the matching Windows profile when its name differs from the WSL
 login.
 

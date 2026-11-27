@@ -142,6 +142,6 @@ def test_the_nudge_is_silent_when_empty_a_line_when_not_and_never_shows_text_or_
 
 
 def test_the_installer_is_for_a_person(kit, tmp_path):
-    out = kit.cli("install-hooks", "--settings", str(tmp_path / "s.json"), env={"CLAUDECODE": "1"})
-    assert out.returncode == 3 and not (tmp_path / "s.json").exists()
+    out = kit.cli("install-hooks", "--project", str(tmp_path), env={"CLAUDECODE": "1"})
+    assert out.returncode == 3 and not (tmp_path / ".claude").exists()
 

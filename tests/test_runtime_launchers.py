@@ -1,10 +1,9 @@
-"""Owned runtime launcher and existing hook cutover boundaries."""
+"""Owned runtime launcher boundaries; no tool's settings file is rewritten."""
 
 import json
 import os
 import subprocess
 import sys
-import tomllib
 from types import SimpleNamespace
 
 import pytest
@@ -66,63 +65,12 @@ def test_console_metadata_refuses_foreign_or_executable_entrypoints(tmp_path, ch
     assert not (tmp_path / "poolhouse").exists()
 
 
-def test_existing_claude_hooks_preserve_authorization_arguments_and_settings(tmp_path, chosen):
-    settings = tmp_path / "settings.json"
-    command = "/old/bin/python -m poolhouse.harnesshook pre --role actor --label helper --protect /repo"
-    document = {"permissions": {"deny": ["unchanged"]}, "hooks": {
-        "PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": command,
-         "timeout": 10, "additionalContextLimit": 250}, {"type": "command", "command": "unrelated guard"}]}]}}
-    settings.write_text(json.dumps(document))
-    assert runtime_launchers.claude_hooks(settings) == 1
-    updated = json.loads(settings.read_text())
-    hook = updated["hooks"]["PreToolUse"][0]["hooks"][0]
-    assert hook["command"] == command.replace("/old/bin/python", str(chosen.python))
-    hook["command"] = command
-    assert updated == document
-
-
-def test_codex_command_changes_only_interpreter_and_matching_path(tmp_path, chosen):
-    settings = tmp_path / "config.toml"
-    command = "PATH=/old/bin:$PATH /old/bin/python -m poolhouse.harnesshook post --label codex"
-    text = '[hooks.post]\ncommand = ' + json.dumps(command) + '\ntimeout = 10\nadditionalContextLimit = 250\ntrusted_hash = "existing-review"\n'
-    settings.write_text(text)
-    receipt = runtime_launchers.codex_hooks(settings)
-    assert receipt["changed"] == 1 and receipt["pending_trust"] is True
-    assert "revalidation" in receipt["detail"]
-    result = tomllib.loads(settings.read_text())["hooks"]["post"]
-    assert result.pop("command") == command.replace("/old/bin", str(chosen.python.parent))
-    assert result == {"timeout": 10, "additionalContextLimit": 250, "trusted_hash": "existing-review"}
-
-
-@pytest.mark.parametrize("command", ["/old/bin/python -m foreign.hook post", "echo /old/bin/python -m poolhouse.harnesshook post", "/old/bin/python -m poolhouse.harnesshook post && echo other", "PATH=/unrelated:$PATH /old/bin/python -m poolhouse.harnesshook post"])
-def test_unknown_shell_shapes_are_unchanged(command, chosen):
-    assert runtime_launchers.hook_command(command, chosen.python) == command
-
-
-@pytest.mark.parametrize("format", ["claude", "codex"])
-def test_concurrent_settings_edit_is_preserved_and_cutover_refused(tmp_path, chosen, monkeypatch, format):
-    settings = tmp_path / "settings"
-    command = "/old/bin/python -m poolhouse.harnesshook post --label codex"
-    if format == "claude":
-        settings.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": command}]}]}}))
-        cutover = runtime_launchers.claude_hooks
-    else:
-        settings.write_text('[hooks.post]\ncommand = ' + json.dumps(command) + '\n')
-        cutover = runtime_launchers.codex_hooks
-    original_protect = runtime.protect
-
-    def intervening_protect(path):
-        original_protect(path)
-        settings.write_text("concurrent user edit")
-
-    monkeypatch.setattr(runtime, "protect", intervening_protect)
-    with pytest.raises(OSError, match="changed during"):
-        cutover(settings)
-    assert settings.read_text() == "concurrent user edit"
-
-
 def test_default_launcher_layout_ignores_an_old_shared_interpreter_directory(tmp_path, monkeypatch):
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
     foreign = tmp_path / "shared-python" / "bin"
     runtime_store.write_state({"launchers": str(foreign)})
     assert runtime_cli._launchers("") == home.state("bin")
+
+
+def test_no_launcher_code_rewrites_a_tools_settings_file():
+    assert [name for name in ("claude_hooks", "codex_hooks", "hook_command") if hasattr(runtime_launchers, name)] == []

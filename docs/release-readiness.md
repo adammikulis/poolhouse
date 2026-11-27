@@ -123,7 +123,7 @@ Not built: `ph.pool.create`, `ph.NeedsApproval`, `ph.serve.offer`, `ph.pool.join
 | --- | --- | --- |
 | 1 | Installs Poolhouse (once) | as P1 step 1 |
 | 2 | Links the phone (once per person) | as P1 step 3 |
-| 3 | Starts the harness in the project directory with its usual command and flags | A harness hook registers the session and exports its name; hooks come from `poolhouse-workspace install-hooks` (`docs/workspace.md`, "Quickstart"). Whether first run installs them without a command is unverified |
+| 3 | Starts the harness in the project directory with its usual command and flags | A harness hook registers the session and exports its name; hooks come from `poolhouse-workspace install-hooks --project DIR`, into that project only, (`docs/workspace.md`, "Quickstart"). Whether first run installs them without a command is unverified |
 | 4 | Works as before; a pool action the session was not granted raises a phone approval | P3 counts; the lead's standing grants are made with `poolhouse-workspace grants-setup` at a terminal |
 
 No count for D2 is recorded in the repository. The ceiling proposed here: the harness's own steps, plus the human steps of P1 once per

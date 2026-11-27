@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import ast
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from poolhouse import harnessid
-from poolhouse.board import grants as board_grants
+from poolhouse.board import grants as board_grants, place
 from poolhouse.board.client import NodeError
 from poolhouse.board.names import RESERVED, valid_name
 from poolhouse.fleet.onboard.manifest import Signer
@@ -35,17 +36,21 @@ REGISTERED_BY = {
     "src/poolhouse/node_join_check.py": {"register"},
     "src/poolhouse/workspace/board_cli.py": {"register"},
     "src/poolhouse/workspace/codex_hooks.py": {"register"},
+    "src/poolhouse/workspace/harness_session.py": {"register"},
     "src/poolhouse/workspace/localstart.py": {"register"},
 }
-"""The reviewed places that ask the node to register a session: each registers the session of the process that asks."""
+"""The reviewed places that ask the node to register a session: each registers the session of the process that asks, or, in
+`harnessid.py` and `harness_session.py`, a harness session under the session that starts it (the second renews its token)."""
 NAMING = ("sender", "name", "parent", "label", "from", "author", "actor", "identity", "as")
 REMOVED_VERBS = ("delegate", "mint", "init", "invite", "join", "connect", "setup", "revoke", "sync", "coordinator", "remote")
 IDENTITY_VERBS = {"spawn", "agent", "rebind", "grants-setup"}
 
 
 def _is_register(node: ast.Call) -> bool:
+    """A call that registers a session: `register` given a native session, built in place or held in a variable named `native`, or
+    the node's `register` verb."""
     name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
-    if name == "register" and "Native(" in ast.unparse(node):
+    if name == "register" and ("Native(" in ast.unparse(node) or any(isinstance(arg, ast.Name) and arg.id == "native" for arg in node.args)):
         return True
     return name == "call" and any(isinstance(arg, ast.Constant) and arg.value == "register" for arg in node.args[:2])
 
@@ -98,11 +103,14 @@ def test_a_registration_that_names_who_it_is_for_is_refused_and_makes_no_session
     assert sessions(node, worker) == before
 
 
-def test_a_coding_harness_is_never_given_a_session_under_the_person_when_no_session_starts_it(workspace_node, tmp_path):
+def test_a_coding_harness_is_never_given_a_session_under_the_person_when_no_session_starts_it(workspace_node, tmp_path, monkeypatch):
     node = workspace_node
-    lead = node.member("lead")
     project = tmp_path / "project"
-    project.mkdir()
+    subprocess.run(["git", "init", "--quiet", str(project)], check=True)
+    monkeypatch.delenv(place.BOARD_ENV, raising=False)
+    monkeypatch.delenv(harnessid.AGENT_ENV, raising=False)
+    node.board = place.resolve(node.client, project)  # a harness only starts on a project the node already knows
+    lead = node.member("lead")
     before, said = sessions(node, lead), []
     with pytest.raises(ValueError, match="started by a session"):
         harnessid.invite("local-harness", project, "", said.append)

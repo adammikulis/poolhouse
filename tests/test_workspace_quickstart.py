@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import re
-import shutil
 from pathlib import Path
 
 import pytest
 
-from poolhouse import agent_hooks
 from poolhouse.board import credentials
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.workspace import onboard, project
@@ -16,35 +14,17 @@ from poolhouse.workspace import onboard, project
 pytest_plugins = ["node_kit"]
 
 
-@pytest.fixture
-def hooked(monkeypatch, tmp_path):
-    """Both agents' settings live under ``tmp_path`` with the nudge hooks in, and the nudge command is on PATH, so the
-    doctor judges this setup and not the machine's own agents."""
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-settings"))
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex-settings"))
-    where = agent_hooks.paths()
-    agent_hooks.install(where=where)
-    real = shutil.which
-    monkeypatch.setattr(agent_hooks.shutil, "which",
-                        lambda name, *a, **k: "/fake/bin/" + name if name == agent_hooks.BINARY else real(name, *a, **k))
-    return where
-
-
-def test_the_doctor_passes_a_good_setup_and_names_each_broken_one(workspace_node, hooked):
+def test_the_doctor_passes_a_set_up_session_with_no_hooks_anywhere(workspace_node):
     node = workspace_node
     s = node.session(node.member("doctor"))
     found = onboard.doctor(s)
     assert all(f.ok for f in found), [f for f in found if not f.ok]
     assert found[0].what.endswith(f"as {s.name}")
-    where = hooked["codex"]
-    where.write_text("model = 'x'\n")
-    bad = [f for f in onboard.doctor(s) if not f.ok]
-    assert [f.fix for f in bad] == ["poolhouse-workspace install-hooks"] and "codex" in bad[0].what
-    done = node.cli("doctor", who=node.members["doctor"], env={"CODEX_HOME": str(where.parent)})
-    assert done.returncode == 1 and "FIX" in done.stdout
+    done = node.cli("doctor", who=node.members["doctor"])
+    assert done.returncode == 0 and "hooks" not in done.stdout
 
 
-def test_the_doctor_leaves_no_session_behind(workspace_node, hooked):
+def test_the_doctor_leaves_no_session_behind(workspace_node):
     node = workspace_node
     who = node.member("doctor")
     before = sorted(a.name for a in node.session(who).agents(True))
