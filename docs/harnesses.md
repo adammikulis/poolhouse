@@ -24,19 +24,26 @@ line or in its environment, and in a private folder under the state root that is
 | --- | --- | --- | --- | --- |
 | Claude Code | `--settings FILE` (its `env` block, over the person's), `--append-system-prompt-file`; their MCP servers stay | `--disallowed-tools` for the shell and editing (plan adds `--permission-mode plan`) | `--dangerously-skip-permissions` | `--permission-mode acceptEdits` |
 | Codex | `-c` overrides for the provider, model and window; `~/.codex` stays the home | `sandbox_mode="read-only"`, no approvals | `danger-full-access`, no approvals | `workspace-write`, no approvals |
-| OpenCode (the one on PATH, else the kept release) | `OPENCODE_CONFIG`, merged over their own, and `--model` | `edit`, `bash` and `shell` denied | everything allowed | their own settings |
+| OpenCode (the one on PATH, else the kept release) | `OPENCODE_CONFIG_CONTENT`, read after their config and the project's, under a provider name of the run; `--model` for `run`; `--standalone` where there is a background service | `edit`, `bash` and `shell` denied, and the project's config not read | everything allowed | their own settings |
 | Pi (`launch_coding_agent`) | an `--extension` that registers the provider | `--tools read,grep,find,ls` | their own settings | their own settings |
 
 With no `--permissions`, the person's own settings decide. No classifier hook of Poolhouse's judges a run in place.
 The harness's environment is the person's own, marked as an agent's (`POOLHOUSE_AGENT`) and naming its own workspace
-session, never the one the command was typed in. A server that has a key gives it to the harness. When no workspace
+session, never the one the command was typed in. When no workspace
 session can be made, the launcher says so and the agent runs without one. `--read`, `--toolchain` and `--protect` set
 the reach of a sandboxed run, and a run in place says it does not use them.
 
+**What the project's own config can and cannot do.** It cannot move the run off the served model or read the server's key: the
+address is held above it (inline config for OpenCode, `-c` overrides for Codex, the run's settings for Claude Code, which also hold
+every hosted-provider switch, the unix socket and the proxy for a server on this computer; Pi's project settings reach none of these),
+the key is in a variable named for the run (Codex, OpenCode), and the key files have names no config can know. The project's plugins,
+hooks, MCP servers and programs run with your rights, exactly as when you start that harness yourself in the folder: Poolhouse does
+not confine them, and `--sandbox` does.
+
 A program starts the same thing with `poolhouse.coding.launch_coding_agent(model, policy, project,
 harness="codex", **options)` (options: `sandbox`, `name`, `orders_from`, `harness_args`, `say`,
-`run_codex` / `run_claude`, `context`); it returns the harness's exit code. A turn started in the coding chat runs in
-place; the workspace's own coding workers run sandboxed.
+`run_codex` / `run_claude`, `context`); it returns the harness's exit code. A turn started in the browser's coding chat
+and the workspace's own coding workers run sandboxed.
 
 `poolhouse-agent "task" --model MODEL` (`poolhouse.harness.session`) runs one agentic task through the
 Claude Agent SDK on the same lease. Every full install and installed runtime carries the SDK (the `claude`
@@ -48,9 +55,8 @@ needs no install step; a missing SDK is reported as a defective install, never a
 1. **Serves the model through the broker lease** (never a hand-started server): 262,144 tokens on
    one slot, q8_0 KV cache, the model's own multi-token-prediction head where it has one, the
    model's measured settings when there are some. The model is asked for before it is loaded: when
-   the wired-memory limit cannot hold it at that window, the launcher prints
-   `poolhouse-serve memory --for MODEL --ctx 262144 --kv q8_0 --apply` and stops. Raising the limit is
-   for a person at their own terminal. `poolhouse-serve memory --for Qwen3.8-27B-UD-Q4_K_XL.gguf --ctx
+   the wired-memory limit cannot hold it at that window, the launcher says what is needed and stops; Poolhouse does not
+   change the limit. `poolhouse-serve memory --for Qwen3.8-27B-UD-Q4_K_XL.gguf --ctx
    262144 --kv q8_0` says what the 27B needs (29.2 GiB on the measured machine, 2026-10-03). The default model is
    `Qwen3.8-Flash-Next-UD-IQ2_XS` when it is installed and `suggest.largest_fit` rates it green at 262,144 tokens
    (`harnessing.default_model()`; measured 2026-11-25 on the 128 GB machine: 56.8 GiB wired, 48 GiB resident, n-gram
@@ -279,7 +285,7 @@ the same lease, window, permission profiles, workspace session and publication o
   the ripgrep release `RIPGREP` beside it: OpenCode's search tools would otherwise download it from inside the box, which has no network. A later
   pin names another folder, so it takes effect at the next launch. A launch needs no install step; a fetch that cannot complete says why and
   starts nothing.
-- **Names it would read from a project** (`guard.harnesses.RECORDS["opencode"]`): `.opencode`, `opencode.json`, `opencode.jsonc`. A launch turns that
+- **Names it would read from a project** (`guard.harnesses.RECORDS["opencode"]`): `.opencode`, `opencode.json`, `opencode.jsonc`. A sandboxed launch turns that
   off (`OPENCODE_DISABLE_PROJECT_CONFIG`), so a project's settings and plugins replace neither the permissions nor Poolhouse's plugin.
 
 Tests: `tests/test_opencode_harness.py`, and `tests/test_opencode_pinned.py`, which runs the pinned binary where it is kept (and skips with the reason
@@ -320,10 +326,11 @@ poolhouse-delegate stop NAME
   and nothing it does is written to the folder. Its OpenCode permissions deny everything but its own tools: no web fetch or search, no subagent
   and no script tool.
 - **Tiers.** `read-only` is the default; `--edit` is `guarded`; `--permissions read-only|guarded|yolo` names one.
-- **Sandboxed.** On a computer that can sandbox, every tier runs the same path: a confined stage behind a Seatbelt profile proved before OpenCode
+- **Sandboxed.** On a platform that has a sandbox, every tier runs the same path, and a sandbox that cannot be used there (a
+  nested one, a missing tool, a failed probe) refuses the delegate with the reason. The path is a confined stage behind a Seatbelt profile proved before OpenCode
   starts and attested on the live process, a closed environment and the model reached only through the parent's bridge ("What is not covered" below
   and docs/design-isolated-launcher.md).
-- **With no sandbox** (`poolhouse.delegate_unboxed`). A computer that cannot sandbox runs the delegate on the folder itself and says so; above
+- **With no sandbox** (`poolhouse.delegate_unboxed`). A platform with no sandbox at all (native Windows) runs the delegate on the folder itself and says so; above
   `read-only` it prints one warning naming the risk. OpenCode gets the tier's permission rules (`read-only`: no shell and no editing tool), a home
   and configuration of its own, an environment with no key or login, and the model through the same loopback bridge behind a token of the run.
   Before every tool call the parent's hook (`poolhouse.delegate_guard`) refuses, in every tier (`poolhouse.guard.unboxed`): the person folder,
@@ -347,7 +354,8 @@ poolhouse-delegate stop NAME
   edit or a deletion of a file git does not hold (a draft of yours, a file an earlier run made) is published too: the launcher keeps the version
   it displaces first, read-only and named by the digest of its bytes, under `~/.poolhouse/isolation/restored/NAME/`, and says where in the same
   words; a file you changed since the run started is never overwritten. `stop NAME` ends every process of the confinement, publishes nothing
-  further (the patches already kept stay) and removes what the launch made.
+  further, keeps what the run had changed as a patch beside those already kept, writes a result with the turns and tokens it had come to and
+  removes what the launch made.
 - **A run that fails or stalls.** OpenCode prints one JSON line per event (`run --format json`), so `status` shows the turns taken and the last
   tool while it runs. When it exits, every process left in its tree is ended, so a child that holds its output does not hold the run. A run that
   prints nothing for 180 seconds (`delegate_confined.NO_PROGRESS_S`) while no request is with the model server, no question waits for the lead

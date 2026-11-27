@@ -2,12 +2,13 @@
 
 Design of the sandbox of a coding agent: isolation the operating system enforces on macOS, Linux and WSL, and Windows.
 
-**When it applies.** A launch the person runs (`poolhouse-claude`, `poolhouse-codex`, `poolhouse-opencode`,
-`poolhouse.coding.launch_coding_agent` and a turn of the coding chat) runs the harness on the project folder itself, with the
-person's own settings, MCP servers and network (docs/harnesses.md, "In place"), on every platform and in any folder. This design
-is what `--sandbox` (`sandbox=True`) asks for, what the workspace's own coding workers run in, and what a delegate runs in on a
-computer that can confine. A delegate on a computer that cannot runs on the folder itself in the tier its lead chose, `read-only`
-unless named, behind the blocks of docs/harnesses.md ("A delegate"), which are not a boundary. In the rest of this document a
+**When it applies.** A launch the person runs (`poolhouse-claude`, `poolhouse-codex`, `poolhouse-opencode` and
+`poolhouse.coding.launch_coding_agent`) runs the harness on the project folder itself, with the person's own settings, MCP servers
+and network (docs/harnesses.md, "In place"), on every platform and in any folder. This design is what `--sandbox` (`sandbox=True`)
+asks for, and what a coding turn started in the browser (it is reached through Poolhouse's web surface), the workspace's own coding
+workers and every delegate on a platform that has a sandbox run in; where that sandbox cannot be used (a nested one, a missing tool, a
+failed probe) they are refused. Only a delegate on a platform with no sandbox runs on the folder itself, in the tier its lead chose,
+`read-only` unless named, behind the blocks of docs/harnesses.md ("A delegate"), which are not a boundary. In the rest of this document a
 launch means a sandboxed one: a platform that cannot enforce what is claimed refuses it, with the exact reason, and no sandboxed
 run starts unisolated. The capability report and the launch itself say what a computer can confine. The
 non-author attack pass of AGENTS.md section 1 is `docs/design-isolated-launcher-breakit.md`; section 14.3 names the section that
@@ -355,12 +356,12 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
   (`secretpaths.tree_hit`) or is neither linked nor read. The walk does not enter `site-packages` or a nested `node_modules`: a
   credential file there is readable by the box, which can put what it reads only into its answer, its messages to its lead and the
   source it publishes.
-- **A delegate** (`poolhouse-delegate`) is OpenCode in this profile, whether it edits or only reads, so it starts only where the
-  launcher can confine. Its OpenCode permissions deny every action but its own tools, and Poolhouse's plugin offers the model only
+- **A delegate** (`poolhouse-delegate`) on a platform with a sandbox is OpenCode in this profile, whether it edits or only reads, so
+  it starts only where the launcher can confine. Its OpenCode permissions deny every action but its own tools, and Poolhouse's plugin offers the model only
   those; a delegate that only reads is permitted no shell and no editing tool, and its stage is read-only. A run whose plugin never
   reached the parent fails and publishes nothing. That word comes from inside the box, so it shows a plugin that did not load and
   is no boundary: the profile and publication are. A process the box detaches can send such frames and so hold off the no-progress
-  limit; `poolhouse-delegate stop` ends the run.
+  limit; `poolhouse-delegate stop` ends the run, which keeps what it had changed as a patch.
 - **A delegate's shell** runs in this profile with no further grant: no network but the model bridge's port (which the shell, like
   the harness, holds the token of), the session bridge's socket and the one loopback port OpenCode's own server listens on, and no
   nested sandbox. The plugin runs each command under a program that ends it at its timeout. Its hooks are judged by their text
