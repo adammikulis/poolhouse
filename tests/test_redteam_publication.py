@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from poolhouse import secretpaths
+from poolhouse.isolation import publication
 from tests.isolation_world import Sink, begin, make_project, private_storage, write
 
 MARKER = "the person's file outside the project\n"
@@ -132,7 +134,7 @@ def test_a_link_to_a_credential_name_in_a_folded_spelling_is_refused(project, tm
     session = begin(project, tmp_path, Sink())
     link(session.stage.physical, "s/key", "../.\u017f\u017fh/config")
     turn = session.publish_turn()
-    assert not turn.applied and [(each.path, each.klass) for each in turn.refused] == [("s/key", "link")], turn
+    assert not turn.applied and [(each.path, each.klass) for each in turn.refused] == [("s/key", "spelling")], turn
 
 
 def mode(path) -> int:
@@ -162,3 +164,43 @@ def test_the_permissions_the_person_set_meanwhile_stay_when_a_change_is_applied(
     assert sorted(turn.applied) == ["src/app.py", "src/lib.py"], turn
     assert mode(private) == 0o600 and private.read_bytes() == b"y = 'agent'\n"
     assert mode(script) == 0o700, "the agent's say to run it is applied to the person's permissions"
+
+
+SPELLINGS = [("ΐ", "Ϊ́"), ("ΰ", "Ϋ́")]
+"""Names APFS opens as one file that a case fold alone leaves apart."""
+
+
+@pytest.mark.parametrize("name, other", SPELLINGS)
+def test_links_spelled_two_ways_the_filesystem_reads_as_one_never_lead_out(project, tmp_path, name, other):
+    session = begin(project, tmp_path, Sink())
+    link(session.stage.physical, f"s/{name}", "..")
+    link(session.stage.physical, "s/a", f"{other}/../outside_marker")
+    turn = session.publish_turn()
+    assert not turn.applied and sorted(each.klass for each in turn.refused) == ["spelling", "spelling"], turn
+    assert leaving(project) == []
+    untouched(project, tmp_path, "s/a")
+
+
+@pytest.mark.parametrize("name, other", SPELLINGS)
+def test_a_new_link_never_reaches_the_persons_own_link_by_another_spelling(project, tmp_path, name, other):
+    session = begin(project, tmp_path, Sink())
+    link(project, f"s/{name}", "..")
+    link(session.stage.physical, "s/a", f"{other}/../outside_marker")
+    turn = session.publish_turn()
+    assert [(each.path, each.klass) for each in turn.refused] == [("s/a", "spelling")] and not turn.applied and leaving(project) == [], turn
+    untouched(project, tmp_path, "s/a")
+
+
+@pytest.mark.parametrize("name, target", [("s/café", "keep.py"), ("s/plain", "../src/é.py")])
+def test_a_link_whose_name_or_target_is_not_plain_ascii_is_refused_and_the_rest_is_applied(project, tmp_path, name, target):
+    session = begin(project, tmp_path, Sink())
+    link(session.stage.physical, name, target)
+    write(session, "src/é.py", "e = 1\n")
+    turn = session.publish_turn()
+    assert turn.applied == ("src/é.py",) and [(each.path, each.klass) for each in turn.refused] == [(name, "spelling")], turn
+
+
+@pytest.mark.parametrize("name, other", SPELLINGS)
+def test_the_names_of_the_checkout_are_compared_as_the_filesystem_compares_them(name, other):
+    assert publication.fold(f"s/{name}") == publication.fold(f"S/{other}") and secretpaths.fold(name) == secretpaths.fold(other)
+    assert publication.colliding({f"s/{name}", f"s/{other}"}) == {f"s/{name}", f"s/{other}"}

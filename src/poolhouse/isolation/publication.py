@@ -14,7 +14,6 @@ import hashlib
 import os
 import re
 import stat
-import unicodedata
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
@@ -38,6 +37,7 @@ REASONS = {
     "environment": "a link to an environment folder of the project that the session removed or replaced, of which nothing is applied",
     "link": "a change of a link after which a link would lead out of the project, or to a path no change applies",
     "path": "a path of the checkout that goes through a link, or holds something else than the session started from, so it is not written",
+    "spelling": "a change of a link whose name or target is not plain ASCII, which the launcher does not compare as this filesystem may",
     "collision": "a name that folds to the same name as another on this filesystem",
     "changed": "a file of the stage that was no longer the one read, so it was not applied",
     "restore": "a file git does not hold whose previous version the launcher could not keep first, so it was not replaced or deleted",
@@ -90,7 +90,7 @@ class Basis:
 
 def fold(path: str) -> str:
     """A path as the filesystem sees it when it ignores case and Unicode form (APFS and NTFS do)."""
-    return "/".join(unicodedata.normalize("NFC", part).casefold() for part in path.split("/"))
+    return "/".join(secretpaths.fold(part) for part in path.split("/"))
 
 
 def token(refusal: Refusal, index: int, held: Collection[str]) -> str:
@@ -211,19 +211,20 @@ def _links(root: Path) -> Iterator[tuple[str, str]]:
                 yield path, target
 
 
-def _leading_out(basis: Basis, changes: Sequence[Change]) -> set[str]:
-    """The paths of ``changes`` that add, change or remove a link and must not be made, because in some outcome of this publication they would
-    leave a link that leads out of the project or to a path no change applies: one of the new links, or a link the checkout holds that they
-    reroute. A change refused here is taken as not made and everything is followed again, until no further change is refused."""
+def _leading_out(basis: Basis, changes: Sequence[Change]) -> dict[str, str]:
+    """The paths of ``changes`` that add, change or remove a link and must not be made, each with its cause. ``spelling``: the path or the new
+    target is not plain ASCII, so whether another name reaches it is the filesystem's own answer. ``link``: in some outcome of this publication
+    the change would leave a link that leads out of the project or to a path no change applies, one of the new links or a link the checkout
+    holds that it reroutes. A change refused here is taken as not made and everything is followed again, until no further change is refused."""
     candidates: dict[str, str | None] = {}
     for change in changes:
         path = os.fsdecode(change.path)
         if LINK in (change.before_mode, change.after_mode) or (basis.project / path).is_symlink():
             candidates[path] = _target(basis.result.directory, path) if change.after_mode == LINK else None
     if not candidates:
-        return set()
+        return {}
     checkout = tuple(_links(basis.project))
-    refused: set[str] = set()
+    refused = {path: "spelling" for path, target in candidates.items() if not (path.isascii() and (target or "").isascii())}
     while True:
         changed = {fold(path): (path, target) for path, target in candidates.items() if path not in refused}
         bad: set[str] = set()
@@ -236,7 +237,7 @@ def _leading_out(basis: Basis, changes: Sequence[Change]) -> set[str]:
                     bad |= taken
         if not bad:
             return refused
-        refused |= bad
+        refused.update(dict.fromkeys(bad, "link"))
 
 
 def _edit(basis: Basis, change: Change, path: str, entry: CaptureEntry | None) -> Edit | None:
@@ -260,7 +261,7 @@ def _edit(basis: Basis, change: Change, path: str, entry: CaptureEntry | None) -
     return made(found[0], 0o755 if entry.mode == b"100755" else 0o644)
 
 
-def _one(basis: Basis, change: Change, entries: dict[str, CaptureEntry], out: set[str], collide: set[str]) -> Edit | Refusal:
+def _one(basis: Basis, change: Change, entries: dict[str, CaptureEntry], out: dict[str, str], collide: set[str]) -> Edit | Refusal:
     path = os.fsdecode(change.path)
     entry = entries.get(path)
     size = 0 if entry is None else entry.size
@@ -268,8 +269,8 @@ def _one(basis: Basis, change: Change, entries: dict[str, CaptureEntry], out: se
         return Refusal(path, cause, size)
     if path in collide:
         return Refusal(path, "collision", size)
-    if path in out:
-        return Refusal(path, "link", size)
+    if cause := out.get(path):
+        return Refusal(path, cause, size)
     return _edit(basis, change, path, entry) or Refusal(path, "changed", size)
 
 

@@ -496,6 +496,7 @@ asked. No grant, rule or argument lifts a refusal.
 | Credential name (`secretpaths`) | never applied; reported; never read into the patch |
 | Special file (a FIFO, a socket, a device), submodule, hard-linked file, a link the capture cannot carry (absolute, or leaving the tree) | never applied; reported by name |
 | A change that adds, changes or removes a symlink, after which a new link, or a link the checkout holds that it reroutes, would lead out of the project or to a path of the rows above. Each link is followed as the filesystem follows it, over every outcome of the publication (a changed path holds what it holds now or what the change makes it, since a change can be refused or end in a conflict), and again after each refusal until none follows | never applied; reported |
+| A change that adds, changes or removes a symlink whose path, or whose new target, is not plain ASCII: no folding table decides whether another spelling reaches it | never applied; reported |
 | A path of the checkout that goes through a link, or that holds a link where the session started from none (4.4.3) | never written; reported |
 | Name collision: two paths equal under case or Unicode folding (APFS and NTFS fold) | never applied; reported |
 | A link to an environment folder of the project that the session removed or replaced (4.2 item 4) | nothing of it applied; reported |
