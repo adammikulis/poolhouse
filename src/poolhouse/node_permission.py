@@ -102,8 +102,12 @@ def _permission_command(args) -> int:
     return 0 if permission(args.seconds) == GRANTED else 1
 
 
+SIGNED = {"certificate": "is signed with the certificate", "ad-hoc": "is signed locally",
+          "kept": "keeps the certificate signature it had, because signing it again failed"}
+
+
 def resign_apps() -> list[tuple[Path, str]]:
-    """Sign every Poolhouse app on this Mac again with what the keychain now holds; each as (app, "certificate" or "ad-hoc")."""
+    """Sign every Poolhouse app on this Mac again with what the keychain now holds; each as (app, how it is signed: one of `SIGNED`)."""
     apps = [(bundle, runtime_identity.BUNDLE_ID, runtime_identity.requirement) for bundle in runtime_identity.bundles()]
     if node_app.executable_path().is_file():
         apps.append((node_app.bundle_path(), node_app.BUNDLE_ID, node_app.requirement))
@@ -116,14 +120,14 @@ def _certificate_command(args) -> int:
         warn("certificate: only macOS signs Poolhouse's apps, so there is nothing to change on this computer")
         return 1
     adding = args.change == "enable"
+    signed: list[tuple[Path, str]] = []
     try:
-        (node_signing.enable if adding else node_signing.remove)(say)
-        signed = resign_apps()
+        (node_signing.enable if adding else node_signing.remove)(say, lambda: signed.extend(resign_apps()))
     except (OSError, subprocess.SubprocessError) as exc:
         warn(f"certificate: {exc}")
         return 1
     for bundle, how in signed:
-        say(f"{bundle} is signed {'with the certificate' if how == 'certificate' else 'locally'}")
+        say(f"{bundle} {SIGNED[how]}")
     if signed:
         say("Poolhouse processes already running keep the signature they started with until they restart.")
     return int(adding and any(how != "certificate" for _bundle, how in signed))

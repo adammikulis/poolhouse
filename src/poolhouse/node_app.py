@@ -18,7 +18,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from poolhouse import app_bundle, node_binary, node_signing, runtime
+from poolhouse import app_bundle, node_binary, node_signing, runtime, runtime_identity
 from poolhouse.app_bundle import ICON_SVG, NAME, AppError, apps_directory, icns
 from poolhouse.files import read_json, write_json
 from poolhouse.log import say, warn
@@ -46,7 +46,7 @@ def info_plist(version: str = "0", *, icon: bool = True) -> dict:
 def requirement(certificate_sha1: str) -> str:
     """The designated requirement of a certificate signature: this bundle id, signed by this certificate. It names no cdhash, so a
     rebuilt binary still satisfies it."""
-    return f'designated => identifier "{BUNDLE_ID}" and certificate leaf = H"{certificate_sha1.lower()}"'
+    return node_signing.certificate_requirement(BUNDLE_ID, certificate_sha1)
 
 
 def launch_command(bundle: Path, args: list[str]) -> list[str]:
@@ -70,15 +70,11 @@ def build(binary: Path, *, icon: Path | None = None, bundle: Path | None = None)
     The bundle is made and signed beside its place and copied into place only once signed, so a failure leaves the previous one standing.
     """
     bundle = bundle or bundle_path()
-    staging = bundle.parent / ".building" / bundle.name
-    shutil.rmtree(staging.parent, ignore_errors=True)
-    sha = _assemble(staging, binary, icon or (ICON_SVG if ICON_SVG.is_file() else None))
-    try:
+    with app_bundle.locked(bundle), app_bundle.staged(bundle) as staging:
+        sha = _assemble(staging, binary, icon or (ICON_SVG if ICON_SVG.is_file() else None))
         signing = node_signing.sign(staging, BUNDLE_ID, requirement)
         shutil.rmtree(bundle, ignore_errors=True)
         shutil.copytree(staging, bundle, symlinks=True)
-    finally:
-        shutil.rmtree(staging.parent, ignore_errors=True)
     return {"bundle": str(bundle), "sha256": sha, "signing": signing}
 
 
@@ -99,8 +95,9 @@ def _assemble(bundle: Path, binary: Path, icon: Path | None) -> str:
 
 
 def bundled(binary: Path, sha: str) -> Path:
-    """The bundle executable that stands for a verified node binary, building (and signing) the bundle when it is not that binary's."""
-    if current_source() != sha or not executable_path().is_file():
+    """The bundle executable that stands for a verified node binary, building (and signing) the bundle when it is not that binary's
+    or its signature is neither a local nor a certificate one."""
+    if current_source() != sha or not executable_path().is_file() or not runtime_identity.signature_form(bundle_path(), BUNDLE_ID):
         say(f"node: building {bundle_path()} from {sha[:12]}")
         build(binary)
     return executable_path()

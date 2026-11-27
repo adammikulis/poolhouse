@@ -188,7 +188,6 @@ def build(plan: Plan, stage: Path, prefix: Path) -> runtime.Runtime:
     target = runtime_wheel.Target(prefix, creator, host_python())
     built = runtime_wheel.build(plan.checkout, plan.commit, stage, timeout=plan.timeout, target=target)
     try:
-        runtime_identity.adopt(built)
         node_build.add_to(built, stage / "source", plan.commit, timeout=plan.timeout)
     except RECOVERABLE:
         runtime_store.discard(built.prefix)
@@ -255,7 +254,6 @@ def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = fr
         bridges = runtime_bridges.snapshot(expected, claimed)
         published = False
         try:
-            runtime_identity.adopt(chosen)
             if plan.launchers is not None:
                 if plan.launchers == runtime_launchers.directory():
                     runtime.plain(plan.launchers)
@@ -264,6 +262,7 @@ def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = fr
                 runtime_launchers.install(plan.launchers, chosen, follow_selection=plan.launchers == runtime_launchers.directory())
             runtime_bridges.install(expected, bridges)
             _automatic(plan)
+            runtime_identity.adopt(chosen)  # the last step before the selection: the executable changes only for a runtime about to be it
             runtime.publish(chosen)
             published = True
             _record(plan)

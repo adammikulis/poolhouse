@@ -145,7 +145,8 @@ def test_a_test_that_resolves_the_real_keyring_fails_there():
 # What may start `osascript`, `security` or macOS authorization. The first group asks first (`real_machine`); the second only shows
 # a dialog or text, which the suite's PATH shims and the notifier shim check; none opens an administrator or Keychain prompt itself.
 ASKS_FIRST = {
-    "node_signing.py": "security find-identity / find-certificate / import / add-trusted-cert / delete-identity / delete-certificate",
+    "node_signing.py": "security find-identity / find-certificate / trust-settings-export / import / add-trusted-cert / delete-identity / "
+                       "delete-certificate / remove-trusted-cert",
 }
 NO_PROMPT = {
     "fleet/shard_split.py": "a pattern that keeps macOS-only code off other devices",

@@ -8,6 +8,7 @@ certificate; a test never touches the keychain), run a runtime through it and as
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -99,6 +100,8 @@ def test_the_requirement_names_the_id_and_the_certificate_never_a_cdhash():
     assert not runtime_identity.stable_requirement('designated => cdhash H"ab"')
     assert not runtime_identity.stable_requirement('designated => identifier "app.poolhouse.runtime"'), "an ad hoc requirement is not stable"
     assert not runtime_identity.stable_requirement(text.replace("app.poolhouse.runtime", "python.exe"))
+    assert not runtime_identity.stable_requirement(text.replace(" and ", " or ")), "the id alone would satisfy it"
+    assert not runtime_identity.stable_requirement(f'{text} or identifier "app.poolhouse.runtime"')
 
 
 def test_a_unit_starts_its_launcher_under_the_poolhouse_executable_where_there_is_one():
@@ -316,29 +319,47 @@ def built_runtime(tmp_path: Path) -> runtime.Runtime:
     return runtime.Runtime(tmp_path / "prefix", COMMIT, "0", runtime.identity())
 
 
-def test_the_build_makes_the_runtime_run_as_poolhouse_before_the_node_is_added(tmp_path, monkeypatch):
+@pytest.mark.parametrize(("failing", "expected"), [("", ["smoke", "adopt", "publish"]), ("smoke", ["smoke", "discard"]),
+                                                   ("adopt", ["smoke", "adopt", "discard"])],
+                         ids=["passes", "smoke-fails", "cannot-bind"])
+def test_the_executable_changes_only_after_the_smoke_and_just_before_the_selection(tmp_path, monkeypatch, failing, expected):
     chosen, order = built_runtime(tmp_path), []
-    monkeypatch.setattr(runtime_deploy, "host_python", lambda: tmp_path / "python")
-    monkeypatch.setattr(runtime_deploy.runtime_wheel, "build", lambda *a, **k: chosen)
-    monkeypatch.setattr(runtime_deploy.runtime_identity, "adopt", lambda built: order.append("adopt") or "")
-    monkeypatch.setattr(runtime_deploy.node_build, "add_to", lambda built, source, commit, **k: order.append("node"))
-    assert runtime_deploy.build(runtime_deploy.Plan(tmp_path, COMMIT, None), tmp_path, chosen.prefix) == chosen
-    assert order == ["adopt", "node"]
 
+    def step(name, fault):
+        def run(*_args, **_kwargs):
+            order.append(name)
+            if failing == name:
+                raise fault(f"plumbing-only: {name} fails")
+            return ""
 
-def test_a_runtime_that_cannot_run_as_poolhouse_is_discarded_and_never_selected(tmp_path, monkeypatch):
-    chosen, discarded = built_runtime(tmp_path), []
+        return run
 
-    def refuse(built):
-        raise runtime_identity.IdentityError("the keychain is locked")
-
-    monkeypatch.setattr(runtime_deploy, "host_python", lambda: tmp_path / "python")
-    monkeypatch.setattr(runtime_deploy.runtime_wheel, "build", lambda *a, **k: chosen)
-    monkeypatch.setattr(runtime_deploy.runtime_identity, "adopt", refuse)
-    monkeypatch.setattr(runtime_deploy.runtime_store, "discard", discarded.append)
-    with pytest.raises(runtime_identity.IdentityError, match="keychain is locked"):
-        runtime_deploy.build(runtime_deploy.Plan(tmp_path, COMMIT, None), tmp_path, chosen.prefix)
-    assert discarded == [chosen.prefix]
+    deploy, nothing = runtime_deploy, lambda *_a, **_k: None
+    monkeypatch.setattr(deploy, "_agent_context", lambda agent="": False)
+    monkeypatch.setattr(deploy, "host_python", lambda: tmp_path / "python")
+    monkeypatch.setattr(deploy.runtime_wheel, "build", lambda *a, **k: chosen)
+    monkeypatch.setattr(deploy, "smoke", step("smoke", runtime_deploy.DeployError))
+    monkeypatch.setattr(deploy.runtime_identity, "adopt", step("adopt", runtime_identity.IdentityError))
+    monkeypatch.setattr(deploy.runtime, "publish", step("publish", OSError))
+    monkeypatch.setattr(deploy.runtime_store, "discard", step("discard", OSError))
+    monkeypatch.setattr(deploy.runtime_git, "crossing", lambda *_a, **_k: contextlib.nullcontext())
+    monkeypatch.setattr(deploy.runtime_store, "epoch_of", lambda prefix: 0)
+    for module, names in ((deploy.node_build, ("add_to", "mark")), (deploy.runtime_store, ("mark_created", "mark_verified")),
+                          (deploy.runtime_git, ("until_free",)), (deploy.runtime_bridges, ("install", "restore")),
+                          (deploy, ("admit", "_record"))):
+        for name in names:
+            monkeypatch.setattr(module, name, nothing)
+    for name in ("planned", "changes", "snapshot"):
+        monkeypatch.setattr(deploy.runtime_bridges, name, lambda *_a, **_k: [])
+    monkeypatch.setattr(deploy, "floor_of", lambda *_a: 0)
+    monkeypatch.setattr(deploy, "resolve_commit", lambda *_a: COMMIT)
+    plan = runtime_deploy.Plan(tmp_path, COMMIT, None)
+    if failing:
+        with pytest.raises(OSError if failing == "adopt" else runtime_deploy.DeployError, match=f"{failing} fails"):
+            runtime_deploy.build_and_switch(plan)
+    else:
+        assert runtime_deploy.build_and_switch(plan) == chosen
+    assert order == expected
 
 
 def test_the_host_python_is_never_the_copy_in_the_bundle(tmp_path, monkeypatch):

@@ -1,28 +1,35 @@
 """How the macOS apps Poolhouse makes are signed, and the one certificate a user may add for them.
 
-An app is signed locally (ad hoc) by default: no certificate, nothing in the keychain, and codesign's own designated requirement,
-which names the code itself, so macOS may ask for a permission again after an update changes the code. `enable` is the user's
-opt-in (`poolhouse local-network certificate enable`): there is no Apple developer account, so it makes a self-signed
-code-signing certificate and its key in the user's login keychain, trusted for code signing in the user domain only. The apps'
-requirement then names the certificate instead of the code, so a permission should stay across updates. `remove` deletes all of it.
+An app is signed locally (ad hoc) by default: no certificate, and codesign's own designated requirement, which names the code
+itself, so macOS may ask for a permission again after an update changes the code. `enable` is the user's opt-in
+(`poolhouse local-network certificate enable`): there is no Apple developer account, so it makes a self-signed code-signing
+certificate and its key in the user's login keychain, trusted for code signing in the user domain only. The apps' requirement
+then names the certificate instead of the code, so a permission should stay across updates. `remove` deletes all of it.
 
 Whether the user opted in is what the keychain says: a signing identity of that name that macOS lists as usable, or none. Nothing
-but `enable` creates, imports or trusts a certificate, and a certificate that cannot sign leaves the app signed locally.
+but `enable` and `remove` adds, trusts or deletes a certificate. Poolhouse's encryption key is another item of the same keychain
+(`poolhouse.keystore`) under either signature, and what a changed signature means for it is `KEY_ADVICE`.
 """
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import plistlib
 import re
 import secrets
+import signal
 import subprocess
 import tempfile
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from pathlib import Path
+from typing import Any
 
 from poolhouse import caller, real_machine
-from poolhouse.home import account_roots
+from poolhouse.home import account_roots, home
+from poolhouse.lock import Busy, only_one
 from poolhouse.log import warn
 
 CERT_NAME = "Poolhouse Local Signing"
@@ -30,16 +37,25 @@ OPENSSL = "/usr/bin/openssl"  # the system LibreSSL: its .p12 files are the kind
 DAYS = 3650
 TOOL_TIMEOUT = 120.0
 NOT_FOUND = 44  # `security`'s exit status for an item that is not there
+NO_TRUST = "No Trust Settings were found"  # what `security trust-settings-export` says, failing, when there is none
+CDHASH = r'cdhash H"[0-9a-f]{40}"'
+STOPPING = tuple(getattr(signal, name) for name in ("SIGINT", "SIGTERM", "SIGHUP") if hasattr(signal, name))
 ENABLE = "poolhouse local-network certificate enable"
 REMOVE = "poolhouse local-network certificate remove"
+UNLOCK = "poolhouse-security unlock"
 WHY_NOT_AN_AGENT = "an agent must not write your keychain"
+KEY_ADVICE = ("The encryption key Poolhouse keeps in your login keychain trusts the program that made it, as it is signed. After that "
+              "signature changes, macOS may ask before Poolhouse can read the key, and a background node cannot answer: if the node "
+              f"does not start, run `{UNLOCK}` in a terminal and tell macOS to always allow it.")
+KEY_NOTE = f"Poolhouse's signature on this Mac changed. {KEY_ADVICE}"
 WHAT_ENABLE_ADDS = f"""This adds a code-signing certificate to your login keychain:
   - a self-signed certificate named "{CERT_NAME}" and its private key, which /usr/bin/codesign may use
   - a setting that it is trusted for code signing, for your user account only
 macOS will ask for your password to add that setting.
 Poolhouse then signs its apps with the certificate, so a permission you give Poolhouse (such as Local Network) should stay after an update.
 Any program running as you could ask codesign to sign with this key, and so sign itself as Poolhouse.
-To undo it: {REMOVE}"""
+To undo it: {REMOVE}
+{KEY_ADVICE}"""
 
 
 class SigningError(OSError):
@@ -49,6 +65,24 @@ class SigningError(OSError):
 def keychain() -> Path:
     """The account's login keychain (the account's own home, whatever HOME says)."""
     return account_roots()[0].parent / "Library" / "Keychains" / "login.keychain-db"
+
+
+def certificate_requirement(identifier: str, sha1: str) -> str:
+    """The designated requirement of a certificate signature: this id, signed by this certificate. It names no cdhash, so rebuilt
+    code still satisfies it."""
+    return f'designated => identifier "{identifier}" and certificate leaf = H"{sha1.lower()}"'
+
+
+def signer_of(required: str, identifier: str) -> str:
+    """The certificate ``required`` names when it is exactly `certificate_requirement` of ``identifier``, else ''."""
+    found = re.fullmatch(rf'designated => identifier "{re.escape(identifier)}" and certificate leaf = H"([0-9a-f]{{40}})"', required)
+    return found.group(1) if found else ""
+
+
+def local_requirement(required: str) -> bool:
+    """Whether ``required`` is the one codesign gives a local signature by itself (the leading "#" says nobody wrote it): hashes
+    of the code and nothing else."""
+    return re.fullmatch(rf"# designated => {CDHASH}(?: or {CDHASH})*", required) is not None
 
 
 def parse_identities(output: str) -> list[str]:
@@ -68,11 +102,18 @@ def parse_certificates(output: str) -> list[str]:
     return list(dict.fromkeys(found))
 
 
+def parse_trust(data: bytes) -> list[str]:
+    """The fingerprints a `security trust-settings-export` file holds settings under for a certificate issued as exactly `CERT_NAME`."""
+    named = bytes([len(CERT_NAME)]) + CERT_NAME.encode()  # a DER string: its length, then its characters
+    rows = plistlib.loads(data).get("trustList", {})
+    return [sha1.lower() for sha1, row in rows.items() if named in bytes(row.get("issuerName", b""))]
+
+
 def fingerprint_of(pem: str) -> str:
     """The SHA-1 fingerprint of a PEM certificate, as the keychain names it."""
     body = re.search(r"-----BEGIN CERTIFICATE-----(.+?)-----END CERTIFICATE-----", pem, re.DOTALL)
     if body is None:
-        raise SigningError("openssl made no certificate")
+        raise SigningError("that is no certificate")
     return hashlib.sha1(base64.b64decode("".join(body.group(1).split())), usedforsecurity=False).hexdigest()
 
 
@@ -105,14 +146,37 @@ def identities(*, usable: bool = True) -> list[str]:
     return parse_identities(_run(argv))
 
 
-def certificates() -> list[str]:
-    """The fingerprints of every certificate of this name in the login keychain, usable or not. Changes nothing."""
+def _find(form: str) -> str:
+    """What `security find-certificate` says of every certificate of this name: ``-Z`` for fingerprints, ``-p`` for the PEM text."""
     real_machine.require("reading the login keychain")
-    done = subprocess.run(["security", "find-certificate", "-a", "-c", CERT_NAME, "-Z", str(keychain())], capture_output=True, text=True,
+    done = subprocess.run(["security", "find-certificate", "-a", "-c", CERT_NAME, form, str(keychain())], capture_output=True, text=True,
                           timeout=TOOL_TIMEOUT, check=False)
     if done.returncode not in (0, NOT_FOUND):
         raise SigningError(f"security find-certificate failed: {(done.stderr or done.stdout).strip()[-400:]}")
-    return parse_certificates(done.stdout)
+    return done.stdout
+
+
+def certificates() -> list[str]:
+    """The fingerprints of every certificate of this name in the login keychain, usable or not. Changes nothing."""
+    return parse_certificates(_find("-Z"))
+
+
+def trusted_certificates() -> list[str]:
+    """The fingerprints of this certificate that the user's trust settings name, whether or not the certificate is still there.
+    Changes nothing."""
+    real_machine.require("reading the trust settings")
+    with tempfile.TemporaryDirectory(prefix="poolhouse-trust") as scratch:
+        exported = Path(scratch) / "trust.plist"
+        done = subprocess.run(["security", "trust-settings-export", str(exported)], capture_output=True, text=True,
+                              timeout=TOOL_TIMEOUT, check=False)
+        if done.returncode:
+            if NO_TRUST in done.stderr:
+                return []
+            raise SigningError(f"security trust-settings-export failed: {(done.stderr or done.stdout).strip()[-400:]}")
+        try:
+            return parse_trust(exported.read_bytes())
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise SigningError(f"the exported trust settings cannot be read: {exc}") from exc
 
 
 def usable_certificate() -> str:
@@ -122,6 +186,22 @@ def usable_certificate() -> str:
         return next(iter(identities()), "")
     except (OSError, subprocess.SubprocessError):
         return ""
+
+
+def may_hold_certificate() -> bool:
+    """False only when the keychain answers that it holds no certificate of this name."""
+    try:
+        return bool(certificates())
+    except (OSError, subprocess.SubprocessError):
+        return True
+
+
+def holds_leftovers() -> bool:
+    """Whether the keychain or its trust settings hold anything of this certificate, usable or not; False where that cannot be read."""
+    try:
+        return bool(certificates() or trusted_certificates())
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def sign(bundle: Path, identifier: str, requirement_for: Callable[[str], str]) -> str:
@@ -149,17 +229,77 @@ def _delete(sha1: str, *, trust: bool) -> str:
     return ""
 
 
-def enable(say: Callable[[str], None]) -> None:
+def _untrust(certificate: Path) -> str:
+    """Delete the user trust setting of the certificate in the file ``certificate``; returns what went wrong, or ''."""
+    try:
+        _run(["security", "remove-trusted-cert", str(certificate)])
+    except (OSError, subprocess.SubprocessError) as exc:
+        return str(exc)
+    return ""
+
+
+def _left(only: str = "") -> list[str]:
+    """What is still there of this certificate (of ``only``, when named), each as "<what> <fingerprint>"."""
+    held = (("certificate", certificates()), ("identity", identities(usable=False)), ("trust setting", trusted_certificates()))
+    return [f"{what} {sha1}" for what, found in held for sha1 in found if not only or sha1 == only]
+
+
+@contextmanager
+def _changing() -> Iterator[None]:
+    """Held while the certificate is added or removed, so that one change runs at a time."""
+    try:
+        with only_one(home() / "certificate.lock", wait=False, note="certificate"):
+            yield
+    except Busy as exc:
+        raise SigningError(f"another certificate change is running: {exc}") from exc
+
+
+@contextmanager
+def _signals(handler: Any) -> Iterator[None]:
+    """``handler`` for the signals that stop a command, inside the block; only the main thread can set one."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    before = {number: signal.signal(number, handler) for number in STOPPING}
+    try:
+        yield
+    finally:
+        for number, old in before.items():
+            signal.signal(number, signal.SIG_DFL if old is None else old)
+
+
+def _stopping() -> Callable[[int, object], None]:
+    """A handler that raises for the first signal that would stop the command, so what is under way is cleaned up, and ignores the rest."""
+    came: list[int] = []
+
+    def stop(number: int, _frame: object) -> None:
+        if came:
+            return
+        came.append(number)
+        if number == signal.SIGINT:
+            raise KeyboardInterrupt
+        raise SystemExit(128 + number)
+
+    return stop
+
+
+def enable(say: Callable[[str], None], then: Callable[[], None] = lambda: None) -> None:
     """The user's opt-in: say what it adds, make the certificate and key, put them in the login keychain and trust them for code
-    signing. A step that fails, is declined or is interrupted removes what was imported. Refused at once to an agent."""
+    signing, then run ``then``. A step that fails, is declined or is stopped removes what was imported. Refused at once to an agent."""
     caller.refuse_agent(ENABLE, WHY_NOT_AN_AGENT)
     real_machine.require("adding a signing certificate to the login keychain")
-    if identities():
-        say(f"the {CERT_NAME!r} certificate is already in your login keychain and trusted for code signing; nothing was added")
-        return
+    with _changing():
+        if identities():
+            say(f"the {CERT_NAME!r} certificate is already in your login keychain and trusted for code signing; nothing was added")
+        else:
+            _add(say)
+        then()
+
+
+def _add(say: Callable[[str], None]) -> None:
     say(WHAT_ENABLE_ADDS)
     password = secrets.token_hex(16)  # protects the throwaway .p12 for the seconds it exists
-    with tempfile.TemporaryDirectory(prefix="poolhouse-cert") as scratch:  # the only place the key is a file
+    with _signals(_stopping()), tempfile.TemporaryDirectory(prefix="poolhouse-cert") as scratch:  # the only place the key is a file
         key, cert, package = (Path(scratch) / name for name in ("key.pem", "cert.pem", "id.p12"))
         _run([OPENSSL, *certificate_request(), "-keyout", str(key), "-out", str(cert)])
         sha1 = fingerprint_of(cert.read_text(encoding="utf-8"))
@@ -167,6 +307,8 @@ def enable(say: Callable[[str], None]) -> None:
         trusted, added = False, False
         try:
             _run(["security", "import", str(package), "-k", str(keychain()), "-P", password, "-T", "/usr/bin/codesign"])
+            for spent in (key, package):  # only the certificate is a file while macOS asks
+                spent.unlink(missing_ok=True)
             _run(["security", "add-trusted-cert", "-p", "codeSign", "-k", str(keychain()), str(cert)])
             trusted = True
             if sha1 not in identities():
@@ -174,44 +316,63 @@ def enable(say: Callable[[str], None]) -> None:
             added = True
         finally:
             if not added:
-                _discard(sha1, trusted=trusted)
+                with _signals(signal.SIG_IGN):  # the tools that clean up inherit this
+                    _discard(sha1, cert, trusted=trusted)
     say(f"added {CERT_NAME!r} ({sha1}) and trusted it for code signing")
 
 
-def _discard(sha1: str, *, trusted: bool) -> None:
-    """Remove what a setup that did not finish imported, and say what is left when that fails too."""
-    why = ""
+def _discard(sha1: str, certificate: Path, *, trusted: bool) -> None:
+    """Remove what a setup that did not finish left in the keychain and its trust settings, and say what is left when that fails."""
+    why: list[str] = []
     try:
-        if sha1 not in certificates():
-            return
-        why = _delete(sha1, trust=trusted or sha1 in identities())
-        left = sha1 in certificates()
+        if sha1 in certificates():
+            why.append(_delete(sha1, trust=trusted or sha1 in trusted_certificates()))
+        if sha1 in trusted_certificates():
+            why.append(_untrust(certificate))
+        left = _left(sha1)
     except (OSError, subprocess.SubprocessError) as exc:
-        why, left = str(exc), True
-    if left:
-        warn(f"the certificate {sha1} may still be in your login keychain ({why}); remove it with `{REMOVE}`")
-    else:
-        warn("the certificate was not set up, and what had been imported was removed")
+        why.append(str(exc))
+        left = [f"certificate {sha1}"]
+    with suppress(OSError):  # the terminal may be gone
+        if left:
+            warn(f"the certificate was not set up and may not be gone ({', '.join(left)}) {' '.join(filter(None, why))}; run `{REMOVE}`")
+        else:
+            warn("the certificate was not set up, and nothing of it is left")
 
 
-def remove(say: Callable[[str], None]) -> None:
-    """Delete every certificate of this name with its private key and trust setting; with none there it changes nothing. Refused
-    at once to an agent."""
+def remove(say: Callable[[str], None], then: Callable[[], None] = lambda: None) -> None:
+    """Delete every certificate of this name with its private key and trust setting, then run ``then``; with none there the
+    keychain is not changed. Refused at once to an agent."""
     caller.refuse_agent(REMOVE, WHY_NOT_AN_AGENT)
     real_machine.require("removing the signing certificate from the login keychain")
-    found = certificates()
-    if not found:
-        say(f"there is no {CERT_NAME!r} certificate in your login keychain; nothing to remove")
+    with _changing():
+        _remove(say)
+        then()
+
+
+def _remove(say: Callable[[str], None]) -> None:
+    held, settings = certificates(), trusted_certificates()
+    if not held and not settings:
+        say(f"there is no {CERT_NAME!r} certificate or trust setting in your login keychain; nothing to remove")
         return
-    say(f"removing the {CERT_NAME!r} certificate, its private key and its trust setting; macOS may ask for your password")
-    problems = []
-    for sha1 in found:
-        usable = sha1 in identities()
-        why = _delete(sha1, trust=True)
-        if why and not usable:
-            why = _delete(sha1, trust=False)  # one that never was trusted has no setting to delete
-        problems.append(why)
-    left = certificates()
+    say(f"removing the {CERT_NAME!r} certificate, its private key and its trust setting; macOS may ask for your password. "
+        f"Poolhouse is then signed locally.\n{KEY_ADVICE}")
+    with tempfile.TemporaryDirectory(prefix="poolhouse-cert") as scratch:
+        copies = {}  # a trust setting is deleted by its certificate's file, which has to be taken before the certificate goes
+        for pem in re.findall(r"-----BEGIN CERTIFICATE-----.+?-----END CERTIFICATE-----", _find("-p"), re.DOTALL):
+            sha1 = fingerprint_of(pem)
+            copies[sha1] = Path(scratch) / f"{sha1}.pem"
+            copies[sha1].write_text(pem + "\n", encoding="utf-8")
+        problems = []
+        for sha1 in held:
+            usable = sha1 in identities()
+            why = _delete(sha1, trust=True)
+            if why and not usable:
+                why = _delete(sha1, trust=False)  # one that never was trusted has no setting to delete
+            problems.append(why)
+        present = certificates()
+        problems += [_untrust(copies[sha1]) for sha1 in trusted_certificates() if sha1 in copies and sha1 not in present]
+    left = _left()
     if left:
-        raise SigningError(f"{', '.join(left)} is still in your login keychain: {' '.join(filter(None, problems))}")
-    say(f"removed {', '.join(found)}")
+        raise SigningError(f"still in your login keychain or its trust settings: {', '.join(left)}. {' '.join(filter(None, problems))}")
+    say(f"removed {', '.join(held)}")

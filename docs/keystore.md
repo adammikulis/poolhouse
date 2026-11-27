@@ -123,9 +123,14 @@ keystore master is never put in the environment.
 
 ## macOS: why the single prompt stays
 
-After a host Python upgrade, or a switch of interpreter, macOS asks once whether the new binary may
-read the master, because the item trusts the binary that made it. Creating the item with the
-`security` CLI and `-T` so that a "stable launcher" is trusted was considered and not done:
+The item trusts the program that made it, as that program is signed. When the signature of what reads
+it changes (a host Python upgrade or a switch of interpreter; for an installed runtime, whose processes
+run as Poolhouse's own executable, an update that changes its local signature, `poolhouse local-network
+certificate enable` or `remove`: [the signature on macOS](node.md#the-signature-on-macos)), macOS asks
+whether the new one may read the master. A background process cannot answer and stays locked, and a
+node whose device key is in the keystore does not start: run `poolhouse-security unlock` in a terminal
+and tell macOS to always allow it. Creating the item with the `security` CLI and `-T` so that a "stable launcher"
+is trusted was considered and not done:
 
 - A launcher that is a script is not what the Keychain checks: the kernel runs the interpreter named
   on its first line, and the access list is matched against that process. Trusting a script path

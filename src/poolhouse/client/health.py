@@ -144,10 +144,10 @@ def _text(value: Any) -> str | None:
 
 def refuses_key(base_url: str, *, timeout: float = 2.0) -> bool:
     """Whether a server refuses what this build sends it: a settings route answers 401 or 403. Its health route answers anybody, so a server
-    that is healthy may still be one nothing can be asked of. False for a server that does not answer."""
+    that is healthy may still be one nothing can be asked of. False for a server that does not answer. A redirect is not followed."""
     for path in ("/props", "/v1/models"):
         try:
-            request_bytes(f"{base_url.rstrip('/')}{path}", options=Options(timeout=timeout))
+            request_bytes(f"{base_url.rstrip('/')}{path}", options=Options(timeout=timeout, follow_redirects=False))
         except ServerError as why:
             if why.status in (401, 403):
                 return True

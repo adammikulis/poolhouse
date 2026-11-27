@@ -6,11 +6,15 @@ and executable; both are named Poolhouse, so a prompt or the firewall list says 
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from poolhouse.home import home
+from poolhouse.lock import only_one
 
 NAME = "Poolhouse"
 USAGE = "Poolhouse finds and joins your other devices on this network."
@@ -41,6 +45,25 @@ def info_plist(bundle_id: str, executable: str, version: str = "0", *, icon: boo
     if icon:
         plist["CFBundleIconFile"] = NAME
     return plist
+
+
+@contextmanager
+def locked(bundle: Path) -> Iterator[None]:
+    """Hold the one lock under which the bundles in ``bundle``'s folder are built, signed and replaced."""
+    with only_one(bundle.parent / "build.lock", announce=lambda _: None):
+        yield
+
+
+@contextmanager
+def staged(bundle: Path) -> Iterator[Path]:
+    """Where a copy of ``bundle`` is made before it takes its place, used under `locked`; what is left beside it is removed after."""
+    staging = bundle.parent / ".building" / bundle.name
+    shutil.rmtree(staging.parent, ignore_errors=True)
+    try:
+        yield staging
+    finally:
+        shutil.rmtree(staging.parent, ignore_errors=True)
+        shutil.rmtree(bundle.parent / ".replaced", ignore_errors=True)
 
 
 def tool(argv: list[str]) -> None:

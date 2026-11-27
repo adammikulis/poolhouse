@@ -15,6 +15,20 @@ uncovered = 51
 partial = 180
 
 [[group]]
+match = ["egress:client/health.py:refuses_key"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_server_probes.py::test_the_key_probe_follows_no_redirect_away_from_the_server_asked"]
+note = "a loopback server that redirects the key probe elsewhere gets no second request: the probe follows no redirect, so it and its key go only to the address asked"
+
+[[group]]
+match = ["spawn:opencode.py:_own_server"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_server_probes.py::test_the_harness_help_probe_runs_the_one_binary_with_one_fixed_word"]
+note = "the binary is one argument and the only word after it is --help, with no shell; the caller's words are read here and never passed on, and a binary path full of shell syntax stays one argument"
+
+[[group]]
 match = ["egress:isolation/model_bridge.py:ModelBridge._relay", "egress:isolation/egress_proxy.py:_dial"]
 status = "covered"
 count = 2
@@ -893,6 +907,13 @@ tests = ["tests/test_runtime_unmerged.py::test_person_floor_blocks_each_gate",
          "tests/test_runtime_unmerged.py::test_switch_rechecks_review_before_publishing_selection",
          "tests/test_runtime_unmerged.py::test_node_admission_preserves_and_rechecks_the_exact_approval"]
 note = "both authority gates, authenticated main-session identity, exact queue review and source commit are rechecked at runtime selection and node admission"
+
+[[group]]
+match = ["keystore:guard/unboxed.py:<module>"]
+status = "covered"
+count = 1
+tests = ["tests/test_delegate_unsandboxed_blocks.py::test_a_read_of_a_common_credential_store_is_refused"]
+note = "the module reads no secret: it names credential-store commands and files to refuse a delegate that asks to read them"
 
 [[group]]
 match = ["human:node_signing.py:*"]

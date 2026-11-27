@@ -281,17 +281,21 @@ def signature_findings() -> list[Finding]:
     anywhere else. Both signatures are good ones: the certificate is the user's choice."""
     if not runtime_identity.applies():
         return []
-    if not node_signing.usable_certificate():
-        return [Finding(name="macOS signature", good=True, said="local (no certificate)",
-                        note="macOS may ask again for network permission after an update. To keep the permission, "
-                             f"`{node_signing.ENABLE}` adds a certificate to your keychain; it says what it adds before macOS "
-                             "asks for your password")]
-    app = runtime_identity.bundle_path()
-    if app.exists() and not runtime_identity.stable_requirement(runtime_identity.requirement_of(app)):
-        return [Finding(name="macOS signature", good=True, said=f"local, although {node_signing.CERT_NAME!r} is in your keychain",
-                        note=f"`{node_signing.ENABLE}` signs Poolhouse with it again")]
-    return [Finding(name="macOS signature", good=True, said=f"the {node_signing.CERT_NAME!r} certificate",
-                    note=f"`{node_signing.REMOVE}` deletes the certificate and its key and signs Poolhouse locally")]
+    if node_signing.usable_certificate():
+        app = runtime_identity.bundle_path()
+        if app.exists() and not runtime_identity.stable_requirement(runtime_identity.requirement_of(app)):
+            said, note = f"local, although {node_signing.CERT_NAME!r} is in your keychain", f"`{node_signing.ENABLE}` signs Poolhouse with it again"
+        else:
+            said = f"the {node_signing.CERT_NAME!r} certificate"
+            note = f"`{node_signing.REMOVE}` deletes the certificate and its key and signs Poolhouse locally"
+    elif node_signing.holds_leftovers():
+        said = f"local; {node_signing.CERT_NAME!r} is in your keychain and cannot be used"
+        note = f"`{node_signing.REMOVE}` deletes it, and `{node_signing.ENABLE}` then adds one that can be used"
+    else:
+        said = "local (no certificate)"
+        note = ("macOS may ask again for network permission after an update. To keep the permission, "
+                f"`{node_signing.ENABLE}` adds a certificate to your keychain; it says what it adds before macOS asks for your password")
+    return [Finding(name="macOS signature", good=True, said=said, note=f"{note}. {node_signing.KEY_ADVICE}")]
 
 
 def _store_finding(path: Path | None = None) -> Finding:

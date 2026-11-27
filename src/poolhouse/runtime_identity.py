@@ -23,11 +23,10 @@ import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path
 
-from poolhouse import app_bundle, macho, node_signing, real_machine, runtime
+from poolhouse import app_bundle, keystore, macho, node_signing, real_machine, runtime
 from poolhouse.files import promote, read_json, sha256_file, write_json
 from poolhouse.home import home
-from poolhouse.lock import only_one
-from poolhouse.log import say
+from poolhouse.log import say, warn
 
 BUNDLE_ID = "app.poolhouse.runtime"
 NAME = app_bundle.NAME
@@ -82,18 +81,12 @@ def info_plist(version: str, *, icon: bool = True) -> dict:
 
 def requirement(certificate_sha1: str) -> str:
     """The designated requirement: this bundle id signed by this certificate, and no hash of the executable's bytes."""
-    return f'designated => identifier "{BUNDLE_ID}" and certificate leaf = H"{certificate_sha1.lower()}"'
+    return node_signing.certificate_requirement(BUNDLE_ID, certificate_sha1)
 
 
 def stable_requirement(text: str) -> bool:
-    """Whether a designated requirement is the certificate signature's: this id, a certificate, no cdhash."""
-    return f'identifier "{BUNDLE_ID}"' in text and 'certificate leaf = H"' in text and "cdhash" not in text
-
-
-def local_requirement(text: str) -> bool:
-    """Whether a designated requirement is the one codesign gives a local signature by itself (the leading "#" says nobody wrote
-    it): hashes of the code, so no other program satisfies it by claiming an id."""
-    return text.startswith('# designated => cdhash H"') and "identifier" not in text
+    """Whether a designated requirement is exactly the certificate signature's of this bundle."""
+    return bool(node_signing.signer_of(text, BUNDLE_ID))
 
 
 def _tool(argv: list[str]) -> subprocess.CompletedProcess:
@@ -116,15 +109,22 @@ def identifier_of(path: Path) -> str:
     return next((line.partition("=")[2] for line in lines if line.startswith("Identifier=")), "")
 
 
+def signature_form(bundle: Path, identifier: str) -> str:
+    """How ``bundle`` is signed as ``identifier``: "certificate" (exactly that requirement, which its code satisfies), "local"
+    (codesign's own requirement) or '' for anything else, such as a requirement another program could satisfy."""
+    required = requirement_of(bundle)
+    if node_signing.signer_of(required, identifier):
+        asked = f"-R={required.removeprefix('designated => ')}"
+        return "certificate" if _tool(["codesign", "--verify", "--strict", asked, str(bundle)]).returncode == 0 else ""
+    return "local" if node_signing.local_requirement(required) and identifier_of(bundle) == identifier else ""
+
+
 def signature_problem(bundle: Path) -> str:
     """Why ``bundle`` does not carry a Poolhouse signature (local or the certificate's), or '' when it does."""
     checked = _tool(["codesign", "--verify", "--strict", str(bundle)])
     if checked.returncode:
         return f"{bundle} does not verify: {(checked.stderr or checked.stdout).strip()[-200:]}"
-    required = requirement_of(bundle)
-    if stable_requirement(required) or (local_requirement(required) and identifier_of(bundle) == BUNDLE_ID):
-        return ""
-    return f"{bundle} is not signed as Poolhouse"
+    return "" if signature_form(bundle, BUNDLE_ID) else f"{bundle} is not signed as Poolhouse"
 
 
 def _certificate() -> str:
@@ -140,8 +140,8 @@ def bundle_problem(identity: str | None = None) -> str:
     if problem:
         return problem
     leaf = _certificate()
-    required = requirement_of(bundle_path(identity)) if leaf else ""
-    if stable_requirement(required) and f'H"{leaf}"' not in required:
+    signed_by = node_signing.signer_of(requirement_of(bundle_path(identity)), BUNDLE_ID) if leaf else ""
+    if signed_by and signed_by != leaf:
         return "the Poolhouse executable is signed with another certificate than this Mac's"
     return ""
 
@@ -261,20 +261,32 @@ def _swap(staging: Path, bundle: Path) -> None:
         raise
 
 
+def _keeps(bundle: Path, identifier: str) -> bool:
+    """Whether an app stays as it is when its new signature came out local: it carries a certificate signature that verifies, on a
+    Mac whose keychain still holds a certificate of that name or cannot be asked."""
+    if not (applies() and bundle.exists() and signature_form(bundle, identifier) == "certificate" and node_signing.may_hold_certificate()):
+        return False
+    warn(f"signing with the certificate failed, so {bundle} keeps the executable and certificate signature it had")
+    return True
+
+
+def _tell_key(before: str, after: str) -> None:
+    """Say what a changed signature of the executable means for the encryption key, when Poolhouse keeps one in the keychain."""
+    if applies() and before != after and keystore.Keystore().status()["provisioned"]:
+        warn(node_signing.KEY_NOTE)
+
+
 def _build(bundle: Path, files: list[tuple[Path, str]], sha: str, signer: Signer) -> None:
-    """Make the signed bundle beside its place and move it in only once it verifies, so a failure leaves the old one standing."""
-    staging = bundle.parent / ".building" / bundle.name
-    shutil.rmtree(staging.parent, ignore_errors=True)
-    try:
+    """Make the signed bundle beside its place and move it in only once it verifies and starts, so a failure leaves the old one
+    standing; the old one also stays where `_keeps` says so."""
+    with app_bundle.staged(bundle) as staging:
         _assemble(staging, files, sha)
-        signer(staging, BUNDLE_ID, requirement)
-        problem = signature_problem(staging)
+        if signer(staging, BUNDLE_ID, requirement) != "certificate" and _keeps(bundle, BUNDLE_ID):
+            return
+        problem = signature_problem(staging) or bare_problem(staging / "Contents" / "MacOS" / EXECUTABLE)
         if problem:
             raise IdentityError(problem)
         _swap(staging, bundle)
-    finally:
-        shutil.rmtree(staging.parent, ignore_errors=True)
-        shutil.rmtree(bundle.parent / ".replaced", ignore_errors=True)
 
 
 def ensure_bundle(interpreter: Path, identity: str | None = None, *, signer: Signer = node_signing.sign) -> Path:
@@ -285,15 +297,17 @@ def ensure_bundle(interpreter: Path, identity: str | None = None, *, signer: Sig
     sha = digest(files)
     bundle.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     bundle.parent.chmod(0o700)
-    with only_one(bundle.parent / "build.lock", announce=lambda _: None):
+    with app_bundle.locked(bundle):
         if source_of(bundle).get("sha256") == sha and not bundle_problem(identity) \
                 and (not _certificate() or stable_requirement(requirement_of(bundle))):
             return executable_path(identity)
         say(f"runtime: signing the Poolhouse executable at {bundle} from {interpreter}")
+        before = requirement_of(bundle) if bundle.exists() else ""
         try:
             _build(bundle, files, sha, signer)
         except (node_signing.SigningError, subprocess.SubprocessError, ValueError) as exc:
             raise IdentityError(f"Poolhouse could not sign its executable ({exc}); the runtime keeps the identity it had") from exc
+        _tell_key(before, requirement_of(bundle))
     return executable_path(identity)
 
 
@@ -304,18 +318,17 @@ def bundles() -> list[Path]:
 
 
 def resign(bundle: Path, identifier: str, requirement_for: Callable[[str], str]) -> str:
-    """Sign an app that already exists with what the keychain now holds; returns "certificate" or "ad-hoc". A copy is signed
-    beside it and moved into its place, so a failure leaves the app as it was."""
-    with only_one(bundle.parent / "build.lock", announce=lambda _: None):
-        staging = bundle.parent / ".building" / bundle.name
-        shutil.rmtree(staging.parent, ignore_errors=True)
-        try:
-            shutil.copytree(bundle, staging, symlinks=True)
-            signed = node_signing.sign(staging, identifier, requirement_for)
-            _swap(staging, bundle)
-        finally:
-            shutil.rmtree(staging.parent, ignore_errors=True)
-            shutil.rmtree(bundle.parent / ".replaced", ignore_errors=True)
+    """Sign an app that already exists with what the keychain now holds; returns "certificate", "ad-hoc" or, where `_keeps` says
+    so, "kept". A copy is signed beside it and moved into its place, so a failure leaves the app as it was."""
+    with app_bundle.locked(bundle), app_bundle.staged(bundle) as staging:
+        before = requirement_of(bundle)
+        shutil.copytree(bundle, staging, symlinks=True)
+        signed = node_signing.sign(staging, identifier, requirement_for)
+        if signed != "certificate" and _keeps(bundle, identifier):
+            return "kept"
+        _swap(staging, bundle)
+        if identifier == BUNDLE_ID:  # the node's app reads no key
+            _tell_key(before, requirement_of(bundle))
     return signed
 
 

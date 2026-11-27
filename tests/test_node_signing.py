@@ -1,4 +1,5 @@
-"""Poolhouse's macOS signature is local (ad hoc) unless the user opted into a certificate, and only that user's command touches the keychain.
+"""Poolhouse's macOS signature is local (ad hoc) unless the user opted into a certificate, and only that user's command adds, trusts or
+deletes one.
 
 `security` and `openssl` never run here: `Tools` records each command and answers it with canned, plumbing-only text standing for a keychain,
 so no keychain is read or written. `codesign` runs for real for local signatures and verification, on bundles under the test's own state root;
@@ -9,11 +10,14 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
 import plistlib
 import shutil
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -22,22 +26,34 @@ import pytest
 from poolhouse import (
     app_bundle,
     caller,
+    home,
+    keystore,
     node_app,
+    node_binary,
     node_permission,
     node_signing,
     real_machine,
     runtime_identity,
     setup,
 )
+from poolhouse.lock import Busy, only_one
 
 NAME = "Poolhouse Local Signing"
-CANNED_DER = b"plumbing-only canned certificate, not a real one"
-CANNED_PEM = f"-----BEGIN CERTIFICATE-----\n{base64.b64encode(CANNED_DER).decode()}\n-----END CERTIFICATE-----\n"
-SHA = hashlib.sha1(CANNED_DER, usedforsecurity=False).hexdigest()
-OTHER = "b" * 40
+
+
+def canned(label: bytes) -> tuple[str, str]:
+    """A plumbing-only certificate: its fingerprint and its PEM text."""
+    der = b"plumbing-only canned certificate, not a real one: " + label
+    pem = f"-----BEGIN CERTIFICATE-----\n{base64.b64encode(der).decode()}\n-----END CERTIFICATE-----\n"
+    return hashlib.sha1(der, usedforsecurity=False).hexdigest(), pem
+
+
+(SHA, CANNED_PEM), (OTHER, OTHER_PEM) = canned(b"one"), canned(b"two")
+PEMS = {SHA: CANNED_PEM, OTHER: OTHER_PEM}
 RUN = subprocess.run
-LOOKS = ("find-identity", "find-certificate")
+LOOKS = ("find-identity", "find-certificate", "trust-settings-export")
 LOCAL = '# designated => cdhash H"'
+
 
 @pytest.fixture
 def macos():
@@ -47,17 +63,25 @@ def macos():
 
 
 class Tools:
-    """A plumbing-only keychain: every command is recorded and `security` and `openssl` are answered from ``certificates``."""
+    """A plumbing-only keychain: every command is recorded and `security` and `openssl` are answered from ``certificates`` and the
+    trust ``settings``. A function in ``on`` runs when its `security` verb (or "sign", for a codesign signature) is asked for."""
 
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
         self.certificates: dict[str, dict[str, bool]] = {}
+        self.settings: set[str] = set()
+        self.on: dict = {}
         self.certificate_signing_fails = False
         self.trust_step: BaseException | int = 0
         self.refuses_deletion = False
+        self.keeps_trust = False
+        self.refuses_untrust = False
+        self.listing_fails = False
 
     def trusted(self, sha: str = SHA, *, key: bool = True, trusted: bool = True) -> None:
         self.certificates[sha] = {"key": key, "trusted": trusted}
+        if trusted:
+            self.settings.add(sha)
 
     def writes(self) -> list[list[str]]:
         return [argv for argv in self.calls
@@ -70,9 +94,11 @@ class Tools:
         self.calls.append(list(argv))
         name = Path(argv[0]).name
         if name == "codesign":
-            if "--sign" in argv and argv[argv.index("--sign") + 1] != "-":
-                failed = self.certificate_signing_fails
-                return subprocess.CompletedProcess(argv, int(failed), "", "plumbing-only canned: errSecInternalComponent" if failed else "")
+            if "--sign" in argv:
+                self.on.get("sign", lambda _argv: None)(argv)
+                if argv[argv.index("--sign") + 1] != "-":
+                    failed = self.certificate_signing_fails
+                    return subprocess.CompletedProcess(argv, int(failed), "", "plumbing-only canned: errSecInternalComponent" if failed else "")
             return RUN(argv, **kwargs)
         if name == "openssl":
             for option, text in (("-keyout", "plumbing-only canned key\n"), ("-out", CANNED_PEM)):
@@ -80,18 +106,31 @@ class Tools:
                     Path(argv[argv.index(option) + 1]).write_text(text)
             return subprocess.CompletedProcess(argv, 0, "", "")
         assert argv[0] == "security", f"plumbing-only keychain: unexpected command {argv}"
+        self.on.get(argv[1], lambda _rest: None)(argv[2:])
         code, out = self._security(argv[1], argv[2:])
-        return subprocess.CompletedProcess(argv, code, out, "" if code == 0 else "plumbing-only canned: SecKeychain error")
+        none = "No Trust Settings were found." if argv[1] == "trust-settings-export" else "SecKeychain error"
+        return subprocess.CompletedProcess(argv, code, out, "" if code == 0 else f"plumbing-only canned: {none}")
 
     def _security(self, verb: str, rest: list[str]) -> tuple[int, str]:
+        if verb in ("find-identity", "find-certificate") and self.listing_fails:
+            return 1, ""
         if verb == "find-identity":
             held = [sha for sha, row in self.certificates.items() if row["key"] and (row["trusted"] or "-v" not in rest)]
             lines = [f'  {number}) {sha.upper()} "{NAME}"' for number, sha in enumerate(held, 1)]
             return 0, "\n".join([*lines, f"     {len(held)} valid identities found", ""])
         if verb == "find-certificate":
-            rows = [f'SHA-256 hash: {"0" * 64}\nSHA-1 hash: {sha.upper()}\nkeychain: "plumbing-only"\nattributes:\n    "labl"<blob>="{NAME}"\n'
-                    for sha in self.certificates]
+            if "-p" in rest:
+                rows = [PEMS[sha] for sha in self.certificates]
+            else:
+                rows = [f'SHA-256 hash: {"0" * 64}\nSHA-1 hash: {sha.upper()}\nkeychain: "plumbing-only"\nattributes:\n    "labl"<blob>="{NAME}"\n'
+                        for sha in self.certificates]
             return (0, "".join(rows)) if rows else (44, "")
+        if verb == "trust-settings-export":
+            if not self.settings:
+                return 1, ""
+            issuer = bytes([len(NAME)]) + NAME.encode()
+            Path(rest[0]).write_bytes(plistlib.dumps({"trustVersion": 1, "trustList": {sha.upper(): {"issuerName": issuer} for sha in self.settings}}))
+            return 0, ""
         if verb == "import":
             self.certificates[SHA] = {"key": True, "trusted": False}
             return 0, ""
@@ -99,14 +138,23 @@ class Tools:
             if isinstance(self.trust_step, BaseException):
                 raise self.trust_step
             if self.trust_step == 0:
-                self.certificates[SHA]["trusted"] = True
+                self.trusted(SHA)
             return self.trust_step, ""
+        if verb == "remove-trusted-cert":
+            body = "".join(Path(rest[-1]).read_text().split("-----")[2].split())
+            sha = hashlib.sha1(base64.b64decode(body), usedforsecurity=False).hexdigest()
+            if self.refuses_untrust or sha not in self.settings:
+                return 1, ""
+            self.settings.discard(sha)
+            return 0, ""
         assert verb in ("delete-identity", "delete-certificate"), f"plumbing-only keychain: unexpected security {verb}"
         sha = rest[rest.index("-Z") + 1].lower()
         row = self.certificates.get(sha)
         if self.refuses_deletion or row is None or (verb == "delete-identity" and not row["key"]):
             return 1, ""
         del self.certificates[sha]
+        if "-t" in rest and not self.keeps_trust:
+            self.settings.discard(sha)
         return 0, ""
 
 
@@ -221,6 +269,10 @@ def test_only_a_signature_with_codesigns_own_requirement_or_the_certificates_is_
     assert "not signed as Poolhouse" in signed(runtime_identity.BUNDLE_ID, f'-r=designated => identifier "{runtime_identity.BUNDLE_ID}"'), \
         "any program that claims the id would satisfy it"
     assert "not signed as Poolhouse" in signed("app.somebody.else")
+    named = f'identifier "{runtime_identity.BUNDLE_ID}" or certificate leaf = H"{"0" * 40}"'
+    assert "not signed as Poolhouse" in signed(runtime_identity.BUNDLE_ID, f"-r=designated => {named}"), "the id alone satisfies it"
+    assert "not signed as Poolhouse" in signed(runtime_identity.BUNDLE_ID, f"-r={runtime_identity.requirement('0' * 40)}"), \
+        "the certificate's words on a signature that has no certificate"
 
 
 @pytest.mark.parametrize("marker", ["CLAUDECODE", "POOLHOUSE_AGENT"])
@@ -323,3 +375,221 @@ def test_setup_shows_the_command_and_changes_nothing(installed):
 
 def test_setup_says_nothing_about_signing_where_poolhouse_signs_nothing(tools):
     assert setup.signature_findings() == [] and tools.calls == []
+
+
+def holds_a_key() -> None:
+    """The state file saying Poolhouse keeps its encryption key in the keystore; no keystore is touched."""
+    directory = home.state("keystore")
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "provisioned.json").write_text(json.dumps({"at": 1.0}))
+
+
+def reads_as_certificate_signed(monkeypatch, bundle: Path) -> None:
+    """Plumbing only: ``bundle`` reads as signed with the certificate, which no test has a key for."""
+    asked, formed = runtime_identity.requirement_of, getattr(runtime_identity, "signature_form", None)
+    monkeypatch.setattr(runtime_identity, "requirement_of",
+                        lambda path: runtime_identity.requirement(SHA) if path == bundle else asked(path))
+    monkeypatch.setattr(runtime_identity, "signature_form",
+                        lambda path, identifier: "certificate" if path == bundle else formed(path, identifier), raising=False)
+
+
+@pytest.mark.usefixtures("macos")
+@pytest.mark.parametrize(("keychain", "kept"), [("cannot sign", True), ("cannot be listed", True), ("holds no certificate", False)],
+                         ids=["cannot-sign", "cannot-be-listed", "no-certificate"])
+def test_a_certificate_signed_executable_stays_when_the_next_one_cannot_be_signed_with_it(installed, monkeypatch, capsys, keychain, kept):
+    executable = runtime_identity.ensure_bundle(interpreter())
+    stamp = executable.stat().st_ino
+    reads_as_certificate_signed(monkeypatch, runtime_identity.bundle_path())
+    if keychain != "holds no certificate":
+        installed.trusted()
+    installed.certificate_signing_fails, installed.listing_fails = True, keychain == "cannot be listed"
+    monkeypatch.setattr(runtime_identity, "digest", lambda files: "f" * 64)  # another interpreter, so a new executable is due
+    capsys.readouterr()
+    assert runtime_identity.ensure_bundle(interpreter()) == executable and executable.is_file(), "the update goes on"
+    assert (executable.stat().st_ino == stamp) is kept
+    assert ("keeps the executable" in capsys.readouterr().err) is kept
+
+
+@pytest.mark.usefixtures("macos")
+def test_enable_that_cannot_sign_leaves_a_certificate_signed_app_as_it_is(installed, monkeypatch):
+    executable = runtime_identity.ensure_bundle(interpreter())
+    stamp = executable.stat().st_ino
+    reads_as_certificate_signed(monkeypatch, runtime_identity.bundle_path())
+    installed.trusted()
+    installed.certificate_signing_fails = True
+    assert node_permission.main(["certificate", "enable"]) == 1
+    assert executable.stat().st_ino == stamp and not (runtime_identity.bundle_path().parent / ".building").exists()
+
+
+@pytest.mark.usefixtures("macos")
+def test_a_copy_that_does_not_start_never_takes_the_working_ones_place(installed, monkeypatch):
+    executable = runtime_identity.ensure_bundle(interpreter())
+    stamp = executable.stat().st_ino
+    monkeypatch.setattr(runtime_identity, "digest", lambda files: "f" * 64)
+    monkeypatch.setattr(runtime_identity, "bare_problem", lambda path: "plumbing-only: it does not start")
+    with pytest.raises(runtime_identity.IdentityError, match="does not start"):
+        runtime_identity.ensure_bundle(interpreter())
+    assert executable.stat().st_ino == stamp
+
+
+@pytest.mark.usefixtures("macos")
+def test_a_changed_signature_says_how_to_let_poolhouse_read_its_key_again(installed, monkeypatch, capsys):
+    runtime_identity.ensure_bundle(interpreter())
+    assert keystore.UNLOCK_COMMAND not in capsys.readouterr().err, "there is no key yet"
+    holds_a_key()
+    runtime_identity.ensure_bundle(interpreter())
+    assert keystore.UNLOCK_COMMAND not in capsys.readouterr().err, "nothing changed"
+    monkeypatch.setattr(runtime_identity, "digest", lambda files: "f" * 64)
+    runtime_identity.ensure_bundle(interpreter())
+    said = capsys.readouterr().err
+    assert "signature on this Mac changed" in said and keystore.UNLOCK_COMMAND in said and "always allow" in said
+
+
+@pytest.mark.usefixtures("macos")
+def test_enable_and_remove_say_how_to_let_poolhouse_read_its_key_again(installed, capsys):
+    runtime_identity.ensure_bundle(interpreter())
+    holds_a_key()
+    for change in ("enable", "remove"):
+        if change == "remove":  # another signature stands in for the certificate's, so removing it changes the signature
+            subprocess.run(["codesign", "--force", "--sign", "-", "--identifier", "plumbing.only", "--timestamp=none",
+                            str(runtime_identity.bundle_path())], check=True, capture_output=True)
+        capsys.readouterr()
+        assert node_permission.main(["certificate", change]) == 0
+        said = capsys.readouterr()
+        assert keystore.UNLOCK_COMMAND in said.out and "always allow" in said.out, f"{change} says it in its own words"
+        if change == "remove":
+            assert "signature on this Mac changed" in said.err
+
+
+def test_setup_says_how_to_let_poolhouse_read_its_key_again(installed):
+    for opted_in in (False, True):
+        if opted_in:
+            installed.trusted()
+        [finding] = setup.signature_findings()
+        assert keystore.UNLOCK_COMMAND in finding.note and "always allow" in finding.note
+
+
+def test_setup_offers_to_remove_a_certificate_that_cannot_be_used(installed):
+    installed.trusted(trusted=False)
+    [finding] = setup.signature_findings()
+    assert finding.good and "cannot be used" in finding.said and "poolhouse local-network certificate remove" in finding.note
+    assert installed.writes() == []
+
+
+def test_the_key_files_are_gone_before_macos_asks(tools):
+    seen = []
+    tools.on["add-trusted-cert"] = lambda rest: seen.append(sorted(one.name for one in Path(rest[-1]).parent.iterdir()))
+    node_signing.enable(lambda _text: None)
+    assert seen == [["cert.pem"]]
+
+
+@pytest.mark.usefixtures("macos")
+@pytest.mark.parametrize("name", ["SIGTERM", "SIGHUP", "SIGINT"])
+def test_a_command_stopped_at_the_dialog_leaves_nothing(tools, name):
+    number, heard, scratch = getattr(signal, name), [], []
+
+    def quiet(*_):
+        heard.append(number)  # a handler that stops nothing: a command that leaves it in place runs to its end
+
+    def stop(rest):
+        scratch.append(Path(rest[-1]).parent)
+        os.kill(os.getpid(), number)
+        time.sleep(0.05)
+
+    tools.on["add-trusted-cert"] = stop
+    before = signal.signal(number, quiet)
+    try:
+        with pytest.raises((SystemExit, KeyboardInterrupt)):
+            node_signing.enable(lambda _text: None)
+        assert signal.getsignal(number) is quiet, "the handler there was is put back"
+    finally:
+        signal.signal(number, before)
+    assert tools.certificates == {} and tools.settings == set() and not scratch[0].exists() and heard == []
+
+
+@pytest.mark.usefixtures("macos")
+def test_a_second_ctrl_c_does_not_stop_the_cleanup(tools):
+    during = []
+
+    def again(_rest):
+        during.append(signal.getsignal(signal.SIGINT))
+        os.kill(os.getpid(), signal.SIGINT)
+        time.sleep(0.05)
+
+    tools.trust_step = KeyboardInterrupt()
+    tools.on["delete-identity"] = again
+    with pytest.raises(KeyboardInterrupt):
+        node_signing.enable(lambda _text: None)
+    assert tools.certificates == {} and during == [signal.SIG_IGN], "the tool that cleans up ignores it too"
+
+
+@pytest.mark.parametrize("untrust_works", [True, False], ids=["removed", "named"])
+def test_a_trust_setting_that_outlives_its_certificate_is_removed_or_named(tools, untrust_works):
+    tools.trusted()
+    tools.keeps_trust, tools.refuses_untrust = True, not untrust_works
+    if untrust_works:
+        node_signing.remove(lambda _text: None)
+        assert tools.certificates == {} and tools.settings == set()
+    else:
+        with pytest.raises(node_signing.SigningError, match=f"trust setting {SHA}"):
+            node_signing.remove(lambda _text: None)
+
+
+def test_a_trust_setting_with_no_certificate_is_named_not_called_nothing(tools):
+    tools.settings.add(OTHER)
+    with pytest.raises(node_signing.SigningError, match=f"trust setting {OTHER}"):
+        node_signing.remove(lambda _text: None)
+
+
+def test_a_declined_step_that_still_made_a_trust_setting_leaves_none(tools):
+    tools.on["add-trusted-cert"] = lambda _rest: tools.settings.add(SHA)
+    tools.trust_step, tools.keeps_trust = 1, True
+    with pytest.raises(node_signing.SigningError):
+        node_signing.enable(lambda _text: None)
+    assert tools.certificates == {} and tools.settings == set()
+
+
+def test_one_certificate_change_runs_at_a_time(tools):
+    refused = []
+
+    def meanwhile(_rest):
+        with pytest.raises(node_signing.SigningError, match="another certificate change"):
+            node_signing.remove(lambda _text: None)
+        refused.append(True)
+
+    tools.on["add-trusted-cert"] = meanwhile
+    node_signing.enable(lambda _text: None)
+    assert refused == [True] and tools.certificates[SHA]["trusted"]
+
+
+@pytest.mark.usefixtures("macos")
+def test_the_node_app_is_built_and_signed_again_under_one_lock(tmp_path, tools):
+    held = []
+
+    def probe(_argv):
+        try:
+            with only_one(app_bundle.apps_directory() / "build.lock", wait=False):
+                held.append(False)
+        except Busy:
+            held.append(True)
+
+    tools.on["sign"] = probe
+    node_app.build(node_program(tmp_path))
+    runtime_identity.resign(node_app.bundle_path(), node_app.BUNDLE_ID, node_app.requirement)
+    assert held == [True, True]
+
+
+@pytest.mark.usefixtures("macos")
+@pytest.mark.parametrize("named", ['identifier "app.poolhouse.node"',
+                                   f'identifier "app.poolhouse.node" or certificate leaf = H"{"0" * 40}"'],
+                         ids=["identifier-only", "identifier-or-certificate"])
+def test_a_node_app_signed_so_that_any_program_satisfies_it_is_built_again(tmp_path, tools, named):
+    binary = node_program(tmp_path)
+    sha = node_binary.sha256(binary)
+    executable = node_app.bundled(binary, sha)
+    stamp = executable.stat().st_ino
+    assert node_app.bundled(binary, sha).stat().st_ino == stamp, "an app signed locally is kept"
+    subprocess.run(["codesign", "--force", "--sign", "-", "--identifier", node_app.BUNDLE_ID, "--timestamp=none",
+                    f"-r=designated => {named}", str(node_app.bundle_path())], check=True, capture_output=True)
+    assert node_app.bundled(binary, sha) == executable
+    assert runtime_identity.requirement_of(node_app.bundle_path()).startswith(LOCAL)

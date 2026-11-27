@@ -1,11 +1,11 @@
 {
- "surfaces": 880,
+ "surfaces": 881,
  "by_status": {
-  "covered": 561,
-  "partial": 182,
+  "covered": 565,
+  "partial": 180,
   "uncovered": 51,
   "n/a": 85,
-  "unmapped": 1
+  "unmapped": 0
  },
  "by_kind": {
   "chat-tool": {
@@ -37,8 +37,8 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 61,
-   "partial": 46,
+   "covered": 62,
+   "partial": 45,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 0
@@ -58,11 +58,11 @@
    "unmapped": 0
   },
   "keystore": {
-   "covered": 2,
+   "covered": 3,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
-   "unmapped": 1
+   "unmapped": 0
   },
   "listener": {
    "covered": 7,
@@ -100,8 +100,8 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 102,
-   "partial": 62,
+   "covered": 104,
+   "partial": 61,
    "uncovered": 0,
    "n/a": 4,
    "unmapped": 0
@@ -1508,11 +1508,11 @@
    "source": "client/health.py:refuses_key",
    "trust": "addresses and redirects named by pages, repositories and members",
    "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "partial",
+   "status": "covered",
    "tests": [
-    "tests/test_net_no_bypass.py"
+    "tests/test_redteam_server_probes.py::test_the_key_probe_follows_no_redirect_away_from_the_server_asked"
    ],
-   "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
+   "note": "a loopback server that redirects the key probe elsewhere gets no second request: the probe follows no redirect, so it and its key go only to the address asked"
   },
   {
    "id": "egress:client/health.py:reported_models",
@@ -4452,9 +4452,11 @@
    "source": "guard/unboxed.py:<module>",
    "trust": "the process environment and the files on disk",
    "attacker": "a failure path leaks, downgrades or overwrites a secret",
-   "status": "unmapped",
-   "tests": [],
-   "note": ""
+   "status": "covered",
+   "tests": [
+    "tests/test_delegate_unsandboxed_blocks.py::test_a_read_of_a_common_credential_store_is_refused"
+   ],
+   "note": "the module reads no secret: it names credential-store commands and files to refuse a delegate that asks to read them"
   },
   {
    "id": "keystore:installed.py:<module>",
@@ -11606,6 +11608,18 @@
    "note": "Poolhouse.app is built, signed and launched with argv lists only (codesign, security, openssl, open, the bundle executable); a hostile path or member address is one argument, and the certificate name, bundle id and requirement are constants"
   },
   {
+   "id": "spawn:node_signing.py:_find",
+   "kind": "spawn",
+   "source": "node_signing.py:_find",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_node_app.py::test_a_hostile_path_is_one_argument_in_every_command_line_the_app_builds"
+   ],
+   "note": "Poolhouse.app is built, signed and launched with argv lists only (codesign, security, openssl, open, the bundle executable); a hostile path or member address is one argument, and the certificate name, bundle id and requirement are constants"
+  },
+  {
    "id": "spawn:node_signing.py:_run",
    "kind": "spawn",
    "source": "node_signing.py:_run",
@@ -11618,9 +11632,9 @@
    "note": "Poolhouse.app is built, signed and launched with argv lists only (codesign, security, openssl, open, the bundle executable); a hostile path or member address is one argument, and the certificate name, bundle id and requirement are constants"
   },
   {
-   "id": "spawn:node_signing.py:certificates",
+   "id": "spawn:node_signing.py:trusted_certificates",
    "kind": "spawn",
-   "source": "node_signing.py:certificates",
+   "source": "node_signing.py:trusted_certificates",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",
@@ -11635,11 +11649,11 @@
    "source": "opencode.py:_own_server",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "partial",
+   "status": "covered",
    "tests": [
-    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+    "tests/test_redteam_server_probes.py::test_the_harness_help_probe_runs_the_one_binary_with_one_fixed_word"
    ],
-   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+   "note": "the binary is one argument and the only word after it is --help, with no shell; the caller's words are read here and never passed on, and a binary path full of shell syntax stays one argument"
   },
   {
    "id": "spawn:pi_tools.py:_inspect",
