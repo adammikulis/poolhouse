@@ -7,6 +7,7 @@
 Covers tests/ files named test_redteam_*, test_*guard* or test_*auth*, and files that use the
 redteam marker. Weakening is fewer assertions than before, a removed test function, or an added
 skip, skipif or xfail. A `Reviewed-by-second:` or `Owner-order:` line in the commit message accepts the diff.
+Every diff is read as text, whatever attributes and diff settings the repository carries.
 """
 
 from __future__ import annotations
@@ -15,13 +16,13 @@ import argparse
 import fnmatch
 import os
 import re
-import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import merge_history  # noqa: E402
 import renames  # noqa: E402
 
 NAMES = ("test_redteam_*", "test_*guard*", "test_*auth*")
@@ -31,6 +32,9 @@ DEF = re.compile(r"^\s*(?:async\s+)?def (test\w*)\(")
 SKIP = re.compile(r"pytest\.(mark\.(skip|skipif|xfail)\b|skip\(|xfail\(|importorskip\()")
 MARK = re.compile(r"mark\.redteam\b|^pytestmark\b.*redteam", re.M)
 SAME_FILE_PREFIX = 16
+DIFF = ("-c", "core.quotePath=false", "diff", "--text", "--no-ext-diff", "--no-textconv", "--no-color", "--src-prefix=a/",
+        "--dst-prefix=b/", "-U0", renames.FLAG)
+"""A diff no attribute, driver or setting can empty, colour or rename the sides of."""
 
 
 def guarded(path: str, text: str) -> bool:
@@ -41,10 +45,11 @@ def guarded(path: str, text: str) -> bool:
 
 
 def split(diff: str) -> dict[str, tuple[list[str], list[str]]]:
-    """Removed and added lines of a zero-context diff, by new path."""
+    """Removed and added lines of a zero-context diff, by new path. A line ends at a line feed only: what a file holds on one line
+    never starts a line of the diff."""
     files: dict[str, tuple[list[str], list[str]]] = {}
     current = None
-    for line in diff.splitlines():
+    for line in diff.split("\n"):
         if line.startswith("diff --git "):
             current = line.rpartition(" b/")[2]
             files[current] = ([], [])
@@ -61,7 +66,7 @@ def moved(diff: str) -> dict[str, str]:
     """``new path -> old path`` for each file the diff renames."""
     out: dict[str, str] = {}
     old = ""
-    for line in diff.splitlines():
+    for line in diff.split("\n"):
         if line.startswith("rename from "):
             old = line[len("rename from "):]
         elif line.startswith("rename to "):
@@ -89,7 +94,7 @@ def swapped(diff: str) -> dict[str, set[str]]:
         gone.clear()
         came.clear()
 
-    for line in diff.splitlines():
+    for line in diff.split("\n"):
         if line.startswith(("diff --git ", "@@")):
             settle()
             hunk = line.startswith("@@")
@@ -125,39 +130,131 @@ def check(path: str, removed: list[str], added: list[str],
 
 def run(*args: str) -> str:
     """Standard output of a git command."""
-    done = subprocess.run(["git", *args], capture_output=True, text=True, check=False)
-    return done.stdout
+    return merge_history.output(*args).stdout
+
+
+def merge_heads() -> list[str]:
+    """The commits a merge in progress brings in: more than one for an octopus merge, none outside a merge."""
+    try:
+        return Path(run("rev-parse", "--git-path", "MERGE_HEAD").rstrip("\n")).read_text(encoding="utf-8").split()
+    except OSError:
+        return []
 
 
 def merge_own(diff: str) -> str:
     """The part of a staged merge diff that the merge itself wrote, as ``git diff --cc`` would show
-    it. A file whose staged content is exactly the other parent's, or is absent from both because
-    the other side deleted it, was taken whole from that side, so whatever it lost relative to this
-    side was lost there, in a commit that was judged on its own. A file that matches neither parent
-    (a conflict resolved by hand) is judged three ways against this side, the other side and their
-    merge base: it may hold as many assertions as the two sides add up to, keeps every test either
-    side kept, and adds no skip that neither side had."""
-    if not run("rev-parse", "-q", "--verify", "MERGE_HEAD").strip():
+    it. A file whose staged content is exactly the one other parent's, is absent from both because
+    the other side deleted it, or is what git's own merge of the sides writes without a conflict,
+    carries only what each side wrote, in commits that were judged on their own. Any other file (a
+    conflict resolved by hand, or an edit made in the merge) is judged against what a faithful merge
+    keeps (``owed``): every assertion and test that survives git's merge, whatever the number of merge
+    bases, and in a conflict hunk what the two sides hold less their base; it adds no skip that
+    no side had. An octopus merge is judged on every file that differs from git's merge of all its heads."""
+    heads = merge_heads()
+    if not heads:
         return diff
-    base = run("merge-base", "HEAD", "MERGE_HEAD").strip() or None
+    pair = len(heads) == 1
+    bases = sorted({base for head in heads for base in merge_history.bases("HEAD", head)})
+    merged = merge_history.merged(["HEAD", *heads])
+    paths, origin = dict.fromkeys(split(diff)), moved(diff)
+    if merged and not pair:
+        unlike = run(*DIFF, "--cached", merged.tree, "--", "tests")
+        paths.update(dict.fromkeys(split(unlike)))
+        origin = {**moved(unlike), **origin}
     out = []
-    origin = moved(diff)
-    for path in split(diff):
-        if run("rev-parse", "-q", "--verify", f"MERGE_HEAD:{path}").strip() == run(
-                "rev-parse", "-q", "--verify", f":{path}").strip():
-            continue
+    for path in paths:
         was = origin.get(path, path)
-        ours, theirs = text_at("HEAD", was), text_at("MERGE_HEAD", path, was)
-        root, now = text_at(base, was, path), text_at("", path)
-        short = count(ours) + count(theirs) - count(root) - count(now)
-        lost = (names(ours) | names(theirs)) - names(now) - (names(root) - names(ours)) - (names(root) - names(theirs))
-        out.append(f"diff --git a/{was} b/{path}\n")
-        if was != path:
-            out.append(f"rename from {was}\nrename to {path}\n")
-        out.extend(["-    assert lost_in_the_merge\n"] * max(0, short))
-        out.extend(f"-def {name}():\n" for name in sorted(lost))
-        out.extend(f"+{x}\n" for x in (skips(now) - skips(ours) - skips(theirs)).elements())
+        staged, incoming = object_id(f":{path}"), object_id(f"{heads[0]}:{path}")
+        if pair and staged and incoming == staged:
+            continue
+        if pair and not staged and not incoming and any(object_id(f"{base}:{was}") for base in bases):
+            continue
+        if merged and path not in merged.conflicted and object_id(f"{merged.tree}:{path}") == staged:
+            continue
+        ours, theirs = text_at("HEAD", was), [text_at(head, path, was) for head in heads]
+        now = text_at("", path)
+        whole = text_at(merged.tree, path, was) if merged else ""
+        hunks = any(not isinstance(region, str) for region in merge_history.regions(whole.split("\n")))
+        if whole and (path not in merged.conflicted or (pair and hunks)):
+            held, tests = owed(whole.split("\n"))
+        else:
+            roots = [text_at(base, was, path) for base in bases]
+            each = [owed_by_sides(ours, one, roots) for one in theirs]
+            held, tests = max(count_owed for count_owed, _ in each), set().union(*(owed_tests for _, owed_tests in each))
+        before = skips(ours) + sum((skips(one) for one in theirs), Counter())
+        out.append(judged(path, was, held - count(now), tests - names(now), skips(now) - before))
     return "".join(out)
+
+
+def owed(lines: list[str], size: int = merge_history.MARKER_SIZE) -> tuple[int, set[str]]:
+    """How many assertions and which tests a faithful merge keeps of a file as git merged it: all of those outside a conflict, and in
+    each conflict hunk what the two sides hold less what their base held (a test either side removed from the base is not owed)."""
+    held, tests = 0, set()
+    for region in merge_history.regions(lines, size):
+        if isinstance(region, str):
+            held += count(region)
+            tests |= names(region)
+            continue
+        one, base, other = (list(part) for part in region)
+        was, were = agreed(base, size + 2)
+        held += max(0, count("\n".join(one)) + count("\n".join(other)) - was)
+        left, right = names("\n".join(one)), names("\n".join(other))
+        tests |= (left | right) - (were - left) - (were - right)
+    return held, tests
+
+
+def agreed(lines: list[str], size: int) -> tuple[int, set[str]]:
+    """The assertions and tests of a hunk's base, whose own conflicts are marked ``size`` long. Where the merge bases disagreed, only
+    what both held counts, so nothing they argue over excuses a loss."""
+    held, tests = 0, set()
+    for region in merge_history.regions(lines, size):
+        if isinstance(region, str):
+            held += count(region)
+            tests |= names(region)
+            continue
+        (first, first_tests), (second, second_tests) = agreed(region[0], size + 2), agreed(region[2], size + 2)
+        held += min(first, second)
+        tests |= first_tests & second_tests
+    return held, tests
+
+
+def owed_by_sides(ours: str, theirs: str, roots: list[str]) -> tuple[int, set[str]]:
+    """``owed`` for a file git wrote no merge of (one side deleted it): what the sides hold less the bases, each base read the way that
+    excuses least."""
+    roots = roots or [""]
+    shared = set.intersection(*(names(r) for r in roots))
+    held = count(ours) + count(theirs) - min(count(r) for r in roots)
+    return held, (names(ours) | names(theirs)) - (shared - names(ours)) - (shared - names(theirs))
+
+
+def judged(path: str, was: str, short: int, lost: set[str], skipped: Counter) -> str:
+    """The diff of one file that states exactly what it lost and which skips it gained, for ``weakened`` to read."""
+    out = [f"diff --git a/{was} b/{path}\n"]
+    if was != path:
+        out.append(f"rename from {was}\nrename to {path}\n")
+    out.extend(["-    assert lost_in_the_merge\n"] * max(0, short))
+    out.extend(f"-def {name}():\n" for name in sorted(lost))
+    out.extend(f"+{x}\n" for x in skipped.elements())
+    return "".join(out)
+
+
+def range_changes(rev: str) -> tuple[str, str]:
+    """What HEAD changed since it left ``rev``, and the tree that was changed. After a criss-cross there are several merge bases and
+    the history is their merge: a diff from any single one reports what the others brought, and misses what HEAD took of it."""
+    found = merge_history.bases(rev, "HEAD")
+    history = merge_history.merged(found) if len(found) > 1 else None
+    if history is None:
+        return run(*DIFF, f"{rev}...HEAD", "--", "tests"), rev
+    diff = run(*DIFF, history.tree, "HEAD", "--", "tests")
+    origin = moved(diff)
+    stuck = {p for p in split(diff) if origin.get(p, p) in history.conflicted}
+    out = [part for part in re.split(r"(?m)^(?=diff --git )", diff) if part and part.split("\n")[0].rpartition(" b/")[2] not in stuck]
+    for path in sorted(stuck):
+        was = origin.get(path, path)
+        before, now = text_at(history.tree, was), text_at("HEAD", path)
+        held, tests = owed(before.split("\n"))
+        out.append(judged(path, was, held - count(now), tests - names(now), skips(now) - skips(before)))
+    return "".join(out), history.tree
 
 
 def text_at(rev: str | None, *paths: str) -> str:
@@ -166,6 +263,11 @@ def text_at(rev: str | None, *paths: str) -> str:
         if body := run("show", f"{rev}:{path}"):
             return body
     return ""
+
+
+def object_id(spec: str) -> str:
+    """The id of the object ``spec`` names, empty when there is none."""
+    return run("rev-parse", "-q", "--verify", spec).strip()
 
 
 def count(text: str) -> int:
@@ -203,14 +305,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--against", default="")
     args = parser.parse_args(argv)
     if args.against:
-        diff = run("diff", "-U0", renames.FLAG, f"{args.against}...HEAD", "--", "tests")
+        diff, base = range_changes(args.against)
         message = run("log", "--format=%B", f"{args.against}..HEAD")
-        base = args.against
+        befores = [base]
     else:
-        diff = merge_own(run("diff", "--cached", "-U0", renames.FLAG, "--", "tests"))
+        diff = merge_own(run(*DIFF, "--cached", "--", "tests"))
         message = Path(args.message).read_text(encoding="utf-8") if args.message else ""
-        base = "HEAD"
-    found = weakened(diff, lambda p: run("show", f"{base}:{p}"))
+        befores = ["HEAD", *merge_heads()]
+    found = weakened(diff, lambda p: "\n".join(run("show", f"{rev}:{p}") for rev in befores))
     if not found or SIGN.search(message):
         return 0
     print("weakened-assertions: a guard, authority or red-team test lost strength", file=sys.stderr)
