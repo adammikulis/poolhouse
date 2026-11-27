@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from poolhouse import agent_dependency
+from poolhouse.media import inline
 
 from . import roster
 from .chat import find, reply_parts, targets
@@ -112,4 +113,9 @@ class ChatRoutes(ConversationRoutes):
             except (TypeError, ValueError):
                 self.send(400, {"error": "invalid temperature"})
                 return None
+        try:
+            inline.inline_bytes(payload)   # a model server would fetch a picture's address
+        except inline.Refused as why:
+            self.send(400, {"error": str(why)})
+            return None
         return payload

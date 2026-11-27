@@ -172,6 +172,23 @@ class TestChattingThroughTheInterface:
             first.close()
             second.close()
 
+    def test_a_picture_named_by_an_address_is_refused_before_a_model_server_hears_it(self, bare):
+        from types import SimpleNamespace
+
+        from poolhouse.fleet.serving import Served as LocalServed
+
+        ui, cookie = bare
+        server = CannedServer(Canned(served_path='shared.gguf', pieces=('never',)))
+        try:
+            ui.ui.serving = SimpleNamespace(live=lambda: [LocalServed(port=server.port, models=['shared.gguf'])])
+            for part in ({'type': 'image_url', 'image_url': {'url': 'http://127.0.0.1:9/x'}}, {'image_url': 'http://127.0.0.1:9/x'}):
+                status, body, _ = ui.call('/ui/chat', method='POST', cookie=cookie,
+                    body={'model': 'shared.gguf', 'messages': [{'role': 'user', 'content': [part]}]})
+                assert status == 400 and 'data: URL' in body['error'], body
+            assert not any(path.endswith('/chat/completions') for _method, path, _body in server.requests)
+        finally:
+            server.close()
+
     def test_it_lists_the_model_another_machine_is_serving(self, bare):
         ui, cookie = bare
         status, body, _ = ui.call("/ui/chat", cookie=cookie)

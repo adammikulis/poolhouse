@@ -6,6 +6,7 @@ one thing of llama-server's media loader under attack, which is to fetch every a
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import os
 import socket
@@ -155,6 +156,11 @@ SHAPES = {
     "responses input_audio": (RESPONSES, lambda at: item({"type": "input_audio", "input_audio": {"data": at}})),
     "responses tool output image": (RESPONSES, lambda at: output({"type": "input_image", "image_url": at})),
     "responses tool output video": (RESPONSES, lambda at: output({"type": "input_video", "input_video": {"url": at}})),
+    "chat untyped image_url": (CHAT, lambda at: user({"image_url": at})),
+    "chat untyped image_url object": (CHAT, lambda at: user({"image_url": {"url": at}})),
+    "chat untyped video": (CHAT, lambda at: user({"video": at})),
+    "messages untyped audio in a tool result": (MESSAGES, lambda at: tool_result({"input_audio": {"data": at}})),
+    "chat typed image field": (CHAT, lambda at: user({"type": "image", "image": at})),
 }
 
 
@@ -183,6 +189,70 @@ def test_the_relays_other_routes_that_load_media_fetch_no_address_either(relayed
     with pytest.raises(urllib.error.HTTPError) as refused:
         relayed.post(f"/infer{route}", body)
     assert (canary.hits, refused.value.code, fetching.posted()) == (0, 400, [])
+
+
+@pytest.mark.parametrize("field", ["image", "video", "image_url", "audio"])
+def test_an_embedding_of_an_untyped_address_never_reaches_the_server_behind_the_relay(relayed, fetching, canary, field):
+    for body in ({"input": [{field: canary.url}]}, {"input": {field: canary.url}}):
+        with pytest.raises(urllib.error.HTTPError) as refused:
+            relayed.post("/infer/v1/embeddings", body)
+        assert (canary.hits, refused.value.code, fetching.posted()) == (0, 400, [])
+
+
+def deep(levels: int) -> dict:
+    """A tool's input schema whose properties nest ``levels`` deep."""
+    schema: dict = {"type": "string"}
+    for _ in range(levels):
+        schema = {"type": "object", "properties": {"image": schema}}
+    return schema
+
+
+def test_the_arguments_of_a_tool_call_and_the_schema_of_a_tool_are_not_read_for_media(bridged, relayed, fetching, canary):
+    looks_like = {"type": "image", "source": {"type": "url", "url": "http://example.invalid/never-fetched"}, "image_url": "https://example.invalid/x"}
+    call = {"type": "tool_use", "id": "t", "name": "render", "input": {"content": [looks_like], "image": "nginx:latest"}}
+    body = {"model": ALIAS, "messages": [{"role": "assistant", "content": [call]}],
+            "tools": [{"name": "render", "description": "d", "input_schema": deep(20)}]}
+    answer = talk(bridged.port, asked("POST", MESSAGES, bridged.token, json.dumps(body).encode()))
+    assert status_of(answer) == 200, answer[:300]
+    assert relayed.post(f"/infer{MESSAGES}", body).status == 200
+    schema = {"messages": [{"role": "user", "content": "hi"}], "response_format": {"type": "json_schema", "json_schema": {"schema": deep(20)}}}
+    assert relayed.post(f"/infer{CHAT}", schema).status == 200
+    assert len(fetching.posted()) == 3 and canary.hits == 0
+
+
+def test_the_relay_reads_one_large_body_at_a_time_and_says_busy_when_there_is_no_room(relayed, fetching, monkeypatch):
+    from poolhouse.media import inline
+
+    monkeypatch.setattr(inline, "WAIT_SECONDS", 0.2)
+    body = {"messages": [{"role": "user", "content": "x" * (1 << 19)}]}
+    assert inline._READING.acquire(timeout=1)
+    try:
+        with pytest.raises(urllib.error.HTTPError) as busy:
+            relayed.post(f"/infer{CHAT}", body)
+        assert busy.value.code == 429 and fetching.posted() == []
+        assert relayed.post(f"/infer{CHAT}", {"messages": []}).status == 200, "a small body needs no room"
+    finally:
+        inline._READING.release()
+    assert relayed.post(f"/infer{CHAT}", body).status == 200
+
+
+def test_the_relay_sends_the_server_the_one_content_type_it_read_the_body_by(relayed, fetching):
+    form = b'--b\r\nContent-Disposition: form-data; name="file"; filename="a.wav"\r\n\r\nRIFF\r\n--b--\r\n'
+    request = build_request(f"http://127.0.0.1:{relayed.port}/infer/v1/audio/transcriptions", data=form, method="POST",
+                            headers={"Content-Type": "multipart/form-data; boundary=b"}, token=relayed.token)
+    connection = http.client.HTTPConnection("127.0.0.1", relayed.port, timeout=20)
+    try:
+        connection.putrequest("POST", "/infer/v1/audio/transcriptions", skip_accept_encoding=True)
+        for name, value in [*request.header_items(), ("Content-Type", "application/json")]:
+            connection.putheader(name, value)
+        if not request.has_header("Content-length"):
+            connection.putheader("Content-Length", str(len(request.data)))
+        connection.endheaders(request.data)
+        assert connection.getresponse().status == 200
+    finally:
+        connection.close()
+    head = fetching.posted()[0].partition(b"\r\n\r\n")[0].lower()
+    assert head.count(b"content-type:") == 1 and b"multipart/form-data" in head
 
 
 def picture(size: int) -> str:

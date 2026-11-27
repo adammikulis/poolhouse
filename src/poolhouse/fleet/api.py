@@ -274,11 +274,15 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 self._send(503, {"error": "no model server is running on this machine"})
                 return True
 
+            kind = self.headers.get("Content-Type", "")   # the one the body is read by is the one the server is sent
             if body:
                 try:
-                    body = inline.relayed(body, route, self.headers.get("Content-Type", ""))
+                    body = inline.relayed(body, route, kind)
                 except inline.Refused as why:
                     self._send(400, {"error": str(why)})
+                    return True
+                except inline.Busy as why:
+                    self._send(429, {"error": str(why)}, headers={"Retry-After": "2"})
                     return True
 
             upstream = urllib.request.Request(
@@ -286,10 +290,12 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if leased := serverkeys.for_url(upstream.full_url):
                 upstream.add_header("Authorization", f"Bearer {leased}")
             for name, value in self.headers.items():
-                if name.lower() in ("authorization", "host", "content-length", "content-encoding",
+                if name.lower() in ("authorization", "host", "content-length", "content-encoding", "content-type",
                                     "transfer-encoding", "connection", "x-poolhouse-ui"):
                     continue
                 upstream.add_header(name, value)
+            if kind:
+                upstream.add_header("Content-Type", kind)
             if body:
                 upstream.add_header("Content-Length", str(len(body)))
 
