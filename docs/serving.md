@@ -941,11 +941,25 @@ after a sequential read on a busy machine, three of seven runs had lost 2% to 4%
 those gathers took 0.5 to 7 s on one thread. Poolhouse does not read the whole table ahead.
 
 **MLX.** `QuantizedMMapNGramEmbedding` reads a row from three tensors (weights, scales,
-biases) with numpy on one thread. `spec.ple` changes both: `interleave` writes the view's
-table as one 100-byte record a row (`ple-q4.rows`, 32 GB, 68 s once, when the disk has that
-much and 20 GB over), and `ReadAhead` faults the wanted rows in on 16 threads before the
-gather. Measured 2026-11-27 on the same Mac with mlx-vlm's storage class and a table of the
-real shape filled with synthetic bytes (the checkpoint's table shards 2 to 6 are not on that
+biases) with numpy on one thread. Every MLX load gives the table `spec.ple.ReadAhead`, which
+faults the wanted rows in on 16 threads before the gather.
+
+A second layout is **opt-in and off by default**: `poolhouse-serve up mlx:MODEL
+--ngram-rows` also writes the table as one 100-byte record a row and reads that
+(`spec.ple.interleave`).
+
+- Disk: as many bytes again as the table, 32.0 GB for Flash-Next
+  (`<cache>/spec/weights/<model>/ple-q4.rows`). The load is refused when the disk lacks that
+  and 20 GB over.
+- Time: written once, during the first load that asks for it; 68 s from a cold source on the
+  128 GB Mac below.
+- Once written, every later load of that view reads it, with or without the flag. Deleting
+  the view's folder removes it; the next load links the view again from the checkpoint.
+- Gain: storage reads only (the table below). **No end-to-end MLX timing exists**, with the
+  store or without it.
+
+Measured 2026-11-27 on the same Mac with mlx-vlm's storage class and a table of the real
+shape filled with synthetic bytes (the checkpoint's table shards 2 to 6 are not on that
 machine, so this times reads and no model), cold, 4,096 tokens, median and range of 5 runs:
 
 | layout | one thread | `MADV_RANDOM` | 16 threads read ahead | resident |

@@ -31,23 +31,22 @@ FEW = 256
 SPARE = 20 * 1024**3
 
 
-def interleave(source: Path, view: Path) -> bool:
-    """Whether ``view``'s table is stored as one record a row, rewriting it from ``source``
-    when the disk has room for as many bytes again as the table plus `SPARE`."""
+def interleave(source: Path, view: Path) -> None:
+    """Store ``view``'s table as one record a row, rewritten from ``source`` unless it already
+    is; `OSError` without room for as many bytes again as the table plus `SPARE`."""
     manifest = read_json(view / MANIFEST, {})
     if manifest.get("layout") == "interleaved_q4":
-        return True
-    width, rows = int(manifest.get("row_width") or 0), int(manifest.get("row_count") or 0)
-    group = int((manifest.get("quantization") or {}).get("group_size") or 0)
-    if not width or not rows or not group:
-        return False
+        return
+    width, rows = int(manifest["row_width"]), int(manifest["row_count"])
+    group = int(manifest["quantization"]["group_size"])
     # packed 4-bit weights and at most a 16-bit scale and a 16-bit bias a group
-    most = rows * (width // 2 + width // group * 4)
+    needed = rows * (width // 2 + width // group * 4) + SPARE
     (view / ROWS_FILE).unlink(missing_ok=True)  # one an interrupted rewrite left
-    if shutil.disk_usage(view).free < most + SPARE:
-        return False
+    free = shutil.disk_usage(view).free
+    if free < needed:
+        raise OSError(f"the one-record n-gram table needs {needed / 1e9:.0f} GB free in {view} "
+                      f"and {free / 1e9:.0f} GB is; serve without --ngram-rows or free disk")
     materialize_interleaved_ple_store(source, view / MANIFEST, data_file=ROWS_FILE)
-    return True
 
 
 class ReadAhead(QuantizedMMapNGramEmbedding):

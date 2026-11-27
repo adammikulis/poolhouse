@@ -49,9 +49,9 @@ def weights(name: str | Path) -> Path:
     return hub.snapshot(str(name))
 
 
-def external_ple(path: Path) -> Path:
-    """``path``, or a hard-linked view of it whose PLE n-gram table is memory-mapped, stored
-    one record a row when the disk has room (`ple.interleave`)."""
+def external_ple(path: Path, rows: bool = False) -> Path:
+    """``path``, or a hard-linked view of it whose PLE n-gram table is memory-mapped; ``rows``
+    also stores that table one record a row (`ple.interleave`)."""
     index = path / "model.safetensors.index.json"
     if not index.is_file() or PLE_MARKER not in index.read_text(encoding="utf-8"):
         return path
@@ -60,12 +60,14 @@ def external_ple(path: Path) -> Path:
         shutil.rmtree(view, ignore_errors=True)
         view.parent.mkdir(parents=True, exist_ok=True)
         prepare_external_ple_model(path, view)
-    ple.interleave(path, view)
+    if rows:
+        ple.interleave(path, view)
     return view
 
 
-def load_target(path: Path) -> tuple[nn.Module, Any]:
-    """The model and tokenizer in ``path``, loaded by the package ``LAYOUTS`` names for it."""
+def load_target(path: Path, ngram_rows: bool = False) -> tuple[nn.Module, Any]:
+    """The model and tokenizer in ``path``, loaded by the package ``LAYOUTS`` names for it;
+    ``ngram_rows`` as `external_ple` takes ``rows``."""
     config = json.loads((path / "config.json").read_text(encoding="utf-8"))
     kind = config.get("model_type", "")
     if kind not in LAYOUTS:
@@ -74,7 +76,7 @@ def load_target(path: Path) -> tuple[nn.Module, Any]:
     if LAYOUTS[kind][0] == "mlx_lm":
         loaded = load(str(path))
         return loaded[0], loaded[1]
-    model = load_model(external_ple(path))
+    model = load_model(external_ple(path, ngram_rows))
     ple.read_ahead(model)
     return model, load_tokenizer(path, eos_token_ids=config.get("eos_token_id"))
 
@@ -91,6 +93,8 @@ class EngineConfig:
     recalibrate: bool = False
     #: bits the attention KV cache is stored in; None or 0 keeps f16
     kv_bits: int | None = DEFAULT_KV_BITS
+    #: write the n-gram table as one record a row, as many bytes of disk again
+    ngram_rows: bool = False
 
 
 @dataclass(frozen=True)
@@ -146,7 +150,7 @@ class Engine:
         """Load on the worker thread, which is the thread MLX's streams belong to."""
         mx.set_wired_limit(mx.device_info()["max_recommended_working_set_size"])
         path = weights(config.model)
-        self.model, self.tokenizer = load_target(path)
+        self.model, self.tokenizer = load_target(path, config.ngram_rows)
         self.layout = layout_for(self.model)
         curve = load_curve(self.layout, path.name, again=config.recalibrate)
         budget = Budget(max_nodes=min(32, max(1, config.max_nodes)), cost=curve)

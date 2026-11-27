@@ -88,12 +88,31 @@ def test_the_loaded_model_reads_its_ngram_table_from_disk_and_decodes_as_the_res
     table = text.model.layers[1].ple.ple_embedding.ngram_embedding
     assert not any(PLE in name for name, _ in tree_flatten(text.parameters()))
     assert type(table) is ple.ReadAhead
-    # stored one record a row wherever the disk has room for it
-    assert table._interleaved is not None or shutil.disk_usage(cache_home).free < ple.SPARE
     prompt = [(7 * i + 2) % 90 for i in range(24)]
     assert table(mx.array([[3, 5]])).shape == (1, 2, 32)
     assert plain_greedy(text, prompt, 24) == plain_greedy(resident, prompt, 24)
     assert EOS in tokenizer.eos_token_ids
+
+
+def test_a_default_load_writes_no_one_record_table(
+        checkpoint: Path, cache_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ple, "SPARE", 0)  # room is not what keeps the store unwritten
+    engine = Engine(EngineConfig(model=str(checkpoint), drafter="none"))
+    assert not list(cache_home.rglob(ple.ROWS_FILE))
+    table = engine.model.language_model.model.layers[1].ple.ple_embedding.ngram_embedding
+    assert type(table) is ple.ReadAhead and table._interleaved is None
+
+
+def test_a_load_asked_for_it_writes_the_one_record_table_and_decodes_the_same(
+        checkpoint: Path, cache_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ple, "SPARE", 0)
+    engine = Engine(EngineConfig(model=str(checkpoint), drafter="none", ngram_rows=True))
+    assert len(list(cache_home.rglob(ple.ROWS_FILE))) == 1
+    text = engine.model.language_model
+    assert text.model.layers[1].ple.ple_embedding.ngram_embedding._interleaved is not None
+    prompt = [(7 * i + 2) % 90 for i in range(24)]
+    out = decode(engine.session, prompt, Asked(24))
+    assert out.tokens == plain_greedy(load_model(checkpoint).language_model, prompt, 24)
 
 
 def test_a_tree_engine_on_the_checkpoint_writes_what_plain_greedy_decoding_writes(
@@ -169,7 +188,7 @@ def test_the_read_ahead_table_returns_what_the_plain_one_returns(
         source: Path, view: Path, layout: str) -> None:
     plain = opened(view)(wanted())
     if layout == "interleaved":
-        assert ple.interleave(source, view)
+        ple.interleave(source, view)
     assert same(ple.ReadAhead.of(opened(view))(wanted()), plain)
 
 
@@ -177,7 +196,7 @@ def test_the_read_ahead_table_returns_what_the_plain_one_returns(
 def test_every_wanted_row_is_touched_before_the_gather_and_none_outside_the_table(
         source: Path, view: Path, layout: str, monkeypatch: pytest.MonkeyPatch) -> None:
     if layout == "interleaved":
-        assert ple.interleave(source, view)
+        ple.interleave(source, view)
     table = ple.ReadAhead.of(opened(view))
     touched: list[int] = []
     order: list[str] = []
@@ -220,20 +239,21 @@ def test_a_row_outside_the_table_is_still_refused(view: Path) -> None:
 
 
 def test_a_table_with_room_is_rewritten_once_as_one_record_a_row(source: Path, view: Path) -> None:
-    assert ple.interleave(source, view)
+    ple.interleave(source, view)
     manifest = json.loads((view / ple.MANIFEST).read_text())
     assert manifest["layout"] == "interleaved_q4" and manifest["data_file"] == ple.ROWS_FILE
     stride = WIDTH // 2 + 2 * (WIDTH // 32) * 2
     assert (view / ple.ROWS_FILE).stat().st_size == SHARDS * ROWS * stride
     before = (view / ple.ROWS_FILE).stat().st_mtime_ns
-    assert ple.interleave(source, view)
+    ple.interleave(source, view)
     assert (view / ple.ROWS_FILE).stat().st_mtime_ns == before
 
 
-def test_a_full_disk_keeps_the_checkpoint_layout_and_still_reads(
+def test_a_full_disk_refuses_the_rewrite_and_keeps_the_checkpoint_layout(
         source: Path, view: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(shutil, "disk_usage", lambda _p: SimpleNamespace(free=1000))
-    assert not ple.interleave(source, view)
+    with pytest.raises(OSError, match="GB free"):
+        ple.interleave(source, view)
     assert not (view / ple.ROWS_FILE).exists()
     assert json.loads((view / ple.MANIFEST).read_text())["layout"] == "safetensors_ranges"
     assert opened(view)(mx.array([3])).shape == (1, WIDTH)
@@ -243,15 +263,8 @@ def test_a_rows_file_an_interrupted_rewrite_left_is_written_again(
         source: Path, view: Path) -> None:
     plain = opened(view)(wanted())
     (view / ple.ROWS_FILE).write_bytes(b"half a table")
-    assert ple.interleave(source, view)
+    ple.interleave(source, view)
     assert same(opened(view)(wanted()), plain)
-
-
-def test_a_view_without_a_table_manifest_is_left_alone(source: Path, tmp_path: Path) -> None:
-    empty = tmp_path / "no-table"
-    empty.mkdir()
-    assert not ple.interleave(source, empty)
-    assert not list(empty.iterdir())
 
 
 def test_only_mapped_tables_in_a_model_are_given_the_read_ahead(view: Path) -> None:

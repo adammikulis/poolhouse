@@ -959,10 +959,11 @@ time with the page's server down for the Ollama half.
   beside it, so a row taken under contention says so, but the run refuses a machine that
   is not quiet unless `--anyway`.
 - [ ] **The MLX n-gram table path has no end-to-end timing.** Storage reads are measured
-  (docs/serving.md, "The n-gram table"); a Flash-Next prefill through `spec.engine` with
-  the one-record table and the read-ahead gather is not: the mlx-community snapshot on
-  the 128 GB Mac lacks table shards 2 to 6. After `poolhouse-models pull` of that revision,
-  time a 4,096-token fresh prefill with the table cold.
+  (docs/serving.md, "The n-gram table"); a Flash-Next prefill through `spec.engine` is not,
+  with the read-ahead gather alone or with the opt-in `--ngram-rows` store: the
+  mlx-community snapshot on the 128 GB Mac lacks table shards 2 to 6. After
+  `poolhouse-models pull` of that revision, time a 4,096-token fresh prefill with the table
+  cold, both ways.
 - [ ] **llama.cpp's own source does not read table rows ahead on macOS.** `llama_prefetch`
   (`src/llama-mmap.cpp`) is empty there and `GET_ROWS` runs on one thread, which costs about
   7.6 s of table reads per 4,096 fresh tokens against 0.55 s with the read-ahead
