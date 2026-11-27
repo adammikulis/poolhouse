@@ -185,3 +185,27 @@ def test_ordinary_work_inside_the_project_is_not_refused(ground, name, args):
 
 def test_a_write_in_the_delegates_own_scratch_folder_is_not_refused(ground):
     assert unboxed.refusal("Bash", {"command": f"echo x > {ground.scratch}/a"}, ground) == ""
+
+
+GIT_CONFIG_CHANGES = [
+    "git config --global --comment get core.sshCommand x", "git config --global --comment get credential.helper x",
+    "git config --global --comment list core.hooksPath x", "git config --global --comment --list core.pager x",
+    "git config --global --default --get alias.x y", "git config --system --comment get core.pager x",
+    "git config --comment get -f {home}/notes/gitconfig core.pager x", "git config --comment=get --file={home}/notes/gitconfig core.pager x",
+    "git config -f{home}/notes/gitconfig core.pager x", "git config --global --remove-section user", "git config --global --rename-section user x",
+    "git config --global --edit", "git config --global -e", "git config --global --unset user.name", "git config --glob user.name x",
+    "git config --global --remove-sec user", "git config set --global user.name x", "git config unset --global user.name",
+    "git config remove-section --global user", "git config edit --global"]
+
+
+@pytest.mark.parametrize("command", GIT_CONFIG_CHANGES)
+def test_a_change_of_gits_global_configuration_is_refused_however_its_options_are_written(ground, command):
+    assert judged(ground, "Bash", command=command)
+
+
+@pytest.mark.parametrize("command", [
+    "git config --global user.name", "git config --global --get user.name", "git config get --global user.name", "git config list --global",
+    "git config --global --list", "git config --global -l", "git config --global --show-origin --get-regexp user",
+    "git config --global --type bool core.bare"])
+def test_a_read_of_gits_global_configuration_is_not_refused(ground, command):
+    assert not judged(ground, "Bash", command=command)

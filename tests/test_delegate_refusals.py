@@ -68,7 +68,8 @@ def test_an_edit_at_a_path_the_box_holds_counts_only_when_its_write_failed(tmp_p
 
 @pytest.mark.parametrize("command", [
     "unzip -l held.zip", "unzip -t held.zip", "patch --dry-run -p1 < one.diff", "git clean -n", "git clean -nd build",
-    "git -C /etc clean --dry-run", "git config get user.name", "git config --global get user.name", "git config list",
+    "git -C /etc clean --dry-run", "git config get user.name", "git config get --global user.name", "git config list", "git config --global --get user.name",
+    "git config --global --show-origin user.name", "unzip -qq -l held.zip",
     "git -C /etc config get user.name", "scutil --get ComputerName", "networksetup -listallnetworkservices", "sudo cat /etc/hosts"])
 def test_a_command_that_only_looks_is_no_write(command):
     assert not writes(command)
@@ -77,6 +78,8 @@ def test_a_command_that_only_looks_is_no_write(command):
 @pytest.mark.parametrize("command", [
     "unzip held.zip", "patch -p1 < one.diff", "git clean -fd", "git config set user.name x", "scutil --set ComputerName x",
     "networksetup -setdnsservers Wi-Fi 192.0.2.1", "sudo -u root rm held", "su root -c 'rm held'", "sudo tee held",
-    "runas /user:admin 'del held'"])
+    "runas /user:admin 'del held'", "git config --comment get core.pager x", "git config --comment --list core.pager x", "git config -e",
+    "git config --edit", "git config --remove-section user", "sudo -nu root rm held", "sudo FOO=1 tee held", "unzip -Plist held.zip -d held",
+    "scutil --set ComputerName x --get", "git clean -e -n -f"])
 def test_a_command_that_changes_something_is_a_write(command):
     assert writes(command)
