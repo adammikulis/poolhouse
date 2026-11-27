@@ -111,6 +111,7 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     assert not provider["options"]["baseURL"].startswith("http://127.0.0.1:8080"), "OpenCode reaches the bridge, never the server"
     assert provider["options"]["apiKey"] != "local" and len(provider["options"]["apiKey"]) >= 32, "the bridge's token, minted for the launch"
     assert seen["config"]["autoupdate"] is False and seen["config"]["share"] == "disabled"
+    assert provider["options"]["headerTimeout"] is False, "a request that waits for its turn, or a long prompt, is not given up"
     assert 'ctx.tool.hook("execute.before", before)' in seen["plugin"]
     assert "client.py" in seen["plugin"] and "poolhouse.harnesshook" not in seen["plugin"]
     assert seen["folder"] == ("bin/poolhouse-plugin", ["index.js"]), "OpenCode loads a configured plugin only from a folder, and the box holds bin whole"

@@ -230,6 +230,27 @@ def test_a_delegate_broken_off_on_the_pinned_release_takes_its_conversation_up_i
     assert any("interrupted from outside the task" in str(each["content"]) for each in last), last[-3:]
 
 
+def test_the_pinned_release_gives_up_on_a_replys_head_only_where_the_config_names_a_time(delegated, served, monkeypatch):
+    """A request waits at the bridge for its turn with no head sent, and this release gives a head 300 s unless told otherwise. Here the config's
+    switch is read: set to half a second against a server that answers after two (PLUMBING, not a model), the run gives up."""
+    made, frames = opencode.config, served.frames
+
+    def hurried(setup):
+        held = json.loads(made(setup))
+        assert held["provider"][setup.provider]["options"]["headerTimeout"] is False, "a delegate's request waits as long as it takes"
+        held["provider"][setup.provider]["options"]["headerTimeout"] = 500
+        return json.dumps(held)
+
+    def late(body):
+        time.sleep(2)
+        return frames(body)
+
+    monkeypatch.setattr(opencode, "config", hurried)
+    monkeypatch.setattr(served, "frames", late)
+    ran = delegated.run([("glob", {"pattern": "*"})])
+    assert ran.status == 1 and "Timed out waiting for response headers" in ran.row["error"], (ran.row, ran.log[-4000:])
+
+
 def test_a_plugin_the_pinned_release_cannot_load_is_named_in_the_delegates_log_and_the_run_fails(delegated, monkeypatch):
     monkeypatch.setattr(opencode, "plugin", lambda _settings: "PLUMBING: this is not a program (")
     ran = delegated.run([("glob", {"pattern": "*"})])

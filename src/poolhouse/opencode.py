@@ -79,7 +79,8 @@ class Setup:
 def config(setup: Setup) -> str:
     """The ``opencode.json`` of one run: the provider, the one model with its window, the plugin, no sharing and no update, a tool's output cut at as
     many bytes as the window holds tokens (a quarter of it, so one call cannot fill it), and permissions that never ask (the classifier and the mount
-    decide)."""
+    decide). A reply's head is waited for as long as it takes: a request may wait its turn for a slot, and a long prompt is read for minutes, while
+    the release's own limit (300 s) would give both up."""
     base_url, alias, window = setup.served
     model: dict[str, Any] = {"name": alias, "tool_call": True, "limit": {"context": window, "output": min(window, 32768)}}
     if setup.thinking:
@@ -89,7 +90,8 @@ def config(setup: Setup) -> str:
                                                                                   "timeout": int(lead_bridge.tool_timeout() * 1000)}},
         "model": f"{setup.provider}/{alias}", "small_model": f"{setup.provider}/{alias}",
         "provider": {setup.provider: {"npm": "@ai-sdk/openai-compatible", "name": "poolhouse",
-                                      "options": {"baseURL": base_url.rstrip("/") + "/v1", "apiKey": setup.token}, "models": {alias: model}}},
+                                      "options": {"baseURL": base_url.rstrip("/") + "/v1", "apiKey": setup.token, "headerTimeout": False},
+                                      "models": {alias: model}}},
         "enabled_providers": [setup.provider], "plugins": [setup.plugin], "share": "disabled", "autoupdate": False}   # a path, to a folder
     if window:
         made["tool_output"] = {"max_bytes": window, "max_lines": window}

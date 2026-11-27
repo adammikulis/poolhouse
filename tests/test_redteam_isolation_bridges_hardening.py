@@ -11,6 +11,7 @@ import importlib
 import json
 import os
 import resource
+import select
 import socket
 import threading
 import time
@@ -29,6 +30,7 @@ from poolhouse.isolation import (
 )
 from poolhouse.isolation.egress_proxy import blocked
 from poolhouse.isolation.serving import Server
+from poolhouse.testing.canned import CANNED_MARKER
 from tests.isolation_kit import world
 from tests.test_redteam_isolation_bridge import (  # noqa: F401  (the fixtures and helpers of the bridge tests)
     ALIAS,
@@ -41,10 +43,15 @@ from tests.test_redteam_isolation_bridge import (  # noqa: F401  (the fixtures a
     basic,
     bridge,
     connect,
+    heard,
+    held,
     opening,
     proxied,
+    said,
+    sent,
     status_of,
     talk,
+    until,
     upstream,
 )
 
@@ -93,25 +100,17 @@ def test_a_picture_sent_as_its_own_bytes_and_a_tool_input_that_holds_a_url_pass(
     assert status_of(talk(bridge.port, asked("POST", "/v1/messages", bridge.token, body))) == 200 and len(upstream.requests) == 1
 
 
-def test_a_busy_model_answers_429_with_retry_after_after_a_short_wait_and_nobody_is_asked():
-    from poolhouse.isolation import Lease, ModelBridge, model_bridge
-    from tests.test_redteam_isolation_bridge import KEY
-    hold = threading.Event()
-    held = Upstream(hold)
-    made = ModelBridge(held.base_url, Lease(ALIAS, 4096, 1), key=KEY, idle=1.0)
-    made.start()
-    try:
-        first = threading.Thread(target=talk, args=(made.port, asked("POST", "/v1/messages", made.token, BODY)), kwargs={"patience": 10}, daemon=True)
-        first.start()
-        assert held.entered.wait(5)
-        began = time.monotonic()
-        answer = talk(made.port, asked("POST", "/v1/messages", made.token, BODY))
-        assert status_of(answer) == 429 and b"Retry-After: " + str(model_bridge.RETRY_AFTER).encode() in answer, answer[:300]
-        assert 0.5 <= time.monotonic() - began < 5, "a short bounded wait for a slot, never a wait on anyone"
-    finally:
-        hold.set()
-        made.stop()
-        held.close()
+def test_a_busy_model_makes_a_request_wait_its_turn_and_nobody_is_asked(held):
+    """A wait is for a slot of the server and never for a person: nothing is answered, refused or sent on while it lasts, and it ends by itself."""
+    first = sent(held.bridge.port, held.ask("first"))
+    assert held.server.entered.wait(5)
+    second = sent(held.bridge.port, held.ask("second"))
+    assert until(lambda: held.bridge.busy() == 2)
+    assert not select.select([second], [], [], 2.5)[0] and said(held.server) == ["first"], "no answer yet, and the server has only what it has a slot for"
+    held.hold.set()
+    answer = heard(second)
+    assert status_of(answer) == 200 and CANNED_MARKER.encode() in answer, answer[:300]
+    assert status_of(heard(first)) == 200 and held.bridge.summary()["refused"] == 0
 
 
 def test_a_descriptor_beyond_the_range_of_select_does_not_stop_a_model_bridge_answer(bridge, upstream):
