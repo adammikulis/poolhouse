@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import home
+from poolhouse.isolation import environments
 
 __all__ = ["MANAGERS", "Declaration", "Identity", "Resolved", "declarations", "declared", "interpreter_roots", "reach", "resolve",
            "system_toolchain"]
@@ -178,11 +179,10 @@ def _system(path: Path) -> bool:
     return any(path == Path(each) or Path(each) in path.parents for each in system_toolchain())
 
 
-def _venv(project: Path) -> list[Declaration]:
-    """The interpreter folder of a virtual environment, from ``home =`` of its ``pyvenv.cfg``: granted only when it is one of the closed
-    list (`interpreter_roots`) that holds a Python; a folder already in the system toolchain names nothing new; anything else is refused with
-    the reason, and the launch goes on without it."""
-    config = project / ".venv" / "pyvenv.cfg"
+def _venv(config: Path) -> list[Declaration]:
+    """The interpreter folder of a virtual environment, from ``home =`` of its ``pyvenv.cfg`` (``config``): granted only when it is one of the
+    closed list (`interpreter_roots`) that holds a Python; a folder already in the system toolchain names nothing new; anything else is refused
+    with the reason, and the launch goes on without it."""
     try:
         lines = config.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
@@ -218,12 +218,15 @@ def _managed(project: Path) -> list[Path]:
 
 
 def declarations(project: str | os.PathLike[str]) -> list[Declaration]:
-    """Every toolchain folder the project declares by its own files (``.python-version``, ``.venv/pyvenv.cfg``, ``rust-toolchain``,
-    ``.nvmrc``), each the version folder of a version manager or of the system and never its parent, and each declaration the closed list
-    refuses with the reason. A declaration that names a folder with no program of the declared kind, or anything that is not a plain version
-    name, names nothing."""
+    """Every toolchain folder the project declares by its own files (``.python-version``, ``rust-toolchain``, ``.nvmrc`` and the
+    ``pyvenv.cfg`` of each environment the launch uses, `environments.folders`: a worktree's may be its main checkout's), each the version
+    folder of a version manager or of the system and never its parent, and each declaration the closed list refuses with the reason. A
+    declaration that names a folder with no program of the declared kind, or anything that is not a plain version name, names nothing."""
     root = Path(project)
-    found = [*_venv(root), *(Declaration(os.path.realpath(each)) for each in _managed(root))]
+    configs = [root / ".venv" / "pyvenv.cfg",
+               *(holder / name / "pyvenv.cfg" for name, holder in environments.folders(Path(os.path.realpath(root))))]
+    found = [*(each for config in dict.fromkeys(configs) for each in _venv(config)),
+             *(Declaration(os.path.realpath(each)) for each in _managed(root))]
     return list({each.subject: each for each in found}.values())
 
 

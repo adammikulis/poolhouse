@@ -199,8 +199,11 @@ def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], 
     plugin and lead server are this launch's), the plugin with ``settings`` over the client command and the stage, and ``files``."""
     binary, *extra = command
     alias, port, server = setup.served[1], free_port(), context.lead_server()
+    agent = setup.agent
+    if context.note and agent:   # what the box lacks is said before the first turn, in the agent's own system prompt
+        agent = {**agent, "system": f"{agent['system']}{context.note}\n"}
     made = Setup((context.base_url, alias, setup.served[2]), context.token, str(context.file(PLUGIN)),
-                 [server["command"], *server["args"]], families.for_model_id(alias).think_kwargs(False), setup.brief, setup.agent)
+                 [server["command"], *server["args"]], families.for_model_id(alias).think_kwargs(False), setup.brief, agent)
     written = {f".opencode-config/{CONFIG}": config(made),
                f"{PLUGIN}/{ENTRY}": plugin({"hook": context.client_argv("hook"), "root": context.stage, **settings}), **files}
     return isolation.Rendering(argv_of(binary, port, alias, extra), written, listen=(port,))

@@ -24,16 +24,13 @@ from poolhouse.activity import source_snapshot
 from poolhouse.activity.source_snapshot import Capture, CaptureEntry
 from poolhouse.coding_workspace import Stage, Workspace, between
 from poolhouse.coding_workspace_state import CONTROL_PREFIXES
-from poolhouse.isolation import places, publication, toolchain
+from poolhouse.isolation import environments, places, publication, toolchain
 from poolhouse.isolation.notices import HEAD, Directory, Kept, Notice, Patch, Reports, Result, words
 from poolhouse.isolation.publication import Refusal, fold
 from poolhouse.sandbox import process_tree
 
-__all__ = ["ENVIRONMENT_LINKS", "PATCHES_AT", "Launch", "Published", "Session", "Turn", "binds", "tally"]
+__all__ = ["PATCHES_AT", "Launch", "Published", "Session", "Turn", "binds", "tally"]
 
-ENVIRONMENT_LINKS = (".venv", "venv", "node_modules")
-"""The ignored folders a project needs that a stage does not hold: each is linked into the stage, and read and run by the session, when the person's
-own folder of that name is a real directory inside the project that the credential walk of every read grant (`secretpaths.tree_hit`) passes."""
 PATCHES_AT = "/poolhouse/refused"
 """Where the Linux and WSL backends bind the session's patch directory inside the namespace, read-only."""
 KEPT_VERSION = 1
@@ -116,13 +113,14 @@ def binds(project: str | os.PathLike[str], stage: str, patches: str) -> tuple[tu
 
 
 def environment_links(project: Path, stage: Path, unread: list[tuple[str, str]] | None = None) -> tuple[tuple[str, toolchain.Resolved], ...]:
-    """Link each environment folder of the project into the stage (a link to the person's own directory, which the profile reads and never writes).
-    A folder that is a link, or that resolves outside the project, gets nothing, and a name the stage holds as anything but that link is left as it
-    is. A folder in which the credential walk finds a credential file, or that is too large for it to check, is neither linked nor read, and its name
-    and why are added to ``unread``. The walk does not enter `site-packages` or a nested environment (`secretpaths.SKIP_DIRS`), as for every grant."""
-    root, made = Path(os.path.realpath(project)), []
-    for name in ENVIRONMENT_LINKS:
-        found = toolchain.resolve(root / name) if (root / name).is_dir() and not (root / name).is_symlink() else None
+    """Link each environment folder of the launch (`environments.folders`: the project's own, or a worktree's main checkout's) into the stage,
+    a link to the person's own directory, which the profile reads and never writes. A folder that is a link, or that resolves outside the checkout
+    that holds it, gets nothing, and a name the stage holds as anything but that link is left as it is. A folder in which the credential walk finds
+    a credential file, or that is too large for it to check, is neither linked nor read, and its name and why are added to ``unread``. The walk
+    does not enter `site-packages` or a nested environment (`secretpaths.SKIP_DIRS`), as for every grant."""
+    made = []
+    for name, root in environments.folders(Path(os.path.realpath(project))):
+        found = toolchain.resolve(root / name)
         if found is None:
             continue
         inside = Path(found.path).is_relative_to(root)
@@ -226,6 +224,15 @@ class Session:
     def reads(self) -> tuple[str, ...]:
         """The exact directories the profile reads for the environment links (a read grant of each, and no more)."""
         return tuple(found.path for _, found in self.links)
+
+    @property
+    def sources(self) -> tuple[str, ...]:
+        """Where Python of the box imports the project from (`environments.sources`)."""
+        return environments.sources(self.stage.physical, {name for name, _ in self.links})
+
+    def note(self) -> str:
+        """The sentence the session's brief and result carry when the project asks for an environment the box has none of; empty otherwise."""
+        return environments.note(self.root, {name for name, _ in self.links})
 
     def binds(self) -> tuple[tuple[str, str, bool], ...]:
         return binds(self.root, str(self.stage.physical), self.patches)

@@ -14,7 +14,7 @@ from pathlib import Path
 from poolhouse.isolation.serving import IDLE_SECONDS
 from poolhouse.isolation.spec import HARNESSES
 
-__all__ = ["ALWAYS", "BY_HARNESS", "INTERACTIVE", "MODEL_VARS", "OFFLINE", "SHELL", "SHELL_BOUNDS", "SHELL_DEFAULT_S", "SHELL_MAX_S", "WINDOW",
+__all__ = ["ALWAYS", "BY_HARNESS", "DERIVED", "INTERACTIVE","MODEL_VARS", "OFFLINE", "SHELL", "SHELL_BOUNDS", "SHELL_DEFAULT_S", "SHELL_MAX_S", "WINDOW",
            "Inputs", "allowed", "environment"]
 
 SHELL = "/bin/zsh" if Path("/bin/zsh").exists() else "/bin/bash"
@@ -37,6 +37,9 @@ bridge allows a frame it is about a quarter of the window, and one command canno
 ALWAYS = ("PATH", "HOME", "TMPDIR", "SHELL", "LANG", "POOLHOUSE_AGENT", "PYTHONDONTWRITEBYTECODE", "GIT_CONFIG_NOSYSTEM")
 """Set for every harness. ``POOLHOUSE_AGENT`` marks the tools the harness runs; no person check relies on it (3.5). ``GIT_CONFIG_NOSYSTEM``
 keeps git from the system's configuration: Homebrew's lies in its `etc`, which no session reads, and git ends with an error when it cannot."""
+DERIVED = ("PYTHONPATH",)
+"""Set only where the launcher derives the value from the working copy it made, and never from anyone's environment: ``PYTHONPATH`` names the
+working copy's own source ahead of a linked environment's installed packages."""
 INTERACTIVE = ("TERM", "COLORTERM", "NO_COLOR")
 """Taken from the person's terminal, and only in an interactive launch."""
 MODEL_VARS = ("ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
@@ -89,13 +92,15 @@ class Inputs:
     interactive: bool = False
     terminal: Mapping[str, str] = field(default_factory=dict)
     extras: Mapping[str, str] = field(default_factory=dict)
+    sources: Sequence[str] = ()
+    """The folders of the working copy that Python of the box imports from first (`environments.sources`)."""
 
 
 def allowed(harness: str, interactive: bool = False) -> frozenset[str]:
     """Every variable name a launch of ``harness`` may have; a name outside it never reaches the process."""
     if harness not in HARNESSES:
         raise ValueError(f"no coding harness called {harness}")
-    return frozenset((*ALWAYS, *(INTERACTIVE if interactive else ()), *BY_HARNESS[harness]))
+    return frozenset((*ALWAYS, *DERIVED, *(INTERACTIVE if interactive else ()), *BY_HARNESS[harness]))
 
 
 def _claude(inputs: Inputs) -> dict[str, str]:
@@ -132,6 +137,8 @@ def environment(inputs: Inputs) -> dict[str, str]:
     names = allowed(inputs.harness, inputs.interactive)
     made = {"PATH": os.pathsep.join(inputs.path), "HOME": inputs.home, "TMPDIR": str(Path(inputs.home) / "tmp"), "SHELL": SHELL,
             "LANG": "en_US.UTF-8", "POOLHOUSE_AGENT": "1", "PYTHONDONTWRITEBYTECODE": "1", "GIT_CONFIG_NOSYSTEM": "1"}
+    if inputs.sources:
+        made["PYTHONPATH"] = os.pathsep.join(inputs.sources)
     if inputs.interactive:
         made.update({name: inputs.terminal[name] for name in INTERACTIVE if inputs.terminal.get(name)})
     made.update({"claude": _claude, "codex": _codex, "pi": _pi, "opencode": _opencode}[inputs.harness](inputs))

@@ -77,6 +77,8 @@ class Context:
     window: int
     token: str = ""
     """The bridge token the harness holds, for a harness that reads its key from a file and not from a variable (Pi). Never printed, never logged."""
+    note: str = ""
+    """What the harness's brief says of the box before its first turn (`workspace.Session.note`); empty when there is nothing to say."""
 
     def client_argv(self, *words: str) -> list[str]:
         """The command a confined process runs to reach the session bridge: ``words`` are the client's own (`hook pre`, `workspace inbox`, `mcp`)."""
@@ -297,9 +299,9 @@ class Confinement:
         return "" if self.made.watch is None else self.made.watch.check()
 
     def said(self) -> list[str]:
-        """The words of every publication of this session that had something to say (what was applied, what was refused and where the patch is),
-        in order: the line a terminal launch ends with."""
-        return [turn.text for turn in self.made.turns if turn.text]
+        """What the box lacked (`workspace.Session.note`), then the words of every publication of this session that had something to say (what
+        was applied, what was refused and where the patch is), in order: the lines a launch ends with."""
+        return [each for each in (self.session.note(), *(turn.text for turn in self.made.turns)) if each]
 
     def published(self) -> Published:
         """What every publication of this session came to, as data: no caller reads it from `said`."""
@@ -408,7 +410,7 @@ def prepare(plan: Plan) -> Confinement:
         _write(client, Path(client_module.__file__).read_text(encoding="utf-8"))
         stage = str(session.stage.physical)
         context = Context(agent_home, agent_home / HARNESS_DIRECTORIES[plan.harness], stage, os.path.realpath(sys.executable), str(client), bridge.path,
-                          os.getpid(), f"http://127.0.0.1:{model.port}", plan.lease.alias, plan.lease.window, model.token)
+                          os.getpid(), f"http://127.0.0.1:{model.port}", plan.lease.alias, plan.lease.window, model.token, session.note())
         rendering = plan.render(context)
         argv = (os.path.realpath(rendering.argv[0]), *rendering.argv[1:])   # the harness is run by its real path: its link is the person's
         frozen = [str(client), str(agent_home / "bin")]
@@ -418,7 +420,7 @@ def prepare(plan: Plan) -> Confinement:
         spec = Spec(plan.harness, stage, str(agent_home), install_tree(plan.binary), model.port, bridge.path, 0, session.patches, plan.project,
                     plan.policy, plan.interactive, tuple(frozen), rendering.listen, session.reads)
         env = environment(Inputs(plan.harness, str(agent_home), search_path(spec, plan.grants), context.base_url, model.token, plan.lease.alias,
-                                 plan.lease.window, plan.interactive, {}, plan.extras))
+                                 plan.lease.window, plan.interactive, {}, plan.extras, session.sources))
         bounds = plan.bounds or derive(stage)
         parts.watch = None if bounds is None else Watch(bounds, (stage, str(agent_home)))
         profile = build(spec, plan.grants, env, None if bounds is None else bounds.limits())

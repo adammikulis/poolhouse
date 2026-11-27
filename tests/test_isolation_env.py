@@ -16,6 +16,7 @@ from poolhouse.isolation import Inputs, allowed, build, environment, proof
 from poolhouse.isolation.environment import (
     ALWAYS,
     BY_HARNESS,
+    DERIVED,
     INTERACTIVE,
     MODEL_VARS,
     OFFLINE,
@@ -61,7 +62,9 @@ def test_the_environment_is_exactly_the_allow_list(hostile, tmp_path):
     assert claude["ANTHROPIC_BASE_URL"] == "http://127.0.0.1:9" and claude["ANTHROPIC_AUTH_TOKEN"] == "bridge-token"
     assert claude["SHELL"] == SHELL and "GH_TOKEN" not in claude, "the shell is the launcher's choice, never the person's"
     assert set(made("claude", context=1000)) - expected["claude"] == {"CLAUDE_CODE_MAX_CONTEXT_TOKENS", "BASH_MAX_OUTPUT_LENGTH"}, "below the compaction window the caps"
-    assert allowed("claude") == frozenset(expected["claude"] | set(BY_HARNESS["claude"])) and "TERM" in allowed("pi", True) and "TERM" not in allowed("pi")
+    assert made("claude", sources=("/stage/src", "/stage"))["PYTHONPATH"] == "/stage/src:/stage", "the launcher's own folders, never the person's"
+    assert allowed("claude") == frozenset(expected["claude"] | set(BY_HARNESS["claude"]) | set(DERIVED))
+    assert "TERM" in allowed("pi", True) and "TERM" not in allowed("pi")
     with pytest.raises(ValueError, match="no coding harness"):
         allowed("emacs")
 

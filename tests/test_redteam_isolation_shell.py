@@ -26,11 +26,11 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import coding_policy, harnesshook, isolation, sandbox
+from poolhouse import coding_policy, harnesshook, isolation, opencode, sandbox
 from poolhouse.isolation.notices import Notice
 from poolhouse.isolation.reports import Reporter
 from tests.isolation_kit import MODEL, Canned
-from tests.isolation_world import Sink, make_project
+from tests.isolation_world import Sink, git, linked_worktree, make_project
 from tests.sandbox_kit import running
 
 pytest_plugins = ["tests.confined_kit", "tests.sandbox_kit"]
@@ -47,6 +47,7 @@ class Box:
     port: int
     sink: Sink = field(default_factory=Sink)
     asked: list = field(default_factory=list)
+    contexts: list = field(default_factory=list)
 
 
 @pytest.fixture
@@ -77,6 +78,7 @@ def shelled(box: Box, script: str, *, look: Callable[[isolation.Confinement], ob
         return answer
 
     def render(context: isolation.Context) -> isolation.Rendering:
+        box.contexts.append(context)
         return isolation.Rendering((str(program),), {f"session/{event}": context.hook(event) + "\n" for event in ("pre", "stop")})
 
     plan = isolation.Plan("claude", str(program), str(box.project), coding_policy.Policy(coding_policy.GUARDED), f"http://127.0.0.1:{box.port}",
@@ -183,6 +185,63 @@ def test_the_projects_environments_are_read_run_and_on_the_path_never_written_an
     turn = confinement.turn
     assert turn.refused == () and turn.applied == () and not box.sink.posts, f"neither a link nor the test run's own files are changes: {turn}"
     assert "venv (holds a credential file" in confinement.session.first_line(), confinement.session.first_line()
+
+
+def test_a_worktree_runs_the_main_checkouts_environment_read_only_and_imports_its_own_source(box):
+    venv = with_environments(box)
+    main = box.project
+    (main / "src" / "pkg").mkdir()
+    (main / "src" / "pkg" / "__init__.py").write_text("WHERE = 'the main checkout'\n")
+    git(main, "add", "src/pkg")
+    site = next((venv / "lib").glob("python*")) / "site-packages"
+    (site / "pkg").mkdir()
+    (site / "pkg" / "__init__.py").write_text("WHERE = 'a stale installed copy'\n")
+    (site / "editable.pth").write_text(f"{main / 'src'}\n")
+    box.project = linked_worktree(main, box.root / "worktree")
+    (box.project / "src" / "pkg" / "__init__.py").write_text("WHERE = 'the worktree'\n")
+    assert not os.path.lexists(box.project / ".venv")
+    before = tree_digest(venv), tree_digest(main / "node_modules")
+    script = f"""\
+        echo "python=$(command -v python)"
+        python -c 'import pkg; print("imports " + pkg.WHERE + " at " + pkg.__file__)'
+        .venv/bin/python -c 'import pkg; print("link imports " + pkg.WHERE)'
+        (cd tests && python -c 'import pkg; print("elsewhere imports " + pkg.WHERE)')
+        python -m pytest tests/test_app.py 2>&1 | tail -n 3
+        module-tool
+        tried venv-write 'echo x > .venv/planted'
+        tried venv-write-real 'echo x > {shlex.quote(str(venv))}/planted'
+        tried venv-remove 'rm {shlex.quote(str(venv))}/pyvenv.cfg'
+        tried module-write 'echo x >> node_modules/index.js'
+        tried credential 'cat {shlex.quote(str(main))}/venv/credentials.json'
+        tried main-readme 'cat {shlex.quote(str(main))}/README.md'
+        tried main-source 'cat {shlex.quote(str(main))}/src/pkg/__init__.py'
+        tried main-git 'cat {shlex.quote(str(main))}/.git/config'
+        tried main-list 'ls {shlex.quote(str(main))}'
+        tried worktree 'cat {shlex.quote(str(box.project))}/README.md'
+        """
+    out, (stage, _), confinement = shelled(box, script, look=lambda confinement: str(confinement.session.stage.physical))
+    assert f"python={venv}/bin/python" in out, out
+    assert f"imports the worktree at {stage}/src/pkg/__init__.py" in out, out
+    assert "link imports the worktree" in out and "elsewhere imports the worktree" in out and "1 passed" in out and "module-tool ran" in out, out
+    assert "OPEN " not in out and out.count("shut ") == 10, out
+    assert (tree_digest(venv), tree_digest(main / "node_modules")) == before
+    assert confinement.turn.refused == () and confinement.turn.applied == () and not box.sink.posts, confinement.turn
+    assert not os.path.lexists(box.project / ".venv") and not os.path.lexists(box.project / "node_modules"), "the links are never published"
+
+
+def test_a_project_with_no_usable_environment_is_told_so_in_the_brief_and_in_the_result(box):
+    (box.project / "pyproject.toml").write_text('[project]\nname = "pkg"\nversion = "0"\n')
+    _, _, confinement = shelled(box, "true\n")
+    note = box.contexts[-1].note
+    assert note.startswith("This working copy has no Python environment (.venv or venv) the sandbox can use") and note.count(". ") == 0, note
+    assert note in confinement.said(), confinement.said()
+    setup = opencode.Setup((box.contexts[-1].base_url, MODEL, 4096), "", "", (), agent={"mode": "primary", "system": "THE BRIEF\n"})
+    rendering = opencode.rendering(box.contexts[-1], setup, ("/bin/sh",), {}, {})
+    [config] = [text for name, text in rendering.files.items() if name.endswith(opencode.CONFIG)]
+    assert f"THE BRIEF\\n{note}" in config, config
+    with_environments(box)
+    _, _, confinement = shelled(box, "true\n")
+    assert box.contexts[-1].note == "" and not confinement.said(), confinement.said()
 
 
 def test_a_kept_stage_that_is_launched_again_still_reads_the_environment(box):

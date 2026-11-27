@@ -189,7 +189,15 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
   (`bin`, `node_modules/.bin`) and never written. Each passes the credential walk of every read grant first: one that holds a credential file
   or is too large to check is not linked or read, and the session's first line names it. The walk does not enter `site-packages` or a nested
   `node_modules`, so a credential file there is readable by the box; the box has no network, and what it reads can leave only in its answer,
-  its messages to its lead and the source it publishes. An editable install that points at the person's own checkout is not readable.
+  its messages to its lead and the source it publishes.
+- **A worktree's environments.** A git worktree with no folder of its own for Python (`.venv`, `venv`) or Node (`node_modules`) uses the main
+  checkout's, linked, read and run the same way, never written or published. It does so only when git's records show the link both ways
+  (`isolation.environments.main_checkout`): the worktree's `.git` file names a record inside the checkout's `.git/worktrees` that names it
+  back. A link the worktree holds under that name is not followed. Nothing else of the main checkout is readable.
+- **The code under test is the working copy's.** With a Python environment linked, `PYTHONPATH` is the working copy's `src` and root, ahead of
+  anything installed in that environment (an editable install there points at the person's own checkout, which is not readable).
+- **No environment.** A project that asks for one (`pyproject.toml`, `requirements.txt`, `package.json` and the like) and has none the box can
+  use is told so in one sentence, in the delegate's brief and in its result.
 - **Programs.** The system's, Homebrew's and `/usr/local`'s `bin` and Apple's command-line tools are on `PATH`. `/usr/bin/python3` does not
   run (it is a shim that asks a service the profile refuses). git does not read the system configuration. A program file the session wrote
   into the stage cannot be run (`sh script.sh` and `python file.py` can).
