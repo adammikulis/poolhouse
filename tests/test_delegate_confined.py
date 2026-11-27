@@ -161,9 +161,8 @@ if "mode:shell-overdue" in task:
     got = shell("(sleep 90; touch late) & echo $! > child; sleep 90", timeout=2000)
     finish()
     ended(f"{{CANNED}} {{got}} after {{int(time.time() - began)}}s child={{open('child').read().strip()}}")
-if "mode:workflow-only" in task:
-    os.makedirs(".github/workflows", exist_ok=True)
-    open(".github/workflows/ci.yml", "w").write("name: ci\\n")
+if "mode:settings-only" in task:
+    open("opencode.json", "w").write("{{}}\\n")
     step()
     finish()
     ended(CANNED + " done and landed")
@@ -238,6 +237,7 @@ if "linger" in task:
     time.sleep(120)
 os.makedirs(".github/workflows", exist_ok=True)
 open(".github/workflows/ci.yml", "w").write("name: ci\\n")
+open("opencode.json", "w").write("{{}}\\n")
 try:
     open({project!r} + "/direct.py", "w").write("x = 1\\n")
     direct = "WRITTEN"
@@ -339,7 +339,7 @@ def answering(node, lead, name, text, before=lambda: None):
     return thread
 
 
-def test_an_edit_delegate_publishes_plain_source_refuses_the_rest_asks_its_lead_and_reports(editing):
+def test_an_edit_delegate_publishes_its_change_refuses_the_tools_settings_asks_its_lead_and_reports(editing):
     node, lead, project = editing
     assert started("--task", "add a feature module", "--project", str(project), "--edit") == 0
     [name] = agent_names(node, lead)
@@ -352,7 +352,8 @@ def test_an_edit_delegate_publishes_plain_source_refuses_the_rest_asks_its_lead_
     answers.done.set()
     assert (seen[0]["state"], seen[0].get("turns"), seen[0].get("tool")) == ("asking", 1, "Write"), f"the status shows the run's progress: {seen}"
     row = store.result(name)
-    assert row["state"] == "partial" and (row["applied"], row["refused"]) == (["src/feature.py"], [".github/workflows/ci.yml"]), row
+    assert row["state"] == "partial" and (row["applied"], row["refused"]) == ([".github/workflows/ci.yml", "src/feature.py"], ["opencode.json"]), row
+    assert row["runs_later"] == [".github/workflows/ci.yml"], "the result names the applied files that run later"
     assert (row["turns"], row["input_tokens"], row["output_tokens"], row["cache_read_tokens"]) == (2, 20, 4, 14), row
     text = row["text"]
     assert CANNED in text and "direct=refused" in text, "the confined agent cannot write the project itself"
@@ -364,11 +365,12 @@ def test_an_edit_delegate_publishes_plain_source_refuses_the_rest_asks_its_lead_
     assert text.split("hook=")[1].split(" | again=")[0] == "", "the answer reached the question, so the hook has nothing more to say"
     assert "--format json" in text and "--title delegate" in text and "run --server" in text
     assert "offered=read,glob,grep,edit,write,shell,lead_ask,lead_note" in text
-    assert "Publication, in the launcher's words" in text and "Applied 1 file" in text and "Refused " in text
+    assert "Publication, in the launcher's words" in text and "Applied 2 files" in text and "Refused " in text
     assert (project / "src" / "feature.py").read_text() == "def feature():\n    return 1\n"
-    assert not (project / ".github").exists() and not (project / "direct.py").exists()
+    assert (project / ".github" / "workflows" / "ci.yml").read_text() == "name: ci\n"
+    assert not (project / "opencode.json").exists() and not (project / "direct.py").exists()
     patches = list(home.state("isolation").glob("refused/*/p*.patch"))
-    assert patches and b"ci.yml" in patches[0].read_bytes(), "the refused workflow is kept as a patch under the state root"
+    assert patches and b"opencode.json" in patches[0].read_bytes(), "the refused settings are kept as a patch under the state root"
     entries = node.session(lead).read(limit=100).entries
     sent = [(e.sender, e.fields.get("type"), e.fields.get("subject", "")) for e in entries]
     assert any(sender == name and kind == "question" for sender, kind, _s in sent)
@@ -590,7 +592,7 @@ def ran(editing, mode, *words):
     return SimpleNamespace(status=status, row=store.result(name), project=project, told="\n".join(told), name=name)
 
 
-@pytest.mark.parametrize("mode", ["workflow-only", "edits-nothing"])
+@pytest.mark.parametrize("mode", ["settings-only", "edits-nothing"])
 def test_a_run_that_tried_to_change_files_and_applied_nothing_is_not_done_and_says_so(editing, mode):
     run = ran(editing, mode)
     assert run.status == 1 and run.row["state"] == "unapplied" == store.status(run.name)["state"], run.row

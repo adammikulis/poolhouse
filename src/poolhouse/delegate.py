@@ -6,8 +6,8 @@
 The agent is a session of its own on the lead's board, registered as a subagent of the session that starts it. It is
 OpenCode in the isolated launcher's confinement (`poolhouse.delegate_confined`). It reads and searches a read-only copy of
 its folder, with no shell, and reaches the lead through two tools. With `--edit` it also changes the project and runs a
-shell in the confinement: the plain source it changed is published into the project when it ends and anything else is
-refused at once and kept as a patch. Nothing here waits on a person: a refusal is immediate and says why.
+shell in the confinement: its whole change is published into the project when it ends, except `.git`, coding tools' settings, credentials and
+links that lead out, which are refused at once and kept as a patch. Nothing here waits on a person: a refusal is immediate and says why.
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ def _folder(source: str, edit: bool) -> str:
     flag("--as", dest="parent", default="", metavar="AGENT", help="the session it is a subagent of (default: the session this command runs in)"),
     option("model", help="the model (default: the one served on this machine now)"),
     flag("--max-turns", type=int, default=None),
-    flag("--edit", action="store_true", help="let it change the project, in a confinement: plain source is published when it ends, the rest refused")])
+    flag("--edit", action="store_true", help="let it change the project, in a confinement: its change is published into the project when it ends")])
 def start(args: argparse.Namespace) -> int:
     """Register the agent as a subagent of the calling session, then run it detached; prints its name."""
     authority.require("workspace.agents", "start a delegate")

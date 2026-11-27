@@ -1,8 +1,8 @@
 """A delegate: OpenCode in the isolated launcher's confinement, and the two tools it reaches its lead by.
 
 Every `poolhouse-delegate` runs here, in the confined stage of its folder behind a Seatbelt profile proved before it starts (`poolhouse.isolation`).
-One that edits (``--edit``) has read, glob, grep, edit, write and a shell the same profile holds; when it ends the launcher publishes the plain source
-it changed and refuses everything else at once (a workflow, a hook, a build or package file, a program), keeping the refusal as a patch under the
+One that edits (``--edit``) has read, glob, grep, edit, write and a shell the same profile holds; when it ends the launcher publishes its whole change
+and refuses at once only `.git`, coding tools' settings, credentials and links that lead out, keeping a refusal as a patch under the
 state root and reporting it to the lead in its own `isolation.report` message. One that only reads has read, glob and grep, its stage is read-only and
 nothing is published. Either reaches its lead by two tools over the session bridge and nothing else (`ask(question)` waits for the answer,
 `note(text)` returns at once; both go to the lead), and every message is labelled as data twice. Nothing waits for a person or reads a terminal.
@@ -114,8 +114,8 @@ this computer reached by a test; no Poolhouse node; no nested sandbox; and no re
 .git folder are read-only (git status and git diff work, a commit fails). A command ends at its timeout ({default}s unless you give another as
 `timeout`, in milliseconds, at most {most}s) and never runs in the background. A test that needs what the sandbox lacks cannot run here: in your
 result, name every test you could not run and why.
-When your turn ends the plain source files you changed are applied to the project; a workflow, a hook, a build or package file or a program is
-refused and kept aside for {lead}.
+When your turn ends your changes are applied to the project; only changes to .git, to a coding tool's settings, to credential files and
+links that lead out of the project are refused and kept aside for {lead}.
 """
 READ_WORK = "You have no shell and no tool that changes a file, and nothing you do is written to the folder.\n"
 WEDGED = "this model's server could not be taken: its configuration exceeds this device's wired-memory limit"
