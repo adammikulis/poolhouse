@@ -199,7 +199,8 @@ def test_the_writes_the_box_refuses_the_pinned_release_leave_the_delegate_partia
 
 
 ASKS_ITS_SERVER = """socket=$(sed -n '1s/^[^"]*"//; 1s/".*$//p' "$HOME/bin/poolhouse-server.js" 2>/dev/null)
-/usr/bin/curl -s -o /dev/null -w 'server=%{http_code}\\n' ${socket:+--unix-socket "$socket"} http://127.0.0.1:4096/api/info
+asked() { /usr/bin/curl -s -o /dev/null -w 'server=%{http_code}\\n' "$@" http://127.0.0.1:4096/api/info; }
+if [ -n "$socket" ]; then asked --unix-socket "$socket"; else asked; fi
 echo "preload=${BUN_INSPECT_PRELOAD-unset}\""""
 """A shell of the box asks the run's own server where it is: on the box's socket where the launch gave one (macOS), else on the box's loopback."""
 
