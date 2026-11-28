@@ -114,7 +114,7 @@ def test_settings_failure_is_visible_and_only_selected_libraries_install(usabili
 def _assert_workspace_pages(page, primary, expect):
     headings = {'Models': ('models-view', 'Models'), 'Training': ('training-view', 'Fine-tuning'),
                 'Gym': ('gym-view', 'Reinforcement learning'), 'Evaluation': ('benchmarks-view', 'Benchmarks'),
-                'Delegates': ('delegates-view', 'Delegates'), 'Projects': ('projects-view', 'Projects'),
+                'Delegates': ('delegates-view', 'Delegates'), 'Phones': ('phones-view', 'Phones'),'Projects': ('projects-view', 'Projects'),
                 'Tools': ('tools-view', 'Tools'), 'Graph': ('knowledge-view', 'Graph inspector'),
                 'Activity': ('history-view', 'Activity'), 'Devices': ('pool-view', 'Devices')}
     for group, titles in [('Studio', ['Canvas', 'Training', 'Gym', 'Evaluation', 'Datasets']),

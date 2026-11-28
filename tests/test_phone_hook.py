@@ -79,15 +79,17 @@ def test_a_working_session_takes_a_message_after_its_tool_call(store):
     assert _run(store, "tool", EVENT)[1] == ""
 
 
-def test_a_subagent_takes_its_own_message_and_the_lead_is_told(store):
+def test_a_subagent_takes_its_own_message_when_its_turn_ends_and_the_lead_is_told(store):
     key = linked(store)
     out = _run(store, "subagent-start", CHILD)[1]
     assert "carries that authority" in json.loads(out)["hookSpecificOutput"]["additionalContext"]
     store.send(SUB, key.message(SUB, "add the word indigo"))
     assert _run(store, "tool", EVENT)[1] == ""   # the lead's tool call takes nothing of a running subagent
-    assert "add the word indigo" in _run(store, "tool", CHILD)[1]
+    assert _run(store, "tool", CHILD)[1] == "" and store.waiting(SUB) == 1   # beside a tool result it would be ignored
+    assert "add the word indigo" in json.loads(_run(store, "subagent-stop", CHILD)[1])["reason"]
     told = _run(store, "tool", EVENT)[1]
-    assert "subagent a9" in told and "add the word indigo" in told
+    assert "subagent a9" in told and "add the word indigo" in told and phone_hook.HEADING in told
+    assert _run(store, "tool", EVENT)[1] == ""
 
 
 def test_a_message_keeps_an_ending_subagent_going(store):

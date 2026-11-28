@@ -258,8 +258,9 @@ data: {"what":["sessions"]}
 : ping
 ```
 
-`session` carries one new event of any session; `changed` says which lists to read again (`devices`, `models`, `jobs`,
-`delegates`, `sessions`, `inbox`). There is no replay: after (re)connecting, read each open session's events from its last
+`session` carries one new event of one of the 40 most recently active sessions; `changed` says which lists to read again
+(`devices`, `models`, `jobs`, `delegates`, `sessions`, `inbox`; `devices` only for a change to a linked phone, so read
+`/devices` again while that screen is open). There is no replay: after (re)connecting, read each open session's events from its last
 `next`. A `: ping` comes at least every 15 seconds; reconnect after 40 silent seconds. The computer closes a stream after 10
 minutes (reconnect and sign again) and at once when the phone is removed. At most 3 streams for each phone.
 
@@ -304,16 +305,16 @@ computer refuses a pool request that carries tools and ignores tool calls a phon
 `POST /model/requests/{id}` sends the answer in order, many times:
 
 ```json
-{"seq": 0, "delta": "Hello", "done": false}
-{"seq": 1, "delta": "", "done": true, "finish_reason": "stop", "usage": {"prompt_tokens": 12, "completion_tokens": 3}}
+{"seq": 0, "text": "Hello", "done": false}
+{"seq": 1, "text": "", "done": true, "finish_reason": "stop", "usage": {"prompt_tokens": 12, "completion_tokens": 3}}
 {"seq": 2, "error": "out of memory"}
 ```
 
-`seq` starts at 0 and rises by one. `finish_reason` is `stop` or `length`. The result is `{"continue": true}`; `continue: false` means stop generating (the asker left, or pool use was turned off). Send a delta at
+`seq` starts at 0 and rises by one. `finish_reason` is `stop` or `length`. The result is `{"continue": true}`; `continue: false` means stop generating (the asker left, or pool use was turned off). Send a piece at
 least every 60 seconds (batch tokens: no more than about 10 posts a second).
 
 Limits: 2 requests waiting or running for each phone, 30 requests a minute, 1 MiB and 256 messages a request, 16 KiB a
-delta, 1 MiB an answer, 90 seconds to the first post, 90 seconds between posts, 10 minutes in all.
+piece, 1 MiB an answer, 90 seconds to the first post, 90 seconds between posts, 10 minutes in all.
 
 **What a pool request holds is private.** It can carry code and files an agent read. The app **must** keep a request and its
 answer in memory only: never written to storage, a log, a crash report, a notification, the clipboard or a backup, and
@@ -340,7 +341,7 @@ works and what cannot be done.
 |---|---|---|
 | Claude Code session in a connected project | `next_step` | `wake`; a session open since before the project was connected is `next_turn` until its next turn; a closed one is `none` |
 | Claude Code session elsewhere | `none` (history is shown) | `none` |
-| Subagent in a connected project | `next_step` | `via_parent` (through its live lead); `none` when the lead is closed |
+| Subagent in a connected project | `next_step` (at the end of its turn) | `via_parent` (through its live lead); `none` when the lead is closed |
 | Sandboxed local delegate | `next_step` | `none` once ended |
 | Delegate without a sandbox, Codex, OpenCode, Pi | `none`: they have no supported way to take the person's input yet | `none` |
 | Any agent on another computer | `none`: link the phone to that computer | `none` |
@@ -350,7 +351,7 @@ works and what cannot be done.
 | What | Limit |
 |---|---|
 | Connections | 48 at once, 12 from one address |
-| Request headers | 16 KiB, 15 seconds |
+| Request headers | 100 lines, 15 seconds |
 | Body | 64 KiB (`/model/requests`: 128 KiB) |
 | Signed requests | 900 a minute for each phone |
 | Messages and answers | 30 a minute for each phone |

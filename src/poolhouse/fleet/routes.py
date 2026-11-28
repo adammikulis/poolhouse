@@ -28,6 +28,7 @@ from .launch_routes import LaunchRoutes
 from .member_rows import sweep_argv
 from .page import COMPONENTS, render
 from .page_security import PAGE_HEADERS
+from .phone_routes import PhoneRoutes
 from .pool_routes import PoolRoutes
 from .room_routes import RoomRoutes
 from .runtime_repair_routes import RuntimeRepairRoutes
@@ -598,7 +599,7 @@ class JobRoutes:
 
 
 class Router(InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
-             BoardRoutes, DelegateRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
+             BoardRoutes, DelegateRoutes, PhoneRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
              KnowledgeRoutes, *experimental_routes.load(), NativePickRoutes, StudioRoutes, WorkspaceRoutes, LaunchRoutes, ExtensionRoutes, Base):
     """Every screen's routes, in the order a request meets them."""
 

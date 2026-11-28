@@ -53,6 +53,7 @@ from .launch_secret import LaunchSecret
 from .measuring import BenchHost, bench_home as bench_home_beside
 from .models import Downloads, Models
 from .pausing import ADOPT_S, adopt_pause, member_pause
+from .phone import PhoneService
 from .projects import ProjectRegistry, lan_host, local_candidates
 from .runtime_paths import configure as configure_runtime_paths, default_root
 from .service_pool import default as default_pool
@@ -111,6 +112,8 @@ class DaemonOptions:
     on_paused: str = "stop"
     bench_home: Path | str | None = None
     track: str | None = None
+    phone_actions: Any = None
+    """The module of what linked phones call in the tools layer (`poolhouse.cli.phone_actions`), handed in by the command."""
     pool_actions: Any = None
     """The module of pool actions (`poolhouse.api.pool`) the page's pool routes call; the command that starts the daemon hands it in, since a
     machine-layer module may not import the tools layer. None answers every pool action with a refusal."""
@@ -140,6 +143,7 @@ class DaemonRuntime:
         self.bench_home = options.bench_home
         self.track = options.track
         self.pool_actions = options.pool_actions
+        self.phone_actions = options.phone_actions
         self.announcer = options.announcer
 
     def configure(self) -> None:
@@ -311,6 +315,8 @@ class DaemonRuntime:
             self.interface.studio_identity = lambda: self.cert
             self.interface.studio_endpoint = lambda: (f"https://127.0.0.1:{self.httpd.server_address[1]}"
                                                        if self.listening != LOOPBACK else None)
+            self.interface.phones = PhoneService(self.interface, self.phone_actions)
+            self.interface.phones.sync()   # listens only when a phone is linked
             if (self.root / "studio.ladybug").exists():
                 initialize_studio(self.interface)
 
@@ -371,6 +377,8 @@ class DaemonRuntime:
 
     def _shutdown_jobs(self):
         self.managed_alignment.close()
+        if phones := getattr(self.interface, "phones", None):
+            phones.close()
         studio = getattr(self.interface, "studio", None)
         if studio is not None:
             studio.close()
@@ -475,7 +483,7 @@ def persist(*, slots: int = 1, labels: tuple[str, ...] = (), report: str = "") -
     return 2
 
 
-def run(argv: list[str] | None = None, *, pool_actions: Any = None, announcer: Any = None) -> int:
+def run(argv: list[str] | None = None, *, pool_actions: Any = None, announcer: Any = None, phone_actions: Any = None) -> int:
     ap = argparse.ArgumentParser(prog="poolhouse-traind")
     ap.add_argument("--root", default=str(default_root()))
     ap.add_argument(
@@ -649,6 +657,7 @@ def run(argv: list[str] | None = None, *, pool_actions: Any = None, announcer: A
             track=a.track,
             pool_actions=pool_actions,
             announcer=announcer,
+            phone_actions=phone_actions,
         )
     )
     return 0
