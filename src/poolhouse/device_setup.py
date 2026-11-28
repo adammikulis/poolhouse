@@ -23,6 +23,7 @@ from poolhouse.command import Group, flag
 from poolhouse.log import say, warn
 from poolhouse.node_launch import default_state
 
+POOLHOUSE_ENTRY_POINT = "connects this computer to its pool before anything is installed"
 SECTION = "[wsl2]"
 SETTING = "networkingMode"
 WANTED = "mirrored"

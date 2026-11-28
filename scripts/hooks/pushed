@@ -12,6 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+POOLHOUSE_ENTRY_POINT = "asks this computer's board for standing rejects and announces what was pushed"
 ZERO = "0" * 40
 ASK_TIMEOUT_S = 10.0
 HERE = Path(__file__).resolve().parent

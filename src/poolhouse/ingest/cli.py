@@ -283,8 +283,8 @@ def parser() -> argparse.ArgumentParser:
                     help="skip the sections the progress file beside --out already records "
                          "as done")
     ap.add_argument("--detach", action="store_true",
-                    help=f"run this in the background, owned by nobody's terminal, with its "
-                         f"output in a log under {_home() / 'logs'}")
+                    help="run this in the background, owned by nobody's terminal, with its "
+                         "output in a log under <ingest home>/logs")
     ap.add_argument("--gold", default="", metavar="FILE",
                     help="score the extraction against a gold set of passages with known "
                          "triples -- recall, precision and the misses -- instead of reading "

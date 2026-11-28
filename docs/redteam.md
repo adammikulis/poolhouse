@@ -14,7 +14,7 @@ PyRIT is about 110 packages and 550 MB (Azure SDKs, `transformers`, `datasets`, 
 `duckdb`), so it goes in a virtualenv of its own:
 
 ```
-python -m venv .venv-redteam && .venv-redteam/bin/pip install -e ".[redteam]" pytest
+python -m venv .venv-redteam && .venv-redteam/bin/pip install ".[redteam]" pytest
 .venv-redteam/bin/python -m poolhouse.redteam run --out redteam-report      # needs an installed GGUF
 .venv-redteam/bin/python -m poolhouse.redteam run --limit 3                  # a short run, same real model
 .venv-redteam/bin/python -m poolhouse.redteam run --against docs/redteam/baseline-2026-10-02.json

@@ -50,7 +50,7 @@ def candidates() -> list[Path]:
     launching environment names (``POOLHOUSE_HOME``, ``POOLHOUSE_CACHE`` and each ``home.OVERRIDES``
     variable that is set)."""
     state, cache = home.account_roots()
-    named = [home.home(), home.cache(), *(home.expand(os.environ[v]) for v in home.OVERRIDES.values() if os.environ.get(v))]
+    named = [home.named_home(), home.named_cache(),*(home.expand(os.environ[v]) for v in home.OVERRIDES.values() if os.environ.get(v))]
     return sorted({path.resolve() for path in (state, cache, *named)})
 
 

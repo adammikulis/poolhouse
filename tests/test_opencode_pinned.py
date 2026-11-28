@@ -51,9 +51,9 @@ SAID = canned.marked("done")
 
 
 @pytest.fixture
-def release(_real_home, tmp_path):
+def release(tmp_path):
     """The pinned release as a copy of the test's own (the binary, and the ripgrep kept beside it)."""
-    kept = _real_home.state / "tools" / "opencode" / opencode_install.VERSION / "bin"
+    kept = home.machine_asset("tools", "opencode", opencode_install.VERSION, "bin")
     if not all((kept / name).is_file() for name in ("opencode", "rg")):
         pytest.skip(f"the pinned OpenCode {opencode_install.VERSION} is not installed in {kept}, so the real binary cannot be run")
     copy = tmp_path / "release" / "bin"

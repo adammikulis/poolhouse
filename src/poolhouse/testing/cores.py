@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 
+from poolhouse.home import RealRootRefused
 from poolhouse.serve import broker_wire
 from poolhouse.serve.broker import BrokerError
 
@@ -18,10 +19,10 @@ __all__ = ["pytest_workers", "workers_for"]
 
 
 def workers_for(default: int) -> int:
-    """Cores this process may run tests on, or ``default`` when no broker answers."""
+    """Cores this process may run tests on, or ``default`` when no broker answers or this process may not ask the account's own."""
     try:
         return int(broker_wire.cores(default)["cores"])
-    except (BrokerError, OSError, ValueError, KeyError):
+    except (BrokerError, RealRootRefused, OSError, ValueError, KeyError):
         return default
 
 

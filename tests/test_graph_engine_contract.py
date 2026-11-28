@@ -24,7 +24,7 @@ import pytest
 def test_the_installed_engine_is_the_one_the_store_extra_asks_for():
     """Every test here measures the installed ladybug, so a stale environment is said once.
 
-    Red means `pip install -e '.[store]'` has not been run since the pin moved, and the reds
+    Red means `pip install '.[store]'` has not been run since the pin moved, and the reds
     below it are about that engine rather than about this code.
     """
     declared = [line.split("=", 1)[1].strip().strip('"[]')

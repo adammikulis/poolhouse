@@ -19,7 +19,7 @@ For a source checkout, use a Python 3.12 environment:
 
 ```sh
 python3.12 -m venv /path/to/drone-env
-/path/to/drone-env/bin/python -m pip install -e '.[gym-drone]'
+/path/to/drone-env/bin/python -m pip install '.[gym-drone]'
 ```
 
 The environment's saved interpreter selection survives a daemon restart. Installed

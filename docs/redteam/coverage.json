@@ -1,7 +1,7 @@
 {
- "surfaces": 898,
+ "surfaces": 901,
  "by_status": {
-  "covered": 569,
+  "covered": 572,
   "partial": 189,
   "uncovered": 51,
   "n/a": 89,
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 124,
+   "covered": 126,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 103,
+   "covered": 104,
    "partial": 69,
    "uncovered": 0,
    "n/a": 3,
@@ -9103,6 +9103,34 @@
    "note": "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
   },
   {
+   "id": "route:fleet/stray_copy_routes.py:/ui/stray-copies",
+   "kind": "route",
+   "source": "fleet/stray_copy_routes.py:StrayCopyRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_stray_copies.py::test_nothing_but_the_persons_own_window_reads_or_removes",
+    "tests/test_redteam_stray_copies.py::test_a_request_names_only_a_copy_the_server_found_and_nothing_it_runs",
+    "tests/test_redteam_stray_copies.py::test_a_removal_cannot_be_asked_by_a_get"
+   ],
+   "note": "Only the loopback window of this computer reads the copies, and only its signed-in person removes one, named by an id a fresh look still finds; no request text reaches a command."
+  },
+  {
+   "id": "route:fleet/stray_copy_routes.py:/ui/stray-copies/remove",
+   "kind": "route",
+   "source": "fleet/stray_copy_routes.py:StrayCopyRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_stray_copies.py::test_nothing_but_the_persons_own_window_reads_or_removes",
+    "tests/test_redteam_stray_copies.py::test_a_request_names_only_a_copy_the_server_found_and_nothing_it_runs",
+    "tests/test_redteam_stray_copies.py::test_a_removal_cannot_be_asked_by_a_get"
+   ],
+   "note": "Only the loopback window of this computer reads the copies, and only its signed-in person removes one, named by an id a fresh look still finds; no request text reaches a command."
+  },
+  {
    "id": "route:fleet/studio_destinations.py:/ui/studio/*",
    "kind": "route",
    "source": "fleet/studio_destinations.py:route",
@@ -10729,6 +10757,18 @@
     "tests/test_device_setup.py::test_every_command_the_host_runs_is_a_fixed_argv_with_no_input_from_outside"
    ],
    "note": "every argv is fixed (PowerShell script text is built from constants and travels encoded); the one outside string, the Windows profile path, is a single wslpath argument"
+  },
+  {
+   "id": "spawn:devinstall.py:remove",
+   "kind": "spawn",
+   "source": "devinstall.py:remove",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_stray_copies.py::test_a_request_names_only_a_copy_the_server_found_and_nothing_it_runs"
+   ],
+   "note": "The argv is the found interpreter and a fixed removal of Poolhouse; a request supplies only an id, matched against a fresh look, and the command runs in an empty folder with no import path from the environment."
   },
   {
    "id": "spawn:doctor.py:_answers_help",

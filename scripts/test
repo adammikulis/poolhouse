@@ -77,6 +77,7 @@ import testslots
 import testslots_policy
 import testslots_runner
 import testtime
+import treemetadata
 
 from poolhouse import sandbox
 from poolhouse.activity import reuse
@@ -85,6 +86,7 @@ from poolhouse.activity.gate import Run, read_counts, record_run, tree_hash
 from poolhouse.board.tasks import Tasks
 from poolhouse.workspace import testboard, testruns
 
+POOLHOUSE_ENTRY_POINT = "records runs, test jobs and the reuse store of this computer"
 ROOT = Path(__file__).resolve().parent.parent
 BASE = development_branch(ROOT)
 DATAFILE = ".testmondata"
@@ -210,7 +212,7 @@ def execute_run(command, environment, tier, record: OutputRecord):
     if not artifact_output:
         print("+", " ".join(command), flush=True)
     environment["PYTHONPATH"] = os.pathsep.join(
-        (str(ROOT / "src"), str(ROOT / "scripts"), environment.get("PYTHONPATH", "")))
+        (str(ROOT / "src"), str(ROOT / "scripts"), str(treemetadata.folder(ROOT)), environment.get("PYTHONPATH", "")))
     index = shown.index("-n")
     want = int(shown[index + 1])
     shown[index + 1] = "{workers}"
@@ -339,7 +341,7 @@ def quick(args: argparse.Namespace, rest: list[str]) -> int:
     picked = affected.select(ROOT, changed, deleted, base=args.base)
     why = [f"{p}: {picked.reasons.get(p, 'nothing says which tests it affects')}" for p in picked.unmapped]
     if testmon_missing():
-        why = ["pytest-testmon is not installed (pip install -e '.[test]')", *why]
+        why = ["pytest-testmon is not installed (pip install '.[test]')", *why]
     elif not (ROOT / DATAFILE).exists() and not picked.unmapped:
         return first_quick(args, picked, tier, rest)
     elif not (ROOT / DATAFILE).exists():

@@ -823,6 +823,20 @@ tests = ["tests/test_redteam_desktop_capabilities.py", "tests/test_studio_native
 note = "compiled Tauri authority grants only the daemon's own origin and port, rejects foreign origins, ports and windows, shell execution and filesystem reads; the window stays on its own origin; the daemon is recognised only by a proof from a secret its user alone can read"
 
 [[group]]
+match = ["spawn:devinstall.py:remove"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_stray_copies.py::test_a_request_names_only_a_copy_the_server_found_and_nothing_it_runs"]
+note = "The argv is the found interpreter and a fixed removal of Poolhouse; a request supplies only an id, matched against a fresh look, and the command runs in an empty folder with no import path from the environment."
+
+[[group]]
+match = ["route:fleet/stray_copy_routes.py:/ui/stray-copies", "route:fleet/stray_copy_routes.py:/ui/stray-copies/remove"]
+status = "covered"
+count = 2
+tests = ["tests/test_redteam_stray_copies.py::test_nothing_but_the_persons_own_window_reads_or_removes", "tests/test_redteam_stray_copies.py::test_a_request_names_only_a_copy_the_server_found_and_nothing_it_runs", "tests/test_redteam_stray_copies.py::test_a_removal_cannot_be_asked_by_a_get"]
+note = "Only the loopback window of this computer reads the copies, and only its signed-in person removes one, named by an id a fresh look still finds; no request text reaches a command."
+
+[[group]]
 match = ["route:fleet/runtime_repair_routes.py:/ui/agent-runtime/install", "route:fleet/runtime_repair_routes.py:/ui/agent-runtime/repair"]
 status = "covered"
 count = 2

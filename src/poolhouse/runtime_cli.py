@@ -127,6 +127,7 @@ def _building() -> str:
     return ""
 
 
+POOLHOUSE_ENTRY_POINT = "builds and selects this computer's installed runtime from a checkout"
 SETTLE = "settle.lock"
 
 

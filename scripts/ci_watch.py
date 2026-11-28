@@ -30,6 +30,7 @@ import srcpath  # noqa: F401
 
 from poolhouse import lan, lock
 
+POOLHOUSE_ENTRY_POINT = "tells the pushing session on this computer's board that CI failed"
 WORKFLOW = "ci"
 WAIT_S = 180
 POLL_S = 60

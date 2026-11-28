@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import workspace_hook
 
+POOLHOUSE_ENTRY_POINT = "speaks to this computer's board as the harness session"
 EXITS = ("prompt_input_exit", "logout", "other")
 
 

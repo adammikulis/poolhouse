@@ -86,7 +86,7 @@ def session_environment(value: dict, stage: str) -> dict | None:
     try:
         node = client.Client(autostart=False, timeout=2.0)
         board = existing_board(node, Path(str(value.get('cwd') or Path.cwd())))
-    except (OSError, ValueError, client.NodeError) as error:
+    except (OSError, ValueError, RuntimeError, client.NodeError) as error:  # RuntimeError: the account's folders are refused here
         warning(stage, error)
         return None
     if not board:

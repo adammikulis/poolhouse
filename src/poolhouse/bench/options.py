@@ -165,7 +165,7 @@ def measuring_options() -> tuple[Option, ...]:
         flag("--detach", action="store_true",
              help="run this in the background, owned by nobody's terminal: the "
                   "command re-runs itself in a new session with its output in "
-                  f"a log under {bench.home_dir() / 'logs'}, prints the log's path and "
+                  f"a log under {bench.IN_HOME}logs, prints the log's path and "
                   "returns at once. `status` says what is measuring, `tail -f` "
                   "follows the log, `stop` ends it and takes its server down. "
                   "Read before the rest of the line is parsed, like --no-queue"),
@@ -181,7 +181,7 @@ def run_options() -> tuple[Option, ...]:
     """``run``: ask every question once and keep what it cost."""
     return (
         flag("label", help="what this run is, e.g. with-shortlist"),
-        flag("--kept", default=str(bench.home_dir() / "runs.ladybug"),
+        flag("--kept", default=bench.STORE, type=bench.in_home,
              help="where to keep the run (default: %(default)s)"),
         flag("--base-url", default="http://127.0.0.1:8080",
              help="the model answering (default: %(default)s)"),
@@ -193,7 +193,7 @@ def run_options() -> tuple[Option, ...]:
         flag("--shortlist", type=int, default=0, metavar="N",
              help="hand the model the N likeliest entries before it starts, found by "
                   "search rather than by asking it to look (default: 0, it looks)"),
-        flag("--store", default=bench.prepared(),
+        flag("--store", default=bench.PREPARED, type=bench.in_home,
              help="a graph store with the word index and vectors: look_up searches it "
                   "as the application does, and --shortlist reads it first "
                   "(default: what `prepare` built, when it has been)"),
@@ -244,9 +244,9 @@ def drafts_options() -> tuple[Option, ...]:
         flag("--parallel", type=int, default=1, metavar="N",
              help="slots for a --serve'd model (default: %(default)s)"),
         flag("--binary", default="", help="a llama-server that reads this model"),
-        flag("--kept", default=str(bench.home_dir() / "runs.ladybug")),
+        flag("--kept", default=bench.STORE, type=bench.in_home),
         flag("--questions", default=""),
-        flag("--store", default=bench.prepared(),
+        flag("--store", default=bench.PREPARED, type=bench.in_home,
              help="a graph store with the word index and vectors: look_up searches "
                   "it as the application does, so a head is measured against the "
                   "look_up the ranking measures (default: what `prepare` built, "
@@ -279,7 +279,7 @@ def concurrent_options() -> tuple[Option, ...]:
         flag("--turns", type=int, default=3, metavar="T",
              help="how many questions each conversation asks in turn, the earlier "
                   "ones carried (default: %(default)s)"),
-        flag("--kept", default=str(bench.home_dir() / "runs.ladybug"),
+        flag("--kept", default=bench.STORE, type=bench.in_home,
              help="where to keep the run (default: %(default)s)"),
         flag("--base-url", default="http://127.0.0.1:8080",
              help="the model answering (default: %(default)s)"),
@@ -287,7 +287,7 @@ def concurrent_options() -> tuple[Option, ...]:
              help="a graph as JSON (default: the invented community that ships here)"),
         flag("--questions", default="",
              help="one per line, as for run (default: the invented community's)"),
-        flag("--store", default=bench.prepared(),
+        flag("--store", default=bench.PREPARED, type=bench.in_home,
              help="a graph store with the word index and vectors, so look_up "
                   "searches as the application does (default: what `prepare` "
                   "built, when it has been)"),
@@ -302,7 +302,7 @@ def concurrent_options() -> tuple[Option, ...]:
 def prepare_options() -> tuple[Option, ...]:
     """``prepare``: a graph in a store, indexed and embedded."""
     return (
-        flag("--store", default=str(bench.home_dir() / "graph.ladybug"),
+        flag("--store", default=bench.GRAPH, type=bench.in_home,
              help="the store to build (default: %(default)s)"),
         flag("--graph", default="",
              help="a graph as JSON (default: the invented community)"),
@@ -321,7 +321,7 @@ def prepare_options() -> tuple[Option, ...]:
 def retrieval_options() -> tuple[Option, ...]:
     """``retrieval``: the fused order, the vector order and a model reranker, compared."""
     return (
-        flag("--store", default=bench.prepared(),
+        flag("--store", default=bench.PREPARED, type=bench.in_home,
              help="the indexed and embedded graph (default: what `prepare` built, when it "
                   "has been; without one, characters alone)"),
         flag("--embed-url", default="", help="a server that embeds, for the vector vote"),
@@ -339,13 +339,13 @@ def sweep_options() -> tuple[Option, ...]:
     return (
         flag("--on", action="append", metavar="NAME=URL", default=[],
              help="a model to measure, e.g. e4b=http://127.0.0.1:8083; repeatable"),
-        flag("--kept", default=str(bench.home_dir() / "runs.ladybug"),
+        flag("--kept", default=bench.STORE, type=bench.in_home,
              help="where to keep the runs (default: %(default)s)"),
         flag("--graph", default="", help="a graph as JSON (default: the invented one)"),
         flag("--questions", default="", help="(default: the ones that go with it)"),
         flag("--shortlist", type=int, default=8, metavar="N",
              help="how many to hand over in the second run (default: %(default)s)"),
-        flag("--store", default=bench.prepared(),
+        flag("--store", default=bench.PREPARED, type=bench.in_home,
              help="the indexed and embedded graph, for look_up and the shortlist "
                   "(default: what `prepare` built, when it has been)"),
         flag("--embed-url", default="", help="a server that embeds, for --shortlist"),
@@ -479,7 +479,7 @@ def show_options() -> tuple[Option, ...]:
              help="only the newest N runs kept"),
         flag("--since", default="", metavar="ISO",
              help="only runs kept at or after this time (e.g. 2026-09-02T14:29)"),
-        flag("--kept", default=str(bench.home_dir() / "runs.ladybug"),
+        flag("--kept", default=bench.STORE, type=bench.in_home,
              help="the store the runs are in (default: %(default)s)"),
         flag("--compare", nargs=2, metavar=("BEFORE", "AFTER"), default=None),
         flag("--extract", action="store_true",
@@ -533,7 +533,7 @@ def show_options() -> tuple[Option, ...]:
 def report_options() -> tuple[Option, ...]:
     """``report``: everything measured so far as one document."""
     return (
-        flag("--kept", default=str(bench.home_dir() / "runs.ladybug"),
+        flag("--kept", default=bench.STORE, type=bench.in_home,
              help="the store the runs are in (default: %(default)s)"),
         flag("--since", default="", metavar="ISO",
              help="only runs kept at or after this time (e.g. 2026-09-02T14:29)"),
@@ -581,7 +581,7 @@ def forget_options() -> tuple[Option, ...]:
              help="delete every run kept under this label"),
         flag("--empty", action="store_true",
              help="delete every run that reads back as nothing"),
-        flag("--kept", default=str(bench.home_dir() / "runs.ladybug"),
+        flag("--kept", default=bench.STORE, type=bench.in_home,
              help="the store the runs are in (default: %(default)s)"),
     )
 
@@ -625,7 +625,7 @@ def queue_options() -> tuple[Option, ...]:
                   "(default: each step's own)"),
         flag("--detach", action="store_true",
              help="run the whole queue in the background the way a measurement "
-                  f"detaches: a log under {bench.home_dir() / 'logs'}, `status` for "
+                  f"detaches: a log under {bench.IN_HOME}logs, `status` for "
                   "the step it is on and what is left, `tail -f` for the log, "
                   "`stop` to end the queue and the step inside it"),
     )

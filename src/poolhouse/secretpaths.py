@@ -120,7 +120,7 @@ def _run(parts: tuple[str, ...], entry: str) -> bool:
 
 
 def _state(path: Path) -> str:
-    for root in {home.home(), home.user_home() / home.DEFAULT_NAME}:
+    for root in {home.named_home(), home.user_home() / home.DEFAULT_NAME}:
         if path == root or root in path.parents:
             first = path.relative_to(root).parts[:1]
             if first and first[0] in STATE_NAMES:

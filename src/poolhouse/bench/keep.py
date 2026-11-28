@@ -31,6 +31,21 @@ def home_dir() -> Path:
     return state("bench")
 
 
+IN_HOME = "<bench home>/"
+"""How a default under `home_dir` is spelled in a parser: building one, or showing its help, asks for no folder."""
+STORE = f"{IN_HOME}runs.ladybug"
+GRAPH = f"{IN_HOME}graph.ladybug"
+PREPARED = f"{GRAPH} when built"
+"""The default of a ``--store`` that takes `prepared`."""
+
+
+def in_home(value: str) -> str:
+    """The type of a path argument whose default is under `home_dir`, which is asked for when the arguments are read."""
+    if value == PREPARED:
+        return prepared()
+    return str(home_dir() / value.removeprefix(IN_HOME)) if value.startswith(IN_HOME) else value
+
+
 def _plain(value: Any) -> Any:
     """``value`` as nothing but dicts, lists, strings, numbers, booleans and None.
 

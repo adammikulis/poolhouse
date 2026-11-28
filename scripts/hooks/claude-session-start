@@ -10,6 +10,9 @@ import tree_watch
 import workspace_hook
 
 
+POOLHOUSE_ENTRY_POINT = "speaks to this computer's board as the harness session"
+
+
 def main() -> int:
     event = workspace_hook.event("SessionStart")
     if event is None:

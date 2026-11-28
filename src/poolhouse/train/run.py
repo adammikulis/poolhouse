@@ -388,9 +388,9 @@ def _parser() -> Any:
                     help="20 steps, no checkpoint: does this config work at all, and what "
                          "does a step really cost")
     ap.add_argument("--detach", action="store_true",
-                    help=f"run this in the background, owned by nobody's terminal, with "
-                         f"its output in a log under {home_dir() / 'logs'}; "
-                         f"`python -m poolhouse.train run status|wait|stop` follow it")
+                    help="run this in the background, owned by nobody's terminal, with "
+                         "its output in a log under <training home>/logs; "
+                         "`python -m poolhouse.train run status|wait|stop` follow it")
     group = ap.add_argument_group(
         "lora", "train an adapter instead of every weight -- what makes an 8B base "
                 "trainable on one machine. Needs peft, installed the first time it is used")

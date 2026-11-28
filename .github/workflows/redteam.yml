@@ -43,7 +43,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - name: install
-        run: python -m pip install -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,redteam]" pytest-timeout pytest-xdist pyyaml psutil numpy pillow networkx
+        run: python -m pip install ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,redteam]" pytest-timeout pytest-xdist pyyaml psutil numpy pillow networkx
       - name: build the node the tests start
         run: |
           sudo apt-get update -qq

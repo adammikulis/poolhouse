@@ -217,7 +217,7 @@ each is serving afterwards is printed. `--json` is the same as data.
 
 ### Following main
 
-A machine that is a git checkout with an editable install can follow a branch instead of
+A machine installed from a git checkout (the installer's `--dev` mode) can follow a branch instead of
 waiting for a release:
 
 ```
@@ -229,7 +229,7 @@ fetches it and checks the tip commit's signature against the release key (`docs/
 an unsigned commit, or one signed by another key, is not pulled. Then `git merge --ff-only
 FETCH_HEAD` (never any other merge -- a checkout holding commits `main` does not have is
 reported and left alone, because resetting somebody's work in progress at three in the
-morning is unforgivable), `pip install -e .` only if `pyproject.toml` or a lock file moved,
+morning is unforgivable), `poolhouse runtime ensure` builds that commit as an installed copy and selects it,
 and then a restart -- `launchctl kickstart` or `systemctl restart` where a login service is
 installed, a re-exec where there is not. A pull that fails changes nothing, so the daemon
 keeps running the code it started with and says so on the next `poolhouse-pool status`.

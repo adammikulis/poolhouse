@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import chat, do, guard as rails, mcp
+from poolhouse import chat, do, guard as rails, home, mcp
 from poolhouse.interventions import Call, Context, Deny, Proceed, Rewrite
 from poolhouse.testing import ScriptedModel
 
@@ -83,12 +83,12 @@ def test_the_do_loop_withholds_a_tool_result_nemo_blocks_and_the_model_never_see
 
 
 @pytest.fixture
-def classifier(_real_home):
+def classifier():
     pytest.importorskip("onnxruntime")
     pytest.importorskip("tokenizers")
     from poolhouse.guard import classifier as module
 
-    folder = module.cached(_real_home.cache / "guard" / "classifier" / module.MODEL.replace("/", "--"))
+    folder = module.cached(home.machine_asset("guard", "classifier", module.MODEL.replace("/", "--")))
     if folder is None or not (folder / "model.onnx").exists():
         pytest.skip("the injection model is not fetched: python -c 'from poolhouse.guard.classifier import fetch; fetch()'")
     return module.InjectionClassifierRail(folder)

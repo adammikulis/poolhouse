@@ -33,6 +33,7 @@ from poolhouse.devbranch import development_branch
 from poolhouse.guard.untrusted import fenced
 from poolhouse.workspace import localmodel
 
+POOLHOUSE_ENTRY_POINT = "keeps its reviews in the state folder and reads this computer's board and models"
 CAP_BYTES = 200_000
 LIMIT = 5
 MODEL_SECONDS = 1800

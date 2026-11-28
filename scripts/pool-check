@@ -11,7 +11,9 @@ through the real join path. The Mac device's node listens on loopback only and u
 Network access. docs/pool-check.md says what it proves and what it cannot.
 """
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -21,4 +23,6 @@ sys.path.insert(0, str(ROOT / "tests"))
 from pool_check.rig import main  # noqa: E402
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    with tempfile.TemporaryDirectory(prefix="pcs", ignore_cleanup_errors=True) as scratch:  # the rig's own folders, never the account's
+        os.environ.update(POOLHOUSE_HOME=scratch, POOLHOUSE_CACHE=str(Path(scratch) / "cache"))
+        raise SystemExit(main())

@@ -6,6 +6,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+POOLHOUSE_ENTRY_POINT = "finds the selected runtime and this computer's agent identity"
 ROOT = Path(__file__).resolve().parent.parent
 if not sys.flags.isolated:
     sys.path.insert(0, str(ROOT / "src"))

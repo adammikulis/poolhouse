@@ -90,8 +90,12 @@ from poolhouse.bench.holding import (  # noqa: F401
     watching,
 )
 from poolhouse.bench.keep import (  # noqa: F401
+    GRAPH,
+    IN_HOME,
+    PREPARED,
     SHORT,
     SMOKE,
+    STORE,
     RunNotKept,
     _commit,
     _kept,
@@ -100,6 +104,7 @@ from poolhouse.bench.keep import (  # noqa: F401
     empties,
     forget,
     home_dir,
+    in_home,
     prepared,
     read_back,
     resumable,

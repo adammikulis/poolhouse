@@ -15,6 +15,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from poolhouse.workspace import harness_ancestry
 
 
+POOLHOUSE_ENTRY_POINT = "reads the harness record in the person folder"
+
+
 def main(argv: list[str]) -> int:
     """0 when this process runs under a harness, 1 when it does not, 2 when given an argument."""
     if argv[1:]:

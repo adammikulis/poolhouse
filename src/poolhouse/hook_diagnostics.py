@@ -21,6 +21,7 @@ from poolhouse.files import writing
 from poolhouse.log import say, warn
 from poolhouse.redact.secrets import env_secrets, redact
 
+POOLHOUSE_ENTRY_POINT = "reads this computer's hook failure records"
 MAX_RECORD = 32768
 MAX_RECORDS = 200
 IDENTIFIER = re.compile(r"[0-9a-f]{32}\Z")

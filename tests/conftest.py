@@ -57,6 +57,21 @@ os.environ["POOLHOUSE_INSTALL_AT_NEED"] = "off"
 sys.path.insert(0, str(REPO / "scripts"))
 
 
+def _the_trees_own_metadata() -> None:
+    """This tree's version and entry points, from its own pyproject.toml, for this process and the ones it starts; ahead of any copy
+    the interpreter holds."""
+    import treemetadata
+
+    folder = str(treemetadata.folder(REPO))
+    sys.path.insert(1, folder)
+    held = [part for part in os.environ.get("PYTHONPATH", "").split(os.pathsep) if part]
+    if folder not in held:
+        os.environ["PYTHONPATH"] = os.pathsep.join([*held, folder])
+
+
+_the_trees_own_metadata()
+
+
 def _no_desktop_notifications() -> None:
     """A test never raises a real desktop notification or dialog. Shims named like the
     desktop's tools sit first on PATH (so child processes inherit them): a shim records the
@@ -102,7 +117,10 @@ from environ_guard import (  # noqa: E402,F401  (autouse fixtures)
 from machine_guard import installed_ports, signals_refused  # noqa: E402,F401  (an autouse fixture)
 from network_guard import nothing_beyond_loopback  # noqa: E402,F401  (an autouse fixture)
 from signal_guard import signal_handlers_are_restored  # noqa: E402,F401  (an autouse fixture)
-from system_guard import no_system_probes  # noqa: E402,F401  (an autouse fixture)
+from system_guard import (  # noqa: E402,F401  (autouse fixtures)
+    no_interpreters_of_this_machine,
+    no_system_probes,
+)
 from testoptions import pytest_addoption  # noqa: E402,F401  (the suite's tier options)
 
 from poolhouse import loopback_window, sandbox  # noqa: E402
@@ -1128,7 +1146,7 @@ def _real_home(tmp_path_factory):
     a file under the real state root was written, created or removed."""
     from poolhouse import home
 
-    real = types.SimpleNamespace(state=home.home(), cache=home.cache())
+    real = types.SimpleNamespace(state=home.named_home(), cache=home.named_cache())   # names to watch: `home` refuses this run their use
     from state_attribution import Watch, attributing
 
     watch = Watch(real.state, lambda r: file_mtimes(r, attribute_external=False), lambda b, a: real_state_changes(real.state, b, a), attribute=attributing(real.state))

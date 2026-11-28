@@ -241,7 +241,7 @@ def add_arguments(sub: Any) -> Any:
     one.add_argument("--title", default="", help="the document's title")
     one.add_argument("--machine", default="", help="the machine, e.g. 'Mac (128 GB)' "
                                                    "(default: this one)")
-    one.add_argument("--kept", default=str(bench.home_dir() / "runs.ladybug"),
+    one.add_argument("--kept", default=bench.STORE, type=bench.in_home,
                      help="the store the runs are in (default: %(default)s)")
     one.add_argument("--anyway-export", action="store_true", dest="export_anyway",
                      help="include graph runs over some other community, and allow a "

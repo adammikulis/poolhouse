@@ -310,7 +310,7 @@ def add_arguments(sub: Any) -> argparse.ArgumentParser:
                      help="how many ask at once, per cell (default: %(default)s)")
     one.add_argument("--generate", type=int, default=GENERATE, metavar="N",
                      help="tokens each request writes (default: %(default)s)")
-    one.add_argument("--kept", default=str(bench.home_dir() / "runs.ladybug"),
+    one.add_argument("--kept", default=bench.STORE, type=bench.in_home,
                      help="where to keep the runs (default: %(default)s)")
     one.add_argument("--context", type=fitcontext.context_arg, default=0,
                      metavar="N|fit[:MAX]",

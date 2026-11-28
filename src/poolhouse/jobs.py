@@ -22,7 +22,7 @@ from typing import Any
 
 from poolhouse import disclaim, runtime, sentinel
 from poolhouse.command import Group, flag
-from poolhouse.home import expand, home, state
+from poolhouse.home import expand, home, named_home, state
 from poolhouse.lock import Busy
 from poolhouse.log import say, warn
 from poolhouse.paths import source_checkout
@@ -318,7 +318,7 @@ COMMANDS = Group(
              help="which job -- `bench`, `ingest`, whatever wrote the record; `status` "
                   "names them all"),
         flag("--home", default="", metavar="DIR",
-             help=f"where the records are (default: {home_dir()})"),
+             help=f"where the records are (default: {named_home() / 'jobs'}, or POOLHOUSE_JOBS_HOME)"),
     ])
 main = COMMANDS.run
 

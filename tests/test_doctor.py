@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import doctor
+from poolhouse import devinstall, doctor
 from poolhouse.doctor import (
     ahead_of,
     bench_of,
@@ -35,6 +35,15 @@ from poolhouse.doctor import (
 
 REPO = Path(__file__).resolve().parent.parent
 AUTHOR = ("Ada Lovelace", "ada@invented.example")
+
+
+INTERPRETERS = devinstall.interpreters
+
+
+@pytest.fixture(autouse=True)
+def no_python_of_this_machine(monkeypatch):
+    """The command looks at every interpreter of the machine; here it sees none unless a test builds its own."""
+    monkeypatch.setattr(devinstall, "interpreters", lambda environ=None: [])
 
 
 @pytest.fixture(autouse=True)
@@ -449,3 +458,58 @@ def test_a_path_that_is_not_a_repository_is_said(tmp_path, capsys):
     found = look([where], bench_home=tmp_path / "no-bench")
     assert found[0].said == f"{where} is not a git repository"
     assert not found[0].good
+
+
+# -- development-linked installs ------------------------------------------------------
+
+def python_with(prefix: Path, *, editable: bool, source: Path, pip: bool = True) -> Path:
+    """A prefix holding an interpreter that leaves a mark when started, and Poolhouse installed from ``source``."""
+    program = _script(prefix / "bin" / "python3", f"echo started >> {prefix}.started\n")
+    packages = prefix / "lib" / "python3.13" / "site-packages"
+    found = packages / "poolhouse-0.0.dist-info"
+    found.mkdir(parents=True)
+    (found / "METADATA").write_text("Metadata-Version: 2.1\nName: poolhouse\nVersion: 0.0\n")
+    (found / "direct_url.json").write_text(json.dumps({"dir_info": {"editable": editable}, "url": source.as_uri()}))
+    if pip:
+        (packages / "pip").mkdir()
+    return program
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the prefixes here are laid out as macOS and Linux lay them out")
+def test_a_development_linked_install_is_reported_with_the_command_that_removes_it(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "poolhouse"))
+    source = tmp_path / "checkout"
+    linked = python_with(tmp_path / "linked", editable=True, source=source)
+    no_pip = python_with(tmp_path / "bare", editable=True, source=source, pip=False)
+    copy = python_with(tmp_path / "copy", editable=False, source=source)
+    versions = tmp_path / "pyenv" / "versions"
+    python_with(versions / "3.13.0", editable=True, source=source)
+    (tmp_path / "pyenv" / "shims").mkdir()
+    search = [linked.parent, no_pip.parent, copy.parent, tmp_path / "pyenv" / "shims", linked.parent]
+    monkeypatch.setenv("PATH", os.pathsep.join(map(str, search)))
+    monkeypatch.delenv("PYENV_ROOT", raising=False)
+    monkeypatch.setattr(devinstall, "interpreters", INTERPRETERS)
+    monkeypatch.setattr(devinstall, "own_interpreter", list)
+    monkeypatch.setattr(devinstall, "usual_folders", lambda environ: [], raising=False)
+    assert main(["--bench-home", str(tmp_path / "bench")]) == 1
+    out = capsys.readouterr().out
+    assert f"  ! python: development install: {linked} runs Poolhouse straight from {source}" in out
+    assert f"fix: {linked} -m pip uninstall -y poolhouse" in out
+    assert out.count(f"fix: {linked} ") == 1, "one interpreter named twice on PATH is one finding"
+    assert f"fix: uv pip uninstall --python {no_pip} poolhouse" in out
+    assert f"fix: {versions / '3.13.0' / 'bin' / 'python'} -m pip uninstall -y poolhouse" in out
+    assert f"  ! python: another copy of Poolhouse: {copy} holds another copy of Poolhouse" in out
+    assert not list(tmp_path.glob("**/*.started")), "no interpreter is started"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the prefixes here are laid out as macOS and Linux lay them out")
+def test_a_machine_with_only_the_installed_poolhouse_is_told_of_no_stray_copy(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "poolhouse"))
+    installed = python_with(tmp_path / "poolhouse" / "venv", editable=False, source=tmp_path / "checkout")
+    monkeypatch.setenv("PATH", str(installed.parent))
+    monkeypatch.delenv("PYENV_ROOT", raising=False)
+    monkeypatch.setattr(devinstall, "interpreters", INTERPRETERS)
+    monkeypatch.setattr(devinstall, "own_interpreter", list)
+    monkeypatch.setattr(devinstall, "usual_folders", lambda environ: [])
+    main(["--bench-home", str(tmp_path / "bench")])
+    assert "python:" not in capsys.readouterr().out

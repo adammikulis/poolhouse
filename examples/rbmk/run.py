@@ -33,6 +33,8 @@ from .display import (
 )
 from .runner import Result, Runner, RunOptions
 
+POOLHOUSE_ENTRY_POINT = "leases real models on this computer and keeps the runs in the local run store"
+
 
 def store() -> Path:
     """The local run store: under the poolhouse state directory, outside the repository."""

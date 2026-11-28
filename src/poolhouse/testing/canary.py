@@ -305,6 +305,9 @@ def report_live(url: str, judge: str = "") -> None:
 def report(argv: list[str] | None = None) -> int:
     """Print the scripted worst-case rates, or the served-model rates when a URL is given."""
     given = sys.argv[1:] if argv is None else argv
+    if given[:1] in (["-h"], ["--help"]):
+        say("usage: python -m poolhouse.testing.canary [MODEL_URL [JUDGE_URL]]")
+        return 0
     if given:
         report_live(given[0], given[1] if len(given) > 1 else "")
         return 0

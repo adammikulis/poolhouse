@@ -160,6 +160,7 @@ button.secondary, button.ghost { background: transparent; border: 1px solid var(
   background: color-mix(in srgb, var(--bad) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--bad) 35%, transparent); color: var(--bad);
 }
+stray-copies { display: block; min-width: 0; overflow-wrap: anywhere; }
 .ok {
   margin-top: 16px; padding: 11px 13px; border-radius: 8px; font-size: 13px;
   background: color-mix(in srgb, var(--good) 12%, transparent);

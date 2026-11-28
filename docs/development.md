@@ -4,8 +4,9 @@
 
 Follow [CONTRIBUTING.md](../CONTRIBUTING.md) to create an isolated virtual environment, install
 `.[test,privacy]` as a regular wheel, install the spaCy English model and pinned gate tools, and
-run `python scripts/preflight dev commit gate`. Tests read the checkout's `src/` tree; an editable
-install is unnecessary. Hook installation checks commit dependencies before writing any hooks.
+run `python scripts/preflight dev commit gate`. Tests read the checkout's `src/` tree; do not install it
+in editable mode, since such a copy is refused the account's own Poolhouse folders. Hook installation checks commit dependencies before
+writing any hooks.
 
 Contributors submit a pull request and affected test evidence. Maintainers handle authenticated
 queue landing, publication and installed-runtime verification. A local test run needs no owner

@@ -13,8 +13,11 @@ import time
 from collections import Counter
 from collections.abc import Iterable
 
+import srcpath  # noqa: F401
+
 from poolhouse.board import session
 
+POOLHOUSE_ENTRY_POINT = "reads this computer's board as the session that runs it"
 DAY_MS = 86_400_000
 KINDS = ("message", "lease", "audit", "identity", "landing", "note")
 TEST_BODIES = (("test-run", "message status test-run (a file's claim)"), ("test-result", "message status test-result (a file's end)"),

@@ -26,6 +26,7 @@ from poolhouse.guard.destructive import classify, combine
 from poolhouse.guard.destructive_eval import evaluate, table
 from poolhouse.guard.destructive_model import ModelLayer
 
+POOLHOUSE_ENTRY_POINT = "measures real models leased on this computer"
 RECALL_BAR = 0.99
 SAFE_ASK_BAR = 0.05
 
