@@ -16,7 +16,6 @@ from poolhouse.reputation.store import Ledger
 from poolhouse.reputation.work import WorkLedger
 from poolhouse.workspace import work_reputation
 from poolhouse.workspace.work_reputation import Roster, standings_of, standings_on
-from tests.short_temp import temp_file
 
 pytest_plugins = ["node_kit"]
 
@@ -154,7 +153,7 @@ def test_history_shows_verified_score_and_expandable_parent_evidence(work, tmp_p
             expect(viewer.get_by_text('result.json', exact=False)).to_be_visible()
             expect(viewer.get_by_text(f'Account identity: {work.agent_id}', exact=True)).to_be_visible()
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-            page.screenshot(path=temp_file('poolhouse-work-reputation-history.png'), full_page=True)
+            page.screenshot(path=str(tmp_path / 'work-reputation-history.png'), full_page=True)
     finally:
         server.close()
 

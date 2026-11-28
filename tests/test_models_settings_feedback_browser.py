@@ -5,7 +5,6 @@ from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401 (fixture)
 
 from poolhouse.fleet.themes import PRESETS
-from tests.short_temp import temp_file
 
 pytestmark = pytest.mark.slow
 
@@ -25,7 +24,7 @@ def feedback_page(tmp_path, studio_browser):  # noqa: F811
 
 @pytest.mark.parametrize('theme', ['light', 'dark'])
 @pytest.mark.parametrize('width', [1440, 390])
-def test_models_count_running_models_and_show_known_storage(feedback_page, theme, width):
+def test_models_count_running_models_and_show_known_storage(feedback_page, theme, width, tmp_path):
     served, page, errors = feedback_page
     served.ui.settings.appearance = {'active_theme': theme, 'saved_themes': []}
     state = {'free_gb': None, 'available': True, 'serving': True}
@@ -51,7 +50,7 @@ def test_models_count_running_models_and_show_known_storage(feedback_page, theme
     expect(page.locator('.models-overview')).not_to_contain_text('Chat-ready')
     expect(page.locator('#models-running')).to_have_text('7')
     expect(page.locator('#models-free')).to_have_text('Unavailable')
-    page.screenshot(path=temp_file(f'poolhouse-model-summary-{theme}-{width}-running.png'))
+    page.screenshot(path=str(tmp_path / f'model-summary-{theme}-{width}-running.png'))
     primary = page.get_by_role('navigation', name='Main navigation')
     primary.get_by_role('link', name='Pool', exact=True).click()
     action = page.locator('.loaded-models').get_by_role('button', name='Open Models', exact=True)
@@ -66,12 +65,12 @@ def test_models_count_running_models_and_show_known_storage(feedback_page, theme
     expect(page.locator('#models-count')).to_have_text('Unavailable')
     expect(page.locator('#models-running')).to_have_text('7')
     expect(page.locator('#models-free')).to_have_text('Unavailable')
-    page.screenshot(path=temp_file(f'poolhouse-model-summary-{theme}-{width}-inventory-unavailable.png'))
+    page.screenshot(path=str(tmp_path / f'model-summary-{theme}-{width}-inventory-unavailable.png'))
     state['serving'] = False
     primary.get_by_role('link', name='Pool', exact=True).click()
     action.click()
     expect(page.locator('#models-running')).to_have_text('Unavailable')
-    page.screenshot(path=temp_file(f'poolhouse-model-summary-{theme}-{width}-serving-unavailable.png'))
+    page.screenshot(path=str(tmp_path / f'model-summary-{theme}-{width}-serving-unavailable.png'))
     assert not errors
 
 
@@ -79,6 +78,14 @@ def open_preferences(served, page):
     page.goto(f'http://127.0.0.1:{served.port}/ui/#settings')
     expect(page.locator('#settings-save')).to_be_enabled()
     expect(page.get_by_label('Studio undo steps', exact=True)).to_have_value('32')
+
+
+def wait_held(page, held):
+    """Give the page's route handler time to hold the save: the button shows Saving before the request has arrived."""
+    for _ in range(200):
+        if held:
+            return
+        page.wait_for_timeout(25)
 
 
 @pytest.mark.parametrize('theme', ['light', 'dark'])
@@ -152,6 +159,7 @@ def test_settings_pending_save_keeps_newer_edits_and_uses_submitted_snapshot(fee
     expect(page.get_by_role('button', name='Saving…', exact=True)).to_be_disabled()
     undo.fill('64')
     page.get_by_role('tab', name='Libraries & simulators', exact=True).click()
+    wait_held(page, held)
     assert held[0][2]['studio_undo_steps'] == 44
     held[0][0].fulfill(response=held[0][1])
     expect(page.locator('#settings-note')).to_contain_text('Newer edits remain unsaved')
@@ -232,6 +240,7 @@ def test_settings_auth_loss_rejects_old_save_completion(feedback_page):
     page.get_by_label('Studio undo steps', exact=True).fill('44')
     page.get_by_role('button', name='Save preferences', exact=True).click()
     expect(page.get_by_role('button', name='Saving…', exact=True)).to_be_disabled()
+    wait_held(page, held)   # the save has been answered and its answer is withheld before the person signs out
     page.get_by_role('button', name='Sign out', exact=True).click()
     page.wait_for_function("() => ['sign-in','launch-needed'].includes(fleetModel.route)")
     held[0][0].fulfill(response=held[0][1])

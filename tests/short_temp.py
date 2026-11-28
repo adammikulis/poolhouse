@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import os
 import tempfile
-from pathlib import Path
 
-__all__ = ["SHORT", "short_temp", "temp_file"]
+__all__ = ["SHORT", "short_temp"]
 
 SHORT = 40
 """The longest root that leaves the path of a Unix socket, 104 bytes on macOS, room for the folders a test makes in it."""
@@ -22,8 +21,3 @@ def short_temp() -> str:
     if os.name != "posix" or len(os.path.realpath(own)) <= SHORT:
         return own
     return "/tmp"
-
-
-def temp_file(name: str) -> str:
-    """The path of a file ``name`` a test writes to be looked at, a browser's screenshot say."""
-    return str(Path(short_temp()) / name)

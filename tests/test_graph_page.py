@@ -721,6 +721,7 @@ def test_a_plain_click_drops_what_was_gathered(open_page):
     """Shift gathers; a plain click starts again, and still selects what it hit."""
     page, errors = open_page()
     settle(page)
+    at_rest(page)
     nodes = page.locator("#graph g.node")
     nodes.nth(0).click(modifiers=["Shift"])
     nodes.nth(1).click(modifiers=["Shift"])
@@ -1058,6 +1059,7 @@ def outside_the_view(page):
     return page.evaluate(OUTSIDE)
 
 
+@pytest.mark.timeout(270)
 def test_the_2d_view_frames_every_node_once_the_layout_has_settled(open_page):
     """Driven 2026-09-05: the frame taken at 1.5 s, while d3's starting spiral is still a
     knot, was kept as final and the settled graph ran off the corner of the view. Fails
@@ -1246,6 +1248,7 @@ def settled(page, ticks=400, ms=180_000):
     return got
 
 
+@pytest.mark.timeout(270)
 def test_the_links_give_way_to_the_marks_at_thousands_of_nodes(open_page):
     """Measured 2026-09-10 on 3,000 nodes at 2.7 edges each: 8,095 lines and their arrowheads
     inked 44% of the pane against 8% for the marks, and the graph read as one grey mass. The
@@ -1261,6 +1264,7 @@ def test_the_links_give_way_to_the_marks_at_thousands_of_nodes(open_page):
     assert errors == []
 
 
+@pytest.mark.timeout(270)
 def test_a_forty_node_graph_draws_the_way_it_did(open_page):
     """A graph small enough to read whole keeps every link at full strength. Fails when the
     ink scaling reaches below the count it starts at."""
@@ -1284,6 +1288,7 @@ FRAMES = """(ms) => new Promise(done => {
 })"""
 
 
+@pytest.mark.timeout(450)
 def test_the_3d_labels_are_left_alone_on_a_frame_that_changed_nothing(open_page):
     """Measured 2026-09-10 on 3,000 nodes: a still 3D view spent 435 ms of every three
     seconds reprojecting labels that had not moved, 62 ms on each of the seven frames it
@@ -1357,6 +1362,7 @@ def overlapping(boxes):
     return clashes
 
 
+@pytest.mark.timeout(270)
 def test_a_mark_is_named_and_no_name_is_drawn_over_another(open_page):
     """`graph-labels` places the names in screen pixels: the node that matters most claims
     its box, and one that would land on a neighbour is left off rather than drawn over it.

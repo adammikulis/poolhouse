@@ -1,9 +1,10 @@
 """Accurate labels and expandable expert controls through the browser."""
 
+import launch_support
 import pytest
 import test_fleet_page as fleet_page
 
-from tests.short_temp import temp_file
+from poolhouse.fleet import roster
 
 browser = fleet_page.browser
 daemon = fleet_page.daemon
@@ -105,13 +106,13 @@ def test_interactive_chat_command_is_given_to_the_person_without_a_job(joined, o
 
 
 def test_apple_memory_is_one_physical_pool(joined, open_page):
-    joined.ui.members = lambda force=False: [{
-        'name': 'local-mac', 'is_self': True, 'slots': 1, 'free': 1,
-        'device': {'vendor': 'apple', 'unified_memory': True,
-                   'ram_gb': 128, 'ram_used_gb': 45,
-                   'vram_total_gb': 112, 'vram_free_gb': 112,
-                   'serving': [{'models': ['Qwen3.8-27B'], 'context': 262144,
-                                'slots': 1, 'spec_type': 'draft-mtp', 'draft_status': 'active'}]}}]
+    device = {'vendor': 'apple', 'unified_memory': True,
+              'ram_gb': 128, 'ram_used_gb': 45,
+              'vram_total_gb': 112, 'vram_free_gb': 112,
+              'serving': [{'models': ['Qwen3.8-27B'], 'context': 262144,
+                           'slots': 1, 'spec_type': 'draft-mtp', 'draft_status': 'active'}]}
+    row = roster.describe('local-mac', 'http://127.0.0.1:8770', 'machine-local', device, is_self=True)
+    joined.ui.members = lambda force=False: [row]
     page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#pool')
     page.get_by_text('45.0 GB of 128.0 GB in use', exact=False).wait_for()
     meters = page.locator('pool-view poolhouse-meter')
@@ -159,9 +160,12 @@ def test_sign_in_loads_advanced_preference_from_backend(joined, open_page):
 
     joined.ui.settings.always_show_advanced = True
     joined.ui.settings.save(joined.ui.settings_path)
-    page, errors = open_page(joined, path='/ui/#training')
-    page.locator('sign-in input[type="password"]').fill(fleet_page.WORDS)
-    page.locator('sign-in button').click()
+    joined.ui.gated = True
+    with launch_support.hand_typed():
+        page, errors = open_page(joined, path='/ui/#training')
+    expect(page.get_by_role('heading', name='Reconnect to Poolhouse', exact=True)).to_be_visible()
+    # the Poolhouse window signs the page in: its address carries a one-use launch ticket
+    page.goto(f'http://127.0.0.1:{joined.port}/ui/#training')
     expect(page.locator('training-view #config details[data-advanced]')).to_have_attribute('open', '')
     assert not errors
 
@@ -207,7 +211,7 @@ def test_central_output_default_saves_and_survives_reloading(joined, open_page):
     assert not errors
 
 
-def test_settings_switch_sections_without_losing_unsaved_values(joined, open_page):
+def test_settings_switch_sections_without_losing_unsaved_values(joined, open_page, tmp_path):
     from playwright.sync_api import expect
 
     joined.call('/ui/settings', method='POST', cookie=joined.cookie,
@@ -257,7 +261,7 @@ def test_settings_switch_sections_without_losing_unsaved_values(joined, open_pag
     page.get_by_role('tab', name='Maintenance', exact=True).click()
     expect(page.locator('#settings-removal button.danger')).to_be_visible()
     expect(page.locator('#settings-chatting')).not_to_be_visible()
-    page.screenshot(path=temp_file('poolhouse-rebuild-settings-maintenance.png'), full_page=True)
+    page.screenshot(path=str(tmp_path / 'rebuild-settings-maintenance.png'), full_page=True)
     assert not errors
 
 

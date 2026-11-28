@@ -6,7 +6,6 @@ import pytest
 from browser_expect import expect
 from test_fleet_ui import Serving
 
-from tests.short_temp import temp_file
 
 pytest_plugins = ['node_kit']
 pytestmark = pytest.mark.slow
@@ -87,7 +86,7 @@ def test_tasks_filters_artifacts_and_independent_review_payload(tmp_path, playwr
             expect(viewer.locator('.badge')).to_have_text('queued')
             assert posts[-1] == {'action': 'resume', 'id': task['id'], 'reason': 'Person resolved approval'}
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-            page.screenshot(path=temp_file('poolhouse-tasks-mobile.png'), full_page=True)
+            page.screenshot(path=str(tmp_path / 'tasks-mobile.png'), full_page=True)
     finally:
         server.close()
 
@@ -126,7 +125,7 @@ def test_unavailable_tasks_hide_unknown_lanes_and_recover(tmp_path, playwright, 
             expect(viewer.locator('.task-remaining-number')).to_have_text('—')
             expect(viewer.locator('[data-task-count=queued] strong')).to_have_text('—')
             expect(viewer.get_by_role('button', name='Open Projects', exact=True)).to_be_visible()
-            page.screenshot(path=temp_file(f'poolhouse-tasks-unavailable-{status}.png'), full_page=True)
+            page.screenshot(path=str(tmp_path / f'tasks-unavailable-{status}.png'), full_page=True)
             failing = False
             viewer.get_by_role('button', name='Refresh', exact=True).click()
             expect(viewer.locator('.task-row').filter(has_text='Previously loaded task')).to_be_visible()
@@ -209,7 +208,7 @@ def node_tasks(tmp_path, monkeypatch, workspace_node):
         server.close()
 
 
-def test_tasks_page_reads_and_writes_the_selected_projects_board_through_the_persons_session(playwright, node_tasks):
+def test_tasks_page_reads_and_writes_the_selected_projects_board_through_the_persons_session(playwright, node_tasks, tmp_path):
     from person_kit import member_on
 
     from poolhouse.board import person
@@ -246,7 +245,7 @@ def test_tasks_page_reads_and_writes_the_selected_projects_board_through_the_per
         joined = page.evaluate("path => fleetModel.api(path, {method: 'POST', body: '{}'})",
                                f'/ui/projects/{project}/board/connect')
         assert joined['connected'] is True and joined['name'] == persons.name
-        page.screenshot(path=temp_file('poolhouse-tasks-person-board.png'), full_page=True)
+        page.screenshot(path=str(tmp_path / 'tasks-person-board.png'), full_page=True)
 
 
 def test_task_join_completion_does_not_reload_another_selected_project(tmp_path, playwright):

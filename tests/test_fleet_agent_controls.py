@@ -14,7 +14,6 @@ from test_workspace_local_agent import PICK, sleeper, unconfinable
 
 from poolhouse.fleet import extension_routes
 from poolhouse.workspace import agent_routes, localagent, localmodel, localprofile, localstart
-from tests.short_temp import temp_file
 
 __all__ = ['browser']
 
@@ -70,7 +69,7 @@ def test_actual_fleet_controls_require_auth_origin_header_and_typed_person_paylo
 
 
 @pytest.mark.slow
-def test_person_board_controls_preserve_saved_settings_when_native_start_is_unavailable(served, browser, monkeypatch):
+def test_person_board_controls_preserve_saved_settings_when_native_start_is_unavailable(served, browser, monkeypatch, tmp_path):
     server, kit, children, _ = served
     sentence = unconfinable(monkeypatch)
     page = browser.new_page()
@@ -80,7 +79,7 @@ def test_person_board_controls_preserve_saved_settings_when_native_start_is_unav
         controls = page.locator('poolhouse-agents')
         controls.locator('input#name').wait_for()
         page.wait_for_function("() => document.querySelector('poolhouse-agents')?.shadowRoot?.querySelector('#name')?.value === 'local-worker'")
-        page.screenshot(path=temp_file('poolhouse-coding-contract-initial.png'))
+        page.screenshot(path=str(tmp_path / 'coding-contract-initial.png'))
         assert controls.locator('input#model').input_value() == PICK.ref
         assert controls.locator('input#project').input_value() == str(server.ui.settings_path.parent)
         assert controls.get_by_text('Selected model:',exact=False).count() == 1
@@ -94,11 +93,11 @@ def test_person_board_controls_preserve_saved_settings_when_native_start_is_unav
         controls.locator('input#task-rounds').fill('200')
         controls.locator('input#output-tokens').fill('32000')
         assert controls.get_by_text('Tasks could run indefinitely', exact=False).count() == 0
-        page.screenshot(path=temp_file('poolhouse-coding-contract-configured.png'))
+        page.screenshot(path=str(tmp_path / 'coding-contract-configured.png'))
         before = localagent.load(kit.base, 'local-worker')
         controls.get_by_role('button',name='Start a local agent',exact=True).click()
         page.wait_for_function("said => document.querySelector('poolhouse-agents')?.shadowRoot?.querySelector('.note[role=status]')?.textContent.includes(said)", arg=sentence)
-        page.screenshot(path=temp_file('poolhouse-coding-contract-refused.png'))
+        page.screenshot(path=str(tmp_path / 'coding-contract-refused.png'))
         assert not children
         assert localagent.load(kit.base, 'local-worker') == before
         assert controls.locator('input#output-tokens').input_value() == '32000'

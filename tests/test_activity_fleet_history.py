@@ -9,7 +9,6 @@ from test_fleet_ui import Serving
 from poolhouse.activity import writer
 from poolhouse.activity.log import ActivityLog
 from tests.activity_support import person, ring
-from tests.short_temp import temp_file
 
 __all__ = ['person', 'ring']
 
@@ -53,7 +52,7 @@ def test_history_requires_ui_header_and_joined_session(history, monkeypatch):
 
 
 @pytest.mark.slow
-def test_history_groups_agents_expands_actions_and_filters_on_mobile(history, playwright):
+def test_history_groups_agents_expands_actions_and_filters_on_mobile(history, playwright, tmp_path):
     from playwright.sync_api import expect
 
     with playwright.chromium.launch(headless=True) as browser:
@@ -79,5 +78,5 @@ def test_history_groups_agents_expands_actions_and_filters_on_mobile(history, pl
         viewer.locator('#history-search').fill('')
         page.set_viewport_size({'width': 390, 'height': 844})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-        page.screenshot(path=temp_file('poolhouse-agent-history-mobile.png'), full_page=True)
+        page.screenshot(path=str(tmp_path / 'agent-history-mobile.png'), full_page=True)
         assert not errors

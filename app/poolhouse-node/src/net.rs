@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::{Deref, DerefMut};
 use crate::node::update_activity::{Registry, Source, Writer, AdmittedEffect, EffectFlow};
-use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
+use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 use std::time::Duration;
@@ -19,7 +19,7 @@ use crate::beacon::{self, Advert, Beacon, BeaconConfig, BeaconStats, Hooks};
 use crate::cert::{board_fingerprint, Identity};
 use crate::error::{Error, Result};
 use crate::fsutil::{sha256_hex, unhex};
-use crate::gate::Gate;
+use crate::gate::{unhurried, Gate, Permit};
 use crate::lineage::Peer;
 use crate::membership::{Device, Standing};
 use crate::netsync::sync_all_admitted;
@@ -38,7 +38,7 @@ const REFUSED_FOR: Duration = Duration::from_secs(10);
 const MOST_PEER_CONNECTIONS: usize = 128;
 /// The connections one address holds: the devices behind one router each keep one open here and dial a few more.
 const MOST_PEER_PER_ADDRESS: usize = 48;
-/// The last places, kept for addresses a member has connected from.
+/// The last places, kept for the addresses members are at.
 const PEER_RESERVED: usize = 32;
 /// The refused connections drained at once (`tls::close_after_alert`); past that a refused connection is closed straight away.
 const MOST_LINGERING: usize = 32;
@@ -171,7 +171,8 @@ impl Net {
         };
         let shards = Shards::new(node.clone(), &dir, stop.clone())?;
         let standing_of = node.clone();
-        let standing: StandingFn = Arc::new(move |fp| tracked_node(&standing_of, Source::Peer).map_or(Standing::Revoked, |n| n.members.standing(fp)));
+        // Asked during a handshake, whose deadline is the peer's: the wait for the node's lock is not counted in it.
+        let standing: StandingFn = Arc::new(move |fp| unhurried(|| tracked_node(&standing_of, Source::Peer)).map_or(Standing::Revoked, |n| n.members.standing(fp)));
         let listener = TcpListener::bind(cfg.listen)?;
         listener.set_nonblocking(true)?;
         let port = listener.local_addr()?.port();
@@ -183,6 +184,7 @@ impl Net {
             lingering: Gate::new(MOST_LINGERING, MOST_LINGERING, 0), this: OnceLock::new(),
         });
         let _ = net.this.set(Arc::downgrade(&net));
+        net.vouch_recorded()?;
         tracked_node(&net.node, Source::Network)?.facts.listen = Some(listener.local_addr()?.to_string());
         let n = net.clone();
         std::thread::Builder::new().name("peer-listener".into()).spawn(move || n.accept_loop(listener))?;
@@ -203,11 +205,44 @@ impl Net {
         self.stop.store(true, Ordering::SeqCst);
     }
 
+    /// Vouch for the address ``ip`` when ``fp`` is an active member; whether it is one.
+    pub(crate) fn vouch_member(&self, fp: &str, ip: IpAddr) -> bool {
+        tracked_node(&self.node, Source::Network).is_ok_and(|node| self.vouch_under(&node, fp, ip))
+    }
+
+    /// `vouch_member` under the node lock the caller holds, so that no removal comes between the check and the vouching.
+    fn vouch_under(&self, node: &Node, fp: &str, ip: IpAddr) -> bool {
+        let active = node.members.is_active(fp);
+        if active {
+            self.places.vouch(ip, fp);
+        }
+        active
+    }
+
+    /// Vouch for the address each member was last recorded at, which is kept over a restart.
+    fn vouch_recorded(&self) -> Result<()> {
+        let node = tracked_node(&self.node, Source::Network)?;
+        for (fp, peer) in &node.facts.peers {
+            if let Some(addr) = peer.addr.as_deref().and_then(|a| a.parse::<SocketAddr>().ok()) {
+                self.vouch_under(&node, fp, addr.ip());
+            }
+        }
+        Ok(())
+    }
+
+    /// Dial the member ``fp`` at ``addr``; one that answers with its certificate vouches for the address.
+    fn dial_member(&self, fp: &str, addr: SocketAddr) -> Result<PeerClient> {
+        let c = PeerClient::connect(&self.me, addr, Some(fp))?;
+        self.vouch_member(fp, addr.ip());
+        Ok(c)
+    }
+
     fn accept_loop(self: Arc<Net>, listener: TcpListener) {
         while !self.stop.load(Ordering::SeqCst) {
             match listener.accept() {
                 Ok((tcp, from)) => {
-                    let Some(place) = self.places.enter(from.ip()) else { continue };
+                    let tcp = Arc::new(tcp);
+                    let Some(place) = self.places.enter_yielding(from.ip(), &tcp) else { continue };
                     let _ = tcp.set_nonblocking(false);
                     let n = self.clone();
                     // A connection no thread can be started for is closed.
@@ -375,12 +410,14 @@ impl Net {
         }
         node.facts.set_addr(&c.fingerprint, &addr.to_string())?;
         node.facts.peer(&c.fingerprint).last_seen_ms = wall_ms();
+        self.vouch_under(&node, &c.fingerprint, addr.ip());
         Ok(())
     }
 
     // -- join code ----------------------------------------------------------
-    /// The server half of the join-code exchange, run under the node lock by `peer::dispatch`.
-    pub fn join_code_step(&self, node: &mut Node, der: &[u8], op: &str, req: &Value) -> Result<Value> {
+    /// The server half of the join-code exchange, run under the node lock by `peer::dispatch`; ``place`` is the one the asking
+    /// connection holds on the listener.
+    pub fn join_code_step(&self, node: &mut Node, der: &[u8], op: &str, req: &Value, place: Option<&Permit>) -> Result<Value> {
         let fp = crate::cert::cert_fingerprint(der);
         let mut window = locked(&self.window)?;
         let w = window.as_mut().filter(|w| w.open(wall_ms())).ok_or_else(|| Error::Denied("this device is not accepting a join code".into()))?;
@@ -408,6 +445,7 @@ impl Net {
             return Err(Error::Denied(if left { "wrong code".into() } else { "wrong code; the join-code window is closed".into() }));
         }
         peer::record_json(node, "")?;
+        peer::hold(place)?;
         node.enrol_device(der, &name, "join-code", w.by_yes)?;
         let mut grant = peer::record_json(node, &fp)?;
         grant["v"] = json!(1);
@@ -518,7 +556,7 @@ impl Net {
                 continue;
             }
             let result = addr.parse::<SocketAddr>().map_err(|e| Error::Invalid(e.to_string()))
-                .and_then(|a| PeerClient::connect(&self.me, a, Some(&fp)))
+                .and_then(|a| self.dial_member(&fp, a))
                 .and_then(|mut c| self.compatible(&mut c).and_then(|()| sync_all_admitted(&self.node, &mut c, effect)));
             let mut n = tracked_node(&self.node, Source::Network)?;
             if !n.members.is_active(&fp) {
@@ -573,6 +611,7 @@ impl Net {
             return Ok(());
         }
         let mut c = PeerClient::connect_long(&self.me, addr, Some(fp))?;
+        self.vouch_member(fp, addr.ip());
         if let Some(slot) = locked(&self.attaching)?.get_mut(fp) {
             *slot = c.closer();
         }
@@ -589,14 +628,15 @@ impl Net {
         tracked_node(&self.node, Source::Network).is_ok_and(|n| n.members.is_active(fp))
     }
 
-    /// Close the connections kept with devices this one no longer lists as active members: the ones it keeps open to a member (`attach`)
-    /// and the ones a member opened to it.
+    /// Close the connections kept with devices this one no longer lists as active members, the ones it keeps open to a member (`attach`)
+    /// and the ones a member opened to it, and forget the addresses only such devices were at.
     pub fn drop_removed(&self) {
         let Ok(_activity) = self.activity.maintenance(Source::Network) else { return };
         let mut held: BTreeSet<String> = self.attaching.lock().map(|m| m.keys().cloned().collect()).unwrap_or_default();
         held.extend(self.reverse.lock().map(|m| m.keys().cloned().collect::<Vec<_>>()).unwrap_or_default());
         let Ok(node) = tracked_node(&self.node, Source::Network) else { return };
         let gone: Vec<String> = held.into_iter().filter(|fp| !node.members.is_active(fp)).collect();
+        self.places.forget_unless(|fp| node.members.is_active(fp));
         drop(node);
         for fp in gone {
             if let Ok(kept) = self.attaching.lock() {
@@ -685,7 +725,7 @@ impl Net {
             }
         }
         let addr = addr.ok_or_else(|| Error::Invalid("this device has no address for it and it has not connected to this device: a device behind NAT cannot be dialed, it connects to the members whose address it has; wait for its next sync, or run `sync_now` on it".into()))?;
-        let mut c = PeerClient::connect(&self.me, addr, Some(fp)).map_err(|e| match e {
+        let mut c = self.dial_member(fp, addr).map_err(|e| match e {
             Error::Io(io) => Error::Invalid(format!("{io} at {addr}, and it has not connected to this device: a device behind NAT cannot be dialed, it connects to the members whose address it has; wait for its next sync")),
             other => other,
         })?;
@@ -732,7 +772,7 @@ impl Net {
                     Ok(mut n) => crate::api::handle(&mut n, request, peer),
                     Err(error) => respond(request, Err(error)),
                 };
-                if request["method"] == "member_remove" {
+                if matches!(request["method"].as_str(), Some("member_remove" | "pool_submit")) {
                     self.drop_removed();
                 }
                 reply
@@ -922,7 +962,7 @@ mod activity_tests {
     fn the_peer_listener_holds_128_connections_and_keeps_the_last_32_for_known_addresses() {
         let owned=running(); let places=&owned.net.places;
         let at=|last: u8| std::net::IpAddr::from([192,0,2,last]);
-        let known=places.enter(at(200)).unwrap(); known.vouch();
+        let known=places.enter(at(200)).unwrap(); known.vouch("a member");
         let strangers: Vec<_>=(0..200u8).filter_map(|n| places.enter(at(n%4))).collect();
         assert_eq!(1+strangers.len(),96,"addresses no member connected from share all but the last 32 places");
         let more: Vec<_>=(0..200).filter_map(|_| places.enter(at(200))).collect();
