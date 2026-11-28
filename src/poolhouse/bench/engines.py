@@ -451,7 +451,7 @@ def spread(values: Sequence[float], digits: int = 1) -> str:
 
 def tuned(rows: Sequence[Mapping[str, Any]]) -> list[str]:
     """One line per arm, load, depth and kind of work: tokens a second and accepted share over the clean requests,
-    with the gain over the same load's undrafted rate where it was measured."""
+    with the gain over the arm's undrafted load where it was measured."""
     held: dict[tuple[str, str, int, int], list[Mapping[str, Any]]] = defaultdict(list)
     for row in rows:
         if not row.get("contended") and row.get("predicted_ms"):
@@ -461,10 +461,11 @@ def tuned(rows: Sequence[Mapping[str, Any]]) -> list[str]:
             held[(row["arm"], load, row["prompt"], depth)].append(row)
     rate = {key: statistics.median(1000 * r["predicted_n"] / r["predicted_ms"] for r in got)
             for key, got in held.items()}
+    plains = {(arm, prompt): value for (arm, _, prompt, depth), value in rate.items() if depth == 0}
     out = []
     for (arm, load, prompt, depth), got in sorted(held.items()):
         mine = rate[(arm, load, prompt, depth)]
-        plain = rate.get((arm, load, prompt, 0))
+        plain = plains.get((arm, prompt))
         drafted = sum(r.get("draft_n") or 0 for r in got)
         taken = sum(r.get("draft_n_accepted") or 0 for r in got)
         out.append(f"{arm} | {load} | {WORK[prompt]} | depth {depth}: {mine:.1f} tok/s n={len(got)}"
