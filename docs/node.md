@@ -442,7 +442,7 @@ API, for itself or anyone, and a `grant` entry any writer puts on the board with
 allows nothing. What gates a signature is the custody of the key: the operating-system user and a typed confirmation, not the node
 ("Key custody" below says exactly what that does and does not protect).
 
-**The registry.** The actions in `grants::spec::ACTIONS` are `member_remove`, `add_device`, `join_pool`,
+**The registry.** The actions in `grants::spec::ACTIONS` are `member_remove`, `add_device`, `join_pool`, `board_share`,
 `sync_now`, `shard_call`, `shard_consent`, `device_trust`, `task_authority`, `note_verify`, `quarantine_release`,
 `file_delete`, `link_read`, `link_write`, `link_remove`, `source_add`, `pool_create`, `pool_leave`, `admin_manage` and `service_bind`. Anything else is `invalid` to grant. A `service_bind` grant names one exact `service:<digest>` resource, the receiving device fingerprint and one use; it authorizes the compute certificate and endpoint shown by `service_draft`. A fresh proof of the same service private key renews the current approved capability across restarts, with a new live generation. **The floors** are refused by name, at issue, in the fold and at every
 use, whoever signed: `push_main`, `merge_main`, `release_main`, `tag_release`, `force_push`, `act_as_person`, `agent_is_human`,
@@ -632,7 +632,7 @@ picked from the list of the board's main sessions it prints, where the model and
 It enrols the person's key if the node holds none and signs one grant per action and session on this device, 30 days each:
 `task_authority`, `shard_call`, and `note_verify` for the session's subagents too. The
 exact list is the one question, answered by a typed `yes` on the terminal. Nothing else: the pool actions, `shard_consent`, `sync_now`,
-`device_trust`, `quarantine_release`, `file_delete`, `link_read`, `link_write`, `link_remove` and `source_add` stay with the person's own
+`device_trust`, `board_share`, `quarantine_release`, `file_delete`, `link_read`, `link_write`, `link_remove` and `source_add` stay with the person's own
 commands (`poolhouse-workspace grant shard_consent --to NAME --until 30d`, each its own typed `yes`). Each is revoked
 by its id. A class grant stays in the registry but is refused by `grants-setup --family` and `grant --class` unless the person passes
 `--i-understand-registration-is-open`: it is held by every session that says it is of the family, which is any process.
