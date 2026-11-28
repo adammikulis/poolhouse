@@ -19,7 +19,7 @@ from poolhouse.files import read_json, write_json
 __all__ = ["Delegate", "finished", "folder", "graded", "keep", "load", "log_file", "names", "note", "result", "save", "save_result", "set_phase",
            "set_progress", "set_status", "status"]
 
-PROGRESS = ("turns", "tool", "phase", "round", "now", "heard", "tests", "spent", "notices", "told")
+PROGRESS = ("turns", "tool", "phase", "round", "now", "model", "heard", "tests", "spent", "notices", "told")
 """What a status keeps when its state changes."""
 _STATUS = threading.Lock()
 """Held while the status is read and written again: the runner writes progress while a question marks the state from another thread."""
@@ -55,6 +55,12 @@ class Delegate:
     """The attempts to continue a pass that something outside its task broke off (`delegate_resume`); 0 is none, which an older record holds."""
     branch: str = ""
     """The branch of the worktree it edits, which is then ``workdir`` (`delegate_tree`); empty for one that edits no worktree of its own."""
+    card: str = ""
+    """The session card it works (`poolhouse.cards`); empty for a delegate of no card."""
+    memory: bool = False
+    """Whether it has its project's memory: the `recall` and `remember` tools of a sandboxed one (`delegate_memory`)."""
+    recalled: str = ""
+    """What its project's memory said at its start, fenced as data and part of its first message; empty when nothing matched."""
 
     def key(self) -> str:
         """The same lead asking the same thing of the same folder, in the same tier, is the same delegate."""
@@ -64,7 +70,7 @@ class Delegate:
     def message(self) -> str:
         """What the model is told first: who it is and what is asked. Its system prompt names neither, so every delegate of one lead
         starts with the same prompt and a server's prompt cache holds the part they share."""
-        return f"You are {self.name}.\nTask from {self.lead}:\n{self.task}"
+        return f"You are {self.name}.\nTask from {self.lead}:\n{self.task}" + (f"\n\n{self.recalled}" if self.recalled else "")
 
 
 def folder(name: str) -> Path:
@@ -104,7 +110,7 @@ def names() -> list[str]:
 def status(name: str) -> dict[str, Any]:
     """What the runner last wrote: ``state`` (starting, loading, working, asking, done, partial, unapplied, rejected, failed or stopped),
     ``detail``, ``beat``, ``since`` the state began, the ``phase`` (work, review or fix) and its ``round`` and, once a run has said something, its
-    ``turns`` and last ``tool``, what it is doing ``now``, when it was last ``heard``, its last ``tests``, what it ``spent`` and how many
+    ``turns`` and last ``tool``, what it is doing ``now`` and what the ``model`` server is doing with its request, when it was last ``heard``, its last ``tests``, what it ``spent`` and how many
     ``notices`` its lead was given, the last one ``told``."""
     return delegate_record.held(name, "status.json") if valid_name(name) else {}
 
@@ -139,7 +145,7 @@ def set_progress(name: str, turns: int, tool: str) -> None:
 def set_phase(name: str, phase: str, round_: int) -> None:
     """The pass that runs now: its phase and, for a review or a fix, its round."""
     with _STATUS:
-        held = {key: value for key, value in status(name).items() if key not in ("turns", "tool", "now")}
+        held = {key: value for key, value in status(name).items() if key not in ("turns", "tool", "now", "model")}
         write_json(folder(name) / "status.json", safetext.utf8({**held, "phase": phase, "round": round_, "beat": time.time()}))
 
 

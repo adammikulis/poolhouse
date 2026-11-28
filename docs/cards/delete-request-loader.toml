@@ -1,0 +1,13 @@
+title = "Delete the graph request loader nothing calls"
+row = "Five functions that nothing calls"
+task = """
+Nothing calls `load_or_build` of src/poolhouse/graph/requests.py. Confirm with `git grep -n -w load_or_build -- src tests scripts` (only the
+definition), delete the function and every import and name only it used, correct the module's own docstring if it speaks of it, and change nothing
+else. This is a removal: no test changes, so report it as exempt from fail first.
+"""
+read = []
+write = ["src/poolhouse/graph/requests.py"]
+check = "scripts/test all tests/test_graph_requests.py"
+step = 3
+closes = true
+memory = false

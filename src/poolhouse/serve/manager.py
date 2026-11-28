@@ -21,12 +21,14 @@ from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.chat import forget_server
 from poolhouse.client.health import refuses_key, serving_params
 from poolhouse.files import write_json
-from poolhouse.hub import free_memory, room as machine_room
+from poolhouse.hub import free_memory, room as machine_room, uploads
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
 from poolhouse.ownership import lease_file, recorded_servers, same_process
 from poolhouse.serve import (
     admission,
+    draftstart,
+    engines,
     exit_guard,
     guarded,
     inuse,
@@ -47,7 +49,6 @@ from poolhouse.serve.backend import (
     ServerFailed,
     ServerInfo,
     ServerSpec,
-    UnknownFlag,
 )
 from poolhouse.serve.binary import BinaryNotFound
 from poolhouse.serve.children import Children, Exit
@@ -66,13 +67,13 @@ from poolhouse.serve.matching import model_matches, serving_mismatch
 from poolhouse.serve.mlx_tree import MlxTreeBackend
 from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free, reclaim_port
+from poolhouse.serve.preflight import PreflightFailed
 from poolhouse.serve.process import (
     kill_process_tree,
     measuring,
     pid_exists,
     self_or_ancestor,
 )
-from poolhouse.serve.python_engines import ENGINES
 from poolhouse.serve.slotdump import default_slot_save_path
 from poolhouse.serve.weights import resident_of, scaled_timeout, weight_of
 
@@ -128,7 +129,7 @@ class Starting:
     """How a lease may be satisfied: ``roam`` lets it be served on another port, ``escalate``
     lets a server with too few slots be grown, ``anyway`` starts it during a measurement,
     ``iq`` is the IQ-quantisation mode (``off``, ``warn``, ``block``), ``who`` names the asker,
-    and the rest are the checks the start runs."""
+    ``adopt_only`` takes a server already up and starts none, and the rest are the checks the start runs."""
 
     roam: bool = True
     check_flags: bool = True
@@ -138,6 +139,7 @@ class Starting:
     anyway: bool = False
     iq: str = ""
     who: str = ""
+    adopt_only: bool = False
 
     def checks(self) -> dict[str, bool]:
         """The checks a start runs, as the keyword arguments a backend takes."""
@@ -177,11 +179,8 @@ class ServerManager(Admitting):
     def backend_for(self, spec: ServerSpec) -> ServerBackend:
         """The backend that serves ``spec``: the engine it names, tree decoding for MLX
         weights, anything else this manager's own."""
-        if spec.engine:
-            if spec.engine not in ENGINES:
-                raise ServerFailed(f"no serving engine {spec.engine!r}; there are "
-                                   f"{', '.join(sorted(ENGINES))}")
-            return ENGINES[spec.engine]
+        if engine := engines.named(spec.engine):
+            return engine.sandboxing(self.backend.sandboxed)
         if is_mlx(spec.model):
             return self.tree
         return llamacpp_provider.for_model(self.backend, spec.model, self._format_backends)
@@ -210,7 +209,7 @@ class ServerManager(Admitting):
               roam: bool = True, check_flags: bool = True, preflight: bool = True,
               warmup_request: bool = True, escalate: bool = False, anyway: bool = False,
               iq: str = "", on_event: Event | None = None,
-              say: Callable[[str], None] | None = None, reason: str = "") -> ServerInfo:
+              say: Callable[[str], None] | None = None, reason: str = "", adopt_only: bool = False) -> ServerInfo:
         """A healthy server for ``spec``, from the broker: one already up that fits, else a
         new one when the machine has the memory for it. The broker waits for memory and
         refuses with `AdmissionRefused` when none comes free. ``reason`` is why, in one line.
@@ -223,7 +222,7 @@ class ServerManager(Admitting):
         wanted = quant_guard.mode(iq or self.iq)
         if wanted == "block":
             quant_guard.enforce(spec.model, gpu_layers=spec.n_gpu_layers, asked=wanted)
-        how = Starting(roam, check_flags, preflight, warmup_request, escalate, anyway, wanted)
+        how = Starting(roam, check_flags, preflight, warmup_request, escalate, anyway, wanted, adopt_only=adopt_only)
         info = self.broker.start(spec, Caller(on_event=on_event, say=say or self.say,
                                               claim=provenance.asked(reason)),
                                  timeout=timeout, options=asdict(how))
@@ -246,7 +245,8 @@ class ServerManager(Admitting):
         ``say`` (else ``self.say``, else the log) is told of each decision.
         """
         how = how or Starting()
-        roam, escalate, anyway = how.roam, how.escalate, how.anyway
+        roam, anyway = how.roam, how.anyway
+        escalate = how.escalate and self.backend_for(spec).escalates
         told = say or self.say or logger.info
         spec = self._permitted(spec, escalate)
         iq = self._quant_guard(spec, how)
@@ -255,6 +255,8 @@ class ServerManager(Admitting):
             (told if drafting.worth_saying else logger.info)(f"port {spec.port}: {drafting.note}")
         resolved_timeout = (
             timeout if timeout is not None else scaled_timeout(weight_of(spec.model)))
+        if how.adopt_only:
+            return self._already_up(spec, on_event=on_event)
 
         self._sweep_orphans(spec.port, told)
         with self._port_lock(spec.port):
@@ -320,9 +322,9 @@ class ServerManager(Admitting):
             if roam and (reused := self._reusable(spec, on_event=on_event)):
                 return reused
             try:
-                info = self._launch(spec, timeout=resolved_timeout, on_event=on_event,
-                                    anyway=anyway, reuse=roam, **how.checks())
-            except (Measuring, admission.AdmissionRefused, guarded.SentinelRefused):
+                info, served = self._launch(spec, timeout=resolved_timeout, on_event=on_event,
+                                            anyway=anyway, reuse=roam, **how.checks())
+            except (Measuring, PreflightFailed, admission.AdmissionRefused, guarded.SentinelRefused):
                 self._forget(spec.port)
                 raise
             except ServerFailed:
@@ -334,7 +336,7 @@ class ServerManager(Admitting):
             if not info.mtp_note:
                 info = replace(info, mtp_note=drafting.note)
             if not info.adopted:
-                self._record(spec, info, iq=iq)
+                self._record(served, info, iq=iq, asked=spec)
             return info
 
     def _quant_guard(self, spec: ServerSpec, how: Starting) -> quant_guard.IqQuant | None:
@@ -352,6 +354,8 @@ class ServerManager(Admitting):
         """``spec`` as it will be started, or `ServerFailed` when the port was just given up
         on or a limit on this machine refuses the lease."""
         spec = reusing_installed(spec)
+        if spec.chat_template_file and self.backend_for(spec).renders_late_system:
+            spec = replace(spec, chat_template_file=None)
         if escalate:
             # llama.cpp's slot-save file carries the cache's stream count, and a restore
             # raises "n_stream mismatch" the moment that count differs from the file's --
@@ -384,6 +388,8 @@ class ServerManager(Admitting):
         A head the default picked is verified against sentinel's pin like the weights; one
         that fails is left out and the lease goes on without it.
         """
+        if self.backend_for(spec).drafts_itself:
+            return spec, mtp.Plan()
         try:
             binary = self.backend_for(spec).binary  # type: ignore[attr-defined]
         except (BinaryNotFound, OSError, AttributeError):
@@ -397,8 +403,9 @@ class ServerManager(Admitting):
         return mtp.applied(spec, chosen), chosen
 
     def _launch(self, spec: ServerSpec, *, timeout: float, on_event: Event | None = None,
-                anyway: bool = False, reuse: bool = False, **starting: Any) -> ServerInfo:
-        """Start ``spec``, telling ``on_event`` when the load begins and ends.
+                anyway: bool = False, reuse: bool = False, **starting: Any) -> tuple[ServerInfo, ServerSpec]:
+        """Start ``spec``, telling ``on_event`` when the load begins and ends. Answers the server and the spec it
+        started with, which names another draft head, or none, where the one asked for would not do (`draftstart`).
 
         The one place a fresh process is asked for, so ``up``, an adopt that falls
         through to a real start, and :meth:`escalate`'s relaunch all say the same thing
@@ -412,32 +419,24 @@ class ServerManager(Admitting):
                 f"{measurement_said(held)}. Loading a second model onto it would spoil "
                 f"that measurement and this one. Wait for it to finish, stop it with "
                 f"'python -m poolhouse.bench stop', or pass --anyway to load beside it.")
+
+        def verify(part: object) -> None:
+            guarded.verify(part, state_file=self.state_file, stop=self.reclaim)
+
         for part in guarded.parts_of(spec):
             if part:
-                guarded.verify(part, state_file=self.state_file, stop=self.reclaim)
+                verify(part)
         emit(on_event, "loading", port=spec.port, model=Path(str(spec.model)).name,
               slots=max(1, int(spec.parallel or 1)))
-        admitted = self._admitted(spec, on_event=on_event, reuse=reuse, load_s=timeout)
+        start = draftstart.Start(spec, self.backend_for(spec), verify=verify, say=self.say or logger.warning)
+        admitted = self._admitted(start.first.spec, on_event=on_event, reuse=reuse, load_s=timeout, asked=spec)
         if isinstance(admitted, ServerInfo):
-            return admitted
-        try:
-            info = self.backend_for(spec).start(spec, lease=admitted, timeout=timeout, **starting)
-        except (ServerFailed, UnknownFlag) as why:
-            if spec.mtp is not True:
-                raise
-            mtp.failed(spec.model, spec.draft, getattr(self.backend_for(spec), "binary", None))
-            spec = replace(spec, draft=None, spec_type="", mtp=False)
-            note = f"MTP off: the server would not start with it ({str(why).splitlines()[0]})"
-            note += "; docs/serving.md, 'Multi-token prediction', has the one-command check"
-            (self.say or logger.warning)(f"port {spec.port}: {note}; starting without")
-            info = replace(self.backend_for(spec).start(spec, lease=admitted, timeout=timeout,
-                                                        **starting), mtp_note=note)
-        else:
-            if spec.mtp is True:
-                info = replace(info, mtp=Path(str(spec.draft)).name if spec.draft else "embedded",
-                               mtp_note=f"MTP on: {spec.spec_type}")
-        emit(on_event, "ready", port=spec.port, load_s=info.load_s, warmup_s=info.warmup_s)
-        return info
+            return admitted, spec
+        info, served = start.run(
+            lambda backend, tried: backend.start(tried, lease=admitted, timeout=timeout, **starting))
+        emit(on_event, "ready", port=served.port, load_s=info.load_s, warmup_s=info.warmup_s)
+        uploads.serving(served.model, served.draft or "", say=self.say or logger.warning)
+        return info, served
 
     def _slots_shortfall(self, spec: ServerSpec) -> ServerSpec | None:
         """The settings actually running on ``spec.port``, if the only way they disagree with
@@ -513,16 +512,16 @@ class ServerManager(Admitting):
         moved = replace(spec, port=free_port())
         with self._port_lock(moved.port):
             try:
-                info = self._launch(moved, timeout=timeout, on_event=on_event,
-                                    anyway=anyway, reuse=True, **starting)
-            except (Measuring, admission.AdmissionRefused, guarded.SentinelRefused):
+                info, served = self._launch(moved, timeout=timeout, on_event=on_event,
+                                            anyway=anyway, reuse=True, **starting)
+            except (Measuring, PreflightFailed, admission.AdmissionRefused, guarded.SentinelRefused):
                 self._forget(moved.port)
                 raise
             except ServerFailed:
                 self._forget(moved.port)
                 return None
             if not info.adopted:
-                self._record(moved, info)
+                self._record(served, info, asked=moved)
             return info
 
     def adopt(self, spec: ServerSpec) -> ServerInfo | None:
@@ -615,11 +614,11 @@ class ServerManager(Admitting):
                            kv_unified=True)
         resolved_timeout = (
             timeout if timeout is not None else scaled_timeout(weight_of(spec.model)))
-        info = self._launch(new_spec, timeout=resolved_timeout, on_event=on_event,
-                            anyway=anyway)
+        info, served = self._launch(new_spec, timeout=resolved_timeout, on_event=on_event,
+                                    anyway=anyway)
         # recorded now, not after every restore: a restore failure below must not leave a
         # live, healthy process this manager has forgotten it started
-        self._record(new_spec, info)
+        self._record(served, info, asked=new_spec)
 
         restore(replace(run, base_url=info.base_url), live, summaries=summaries,
                 saved=saved)
@@ -709,7 +708,10 @@ class ServerManager(Admitting):
                      stop_on_exit=self.stop_on_exit)
 
     def _record(self, spec: ServerSpec, info: ServerInfo,
-                iq: quant_guard.IqQuant | None = None) -> None:
+                iq: quant_guard.IqQuant | None = None, asked: ServerSpec | None = None) -> None:
+        """Write down the server started with ``spec``. Where the lease ``asked`` for another draft head, that is
+        kept beside it, so the same lease still finds this server."""
+        swapped = asked is not None and (str(asked.draft or ""), asked.spec_type) != (str(spec.draft or ""), spec.spec_type)
         kept = kvcache.effective(spec)
         pending = self._mine.get(str(spec.port)) or {}
         drafting = not (spec.mtp is True and not info.mtp)  # a head the server refused is not one it runs with
@@ -719,7 +721,10 @@ class ServerManager(Admitting):
                    "kv_notes": list(kept.notes), "draft": str(spec.draft or "") if drafting else "",
                    "spec_type": spec.spec_type if drafting else "",
                    "chat_template_file": str(spec.chat_template_file or ""), "mtp_note": info.mtp_note,
-                   **({"iq_warning": iq.name} if iq is not None else {})})
+                   **({"iq_warning": iq.name} if iq is not None else {}),
+                   **({"asked": {"draft": str(asked.draft or ""), "spec_type": asked.spec_type,
+                                 **({"mtp": Path(str(asked.draft or "embedded")).name} if asked.mtp else {})}}
+                      if swapped else {})})
         forget_server(info.base_url)
         if info.process is not None:
             self.children.hold(info.port, info.process)
@@ -819,11 +824,12 @@ def serve(
     on_event: Event | None = None,
     say: Callable[[str], None] | None = None,
     reason: str = "",
+    adopt_only: bool = False,
     **spec_kwargs: object,
 ) -> Iterator[ServerInfo]:
     """Run a server for the duration of the block, yielding its ``ServerInfo``.
 
-    ``roam``, ``escalate``, ``anyway``, ``iq``, ``on_event``, ``say`` and ``reason`` go to
+    ``roam``, ``escalate``, ``anyway``, ``iq``, ``on_event``, ``say``, ``reason`` and ``adopt_only`` go to
     :meth:`ServerManager.lease`. The keyword ``keep=True`` (not a spec field) leaves a server this block started up when it
     ends, recorded under its own pid as `poolhouse-serve up` leaves one, so the next caller takes it warm; `poolhouse-serve down` ends it.
     """
@@ -836,7 +842,7 @@ def serve(
         **spec_kwargs,  # type: ignore[arg-type]
     )
     info = manager.lease(spec, timeout=timeout, roam=roam, escalate=escalate,
-                         anyway=anyway, iq=iq, on_event=on_event, say=say, reason=reason)
+                         anyway=anyway, iq=iq, on_event=on_event, say=say, reason=reason, adopt_only=adopt_only)
     try:
         yield info
     finally:

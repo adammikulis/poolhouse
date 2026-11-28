@@ -12,6 +12,11 @@ on:
 permissions:
   contents: read
 
+# A newer commit of a pull request cancels the run of the older one.
+concurrency:
+  group: audit-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   pip-audit:
     runs-on: ubuntu-latest

@@ -58,6 +58,12 @@ BRIEF = "poolhouse-brief.md"
 UNGUARDED = "OpenCode ran without poolhouse's plugin reporting, so its tool calls were not judged; nothing more it changed is published"
 
 
+COMPACTION = {"background": False}
+"""What every run's config says of compaction. Left on, the release writes a summary beside the run from 60,000 tokens before its limit: on a server
+that has one slot for the conversation that request waits behind a step, takes the slot and leaves the next step to read everything again. Compaction
+at the limit, which the release then does itself, asks with the conversation as it stands and the summary's words at its end."""
+
+
 @dataclass(frozen=True, slots=True)
 class Setup:
     """What one run's config is made from: the server's URL, the model's name and its window (``served``) and its token; the path of the plugin's
@@ -77,9 +83,9 @@ class Setup:
 
 def config(setup: Setup) -> str:
     """The ``opencode.json`` of one run: the provider, the one model with its window, the plugin, no sharing and no update, a tool's output cut at as
-    many bytes as the window holds tokens (a quarter of it, so one call cannot fill it), and permissions that never ask (the classifier and the mount
-    decide). A reply's head is waited for as long as it takes: a request may wait its turn for a slot, and a long prompt is read for minutes, while
-    the release's own limit (300 s) would give both up."""
+    many bytes as the window holds tokens (a quarter of it, so one call cannot fill it), no summary written beside the run (`COMPACTION`) and
+    permissions that never ask (the classifier and the mount decide). A reply's head is waited for as long as it takes: a request may wait its turn
+    for a slot, and a long prompt is read for minutes, while the release's own limit (300 s) would give both up."""
     base_url, alias, window = setup.served
     model: dict[str, Any] = {"name": alias, "tool_call": True, "limit": {"context": window, "output": min(window, 32768)}}
     if setup.thinking:
@@ -91,7 +97,8 @@ def config(setup: Setup) -> str:
         "provider": {setup.provider: {"npm": "@ai-sdk/openai-compatible", "name": "poolhouse",
                                       "options": {"baseURL": base_url.rstrip("/") + "/v1", "apiKey": setup.token, "headerTimeout": False},
                                       "models": {alias: model}}},
-        "enabled_providers": [setup.provider], "plugins": [setup.plugin], "share": "disabled", "autoupdate": False}   # a path, to a folder
+        "enabled_providers": [setup.provider], "plugins": [setup.plugin], "share": "disabled", "autoupdate": False,   # a path, to a folder
+        "compaction": dict(COMPACTION)}
     if window:
         made["tool_output"] = {"max_bytes": window, "max_lines": window}
     if setup.agent is None:
@@ -106,7 +113,8 @@ def plugin(settings: dict[str, Any]) -> str:
     refuses, or cannot ask about, throws, which OpenCode returns to the model as the tool's error. It tells the parent it is loaded before the first
     request to the model, and adds to a tool's result what the lead sent. Where the settings give them: ``tools`` are the only tools offered to the
     model; ``fixed`` lists ``[text, replacement]``, each text taken out of the system prompt and the tools' descriptions, so every run starts with the same
-    prompt; ``shell`` (``argv`` of a program that ends a command at its timeout, the ``program`` it runs the command with, and the ``default`` and
+    prompt. Both shape a step's request and a compaction's alike (this release asks each through a hook of its own), so a summary is asked with the
+    prompt the server has already read; ``shell`` (``argv`` of a program that ends a command at its timeout, the ``program`` it runs the command with, and the ``default`` and
     ``most`` seconds) is what every shell command runs under, never in the background."""
     return harness_js.prelude(settings) + r'''const fileTools = ["read", "edit", "write"];
 const quoted = (word) => "'" + String(word).replaceAll("'", "'\\''") + "'";
@@ -159,6 +167,7 @@ export default {
     await ctx.tool.hook("execute.before", before);
     await ctx.tool.hook("execute.after", after);
     await ctx.session.hook("context", context);
+    await ctx.session.hook("compaction", context);
   },
 };
 '''
@@ -253,23 +262,33 @@ def argv_of(binary: str, alias: str, extra: Sequence[str], directory: str, throu
             "--format", "json", "--model", f"{PROVIDER}/{alias}", *extra)
 
 
+def lasting(context: isolation.Context) -> list[list[str]]:
+    """The plugin's ``fixed`` replacements of one box: each of its paths that differs from box to box, with what the prompt says in its place, so every box
+    asks with the same prompt and the server reuses what it has read."""
+    temporary = [[context.temp, "$TMPDIR"]] if context.temp else []
+    return [[context.stage, "."], [str(context.home), "$HOME"], *temporary]
+
+
 def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], settings: Mapping[str, Any],
               files: Mapping[str, str]) -> isolation.Rendering:
     """What a run of ``command`` (the binary and ``run``'s own words) needs written in its home: the config of ``setup`` (its bridge's URL, token,
-    plugin and lead server are this launch's), the plugin with ``settings`` over the client command and the stage, and ``files``."""
+    plugin and lead server are this launch's), the plugin with ``settings`` over the client command, the stage and the box's `lasting` replacements, and
+    ``files``."""
     binary, *extra = command
     alias, server = setup.served[1], context.lead_server()
     made = Setup((context.base_url, alias, setup.served[2]), context.token, str(context.file(PLUGIN)),
                  [server["command"], *server["args"]], families.for_model_id(alias).think_kwargs(False), setup.brief, setup.agent)
     written = {f".opencode-config/{CONFIG}": config(made),
-               f"{PLUGIN}/{ENTRY}": plugin({"hook": context.client_argv("hook"), "root": context.stage, **settings}), **files}
+               f"{PLUGIN}/{ENTRY}": plugin({"hook": context.client_argv("hook"), "root": context.stage, "fixed": lasting(context), **settings}), **files}
     through = ("", "")
     if context.server_socket:
         written[SOCKET_PRELOAD] = through_socket(context.server_socket)
         through = (context.server_socket, str(context.file(SOCKET_PRELOAD)))
 
     def noted(lacks: str) -> dict[str, str]:
-        """The config again, with what the box lacks at the end of the agent's own system prompt."""
+        """The config again, with what the box lacks at the end of the agent's own system prompt; nothing to write for a box that lacks nothing."""
+        if not lacks:
+            return {}
         agent = {**made.agent, "system": f"{made.agent['system']}{lacks}\n"}
         return {f".opencode-config/{CONFIG}": config(replace(made, agent=agent))}
 
@@ -277,8 +296,9 @@ def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], 
                                noted=noted if made.agent else None)
 
 
-OWN = ("$schema", "model", "small_model", "provider", "tool_output", "instructions")
-"""The keys of `config` a run in place adds to the person's own configuration: the served model and the workspace brief."""
+OWN = ("$schema", "model", "small_model", "provider", "tool_output", "compaction", "instructions")
+"""The keys of `config` a run in place adds to the person's own configuration: the served model, what keeps its prompt cache and the workspace
+brief."""
 UNCHANGING = {"edit": "deny", "bash": "deny", "shell": "deny"}
 STANCES = {coding_policy.READ_ONLY: UNCHANGING, coding_policy.PLAN: UNCHANGING, coding_policy.YOLO: {"*": "allow"}}
 """OpenCode's own permission rules for each `harnessing.stance` of a run in place that changes the person's."""

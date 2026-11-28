@@ -29,6 +29,7 @@ session that started it, and the wait for its reply."""
 
 CATALOG: dict[str, str] = {
     **dict.fromkeys(LEAD_TOOLS, "safe"),
+    **dict.fromkeys(("mcp__lead__recall", "mcp__lead__remember"), "safe"),   # a delegate's project memory: the parent answers, and only proposes
     **dict.fromkeys(("Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite", "TaskList", "TaskGet",
                      "ToolSearch", "BashOutput", "read_file", "list_dir", "grep_files", "update_plan"), "safe"),
     **dict.fromkeys(("mcp__workspace__workspace_inbox", "mcp__workspace__workspace_thread",

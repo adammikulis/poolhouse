@@ -92,6 +92,9 @@ class Serving:
     # Whether every slot's cache is one pool the server masks per sequence, or a cache per
     # slot. None leaves the build's own default; measure before choosing.
     kv_unified: bool | None = None
+    # The prompt cache in RAM, in MiB, where conversations pushed off a slot are kept
+    # (`--cache-ram`). None leaves llama-server's own 8192.
+    cache_ram_mb: int | None = None
     # A small model or a head of the same family, guessing ahead for the large one to check
     # in one pass. A path, or hf:owner/repo[/file.gguf]; "" for none. Which `--spec-type` it
     # needs is read from what it is called, so a head is never served as the wrong method.
@@ -124,6 +127,8 @@ class Serving:
     # longest this machine's room holds, or what scored best -- said outright rather
     # than left for a caller to work out from the number alone. "" when slots > 1.
     note: str = ""
+    # Another engine than llama.cpp (`poolhouse.serve.engines`), "" for llama.cpp's own.
+    engine: str = ""
 
     @property
     def context(self) -> int:
@@ -142,6 +147,8 @@ class Serving:
             out["cache_type_k"] = out["cache_type_v"] = self.cache_type
         if self.kv_unified is not None:
             out["kv_unified"] = bool(self.kv_unified)
+        if self.cache_ram_mb is not None:
+            out["cache_ram_mb"] = int(self.cache_ram_mb)
         if self.draft:
             from poolhouse.hub import spec_for
 
@@ -171,6 +178,8 @@ class Serving:
             out["flash_attn"] = bool(self.flash_attn)
         if self.extra_args:
             out["extra_args"] = tuple(self.extra_args)
+        if self.engine:
+            out["engine"] = self.engine
         return out
 
     def manager(self) -> Any | None:

@@ -245,7 +245,7 @@ def test_studio_generates_from_checkpoint_with_quantized_cache(base, data, cpu, 
     result = run('tool-calls', settings(base), data, out, say=lambda line: None)
     checkpoint = materialize_checkpoint(Path(result['checkpoint']), out, tmp_path / 'model')
     generate = mlx_lm.generate
-    monkeypatch.setattr(gpu, 'hold', lambda purpose: nullcontext())
+    monkeypatch.setattr(gpu, 'hold', lambda purpose, *, wait_s=None: nullcontext())
     monkeypatch.setattr(mlx_lm, 'generate', lambda *args, **kwargs:
                         generate(*args, stream=cpu.new_stream(cpu.cpu), **kwargs))
     result = execute({'type': 'generate', 'parameters': {'temperature': 0, 'max_tokens': 2}},

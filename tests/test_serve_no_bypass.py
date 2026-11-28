@@ -21,7 +21,7 @@ from poolhouse.testing.fakes import FakeBackend
 
 SRC = Path(__file__).resolve().parent.parent / "src" / "poolhouse"
 
-LAUNCHERS = {"serve/backend.py", "serve/mlx_tree.py", "serve/python_engines.py"}
+LAUNCHERS = {"serve/backend.py", "serve/mlx_tree.py", "serve/python_engines.py", "serve/strata/backend.py"}
 """The modules that call `backend.launch`, the one function that starts a model server
 process. Each calls it from a `start` that takes the manager's `Lease`."""
 

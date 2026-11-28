@@ -70,6 +70,13 @@ def _said(event: Mapping[str, Any]) -> tuple[str, list[str]]:
         speed = f", {event['tokens_per_second']} tokens/s" if event.get("tokens_per_second") is not None else ""
         return (f"step {event.get('turn')} ended ({event.get('reason')}): {event.get('input_tokens')} read, {event.get('cache_read_tokens')} from "
                 f"cache, {event.get('output_tokens')} written in {event.get('model_seconds')}s on the model{speed}{reuse}"), []
+    if kind == "compaction":
+        return f"the harness is compacting the conversation, about {event.get('tokens')} tokens", []
+    if kind == "rewrite":
+        return "history rewritten", _quoted(event.get("why"))
+    if kind == "reread":
+        return (f"step {event.get('turn')} read {event.get('input_tokens')} tokens of its prompt again; {event.get('cache_read_tokens')} came from "
+                "the server's cache"), []
     if kind == "error":
         return f"error: {_line(event.get('why'))}", []
     if kind == "attempt_end":

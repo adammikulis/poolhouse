@@ -12,7 +12,7 @@ from pathlib import Path
 
 from poolhouse.hub import installed_for
 from poolhouse.hub.probe import MachineMemory
-from poolhouse.serve import estimate as est, kvcache, mlxfit
+from poolhouse.serve import engines, estimate as est, kvcache, mlxfit
 from poolhouse.serve.backend import ServerSpec
 from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.suggest import Suggestion, largest_fit
@@ -46,6 +46,8 @@ def fitted(spec: ServerSpec, machine: MachineMemory | None = None) -> tuple[Serv
     """
     if int(spec.context) > 0:
         return spec, ""
+    if spec.engine and (answered := engines.named(spec.engine).fit(spec)) is not None:
+        return answered
     slots = max(1, int(spec.parallel or 1))
     kv = f"{spec.cache_type_k or est.DEFAULT_KV}/{spec.cache_type_v or est.DEFAULT_KV}"
     if is_mlx(spec.model):

@@ -41,13 +41,13 @@ Add a second device. Both devices run `poolhouse` once. On the first, turn the n
 ```python
 ph.pool.listen(agreed=True)                  # a person said yes to turning the network on
 made = ph.pool.add_device()
-print(made["addresses"][0], made["code"])    # what the person types on the second device, e.g. 192.168.2.27 123456
+print(made["addresses"][0], made["code"])    # what the person types on the second device, e.g. 192.0.2.27 123456
 ```
 
 On the second device the person tells their agent the address and the code, or the script passes them:
 
 ```python
-ph.pool.join("192.168.2.27", "...")     # this device now belongs to that pool
+ph.pool.join(host="192.0.2.27", code="...")     # this device now belongs to that pool
 ```
 
 An `open` pool (`ph.pool.found("home", "open")`) takes a device on the same network without a code, only the fingerprint of the device that

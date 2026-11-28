@@ -54,7 +54,7 @@ def up(monkeypatch, path, **extra):
     monkeypatch.setattr(lifecycle_cli.holding, "check_fits", reached)
     args = argparse.Namespace(model=str(path), draft="", mmproj="", iq="", **extra)
     with pytest.raises(Reached):
-        lifecycle_cli._lease(args, argparse.Namespace(model=str(path), n_gpu_layers=0), None, chosen="", profile=None)
+        lifecycle_cli._lease(args, argparse.Namespace(model=str(path), n_gpu_layers=0, engine=""), None, chosen="", profile=None)
 
 
 def test_a_person_serving_a_changed_file_by_name_pins_it_again_and_says_so(person, changed, monkeypatch, caplog):

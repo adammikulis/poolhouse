@@ -30,6 +30,7 @@ from poolhouse.client import is_healthy, reported_models, serving_params
 from poolhouse.ownership import recorded_servers
 from poolhouse.serve import (
     admission,
+    broker_room,
     canaries,
     grant,
     guarded,
@@ -54,7 +55,6 @@ from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free
 from poolhouse.serve.preflight import PreflightFailed
 from poolhouse.serve.process import every_server, kill_process_tree, pid_exists
 from poolhouse.serve.reclaim import busy_now
-from poolhouse.serve.weights import resident_of
 
 __all__ = ["Ask", "Broker", "BrokerError", "Grant", "Held", "Waiting"]
 
@@ -71,7 +71,9 @@ def _shape_of(settings: Mapping[str, Any]) -> dict[str, Any]:
     """The settings of a server that decide whether it can be shared, from an ask's spec, a
     `ServerSpec` as a dict or a lease record."""
     out: dict[str, Any] = {"device": admission.device_of(settings)}
-    for key in ("context", "parallel", "cache_type_k", "cache_type_v", "spec_type", "mtp",
+    if settings.get("asked"):
+        out["asked"] = settings["asked"]
+    for key in ("engine", "context", "parallel", "cache_type_k", "cache_type_v", "spec_type", "mtp",
                 "embedding", "reranking", "draft", "chat_template_file", "spec_draft_max", "spec_p_min"):
         if key in settings and settings[key] is not None:
             out[key] = settings[key]
@@ -187,8 +189,14 @@ class Held:
         """Why this server cannot serve ``asked`` (an ask's spec), or "" when it can: it must
         hold at least the context and slots asked for and run the cache type, MTP head and
         speculation kind asked for, on the device asked for. Sharing by model alone served a 256K request from a
-        32K server."""
-        have = self.shape
+        32K server. A server started with another head than asked is taken by any of its `admission.servings`."""
+        if other := admission.engine_difference(str(asked.get("engine") or ""), self.shape):
+            return f"port {self.port}: {other}"
+        found = [self._short(have, asked) for have in admission.servings(self.shape)]
+        return "" if "" in found else found[0]
+
+    def _short(self, have: Mapping[str, Any], asked: Mapping[str, Any]) -> str:
+        """`short_of` for one way ``have`` of reading what this server serves."""
         if (device := admission.device_of(asked)) != have.get("device", device):
             return f"port {self.port} computes on {have['device']}, {device} asked"
         for key, what in (("context", "tokens of context"), ("parallel", "slot(s)")):
@@ -337,7 +345,8 @@ class Broker(BrokerStops, BrokerHolds):
         how = Starting(**{**{k: v for k, v in options.items() if k != "backend"},
                           "who": caller.label or who()})
         pid = caller.pid or os.getpid()
-        refused_keys.settle(self, spec, caller.say or manager.say or self.say)
+        if not how.adopt_only:   # settling a server that refuses the key may replace it
+            refused_keys.settle(self, spec, caller.say or manager.say or self.say)
         reservation = self._reserve_model_start(pid, str(spec.model), timeout)
         try:
             with grant.broker_grant():
@@ -373,11 +382,14 @@ class Broker(BrokerStops, BrokerHolds):
                             info=info, shape=_shape_of(
                                 {f.name: getattr(spec, f.name)
                                  for f in dataclasses.fields(spec)}))
+                if entry.get("asked"):
+                    held.shape["also"] = (admission.as_served(entry), entry["asked"])
                 self.servers[info.port] = held
             elif not info.adopted:
                 held.info = info
             held.holders[lease] = (pid, label)
-            held.records[lease] = dict(record)
+            named = {"draft": Path(str(entry.get("draft") or "")).name} if entry.get("asked") else {}
+            held.records[lease] = {**record, **named}
             self._write_held()
             self._cond.notify_all()
         self._hand_to(pid, info.pid)
@@ -578,18 +590,24 @@ class Broker(BrokerStops, BrokerHolds):
         return self._fit(ask, evict)
 
     def _fit(self, ask: Ask, evict: list[Held]) -> tuple[None, list[Held], str]:
-        need, room = ask.weight or resident_of(ask.models[0]), self.room()
+        need, room = broker_room.need(ask), self.room()
         if not need or room is None:
             return None, evict, ""
-        freed = sum(h.weight for h in evict)
+        records = recorded_servers(self.manager.state_file)
+
+        def given_back(held: Held) -> int:
+            """The bytes stopping ``held`` frees: all its record holds, its KV and prompt cache among it, and never less than its weights."""
+            return max(held.weight, admission.entry_mb(records[held.port]) * admission.MIB if held.port in records else 0)
+
+        freed = sum(given_back(h) for h in evict)
         spare = sorted((h for h in self.servers.values() if h.ours and not h.loading
                         and not h.holders and not h.spared_why() and h not in evict),
                        key=lambda h: h.idle_since)
         while need > room + freed and spare:
             evict.append(spare.pop(0))
-            freed += evict[-1].weight
+            freed += given_back(evict[-1])
         if need <= room + freed:
-            return None, evict, ""
+            return None, evict + broker_room.more_for(ask, spare, room + freed, given_back), ""
         held = [h for h in self.servers.values() if h.holders or h.loading or h.spared_why()]
         if not held:
             return None, evict, ""
@@ -628,7 +646,7 @@ class Broker(BrokerStops, BrokerHolds):
         asked = ask.port if ask.port and port_is_free(ask.port) and not any(
             h.port == ask.port for h in self.servers.values()) else 0
         placeholder = Held(port=asked or free_port(), model=ask.models[0], purpose=ask.purpose,
-                           loading=True, weight=ask.weight or resident_of(ask.models[0]),
+                           loading=True, weight=broker_room.need(ask),
                            shape=_shape_of(ask.spec),
                            holders={waiting.lease: (ask.pid, ask.label)},
                            records={waiting.lease: dict(ask.record)})

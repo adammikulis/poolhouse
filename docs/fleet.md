@@ -132,7 +132,7 @@ A pool is founded and approved by a person's admin key on the Rust node (docs/no
 
 ```
 owner$   poolhouse-pool add-device                     # prints a short join code
-newbox$  poolhouse-pool join CODE --host 192.168.2.44  # joins the owner's pool
+newbox$  poolhouse-pool join CODE --host 192.0.2.44  # joins the owner's pool
 owner$   poolhouse-pool members                        # the new device is a member
 poolhouse-pool status                                  # the devices that answered
 ```
@@ -141,9 +141,9 @@ poolhouse-pool status                                  # the devices that answer
 
 ```
 NAME             URL                          ROOM             STATE        COMMIT       UPDATES      SERVING
-studio           https://192.168.2.44:8770    96.0G            idle         0ce5bc5 3h   main 4m      quince-2b.gguf:8099
-larch            https://192.168.2.27:8770    20.5/24.0 GB     measuring    0ce5bc5 3h   releases 2h  -
-harrowgate       https://192.168.2.31:8770    20.5/24.0 GB     idle         9f2c1ab 6d   off          -
+studio           https://192.0.2.44:8770      96.0G            idle         0ce5bc5 3h   main 4m      quince-2b.gguf:8099
+larch            https://192.0.2.27:8770      20.5/24.0 GB     measuring    0ce5bc5 3h   releases 2h  -
+harrowgate       https://192.0.2.31:8770      20.5/24.0 GB     idle         9f2c1ab 6d   off          -
 ```
 
 COMMIT is what each device is running and how old that commit is; UPDATES is how it keeps

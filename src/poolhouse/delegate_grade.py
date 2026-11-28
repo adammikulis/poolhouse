@@ -80,7 +80,8 @@ def snapshot(source: str, into: Path) -> dict[str, Any]:
 def _asked(rec: store.Delegate) -> dict[str, Any]:
     return {"name": rec.name, "lead": rec.lead, "board": rec.board, "task": rec.task, "kind": rec.kind or ("edit" if rec.edit else "read"),
             "label": rec.label, "project": rec.source, "edit": rec.edit, "permissions": rec.permissions, "sandboxed": rec.sandboxed,
-            "max_turns": rec.max_turns, "review_rounds": rec.review_rounds, "model": rec.model, "commit": rec.commit, "started": rec.started}
+            "max_turns": rec.max_turns, "review_rounds": rec.review_rounds, "model": rec.model, "commit": rec.commit, "started": rec.started,
+            "card": rec.card, "memory": rec.memory}
 
 
 def opened(rec: store.Delegate) -> None:

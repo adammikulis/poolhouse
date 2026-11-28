@@ -377,7 +377,7 @@ python -m poolhouse.bench report --profile
 ```
 Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf
   for         ask -- tool-calling over a graph
-  serve with  --context 32768 --build unsloth --draft mtp-…-shared-Q8_0.gguf
+  serve with  --context 32768 --draft mtp-…-Q4_K_M.gguf
               --spec draft-mtp --spec-n-max 4 --kv q8_0 --mmproj auto --reasoning-budget 0
               and -ub 2048 --spec-draft-p-min 0.5 -- llama-server's own, passed by --profile
   measured at --parallel 2, 16384 per slot
@@ -406,8 +406,8 @@ line reads:
   ask with    tight + few + rounds 20 at temperature 1.0 / top-p 0.95 / top-k 20
 ```
 
-Because no two models want the same settings. Flash-Next answers well only on a fork build,
-with the shared MTP head at four, a q8_0 cache, its thinking off, `-ub 2048`,
+Because no two models want the same settings. Flash-Next answers well with its MTP head at four,
+a q8_0 cache, its thinking off, `-ub 2048`,
 `--spec-draft-p-min 0.5` and three ways of asking at once; gemma-4 wants its thinking left
 on, a different head at two, and none of those flags. Written as defaults each would be
 wrong for the other. Written per model they are what they are — and each record names the
@@ -726,21 +726,22 @@ offering it as one. `hub.draft_note(repo)` reads the head's own `MTP/README.md` 
 itself — `poolhouse-models files` prints it under the draft line it already reports, so a
 publisher's warning is read before a load, not guessed at after one fails.
 
-**Some heads need a fork, and one chooser — told which binary will serve — decides.**
-Measured for real on 2026-09-01 (mainline `3466812`; the managed `b11380` is covered under "What has been measured"): every `mtp-` head under `unsloth/Qwen3.8-Flash-Next-GGUF/MTP/` fails on
-mainline llama.cpp master with `check_tensor_dims: tensor 'output_hc_norm.weight' not
-found` — mainline loads a draft as a whole model, and those heads carry only the head,
-borrowing the trunk's embeddings from the target — and the repository's own `MTP/README.md`
-says so: "these do not work on mainline ggml-org/llama.cpp yet". There used to be three
-resolvers for `--draft auto`, and the one the bench used chose that head for mainline twice,
+**A head that borrows its target's embeddings needs a fork, and one chooser, told which binary will serve, decides.**
+A `shared` head carries only the draft block and borrows the trunk's embeddings from the target,
+which mainline llama.cpp cannot do (it loads a draft as a whole model). A head that carries its own
+loads on mainline. There used to be three
+resolvers for `--draft auto`, and the one the bench used chose a borrowing head for mainline twice,
 paying an 87G load each time to reach the error. Now there is one:
 `hub.choose_head(model, binary=...)` returns what to serve, the `--spec-type` it needs, and
-one sentence saying why — "shipped beside the weights", "withheld: the repository's README
-says it needs a fork and this build is mainline", "no head shipped beside the weights" —
+one sentence saying why ("shipped beside the weights", "withheld: this head borrows its
+target's embeddings, which only a fork build loads", "no head shipped beside the weights"),
 with the build read off the binary itself (`serve.binary.borrows`: a build under
 `named/` or whose `BUILD.json` names a fork can borrow; `current`, brew and anything on PATH
 cannot). A fork build is given unsloth's recommended `shared-Q8_0` head; mainline avoids a
-`shared` head altogether. The model may be an `hf:` reference, a path (the repository is
+`shared` head altogether. Which head a build is offered is read off the file's name, never off a
+README's prose, which can be older than the files beside it. A mainline server starting with a head
+from a Hub cache is handed the newest copy it loads (`serve.drafthead`, `docs/model-discovery.md`,
+"New uploads"). The model may be an `hf:` reference, a path (the repository is
 read off the Hub cache's directory name), or a bare filename; offline, the head already
 beside the weights on disk is the answer. `poolhouse-serve up --draft auto` prints the
 reason and the README's sentence under it, and `poolhouse-models files` prints the head,
@@ -1029,11 +1030,7 @@ a GPU the owner has leased), and the same run with `--n-cpu-moe` for the baselin
 that exists, the uniform-use assumption in the estimates is a floor on what a hot cache could
 gain, not a measurement.
 
-#### Candidate engine: Strata (unverified)
+#### A second engine: Strata
 
-A third-party engine named Strata is said to run this model from 8 GB of VRAM. Nothing about
-it has been fetched, read or run. Under the replace-wrap-or-keep rule it is a candidate to
-evaluate, and before any decision someone reads its repository (licence, supported
-architectures, how it places experts and the n-gram table, its prompt-processing path), the
-author's own benchmark command and hardware, and whether it exposes a server API poolhouse's
-broker could lease.
+[docs/strata.md](strata.md) covers serving this model with `--engine strata`: what is installed, what it does not do, and
+`poolhouse-serve strata-proof`. llama.cpp stays the default until both are measured on the same device.

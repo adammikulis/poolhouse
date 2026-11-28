@@ -30,6 +30,7 @@ from poolhouse import (
     hub,
     isolation,
     lead_bridge,
+    leasetable,
     opencode_install,
     provision,
     runtime,
@@ -44,11 +45,26 @@ from poolhouse.errors import Denied
 from poolhouse.http import shown
 from poolhouse.hub.naming import DENSE_27B
 from poolhouse.hub.probe import MachineMemory
-from poolhouse.isolation import places
+from poolhouse.isolation import places, prompt_watch
 from poolhouse.isolation.refusals import sentence
+from poolhouse.node_health import Refused
 from poolhouse.ownership import recorded_servers
 from poolhouse.sandbox import run as sandbox_run
-from poolhouse.serve import admission, chat_template, leases, profile, suggest, wired
+from poolhouse.serve import (
+    admission,
+    chat_template,
+    engines,
+    estimate,
+    leases,
+    ledger,
+    node_memory,
+    profile,
+    suggest,
+    wired,
+)
+from poolhouse.serve.backend import ServerFailed, ServerSpec, flags_of
+from poolhouse.serve.binary import BinaryNotFound
+from poolhouse.serve.manager import default_manager
 from poolhouse.serve.matching import model_matches
 from poolhouse.serve.named import named as named_server
 from poolhouse.serve.ports import DEFAULT_HOST
@@ -85,6 +101,7 @@ __all__ = [
     "serving",
     "session_files",
     "stance",
+    "takes_up",
     "window_of",
 ]
 
@@ -158,6 +175,9 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
                     help="the draft head that guesses tokens ahead for the model to check: 'auto' takes "
                          "the smallest one on this machine, 'none' serves without one, or name one "
                          "(default: %(default)s)")
+    ap.add_argument("--engine", default="", choices=["", *sorted(engines.ENGINES)], metavar="NAME",
+                    help="serve the model with another engine than llama.cpp, such as strata (default: llama.cpp, or the "
+                         "engine of the server already up)")
     ap.add_argument(f"--{name}", default="", metavar="PATH",
                     help=f"the {name} binary (default: the one on PATH, else the one Poolhouse keeps)")
     return ap
@@ -244,6 +264,10 @@ class Want:
     draft: str = "auto"
     keep: bool = False
     """Leave a server this session started up when it ends, so the next session takes it warm (a delegate's)."""
+    engine: str = ""
+    """Another engine than llama.cpp to serve with (`poolhouse.serve.engines`)."""
+    adopt_only: bool = False
+    """Take a server already up as it stands and never start, grow or replace one (a session card's delegate)."""
 
 
 MIN_WINDOW = 65_536
@@ -275,9 +299,13 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
             why = f"holds {each:,} tokens a slot and {asked:,} were asked for"
         elif held < want.slots:
             why = f"serves {held} slot(s) and {want.slots} were asked for"
-        elif patched is not None and not _same_file(entry.get("chat_template_file"), patched):
+        elif want.engine and str(entry.get("engine") or "") != want.engine:
+            why = f"is not served by the {want.engine} engine"
+        elif (patched is not None and not _renders_late_system(str(entry.get("engine") or ""))
+              and not _same_file(entry.get("chat_template_file"), patched)):
             why = "renders the model's own chat template, which refuses a system message after the first"
-        elif want.draft.lower() not in ("auto", "none") and Path(want.draft).name != Path(str(entry.get("draft") or "-")).name:
+        elif want.draft.lower() not in ("auto", "none") and Path(want.draft).name not in {
+                Path(str(one.get("draft") or "-")).name for one in admission.servings(entry)}:
             why = f"does not run the draft head {want.draft} that was named"
         else:
             cache = said_cache(str(entry.get("cache_type_k") or ""), str(entry.get("cache_type_v") or ""))
@@ -287,11 +315,24 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
             # lease would claim no head over one that has one
             return Config(serving=Serving(model=found, port=port, slots=held, slot_context=each,
                                           cache_type=cache or KV, draft=head, spec_type=kind,
-                                          mtp=None if entry.get("mtp") or head or kind else False))
+                                          mtp=None if entry.get("mtp") or head or kind else False,
+                                          engine=str(entry.get("engine") or "")))
         declined.append(f"{up} {why}; leasing its own")
     for line in declined:
         say(line)
     return None
+
+
+def takes_up(model: str) -> bool:
+    """Whether a delegate on ``model`` would take a server already up as it stands, so that it starts none."""
+    found = str(hub.located(model, loose=True) or model)
+    return adopted(found, Want(keep=True), chat_template.written_beside(found), lambda _line: None) is not None
+
+
+def _renders_late_system(name: str) -> bool:
+    """Whether the engine ``name`` renders a system message after the first by itself."""
+    engine = engines.ENGINES.get(name)
+    return engine is not None and engine.renders_late_system
 
 
 def _same_file(recorded: object, patched: Path) -> bool:
@@ -300,6 +341,46 @@ def _same_file(recorded: object, patched: Path) -> bool:
         return bool(recorded) and Path(str(recorded)).resolve() == Path(patched).resolve()
     except OSError:
         return False
+
+
+def prompt_cache_mb(kv_bytes: int, total: int, left: int) -> int | None:
+    """The prompt cache (``--cache-ram``, in MiB) of a coding session's server, whose conversations may fill a KV cache of ``kv_bytes`` on a machine
+    of ``total`` bytes with ``left`` bytes of the memory servers are admitted against once this one and those already up are counted: room for two
+    conversations, at most a quarter of the machine and half of what is left, the rest being for later servers; None where llama-server's default
+    holds as much. A conversation another request pushes off its slot is put there, and one that does not fit is read again from its start. Its
+    saved state is about twice its KV cache (the draft head's copy beside it): 45 KiB a token were measured where the estimate of the KV cache
+    alone was 25."""
+    held = min(4 * kv_bytes, total // 4, max(left, 0) // 2) // wired.MIB
+    return held if held > wired.CACHE_RAM_MB else None
+
+
+def conversation_cache_mb(found: str, serving_: Serving) -> int | None:
+    """`prompt_cache_mb` for the weights ``found`` served as ``serving_``, out of what the servers and leases already up leave, so asking for it
+    does not refuse this start. None when their header, this machine's memory or its lease table does not say enough, or the build has no
+    ``--cache-ram``. What it gives is counted with the server (`admission.estimate_bytes`)."""
+    try:
+        meta = estimate.read_meta(Path(found))
+        setup = estimate.Setup(context=serving_.context, kv_cache_type=serving_.cache_type)
+        kv = estimate.estimate_meta(meta, 0, setup).kv_cache_bytes if meta else 0
+        need = admission.estimate_bytes(ServerSpec(model=found, **serving_.lease())) if kv else 0
+        if not need or not _takes_cache_ram(found, serving_):
+            return None
+        # a start is admitted against the servers' records and against the node's leases (`serve.admitting`): the fuller one binds
+        held = max(ledger.taken(recorded_servers()), node_memory.committed(leasetable.default().listing())[0])
+    except (OSError, ValueError, KeyError, TypeError, Refused):
+        return None
+    return prompt_cache_mb(kv, hub.total_memory(), (admission.budget_mb() - held) * wired.MIB - need)
+
+
+def _takes_cache_ram(found: str, serving_: Serving) -> bool:
+    """Whether the build that will serve ``found`` has ``--cache-ram``: a start passing a flag its build lacks is refused. True for one that
+    lists no flags, and for one not here yet, since the build installed as it starts has it."""
+    try:
+        backend = (serving_.manager() or default_manager()).backend_for(ServerSpec(model=found))
+        known = flags_of(backend.binary)
+    except (AttributeError, OSError, BinaryNotFound, ServerFailed):
+        return True
+    return not known or "--cache-ram" in known
 
 
 def config_for(found: str, want: Want, say: Callable[[str], None]):
@@ -311,6 +392,11 @@ def config_for(found: str, want: Want, say: Callable[[str], None]):
     fit = None
     if isinstance(requested, bool) or not isinstance(requested, int) or requested < 0:
         raise ValueError("context must be 0 (automatic) or a positive token count")
+    if want.engine:   # the engine fits its own context and picks its own drafter; llama.cpp's profiles do not apply
+        say(f"serving with the {want.engine} engine")
+        named = draft.lower()
+        return Config(serving=Serving(model=found, port=port, slots=slots, slot_context=requested // slots, engine=want.engine,
+                                      spec_type="" if named in ("auto", "none") else named, mtp=False if named == "none" else None))
     if not requested:
         fit = suggest.largest_fit(found, slots=slots)
         if fit.context <= 0 or fit.verdict not in {"green", "yellow"}:
@@ -345,28 +431,36 @@ def config_for(found: str, want: Want, say: Callable[[str], None]):
         settings.update(cache_type=fit.kv_cache_type, flash_attn=fit.flash_attn,
                         extra_args=("-ub", str(fit.batch)))
     say(f"  {each:,} tokens a slot, {settings['cache_type']} KV cache")
-    return dataclasses.replace(config, serving=dataclasses.replace(config.serving, **settings))
+    made = dataclasses.replace(config.serving, **settings)
+    if made.cache_ram_mb is None and (held := conversation_cache_mb(found, made)):
+        made = dataclasses.replace(made, cache_ram_mb=held)
+        say(f"  a prompt cache of up to {held:,} MiB, so another request does not push this conversation out of it")
+    return dataclasses.replace(config, serving=made)
 
 
 @contextlib.contextmanager
 def serving(model: str, want: Want, say: Callable[[str], None], by: str) -> Iterator[tuple[str, object, str]]:
     """``(base_url, config, found)`` for the model served for the block; the server goes when
-    the block ends unless one was already up."""
+    the block ends unless one was already up. With ``want.adopt_only``, ValueError where no server up can be taken."""
     found = str(hub.located(model, loose=True) or model)
     note(found, by=by)
     patched = chat_template.written_beside(found)
     config = adopted(found, want, patched, say)
     taking = config is not None  # the server up is the one asked for; a second copy beside it is never started for the session
+    if config is None and want.adopt_only:
+        raise ValueError(f"no server already up serves {Path(found).name} as this session needs it, and this session starts none")
     if config is None:
         leasing = say if leases.already_up(found, want.port) is None else (lambda _line: None)
         config = config_for(found, want, leasing)
-        if not admitted(found, config.serving.context, say, kv=config.serving.cache_type):
+        # an engine of its own is admitted by its own estimate at the lease; the wired-limit check reads llama.cpp's
+        if not config.serving.engine and not admitted(found, config.serving.context, say, kv=config.serving.cache_type):
             raise SystemExit(2)
-        if patched is not None:
+        if patched is not None and not _renders_late_system(config.serving.engine):
             leasing("this model's template refuses a system message after the first; serving "
                     f"with one that renders it instead ({patched.name})")
     with served(config, say=say, timeout=900.0, cache_reuse=256, warmup=False, escalate=True,
-                chat_template_file=patched, roam=not taking, keep=want.keep, reason=f"{by} session on {Path(found).name}",
+                chat_template_file=patched, roam=not taking, keep=want.keep, adopt_only=want.adopt_only,
+                reason=f"{by} session on {Path(found).name}",
                 on_event=lambda e: say(f"  {e.get('event')}: " + ", ".join(
                     f"{k}={v}" for k, v in e.items() if k != "event"))) as base_url:
         yield base_url, config, found
@@ -579,10 +673,11 @@ def serve_and_run(args: argparse.Namespace, name: str, say: Callable[[str], None
         return run((base_url, alias, window_of(base_url)))
     began = time.time()
     try:
-        with serving(args.model or default_model(), Want(args.port, args.slots, args.ctx, args.no_profile, args.draft), say, name) as (base_url, config, found):
+        want = Want(args.port, args.slots, args.ctx, args.no_profile, args.draft, engine=args.engine)
+        with serving(args.model or default_model(), want, say, name) as (base_url, config, found):
             alias = alias_of(base_url, found)
             say(f"{name} on {base_url} as {alias!r}, up in {time.time() - began:.0f}s")
-            return run((base_url, alias, config.serving.slot_context))
+            return run((base_url, alias, config.serving.slot_context or window_of(base_url)))
     except ValueError as why:
         say(f"error: {why}")
         return 2
@@ -614,6 +709,8 @@ class Harness:
     conversation: str | None = None
     observe: Callable[[str, Mapping[str, Any], Mapping[str, Any]], None] | None = None
     """Told each hook event of the box, with its payload and the answer it was given."""
+    watch: prompt_watch.Watch | None = None
+    """What compares the launch's prompts (`isolation.Plan.watch`): a caller's own for a conversation it takes up from an earlier launch."""
 
 
 @contextlib.contextmanager
@@ -647,13 +744,16 @@ def confined(args: argparse.Namespace, run: Session, how: Harness,
     plan = isolation.Plan(how.name, how.binary, str(run.cwd), coding_policy.Policy(args.permissions, args.execution_mode), base_url,
                           isolation.Lease.of(alias, window, args.slots), serverkeys.for_url(base_url), helper.name, decide,
                           lead.run, render, notice,
-                          args.launch.grants, helper.name if how.conversation is None else how.conversation, dict(how.extras), how.interactive)
+                          args.launch.grants, helper.name if how.conversation is None else how.conversation, dict(how.extras), how.interactive,
+                          verbs=lead.verbs, watch=how.watch)
     confinement = isolation.prepare(plan)
     try:
         yield confinement
     finally:
         confinement.close()
-        for text in confinement.said():
+        rewrites = confinement.model_look().rewrites
+        more = (f"{len(rewrites) - 1} later requests rewrote history too; the last: {rewrites[-1]}",) if len(rewrites) > 1 else ()
+        for text in (*confinement.said(), *rewrites[:1], *more):
             how.say(text)
 
 

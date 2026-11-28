@@ -1,5 +1,14 @@
 # Qwen3.8-Flash-Next MTP heads: why they fail on mainline, and what runs them
 
+**Superseded 2026-11-28.** Mainline merged this head's graph
+([#29761](https://github.com/ggml-org/llama.cpp/pull/29761)) and Unsloth re-exported the
+self-contained heads on 2026-10-05; `docs/architectures/qwen4exp.md` says what serves now. Heads
+exported before then give `blk.48` a compress ratio of 0, which mainline's `graph_mtp` still builds
+k-pool inputs for and never reads, so `set_input_k_idxs` asserts on an unallocated tensor
+([#30592](https://github.com/ggml-org/llama.cpp/pull/30592), open, is the loader-side tolerance;
+Poolhouse carries no patch for it and fetches the newer head instead). What follows is the record of
+the day it was written.
+
 Written 2026-09-01. Everything below is either **measured** (this machine, or a cited source
 that ran it) or **claimed** (a README or a comment). Dates are UTC. People are not named:
 every source is the PR, comment, discussion or repository it came from, linked.

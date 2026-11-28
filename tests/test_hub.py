@@ -468,12 +468,23 @@ class TestDraftForBorrows:
         held_readmes(monkeypatch, held)
         return hub
 
-    def test_a_head_whose_readme_warns_is_withheld_by_default(self, monkeypatch, tmp_path):
+    def test_mainline_takes_the_head_that_carries_its_own_embeddings(self, monkeypatch, tmp_path):
+        """A README written before a publisher re-exported its heads still says mainline cannot
+        load them; the file's own name says which head borrows, so the sentence decides nothing."""
         hub = self._repo(monkeypatch, tmp_path,
                          note="These do not work on mainline ggml-org/llama.cpp yet.")
 
+        own = "hf:maker/thing-GGUF/MTP/mtp-thing-Q8_0.gguf"
+        assert hub.draft_for("maker/thing-GGUF") == own
+        assert hub.draft_for("maker/thing-GGUF", borrows=False) == own
+
+    def test_a_repository_of_borrowing_heads_offers_mainline_none(self, monkeypatch, tmp_path):
+        hub = self._repo(monkeypatch, tmp_path)
+        monkeypatch.setattr(hub, "files", lambda repo, **kw: [
+            one for one in self.SHELVES.get(repo, []) if one[0] != "MTP/mtp-thing-Q8_0.gguf"])
+
         assert hub.draft_for("maker/thing-GGUF") == ""
-        assert hub.draft_for("maker/thing-GGUF", borrows=False) == ""
+        assert hub.draft_for("maker/thing-GGUF", borrows=True).endswith("mtp-thing-shared-Q8_0.gguf")
 
     def test_the_same_head_is_offered_when_the_binary_can_borrow(self, monkeypatch, tmp_path):
         hub = self._repo(monkeypatch, tmp_path,
@@ -482,13 +493,6 @@ class TestDraftForBorrows:
         found = hub.draft_for("maker/thing-GGUF", borrows=True)
         # the recommended shared-Q8_0 head is preferred over its shared-BF16 sibling
         assert found == "hf:maker/thing-GGUF/MTP/mtp-thing-shared-Q8_0.gguf"
-
-    def test_a_head_with_no_warning_is_offered_either_way(self, monkeypatch, tmp_path):
-        hub = self._repo(monkeypatch, tmp_path, note="")   # no MTP/README.md at all
-
-        assert hub.draft_for("maker/thing-GGUF", borrows=False) != ""
-        assert hub.draft_for("maker/thing-GGUF", borrows=False) == \
-            hub.draft_for("maker/thing-GGUF", borrows=True)
 
 
 class TestFetch:
@@ -719,8 +723,11 @@ class TestChooseHead:
             (where / "BUILD.json").write_text(json.dumps(manifest))
         return binary
 
-    def test_mainline_is_refused_a_head_whose_readme_names_a_fork(self, monkeypatch, tmp_path):
+    def test_mainline_is_refused_a_head_that_borrows_its_targets_embeddings(
+            self, monkeypatch, tmp_path):
         hub = self._hub(monkeypatch, tmp_path, notes={"maker/flash-GGUF": self.FORK_ONLY})
+        monkeypatch.setitem(self.SHELVES, "maker/flash-GGUF", [
+            one for one in self.SHELVES["maker/flash-GGUF"] if one[0] != "MTP/mtp-flash-Q8_0.gguf"])
         mainline = self._binary(tmp_path / "current",
                                 {"commit": "abc1234", "repo": "ggml-org/llama.cpp"})
 
@@ -729,7 +736,7 @@ class TestChooseHead:
         assert chosen.path == ""
         assert chosen.spec_type == ""
         assert chosen.borrows is False
-        assert chosen.why.startswith("withheld: the repository's README says it needs a fork")
+        assert chosen.why.startswith("withheld: this head borrows its target's embeddings")
         assert chosen.note == self.FORK_ONLY
 
         # a brew bottle or anything on PATH has no manifest at all, and is mainline too
@@ -820,8 +827,8 @@ class TestChooseHead:
         assert hub.repo_of("flash-UD-IQ4_XS.gguf") == "maker/flash-GGUF"
         assert hub.repo_of(str(snapshot / "flash-UD-IQ4_XS-00001-of-00002.gguf")) == \
             "maker/flash-GGUF"
-        withheld = hub.choose_head("flash-UD-IQ4_XS.gguf", binary=mainline)
-        assert withheld.path == "" and withheld.why.startswith("withheld")
+        own = hub.choose_head("flash-UD-IQ4_XS.gguf", binary=mainline)
+        assert own.path == "hf:maker/flash-GGUF/MTP/mtp-flash-Q8_0.gguf"
         given = hub.choose_head("flash-UD-IQ4_XS.gguf", binary=fork)
         assert given.path == "hf:maker/flash-GGUF/MTP/mtp-flash-shared-Q8_0.gguf"
 
@@ -867,7 +874,7 @@ class TestChooseHead:
         out = capsys.readouterr().out
         assert "draft head shipped with it: hf:maker/flash-GGUF/MTP/mtp-flash-shared-Q8_0.gguf" in out
         assert f"  {self.FORK_ONLY}" in out
-        assert "this build (mainline): withheld" in out
+        assert "this build (mainline): hf:maker/flash-GGUF/MTP/mtp-flash-Q8_0.gguf" in out
         assert "--build forkname (fork): hf:maker/flash-GGUF/MTP/mtp-flash-shared-Q8_0.gguf" in out
 
 
@@ -1008,8 +1015,8 @@ class TestHeadsOnThisMachine:
         monkeypatch.setattr(hub, "forks", lambda *a, **k: (False, ["mended"]))
         found = hub.heads_for(root / "quince-9b-UD-Q4_K_XL.gguf")
         assert [(h.name, h.build) for h in found] == [
-            ("mtp-quince-9b-shared-Q4_K_M.gguf", "mended"), ("mtp-quince-9b-Q8_0.gguf", "")]
-        assert "needs --build mended" in found[0].said()
+            ("mtp-quince-9b-Q8_0.gguf", ""), ("mtp-quince-9b-shared-Q4_K_M.gguf", "mended")]
+        assert "needs --build mended" in found[1].said()
 
     def test_a_borrowing_head_is_left_out_when_no_build_here_loads_it(self, tmp_path,
                                                                      monkeypatch):

@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -24,8 +25,8 @@ from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.health import refuses_key, serving_params
 from poolhouse.node_health import Refused
 from poolhouse.ownership import recorded_servers
-from poolhouse.serve import admission, inuse, ledger, node_memory, unmanaged
-from poolhouse.serve.backend import Lease, ServerBackend, ServerInfo, ServerSpec
+from poolhouse.serve import admission, engines, inuse, ledger, node_memory, unmanaged
+from poolhouse.serve.backend import Lease, ServerBackend, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.events import Event, emit
 from poolhouse.serve.leases import merge_state, orphaned
 from poolhouse.serve.matching import model_matches, serving_mismatch
@@ -54,11 +55,14 @@ class Admitting:
         def _save(self) -> None: ...
         def _pending(self, spec: ServerSpec, *, lease: str = "", est_mb: int = 0) -> Lease: ...
         def backend_for(self, spec: ServerSpec) -> ServerBackend: ...
+        def adopt(self, spec: ServerSpec) -> ServerInfo | None: ...
+        def _port_lock(self, port: int) -> threading.Lock: ...
 
-    def _admitted(self, spec: ServerSpec, *, on_event: Event | None = None,
-                  reuse: bool = False, load_s: float = 0.0) -> Lease | ServerInfo:
+    def _admitted(self, spec: ServerSpec, *, on_event: Event | None = None, reuse: bool = False,
+                  load_s: float = 0.0, asked: ServerSpec | None = None) -> Lease | ServerInfo:
         """The record for a server about to start, written once the machine's ledger and the node have given it the memory and the
-        slot; or, with ``reuse``, the running server that already serves ``spec``.
+        slot; or, with ``reuse``, the running server that already serves ``spec``, or ``asked``, what the lease asked for
+        before a draft head was chosen for it.
 
         The ledger (`poolhouse.serve.ledger`, the records every process writes: the core's servers among them) is asked first and
         its reservation written in the same step as the look, so a core server starting at the same moment sees this one. The
@@ -69,10 +73,10 @@ class Admitting:
         told = self.say or logger.info
         began = time.monotonic()
         memory_until = began + admission.wait_s()
-        wanted = admission.estimate_bytes(spec)
+        wanted = engines.wanted_bytes(spec)
         need = -(-wanted // admission.MIB)
         ledger.never_fits(spec.model, need)
-        asked: dict | None = None
+        request: dict | None = None
         reserved = handed = False
         waiting = last = ""
         try:
@@ -81,6 +85,8 @@ class Admitting:
                     records = recorded_servers(self.state_file)
                     found, loading = (self._compatible(spec, records, on_event) if reuse
                                       else (None, False))
+                    if found is None and reuse and asked is not None:
+                        found = self._compatible(asked, records, on_event)[0]
                     if found is not None:
                         return found
                     if not loading or time.monotonic() - began >= load_s:
@@ -89,11 +95,11 @@ class Admitting:
                             self._pending(spec, lease="", est_mb=need)
                             reserved = True
                         if reserved:
-                            asked = asked or node_memory.ask(self.table, spec, wanted, pid=os.getpid(),
-                                                           ttl_s=int(load_s) + admission.KEEP_S)
-                            if asked["state"] == "held":
+                            request = request or node_memory.ask(self.table, spec, wanted, pid=os.getpid(),
+                                                                 ttl_s=int(load_s) + admission.KEEP_S)
+                            if request["state"] == "held":
                                 handed = True
-                                return self._pending(spec, lease=asked["id"], est_mb=need)
+                                return self._pending(spec, lease=request["id"], est_mb=need)
                             waiting = f"waiting for memory -- {node_memory.said(self.table, wanted)}"
                         else:
                             waiting = f"waiting for memory -- {said}"
@@ -107,12 +113,12 @@ class Admitting:
                 if waiting != last:
                     told(f"port {spec.port}: {waiting}")
                     last = waiting
-                asked = self._polled(asked)
+                request = self._polled(request)
         finally:
             if not handed:
-                if asked is not None:
+                if request is not None:
                     with contextlib.suppress(OSError, Refused):
-                        self.table.release(asked["id"])
+                        self.table.release(request["id"])
                 if reserved:
                     self._mine.pop(str(spec.port), None)
                     self._save()
@@ -183,6 +189,15 @@ class Admitting:
         """A running server on another port that serves ``spec`` as asked, else ``None``."""
         return self._compatible(spec, recorded_servers(self.state_file), on_event)[0]
 
+    def _already_up(self, spec: ServerSpec, *, on_event: Event | None = None) -> ServerInfo:
+        """The running server that serves ``spec``, on its port or another; `ServerFailed` when none does. Nothing is started, grown or
+        stopped."""
+        with self._port_lock(spec.port):
+            found = self.adopt(spec) or self._reusable(spec, on_event=on_event)
+        if found is None:
+            raise ServerFailed(f"no server already up serves what port {spec.port} was asked for, and this lease starts none")
+        return found
+
     def register_unmanaged(self, port: int, seen: unmanaged.Examined) -> None:
         """Put the examined server on ``port`` in the registry as one poolhouse does not own."""
         with self._exclusive():
@@ -206,6 +221,8 @@ class Admitting:
             told(f"port {spec.port}: not adopting pid {seen.pid} -- it refuses this build's key")
             return None
         mismatch = serving_mismatch(spec, reported_models(base_url), serving_params(base_url))
+        if other := admission.engine_difference(spec.engine, {}):   # a server found running is a llama-server
+            mismatch.append(other)
         if mismatch:
             told(f"port {spec.port}: not adopting pid {seen.pid} -- " + "; ".join(mismatch))
             return None

@@ -29,7 +29,7 @@ Refusal = founding.Refusal
 """A call that could not go on: ``str`` is one sentence to pass on; ``needs`` (`approval`, `device`, `time`, `none`), ``where`` (what is missing,
 and where) and ``then`` (`wait`, `retry`, `ask-owner`, `stop`) say what happens next. A subclass of `ph.Denied`."""
 DEFAULT_PORT = 7447
-NOT_AN_ADDRESS = "That is not a device's address: type what the other device shows, like 192.168.1.20 or 192.168.1.20:7447."
+NOT_AN_ADDRESS = "That is not a device's address: type what the other device shows, like 192.0.2.20 or 192.0.2.20:7447."
 SCOPED_ADDRESS = "An address with a % in it works only on the computer that shows it: type another address the other device shows."
 
 

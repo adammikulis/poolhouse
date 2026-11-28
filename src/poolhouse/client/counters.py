@@ -21,7 +21,7 @@ from time import monotonic
 
 from poolhouse.http import Options, ServerError, request_bytes
 
-__all__ = ["Block", "Ledger", "Speculative", "counting", "read_speculative", "sampling_named"]
+__all__ = ["Block", "Ledger", "Speculative", "counting", "metrics_text", "read_speculative", "sampling_named"]
 
 METRICS_PATH = "/metrics"
 
@@ -110,6 +110,15 @@ def _round(value: float | None, places: int) -> float | None:
     return None if value is None else round(value, places)
 
 
+def metrics_text(base_url: str, *, timeout: float = 5.0, guard: Callable[[str], str] | None = None) -> str:
+    """The server's ``/metrics`` as text; empty where it does not answer one."""
+    try:
+        reply = request_bytes(f"{base_url.rstrip('/')}{METRICS_PATH}", options=Options(timeout=timeout, guard=guard))
+    except (ServerError, OSError):
+        return ""
+    return reply.body.decode("utf-8", "replace")
+
+
 def read_speculative(base_url: str, *, timeout: float = 5.0,
                      guard: Callable[[str], str] | None = None) -> Speculative | None:
     """The server's speculative counters, or None where it does not report them.
@@ -117,11 +126,7 @@ def read_speculative(base_url: str, *, timeout: float = 5.0,
     None covers all three ways there is nothing to read: ``--metrics`` not passed, a build
     older than the counters, and a server with no draft head.
     """
-    try:
-        reply = request_bytes(f"{base_url.rstrip('/')}{METRICS_PATH}", options=Options(timeout=timeout, guard=guard))
-    except (ServerError, OSError):
-        return None
-    return _parse(reply.body.decode("utf-8", "replace"))
+    return _parse(metrics_text(base_url, timeout=timeout, guard=guard))
 
 
 def _parse(text: str) -> Speculative | None:

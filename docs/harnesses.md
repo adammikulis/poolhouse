@@ -359,8 +359,37 @@ the same lease, window, permission profiles, workspace session and publication o
 - **Names it would read from a project** (`guard.harnesses.RECORDS["opencode"]`): `.opencode`, `opencode.json`, `opencode.jsonc`. A sandboxed launch turns that
   off (`OPENCODE_DISABLE_PROJECT_CONFIG`), so a project's settings and plugins replace neither the permissions nor Poolhouse's plugin.
 
-Tests: `tests/test_opencode_harness.py`, and `tests/test_opencode_pinned.py`, which runs the pinned binary where it is kept (and skips with the reason
-elsewhere) against a marked plumbing server.
+Tests: `tests/test_opencode_harness.py`, and `tests/test_opencode_pinned.py`, which runs the pinned binary where it is kept, or the one in the folder
+`POOLHOUSE_TEST_OPENCODE` names (and skips with the reason elsewhere), against a marked plumbing server.
+
+### Prompt reuse
+
+A model server reads only what a request adds to the conversation it holds; anything changed earlier is read again, which at 160,000 tokens takes
+about a quarter of an hour. Every harness that points at a local model keeps to appending:
+
+- **One prompt for steps and summaries.** The plugin shapes a step's request (`context` hook) and a compaction's (`compaction` hook) the same way, so
+  a summary is asked with the tools and the system prompt the server has read.
+- **No summary beside the run.** The config says `compaction.background: false`. Left on, 2.4.2 starts one 60,000 tokens before its limit (about
+  163,000 of a 262,144 window); it waits for the one slot, takes it and leaves the next step to read everything again. Compaction happens at the
+  limit (15 % of the window kept free), asked as the conversation with the summary's words at its end. 2.4.2 prunes no old tool output, and a
+  delegate's title is given, so no title is asked for.
+- **Room in the server's prompt cache.** A server a coding session starts is given `--cache-ram` for two conversations of its window, at most a
+  quarter of the machine and half of what this model, the servers already up and the other memory leases leave of the memory servers are admitted
+  against (`harnessing.conversation_cache_mb`), and the broker counts it with the server (`admission.estimate_bytes`); where that is under
+  llama-server's 8192 MiB, or the llama-server build has no `--cache-ram`, nothing is asked. Sized so, the cache does not refuse the start that asks
+  for it. It stays counted while that server is up, so a later start has less room: the broker stops idle servers when that makes it fit, and a
+  server still held is left running. One conversation of Qwen3.8-Flash-Next is about 7 GiB at 166,000 tokens, so with 8192 MiB one other request
+  pushed it out. A server already up keeps its own setting.
+- **The same prompt in every box.** A delegate's conversation taken up in a later box is asked with the system prompt it was begun with: the box's
+  paths are replaced (those of earlier boxes too), and what the first box lacked stays in it, what a later one lacks being said at the end.
+- **A rewrite is said.** The model bridge compares each prompt with those before it (`isolation.prompt_watch`), one comparison for every box of a
+  pass, and says one that makes the server read much of a conversation again, naming where it differs; the shorter history a compaction leaves is
+  none. A delegate records each, as it does a step that read much of its conversation again without the cache, and tells its lead the first of
+  each. A run in place talks to the server itself and is not compared.
+- **Template switches.** The bridge passes `chat_template_kwargs` on with `enable_thinking`, `preserve_thinking` and `reasoning_effort` and no
+  other name, so a delegate's thinking is off.
+- **Hybrid models.** Qwen3.8-Flash-Next keeps recurrent state, so llama-server cannot cut its cache at any token: it goes back to a saved context
+  checkpoint before the difference, or to the start when it has none there (32 a slot, its default, saved near the end of each prompt).
 
 ## A delegate
 
@@ -379,7 +408,7 @@ poolhouse-delegate status [NAME]
 poolhouse-delegate follow NAME [--once]
 poolhouse-delegate result NAME
 poolhouse-delegate stop NAME
-poolhouse-delegate grade NAME correct|partly|wrong|unusable --critique TEXT [--check "RUN => SAW"] [--survived PERCENT] [--as AGENT]
+poolhouse-delegate grade NAME correct|partly|wrong|unusable --critique TEXT [--check "RUN => SAW"] [--survived PERCENT] [--facts DIGEST|drop] [--as AGENT]
 poolhouse-delegate record NAME
 poolhouse-delegate summary [--model TEXT] [--kind WORD] [--json]
 ```
@@ -411,8 +440,12 @@ escapes and of control and invisible characters, has recognized credentials, the
 replaced, and is cut to a bound (a command 2000 characters, an output its last 60 lines and 4000 characters); past 16 MB the record leaves outputs
 and messages out, past 24 MB it adds only what says how the run went, and it ends at 32 MB (docs/limits.md).
 
-**`status`** prints one line per run, fenced as data: its state, what it is doing now and for how long (running a named command, the model
-generating or queued, waiting for the lead, the model or the next step, and how long ago the last event was), its turn and its last test run.
+**`status`** prints one line per run, fenced as data: its state, what it is doing now and for how long (running a named command; waiting for the
+model server's slot, reading its prompt as tokens read of about how many, generating with the tokens written, each also for a compaction; waiting for
+the lead, the model or the next step; and how long ago the last event was), its turn and its last test run. The counts are the server's own `/slots`
+counters, read at most every 10 s by the bridge, which alone holds the server's key, from the slot whose prompt holds the end of the request: a
+server that does not say its slots' prompts (it does when started to save slots, as a coding session's is) gives no counts, and another client's are
+never shown. "About how many" is the size of the conversation at the last step, and is left out after a compaction.
 **`follow NAME`** prints the whole record from the start, fenced as data, and goes on while the run does (`--once` prints what there is).
 **The page.** The web app's **Work > Delegates** view (`/ui/#delegates`) lists the runs and shows one run's timeline as it grows. Its routes
 (`/ui/delegates`, `/ui/delegates/NAME?after=N`) are read-only, behind the page's own sign-in, and answered to this computer alone.
@@ -422,8 +455,10 @@ generating or queued, waiting for the lead, the model or the next step, and how 
 Besides the question a delegate asks and the message that its run ended, `poolhouse.delegate_notices` sends the lead a message, subject
 `delegate notice: ...`, when: an attempt is broken off from outside, or a review fails (an error that ends the run is the last message); a restart
 begins; the preflight in the box fails; a test run in the box fails for what looks like setup (a command that cannot start, a runner that cannot
-collect, a module, a permission or a connection the box lacks), once for each such line; and nothing has happened for 10 minutes, again after 20, 40
-and so on. A run sends at most 30. Nothing waits for an answer to one.
+collect, a module, a permission or a connection the box lacks), once for each such line; for the first time in the run, a request rewrote history
+the model server had read, or a step read 32,000 tokens or more without the cache while reusing less than half of the conversation before it
+("Prompt reuse"); and nothing has happened
+for 10 minutes, again after 20, 40 and so on. A run sends at most 30. Nothing waits for an answer to one.
 
 ### Self-check before delivery
 
@@ -480,10 +515,9 @@ and one list of entries in one shape: every self-check round (`kind` `self-check
   served now with room for a coding session (`--model` names another; with none up the broker leases the default). Repeating
   a start that is still running returns the first; `--name` tells two agents on one task apart.
 - **Fast without setup.** Four things make the second delegate (and the first after `warm`) start in seconds, not minutes:
-  (1) `poolhouse-serve up` with no `--binary`, `--build`, `--draft` or `--spec` serves a model whose multi-token-prediction head
-  borrows its target's embeddings (a `shared` head, e.g. Qwen3.8-Flash-Next) on the fork build that loads it, with that head,
-  the same `Head` a harness session takes (`hub.heads_for`); the mainline `current` has no MTP graph for such a model and used to
-  serve it without one (`lifecycle_cli.fork_head`). (2) A server a delegate started is left up when it ends (`Want.keep`,
+  (1) `poolhouse-serve up` with no `--binary`, `--build`, `--draft` or `--spec` takes the same `Head` a harness session takes
+  (`hub.heads_for`): one the mainline `current` loads where there is one, and a fork build only for a model whose heads all
+  borrow its embeddings (`lifecycle_cli.fork_head`). (2) A server a delegate started is left up when it ends (`Want.keep`,
   recorded under its own pid as `up` leaves one; `poolhouse-serve down` ends it) and the next delegate takes it as it stands.
   (3) A delegate's system prompt names neither the delegate nor anything else that differs between two of one lead's delegates
   (`Delegate.message()` carries who it is and the task): its one OpenCode agent's prompt is the brief, and the plugin takes the paths that
@@ -547,6 +581,17 @@ and one list of entries in one shape: every self-check round (`kind` `self-check
   inbox fenced as data. A message from any other session is not returned to the agent. A question ends when the lead ends, and
   with `stop`. Each request of the MCP client opens a connection of its own, since the bridge ends a connection that is silent
   for its idle time and a model is silent far longer between two calls.
+- **Project memory.** `--memory` (every session card's delegate unless its card says otherwise) gives it what the project's memory holds about the
+  task (`--about` names the words) in its first message, never in the system prompt, and, in a sandbox, two more tools of the same server:
+  `lead_recall(query)` and `lead_remember(fact)` (`isolation.session_verbs.MEMORY`, `poolhouse.delegate_memory`). The runner holds the store and
+  its key; the sandbox reads and writes neither. Only the project's store is used, never the person's. A remembered fact is a proposal, refused
+  when it holds a credential, personal details, an instruction or the state of work, and is saved, marked agent-observed and naming the card and
+  commit, only when the lead's checked `correct` grade accepts the run and names the digest of the proposals it was shown (`result NAME` prints
+  them; `--facts DIGEST` saves, `--facts drop` discards); any lower grade discards it. A lead's grade of a run with memory or of a card comes from the
+  lead's own live session, and no unattended agent grades. Nobody is asked.
+- **Session cards.** `poolhouse-delegate cards` works the backlog's cards one at a time, each delegate bound to the lead that released the runner
+  (docs/cards/README.md). A card runs only in a sandbox, its delegate takes a model server already up and never starts one, and its finished work is
+  checked again by the runner. A card delegate's result reaches that lead as a `handoff` message.
 - **Result.** When the run ends the lead gets one status message (the state, why it failed or what was not applied with the counts
   and the kept patches, then the start of the answer). The counts come from the confinement as data (`Confinement.published()`), never
   from its words, and `result.json` holds the paths applied, refused, in conflict and withheld, the patches and the applied paths of the kind that runs

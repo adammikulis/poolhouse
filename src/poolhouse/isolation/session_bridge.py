@@ -58,13 +58,14 @@ VERB_FAILED = "The workspace could not run {verb} ({kind})."
 @dataclass(frozen=True, slots=True)
 class Handlers:
     """What the launcher closes into a bridge: ``hook`` decides one hook event with the launch's own rail (`harnesshook.pre`, `post` or
-    `stop`), ``workspace`` runs one of the two lead tools as the one session the bridge acts for, ``log`` writes an activity record and
-    ``events`` tells the sentinel. The bridge imports none of them, so no import goes up."""
+    `stop`), ``workspace`` runs one of the tools of ``verbs`` (the two lead tools unless the launch adds some) as the one session the bridge acts for,
+    ``log`` writes an activity record and ``events`` tells the sentinel. The bridge imports none of the three handlers, so no import goes up."""
 
     hook: Callable[[str, dict[str, Any]], dict[str, Any]]
     workspace: Callable[[str, Mapping[str, Any]], Any]
     log: Callable[..., object] = activity.record
     events: Callable[[str, dict[str, object]], None] | None = None
+    verbs: Mapping[str, session_verbs.Verb] = field(default_factory=lambda: session_verbs.LEAD)
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,7 +215,7 @@ class SessionBridge:
             return self._refuse("unknown", "That is not a frame this bridge answers.")
         if verb == "tools":
             self._count("tools")
-            return {"tools": session_verbs.describe()}
+            return {"tools": session_verbs.describe(self.handlers.verbs)}
         return self._hook(frame) if verb == "hook" else self._workspace(frame)
 
     def _grant(self, frame: Mapping[str, Any]) -> dict[str, Any]:
@@ -253,7 +254,7 @@ class SessionBridge:
     def _workspace(self, frame: Mapping[str, Any]) -> dict[str, Any]:
         name = str(frame.get("name"))
         try:
-            arguments = session_verbs.check(name, frame.get("arguments"))
+            arguments = session_verbs.check(name, frame.get("arguments"), self.handlers.verbs)
         except ValueError as why:
             return self._refuse("workspace", f"Refused: {why}.")
         try:

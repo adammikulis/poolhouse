@@ -29,6 +29,7 @@ from harness_kit import checkouts
 from poolhouse import (
     delegate,
     delegate_confined,
+    delegate_record,
     delegate_run,
     delegate_store as store,
     harness,
@@ -234,6 +235,31 @@ if "mode:edits-nothing" in task:
     tool("edit", file_path=cfg["root"] + "/src/none.py")
     finish()
     ended(CANNED + " done and landed")
+if "mode:card" in task:   # tests/test_delegate_cards.py: a session card's delegate, with its lead's two tools and the project memory's two
+    talk = subprocess.Popen(server, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+
+    def said(number, method, **params):
+        talk.stdin.write(json.dumps({{"jsonrpc": "2.0", "id": number, "method": method, "params": params}}) + "\\n")
+        talk.stdin.flush()
+        return json.loads(talk.stdout.readline())["result"]
+
+    def lead(number, name, **arguments):
+        return said(number, "tools/call", name=name, arguments=arguments)["content"][0]["text"]
+
+    step("working the card")
+    said(1, "initialize")
+    recalled = lead(2, "recall", query="junk")
+    proposed = lead(3, "remember", fact="the root module is at the top")
+    answer = lead(4, "ask", question="which junk is meant?")
+    lead(5, "note", text="removing junk.txt")
+    os.remove("junk.txt")
+    command = task.split("exactly as written, with no pipe after it:\\n    ")[1].split("\\n")[0]
+    check = asked("shell", command=command)[0]
+    status = subprocess.run(["/bin/sh", "-c", command], check=False).returncode
+    hook("post", {{"tool_use_id": check}})
+    event("tool_use", part={{"id": check, "tool": "shell", "state": {{"status": "completed", "input": {{"command": command}}, "metadata": {{"exit": status}}}}}})
+    finish()
+    ended(f"{{CANNED}} offered={{','.join(cfg['tools'])}} | recalled={{recalled}} | proposed={{proposed}} | answer={{answer}} | ")
 open("src/feature.py", "w").write("def feature():\\n    return 1\\n")
 if "mode:clean" in task:
     ended(CANNED + " done")
@@ -296,6 +322,7 @@ if "mode:patient" in task:
 if "linger" in task:
     step(CANNED + " changing a file, then lingering")
     finish()
+    event("text", part={{"text": CANNED + " waiting to be stopped"}})
     open("src/pending.py", "w").write("x = 1\\n")
     open("home", "w").write(os.environ["HOME"])
     open("pid", "w").write(str(os.getpid()))
@@ -368,7 +395,7 @@ def editing(lead_node, detached, confinable, from_a_terminal, monkeypatch, tmp_p
     (release / "rg").chmod(0o755)
 
     @contextlib.contextmanager
-    def leased(_model, _say):
+    def leased(_model, _say, adopt_only=False):
         yield f"http://127.0.0.1:{server.server_port}", SimpleNamespace(serving=SimpleNamespace(slot_context=8192)), "canned.gguf"
 
     monkeypatch.setattr(delegate_confined, "leased", leased)
@@ -485,7 +512,8 @@ def test_a_stopped_edit_delegate_ends_its_confined_processes_publishes_nothing_m
         deadline = time.time() + 120
         while time.time() < deadline:
             found = [each for each in confinable.glob("**/pid") if (each.parent / "src" / "pending.py").exists()]
-            if found and found[0].read_text().isdigit() and (found[0].parent / "home").exists() and store.status(name).get("turns"):
+            read = any("waiting to be stopped" in str(row.get("text")) for row in delegate_record.read(name)[0])   # the step is taken in
+            if read and found and found[0].read_text().isdigit() and (found[0].parent / "home").exists():
                 pid_of.append(int(found[0].read_text()))
                 home_of.append(Path((found[0].parent / "home").read_text()))
                 os.kill(os.getpid(), signal.SIGTERM)

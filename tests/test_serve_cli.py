@@ -417,8 +417,8 @@ def test_a_draft_is_passed_through_and_auto_asks_the_one_chooser(monkeypatch, tm
 
 def test_up_withholds_a_fork_only_head_from_mainline_and_says_why(monkeypatch, tmp_path, capsys,
                                                                   request):
-    """`up --draft auto` on a mainline binary serves no head whose README names a fork, and
-    prints the chooser's reason with the README's own sentence under it. Mutation: pass
+    """`up --draft auto` on a mainline binary serves no head that borrows the target's embeddings,
+    and prints the chooser's reason with the README's own sentence under it. Mutation: pass
     `borrows=True` in `cmd_up` -- the head is served and the load fails at the far end."""
     import poolhouse.hub as hub
     from poolhouse.serve import cli, ops
@@ -447,7 +447,7 @@ def test_up_withholds_a_fork_only_head_from_mainline_and_says_why(monkeypatch, t
     assert code == 0, err
     assert preflight.seen[0].draft is None
     assert not preflight.seen[0].spec_type
-    assert "withheld: the repository's README says it needs a fork" in err
+    assert "withheld: this head borrows its target's embeddings" in err
     assert "These do not work on mainline" in err
     assert "--build NAME" in err
 

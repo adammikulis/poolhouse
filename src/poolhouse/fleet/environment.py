@@ -94,6 +94,10 @@ CATALOG: tuple[Library, ...] = (
             "Run cached language models on Apple silicon with the speculative engine.",
             ("poolhouse[spec]",), size_mb=350,
             platforms=("darwin",), vendors=("apple",)),
+    Library("serve-strata", "Strata model serving",
+            "Run Qwen3.8-Flash-Next with the Strata engine on Apple silicon or an NVIDIA card.",
+            ("poolhouse[serve-strata]",), size_mb=80,
+            platforms=("darwin", "win32"), vendors=("apple", "nvidia")),
     Library("train-mlx", "MLX language model fine-tuning",
             "Train adapters for cached language models on Apple silicon.",
             ("poolhouse[train-mlx]",), size_mb=150,
@@ -329,8 +333,7 @@ class Environment:
         output = packages.run(self.python, rewritten, timeout=timeout, env=environment,
                               **({"locked": locked} if locked else {}))
         if output.returncode == 0 and wheel is not None:
-            refreshed = packages.run(self.python, ["install", "--force-reinstall", "--no-deps", "--no-index", str(wheel)],
-                                     timeout=timeout, env=environment)
+            refreshed = compute_install.replace_wheel(self.python, wheel, environment=environment, timeout=timeout)
             if refreshed.returncode:
                 return refreshed
             commit = wheel_commit(wheel)
