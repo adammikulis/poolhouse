@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -27,6 +31,26 @@ SCHEMAS = [
     {"type": "function", "function": {"name": "models_find", "parameters": {
         "type": "object", "required": ["words"], "properties": {"words": {"type": "string"}}}}},
 ]
+
+
+@pytest.mark.parametrize("unit", ["token-", "-secret", "a-", "a.", "eyJ-"])
+def test_a_long_run_of_one_shape_is_searched_in_linear_time(unit):
+    text = unit * (200_000 // len(unit))
+    code = ("import sys, time\nfrom poolhouse.redact.secrets import redact\ntext = sys.stdin.read()\n"
+            "began = time.monotonic()\nredact(text)\nsys.exit(0 if time.monotonic() - began < 2.0 else 1)\n")
+    done = subprocess.run([sys.executable, "-c", code], input=text, text=True, capture_output=True, timeout=30, check=False,
+                          env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")})
+    assert done.returncode == 0, done.stderr or "took longer than 2 s"
+
+
+@pytest.mark.parametrize("text, kept", [
+    ("run --api-key=abcdefgh12345 now", "run --[REDACTED:assigned-secret] now"),
+    ("x.client_secret: 'abcdefgh12345'", "[REDACTED:assigned-secret]'"),
+    ("see git+https://user:hunter22@host/x", "see [REDACTED:url-password]host/x"),
+    ("id -eyJabcdefgh12.eyJabcdefgh12.abcdefgh12 end", "id -[REDACTED:jwt] end"),
+])
+def test_a_credential_after_punctuation_is_still_found(text, kept):
+    assert redact(text)[0] == kept
 
 
 def policy(**over) -> ToolPolicyRail:
