@@ -143,6 +143,28 @@ def test_subagent_event_includes_brief_and_actual_primary_branch_rules(commands,
     assert records[2]['agent'] == child
 
 
+def test_subagent_event_tells_the_facts_of_the_checkout_so_a_prompt_need_state_only_the_task(commands, tmp_path, monkeypatch):
+    scripts = HOOKS.parent
+    for module in (ROOT / 'scripts').glob('test*.py'):
+        (scripts / module.name).symlink_to(module)
+    monkeypatch.setenv('DEV_TEST_SLOTS_DIR', str(tmp_path / 'slots'))
+    monkeypatch.setenv('DEV_TEST_BUDGET', '3')
+    repository = tmp_path / 'project'
+    git.run(['init', '-b', 'development', str(repository)])
+    (repository / 'pyproject.toml').write_text('[tool.poolhouse.tests]\nfile = "make one F=<file>"\n')
+    (repository / 'CLAUDE.md').write_text('## Commit attribution\n\nEnd with the session trailer.\n')
+    git.run(['-c', 'user.name=Hook fixture', '-c', 'user.email=fixture@example.invalid',
+             'commit', '--allow-empty', '-m', 'fixture project'], cwd=repository)
+    done = invoke('claude-subagent-start', {'agent_type': 'Explore', 'agent_id': 'abcdef12345', 'session_id': 'native-parent',
+                                            'cwd': str(repository)})
+    assert done.returncode == 0 and not done.stderr, done.stderr
+    context = json.loads(done.stdout)['hookSpecificOutput']['additionalContext']
+    facts = context.split('Facts of this run, read by the program')[1]
+    for fact in (f'Checkout you start in: {repository.resolve()}, branch development at commit', 'one file `make one F=<file>`',
+                 'shares 3 on this computer, 0 in use', 'End with the session trailer.', 'never merge', 'Report to claude-bbbbbb'):
+        assert fact in facts, fact
+
+
 def test_the_module_every_hook_imports_loads_none_of_the_package():
     # Hooks run on each prompt and tool call under a time limit; the board client alone is hundreds of modules.
     code = (f'import sys; sys.path.insert(0, {str(HOOKS)!r}); import workspace_hook; '

@@ -108,12 +108,37 @@ def main() -> int:
     parts = [workspace_brief(event)]
     if found:
         parts.append(checkout_rule(found[1]))
+    parts.append(run_facts(event))
     text = "\n\n".join(p for p in parts if p)
     if not text:
         return 0
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "SubagentStart",
                                              "additionalContext": text}}))
     return 0
+
+
+def test_slots() -> dict:
+    """What the test broker beside these hooks says of its workers; empty where there is none."""
+    scripts = Path(__file__).resolve().parents[1]
+    if not (scripts / "testslots.py").is_file():
+        return {}
+    sys.path.append(str(scripts))
+    import testslots
+    return testslots.status()
+
+
+def run_facts(event: dict) -> str:
+    """The facts of the subagent's checkout, read by the program (`poolhouse.brief_facts`), so its prompt need state only the task."""
+    cwd, agent = str(event.get("cwd") or ""), str(event.get("agent_id") or "")
+    if not cwd:
+        return ""
+    try:
+        from poolhouse import brief_facts
+        parent = str(subagent_records.load(agent).get("parent") or "") if agent else ""
+        return brief_facts.block(brief_facts.helper(cwd, parent, test_slots()))
+    except (ImportError, OSError, RuntimeError, ValueError) as error:
+        workspace_hook.warning("SubagentStart", error)
+        return ""
 
 
 def checkout_rule(primary: Path) -> str:
