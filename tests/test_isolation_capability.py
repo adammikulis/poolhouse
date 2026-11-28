@@ -38,7 +38,7 @@ def test_the_report_has_one_entry_per_guarantee_and_names_each_exposure_of_the_p
     assert {each.state for each in report.guarantees} <= {"enforced", "watched", "unenforceable"}
     assert {each.id for each in report.guarantees if each.state == "watched"} <= set(WATCHABLE)
     # Owner-order: "can't you just make the sandbox just like the rest of things so the agent can test whatever they need safely?"
-    assert {each.id for each in report.exposures} == {each.id for each in EXPOSURES} == {"X1", "X2", "X3", "X4"}
+    assert {each.id for each in report.exposures} == {each.id for each in EXPOSURES} == {"X1", "X2", "X3", "X4", "X5"}
     assert report.to_dict()["can_start"] is report.can_start and len(report.to_dict()["guarantees"]) == 13
 
 

@@ -2,10 +2,11 @@
 
 What a shell here can do it can: GPU compute, headless browsers, the installed programs and libraries, loopback, programs of its own. Refused,
 each held by a red-team test (tests/test_redteam_open_box.py): writes outside ``write``; a ``private`` tree no granted tree inside it names
-(the person's home, other volumes, other programs' temporary files, the credential stores); other processes' signals, memory, arguments and
-files; a network beyond loopback, a refused port, every bind of an IP address (`isolation.ports` hands a socket in) and another program's unix
-socket; ways out (launchd, LaunchServices, Apple events, preference writes, other terminals); camera, microphone, input, other device classes
-and the hardware identifiers. System services are named rather than refused one by one: most act for their caller, outside any box (open a
+(the person's home, other volumes, other programs' temporary files, the credential stores); other processes' signals, address space, arguments
+and files; System V shared memory and semaphores, the box's own too (POSIX shared memory is not refused: exposure X5); a network beyond
+loopback, a refused port, every bind of an IP address (`isolation.ports` hands a socket in) and another program's unix socket; ways out
+(launchd, LaunchServices, Apple events, preference writes, other terminals); camera, microphone, input, other device classes and the hardware
+identifiers. System services are named rather than refused one by one: most act for their caller, outside any box (open a
 program, fetch a URL, read the clipboard, unlock a keychain), and a list of the harmful ones could never be complete. An unnamed service is
 also how a process here is known to be in a box of the engine's (`sandbox.confinement.BOX_MARKER`).
 """
@@ -39,7 +40,10 @@ EXPOSURES = (
              "process's arguments and environment", sysctl_prefixes=("",)),
     Exposure("X3", "macOS", "the network interfaces, their addresses and hardware addresses among them"),
     Exposure("X4", "macOS", "a service of this computer that listens on loopback or on its network address, but a withheld port, and the names "
-             "and metadata the system's own trees hold"))
+             "and metadata the system's own trees hold"),
+    Exposure("X5", "macOS", "a POSIX shared memory object or named semaphore of another program of the user whose name the process knows, to read "
+             "and write as the object's permissions let the user: no list of the names is given, and a box's own objects (Python's "
+             "multiprocessing, a browser's) cannot be told from another's by name"))
 """What a process in an open box learns or reaches that the box does not hide (docs/design-isolated-launcher.md, 5.7): what any program of this
 machine could. The serial number and the hardware UUID are not among them (G13)."""
 
@@ -64,8 +68,11 @@ PREFERENCES = ("kCFPreferencesAnyApplication", ".GlobalPreferences", "org.chromi
 """The preference domains every open box reads: the system-wide settings and a headless browser's own."""
 REFUSED_OPERATIONS = ("appleevent-send", "lsopen", "job-creation", "nvram*", "system-kext*", "system-privilege",
                       "file-mount", "file-unmount", "device-camera", "device-microphone", "hid-control", "authorization-right-obtain",
-                      "iokit-set-properties", "darwin-notification-post", "distributed-notification-post", "mach-priv-host-port")
-"""Operations an open box never has: driving other programs, scheduling work, changing the system and using a person's devices."""
+                      "iokit-set-properties", "darwin-notification-post", "distributed-notification-post", "mach-priv-host-port", "ipc-sysv*")
+"""Operations an open box never has: driving other programs, scheduling work, changing the system, using a person's devices and the System V
+objects every process of a user shares by a number (nothing a box runs needs them)."""
+SYSTEM_V_CALLS = ("SYS_shmget", "SYS_shmsys", "SYS_semget", "SYS_semsys", "SYS_msgget", "SYS_msgsys")
+"""The system calls that make or find a System V shared memory segment, semaphore set or queue."""
 EXPRESSIONS = re.compile(r'\(regex #"\^/[^"]*\(/\|\$\)"\)')
 """The grouped expressions of `seatbelt_text.trees` in a profile."""
 
@@ -182,6 +189,8 @@ def profile(policy: Policy, program: str, tag: str) -> str:
         f"(deny iokit-open*{note})", "(allow iokit-open " + " ".join(f"(iokit-user-client-class {quote(each)})" for each in IOKIT_CLASSES) + ")",
         "(deny iokit-get-properties " + " ".join(f"(iokit-property {quote(each)})" for each in IDENTIFIER_PROPERTIES) + f"{note})",
         f"(deny syscall-unix (syscall-number SYS_gethostuuid){note})",
+        # no rule of an operation is asked of a new System V object, which would outlive the box: the calls that make one are refused
+        "(deny syscall-unix " + " ".join(f"(syscall-number {each})" for each in SYSTEM_V_CALLS) + f"{note})",
         f"(deny network*{note})",
         *_files(policy, program, note),
         *_devices(note),
