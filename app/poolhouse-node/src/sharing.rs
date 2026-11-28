@@ -18,7 +18,7 @@ use crate::node::Node;
 
 /// The grant, and the ticket operation, that changes a choice.
 pub const SHARE: &str = "board_share";
-/// How the record names a device that joined without a code.
+/// How the record names a device that nobody vouched for: every admit that stands for it was signed for a device that joined without a code.
 const UNVOUCHED: &str = "open";
 
 /// What this device chose for one member: for every board, and for single boards over that.

@@ -8,7 +8,7 @@ use std::ops::{Deref, DerefMut};
 use crate::node::update_activity::{Registry, Source, Writer, AdmittedEffect, EffectFlow};
 use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
+use std::sync::{mpsc, Arc, Mutex, MutexGuard, OnceLock, Weak};
 use std::time::Duration;
 
 use rustls::ServerConfig;
@@ -22,7 +22,7 @@ use crate::fsutil::{sha256_hex, unhex};
 use crate::gate::{unhurried, Gate, Permit};
 use crate::lineage::Peer;
 use crate::membership::{Device, Standing};
-use crate::netsync::sync_all_admitted;
+use crate::netsync::{sync_pool_admitted, sync_shared_admitted};
 use crate::nearby::Nearby;
 use crate::node::Node;
 use crate::join_code::{context_for, new_code, Session, Window};
@@ -36,6 +36,9 @@ use crate::tls::{server_config, StandingFn};
 pub const SYNC_EVERY: Duration = Duration::from_secs(20);
 /// The longest one exchange with a member takes, however it paces its replies; each request in it has `peer::CALL_FOR`.
 const SYNC_FOR: Duration = Duration::from_secs(300);
+/// How long a sync round waits for the member it just dialed to hand over the pool's acts before it dials the next: a removal an
+/// earlier member carries is then held before the removed device would be dialed, and a slow member holds up the next no longer.
+const HEAD_START: Duration = Duration::from_secs(2);
 /// The connections the peer listener holds together: half of the 256 descriptors macOS gives a process by default, so that peers
 /// leave the node the rest.
 const MOST_PEER_CONNECTIONS: usize = 128;
@@ -102,6 +105,14 @@ impl Drop for AttachCleanup<'_> {
     fn drop(&mut self) {
         let Ok(_cleanup)=self.net.activity.maintenance(Source::Network) else { return };
         if let Ok(mut kept)=locked(&self.net.attaching) { kept.remove(self.fingerprint); }
+    }
+}
+
+/// A member's place among the exchanges the periodic sync has out (`Net::syncing`), given up however the exchange ends or fails to start.
+struct Out { net: Arc<Net>, fingerprint: String }
+impl Drop for Out {
+    fn drop(&mut self) {
+        if let Ok(mut out)=self.net.syncing.lock() { out.remove(&self.fingerprint); }
     }
 }
 
@@ -509,8 +520,9 @@ impl Net {
     // -- sync -------------------------------------------------------------
     /// Swap pool records and boards with every active member we can reach; the number reached. A member whose last dials failed is left
     /// alone until its backoff ends (a second, then twice as long, up to a minute) unless ``force``: a device nothing can reach does not
-    /// hold up the members that can be reached. A member put out of the pool while the cycle runs (heard from an earlier dial of it) is
-    /// not dialed, and one put out during its dial is not recorded as reached or attached to.
+    /// hold up the members that can be reached. Members are dialed in the order of the list, each once the one before it has handed over
+    /// the pool's acts (`HEAD_START` at most), so a member put out of the pool while the cycle runs (heard from an earlier dial of it) is
+    /// not dialed; one put out during its dial is not recorded as reached or attached to.
     pub fn sync_once(&self, force: bool) -> Result<usize> {
         let effect=self.activity.admit_effect(Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
         self.sync_once_admitted(force,&effect)
@@ -518,11 +530,13 @@ impl Net {
     fn sync_once_admitted(&self, force: bool, effect: &AdmittedEffect) -> Result<usize> {
         let _child=self.activity.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
         let targets = self.sync_targets(force)?;
-        // each member on a thread of its own: one that is slow to answer holds up no other
+        // each member on a thread of its own: one that is slow to answer holds up the next no longer than `HEAD_START`
         let reached = std::thread::scope(|scope| -> Result<usize> {
             let mut dials = Vec::new();
             for (fp, addr) in &targets {
-                dials.push(std::thread::Builder::new().name("peer-dial".into()).spawn_scoped(scope, move || self.sync_member(fp, addr, effect))?);
+                let (heard, handed_over) = mpsc::channel::<()>();
+                dials.push(std::thread::Builder::new().name("peer-dial".into()).spawn_scoped(scope, move || self.sync_member(fp, addr, effect, heard))?);
+                let _ = handed_over.recv_timeout(HEAD_START);
             }
             dials.into_iter().try_fold(0, |reached, dial| -> Result<usize> {
                 let answered = dial.join().map_err(|_| Error::Damaged("a sync thread ended early".into()))??;
@@ -545,16 +559,20 @@ impl Net {
     }
 
     /// Dial the member ``fp`` at ``addr``, exchange with it within `SYNC_FOR` and record how that went; whether it was reached. What one
-    /// exchange did not finish the next takes up.
-    fn sync_member(&self, fp: &str, addr: &str, effect: &AdmittedEffect) -> Result<bool> {
+    /// exchange did not finish the next takes up. ``heard`` is dropped once the member has handed over the pool's acts, or will not: the
+    /// round dials its next member then.
+    fn sync_member(&self, fp: &str, addr: &str, effect: &AdmittedEffect, heard: mpsc::Sender<()>) -> Result<bool> {
         if !tracked_node(&self.node, Source::Network)?.members.is_active(fp) {
             return Ok(false);
         }
         let result = addr.parse::<SocketAddr>().map_err(|e| Error::Invalid(e.to_string()))
             .and_then(|a| self.dial_member(fp, a))
-            .and_then(|mut c| {
+            .and_then(move |mut c| {
                 c.done_within(SYNC_FOR);
-                self.compatible(&mut c).and_then(|()| sync_all_admitted(&self.node, &mut c, effect))
+                self.compatible(&mut c)?;
+                sync_pool_admitted(&self.node, &mut c, effect)?;
+                drop(heard);
+                sync_shared_admitted(&self.node, &mut c, effect)
             });
         let mut n = tracked_node(&self.node, Source::Network)?;
         if !n.members.is_active(fp) {
@@ -742,26 +760,23 @@ impl Net {
         Ok(())
     }
 
-    /// One round of the periodic sync: a thread for each member due, none waited for, and none for a member whose last is still out.
+    /// One round of the periodic sync: a thread for each member due, started as `sync_once` starts them, no exchange waited for to its
+    /// end, and none for a member whose last is still out. A member no exchange could be started for is taken up at a later round.
     fn sync_due(self: &Arc<Net>) -> Result<()> {
         let _round = self.activity.admit_effect(Source::Sync, EffectFlow::Sync).map_err(activity_error)?;
         for (fp, addr) in self.sync_targets(false)? {
             if !locked(&self.syncing)?.insert(fp.clone()) {
                 continue;
             }
+            let out = Out { net: self.clone(), fingerprint: fp };
             let admitted = self.activity.admit_effect(Source::Sync, EffectFlow::Sync).map_err(activity_error)?;
-            let (net, member) = (self.clone(), fp.clone());
-            let started = std::thread::Builder::new().name("peer-dial".into()).spawn(move || {
-                let _ = net.sync_member(&member, &addr, &admitted);
-                net.drop_removed();
-                if let Ok(mut out) = net.syncing.lock() {
-                    out.remove(&member);
-                }
+            let (heard, handed_over) = mpsc::channel::<()>();
+            // A thread that cannot be started drops what it was given, which gives up the member's place.
+            let _ = std::thread::Builder::new().name("peer-dial".into()).spawn(move || {
+                let _ = out.net.sync_member(&out.fingerprint, &addr, &admitted, heard);
+                out.net.drop_removed();
             });
-            // A member no thread could be started for is taken up at a later round.
-            if started.is_err() {
-                locked(&self.syncing)?.remove(&fp);
-            }
+            let _ = handed_over.recv_timeout(HEAD_START);
         }
         self.drop_removed();
         Ok(())
@@ -998,6 +1013,33 @@ mod activity_tests {
         assert!(net.sync_once(true).is_err());
         assert_eq!(net.activity.active_writer_count_for_test(),1);
         drop(effect); assert_eq!(net.activity.active_writer_count_for_test(),0);
+    }
+
+    #[test]
+    fn a_member_whose_sync_is_not_admitted_is_taken_up_by_a_later_round() {
+        use crate::gov::signer::{RigSigner, Signer};
+        let owned=running(); let net=owned.net.clone();
+        let other_dir=tempfile::tempdir().unwrap(); let other=Node::open(other_dir.path()).unwrap();
+        {
+            let mut node=net.node.lock().unwrap();
+            let signer=Arc::new(RigSigner::new().with_key(1,"ann"));
+            for key in signer.keys() {
+                node.persons.add_claimed_key(crate::grants::person::ED25519,&key.public,&key.label,wall_ms(),crate::gov::keys::Claim::keystore_prompt()).unwrap();
+            }
+            node.set_signer(signer);
+            node.pool_create("home",crate::membership::Policy::Secure,"").unwrap();
+            node.enrol_device(&other.cert.der,"other","join-code",false).unwrap();
+            node.facts.set_addr(&other.cert.fingerprint(),"127.0.0.1:1").unwrap();
+        }
+        // the round is admitted, then waits for the node; new work is paused before it takes up the member
+        let held=net.node.lock().unwrap();
+        let round={ let net=net.clone(); std::thread::spawn(move || net.sync_due()) };
+        let deadline=std::time::Instant::now()+Duration::from_secs(5);
+        while net.activity.active_writer_count_for_test()==0 && std::time::Instant::now()<deadline { std::thread::yield_now(); }
+        net.activity.drain_for_test();
+        drop(held);
+        assert!(round.join().unwrap().is_err(),"the member's own sync is not admitted");
+        assert!(net.syncing.lock().unwrap().is_empty(),"a member left marked as syncing is never synced again");
     }
 
     #[test]

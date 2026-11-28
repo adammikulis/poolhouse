@@ -108,6 +108,48 @@ fn an_admit_a_member_signs_by_segment_is_listed_as_open_whatever_it_claims() {
 }
 
 #[test]
+fn a_certificate_a_person_vouched_for_stays_vouched_when_a_member_nobody_vouched_for_admits_it_again() {
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Open);
+    let (founder, member, vouched, stranger) = (ident(FIRST), ident(20), ident(21), ident(30));
+    put_admit(&mut g, &member, &[A]);
+    put_admit(&mut g, &vouched, &[A]);
+    device_admit(&mut g, 20, &stranger, "segment");
+    assert_eq!(g.devices()[&stranger.fingerprint()].by, "open");
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    advance(&mut g, 10);
+    // the stranger signs a later admit of the pool's first device and of one a person let in
+    for target in [&founder, &vouched] {
+        assert_eq!(device_admit(&mut g, 30, target, "segment"), Ingest::Accepted);
+    }
+    let by = |d: &Identity| g.devices()[&d.fingerprint()].by.clone();
+    assert_eq!(by(&founder), "found", "the later admit switched sharing off for the first device");
+    assert_eq!(by(&vouched), "join-code", "the later admit switched sharing off for a member a person let in");
+    assert_eq!(by(&stranger), "open", "a certificate with no vouched admit stays unvouched");
+}
+
+#[test]
+fn a_leave_stands_against_the_admit_of_the_same_millisecond_whichever_id_sorts_first() {
+    // the ids are hashes: take a member whose leave sorts before its admit, which must not decide whether it left
+    let (_d, mut g, seed, admitted, leave) = (40..90u8)
+        .find_map(|seed| {
+            let (d, g) = pool(&[phone_admin(A, "ann")], Policy::Open);
+            let member = ident(seed);
+            let admitted = admit(&g, &member, &[A]);
+            let mut leave = g.new_act("leave", json!({"fingerprint": member.fingerprint()}), admitted.at_ms).unwrap();
+            device_sign(&mut leave, seed);
+            (leave.id() < admitted.id()).then_some((d, g, seed, admitted, leave))
+        })
+        .expect("a member whose leave sorts before its admit");
+    assert_eq!(take(&mut g, admitted), Ingest::Accepted);
+    assert_eq!(take(&mut g, leave), Ingest::Accepted);
+    assert_eq!(g.devices()[&ident(seed).fingerprint()].status, poolhouse_node::membership::Status::Left, "the member is listed as still in the pool");
+    advance(&mut g, 10);
+    let guest = ident(30);
+    device_admit(&mut g, seed, &guest, "segment");
+    assert!(!is_member(&g, &guest), "a device that has left admits nobody");
+}
+
+#[test]
 fn an_open_pools_member_admits_five_an_hour_and_only_with_via_segment() {
     let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Open);
     let member = ident(20);

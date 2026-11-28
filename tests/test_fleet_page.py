@@ -378,6 +378,29 @@ class TestThePoolView:
         assert page.locator("#pool-found-form").count() == 0, "a founded pool is not founded again"
         assert not errors
 
+    def test_sharing_boards_names_the_other_computer_by_its_fingerprint_words(self, node_binary, monkeypatch, tmp_path, open_page):
+        from poolhouse import api
+
+        with computers(node_binary, monkeypatch, "127.0.0.1", "127.0.0.1") as (a, b):
+            a.use()
+            api.pool.found("home", "open")
+            made = api.pool.add_device()
+            b.use()
+            api.pool.join(made["addresses"][0], fingerprint=made["fingerprint"])
+            theirs = api.pool.status().words  # what the screen of the computer that joined shows
+            a.use()
+            served = gated(Serving(tmp_path))
+            try:
+                served.cookie = sign_in(served)
+                served.ui.setup_finished()
+                page, errors = open_page(served, cookie=served.cookie)
+                connections(page)
+                row = page.locator("#pool-joined .row", has=page.get_by_role("button", name="Share boards", exact=True))
+                assert theirs in row.inner_text(), "the name is the other computer's choice; the words are compared with its screen"
+                assert not errors
+            finally:
+                served.close()
+
     def test_a_code_on_show_stays_while_the_screen_draws_the_pool_again(self, node_binary, monkeypatch, tmp_path, open_page):
         from poolhouse import api
 

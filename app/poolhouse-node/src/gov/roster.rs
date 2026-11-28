@@ -260,9 +260,9 @@ fn standing<'a>(cands: &'a [Candidate], cx: &Facts, gone: &BTreeSet<String>, lim
 /// The per-signer facts the admits are judged by.
 struct Facts {
     open: bool,
-    /// For each device, its admits and leaves by the order this device first saw them (then by the time signed): whether it was a
-    /// member at a given point of that order.
-    life: BTreeMap<String, Vec<(i64, u64, String, bool)>>,
+    /// For each device, its admits and leaves by the order this device first saw them, then by the time signed, then a leave after an
+    /// admit (each is that sight, that time and whether it is a leave): whether it was a member at a given point of that order.
+    life: BTreeMap<String, Vec<(i64, u64, bool)>>,
     windows: BTreeMap<String, Vec<(i64, i64)>>,
     opened: BTreeMap<String, Vec<(i64, i64, String)>>,
     /// For each admit a window lets in: the device that signed it and the window act it spends, so that a second yes inside the span of the first admits the
@@ -277,8 +277,8 @@ impl Facts {
     /// Whether ``device`` was a member when this device first saw the admit ``c``, by the last of its own admits and leaves seen by
     /// then; a device with neither is.
     fn member_at(&self, device: &str, c: &Candidate) -> bool {
-        let key = (self.seen.get(&c.id).copied().unwrap_or(0), c.at_ms, c.id.clone());
-        self.life.get(device).and_then(|events| events.iter().rev().find(|(s, t, id, _)| (*s, *t, id.clone()) <= key)).is_none_or(|(_, _, _, joined)| *joined)
+        let key = (self.seen.get(&c.id).copied().unwrap_or(0), c.at_ms);
+        self.life.get(device).and_then(|events| events.iter().rev().find(|(s, t, _)| (*s, *t) <= key)).is_none_or(|(_, _, left)| !*left)
     }
 
     /// How the device ``signer``, taken in as ``active`` has it, may sign the admit ``c``: `member` in an open pool, `delegate`, or `window ACT` by the
@@ -380,14 +380,14 @@ pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, (seen, ready): (&Seen,
     cands.extend(found);
     let first = |id: &String| if *id == found_id { SETTLED } else { seen.get(id).copied().unwrap_or(now) };
     let seen_of: BTreeMap<String, i64> = cands.iter().map(|c| (c.id.clone(), first(&c.id))).collect();
-    let mut life: BTreeMap<String, Vec<(i64, u64, String, bool)>> = BTreeMap::new();
+    let mut life: BTreeMap<String, Vec<(i64, u64, bool)>> = BTreeMap::new();
     for c in &cands {
-        life.entry(c.fingerprint.clone()).or_default().push((first(&c.id), c.at_ms, c.id.clone(), true));
+        life.entry(c.fingerprint.clone()).or_default().push((first(&c.id), c.at_ms, false));
     }
     for (fp, at, id) in leaves(&cands.iter().map(|c| c.fingerprint.clone()).collect(), acts) {
-        life.entry(fp).or_default().push((first(&id), at, id, false));
+        life.entry(fp).or_default().push((first(&id), at, true));
     }
-    life.values_mut().for_each(|events| events.sort());
+    life.values_mut().for_each(|events| events.sort_unstable());
     let mut facts = Facts { open: chain.latest().charter.policy == Policy::Open, life, windows: out.windows.clone(), opened: out.opened.clone(), window_of: BTreeMap::new(), seen: seen_of, admin_ok: BTreeSet::new(), admin_of: BTreeMap::new() };
     if let Some(admin) = chain.epochs.first().and_then(|e| e.charter.admins.first()).filter(|_| !found_id.is_empty()) {
         facts.admin_ok.insert(found_id.clone());
@@ -427,23 +427,28 @@ pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, (seen, ready): (&Seen,
         }
     }
     out.standing = ok.iter().map(|c| c.id.clone()).collect();
-    let mut events: BTreeMap<String, Vec<(u64, String, bool)>> = BTreeMap::new();
+    // each event is its time signed and whether it is a leave, so a leave stands against the admit of the same millisecond
+    let mut events: BTreeMap<String, Vec<(u64, bool)>> = BTreeMap::new();
     for c in &ok {
-        events.entry(c.fingerprint.clone()).or_default().push((c.at_ms, c.id.clone(), true));
+        events.entry(c.fingerprint.clone()).or_default().push((c.at_ms, false));
     }
     let admitted: BTreeSet<String> = ok.iter().map(|c| c.fingerprint.clone()).collect();
-    for (fp, at, id) in leaves(&admitted, acts) {
-        events.entry(fp).or_default().push((at, id, false));
+    for (fp, at, _) in leaves(&admitted, acts) {
+        events.entry(fp).or_default().push((at, true));
     }
     for (fp, mut list) in events {
-        list.sort();
-        let Some((at, id, joined)) = list.last().cloned() else { continue };
-        let Some(c) = ok.iter().filter(|c| c.fingerprint == fp).max_by_key(|c| (c.at_ms, c.id.clone())) else { continue };
-        let status = if gone.contains(&fp) { Status::Revoked } else if joined { Status::Active } else { Status::Left };
+        list.sort_unstable();
+        let Some((at, left)) = list.last().copied() else { continue };
+        let admits = || ok.iter().filter(|c| c.fingerprint == fp);
+        let Some(c) = admits().max_by_key(|c| (c.at_ms, c.id.clone())) else { continue };
+        // `by` is `open` only where nobody vouched for the certificate (`sharing`): one standing admit that no member signed for a device on
+        // its segment vouches for it, whatever is signed later
+        let vouched = admits().filter(|c| c.admit.via != "segment").max_by_key(|c| (c.at_ms, c.id.clone()));
+        let came = vouched.map_or_else(|| "open".into(), |v| v.admit.how.clone());
+        let status = if gone.contains(&fp) { Status::Revoked } else if left { Status::Left } else { Status::Active };
         out.signed_by.insert(fp.clone(), by.get(&c.id).cloned().unwrap_or_default());
         out.admitted_by.insert(fp.clone(), c.id.clone());
-        let _ = id;
-        out.devices.insert(fp.clone(), Device { fingerprint: fp, cert: hex(&c.der), name: clean(&c.admit.name), status, at, by: if c.admit.via == "segment" { "open".into() } else { c.admit.how.clone() } });
+        out.devices.insert(fp.clone(), Device { fingerprint: fp.clone(), cert: hex(&c.der), name: clean(&c.admit.name), status, at, by: came });
     }
     for (fp, id) in &removed {
         let known = cands.iter().find(|c| &c.fingerprint == fp);

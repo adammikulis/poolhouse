@@ -287,8 +287,8 @@ encryption and not privacy between devices. A sender shown as
 **Sharing a board with a device.** The device that serves a board decides who gets it (`sharing.rs`). `hello` and `boards` list to a
 member only the boards shared with it; `pull`, `vector` and `push` of any other board are denied as a board this device does not hold;
 this device's own sync, whichever side dialed, keeps to the same answer. A member that a person or a delegate let in is shared every
-board unless told otherwise. A member admitted without a code (`by: open`, which includes every admit a member signed for a device on
-its segment) is shared none until `board_share {device, shared, board?}` shares one or all (grant `board_share` on the device, or the
+board unless told otherwise, and stays one whatever is signed for its certificate later. A member admitted without a code and no other
+way (`by: open`: every admit that stands for it is one a member signed for a device on its segment) is shared none until `board_share {device, shared, board?}` shares one or all (grant `board_share` on the device, or the
 ticket the node makes for the person's own session). The choice is kept in `<state>/sharing.json`, never replicated, per pool; one for
 every board replaces the choices for single boards. Sharing is of the whole board, and what was sent stays with the other device.
 
@@ -832,7 +832,7 @@ listener is the one network port.
   whose fingerprint is not the hash of its certificate is dropped; a removed (`revoked`) certificate cannot come back, and a device
   that `left` comes back only by an admit. Every request is checked against the record when it arrives, so a device removed after
   it connected is refused at its next request on the same connection. A device that records a removal also stops using the
-  connections it holds to the removed device: a sync cycle does not dial a member removed since the cycle began, and a dial already
+  connections it holds to the removed device: a sync cycle does not dial a member it has heard was removed since the cycle began ("Deadlines"), and a dial already
   open ends at its next request, so nothing is sent to, taken from or merged from the removed device once the record says so
   (`netsync::locked_for`); it closes the connections it keeps open to the removed device and the ones the removed device opened to
   it (`Net::drop_removed`, run after a removal is made here, after a `members` request is served and at the end of each sync cycle),
@@ -893,8 +893,9 @@ listener is the one network port.
   (`membership::shown_name`); in the ASCII text a key signs, a name loses its accents and every other character but letters, digits,
   spaces, dots, dashes and underscores (`sentence_name`).
 - **Deadlines.** A dial has 5 s to connect and `tls::HANDSHAKE_FOR` for the handshake, a request and its reply `peer::CALL_FOR`, and one
-  sync with a member 300 s (`net::SYNC_FOR`), however slowly the bytes come. Each member is synced on a thread of its own, so a slow one
-  holds up no other.
+  sync with a member 300 s (`net::SYNC_FOR`), however slowly the bytes come. Each member is synced on a thread of its own. A round dials
+  them in the order of its list, each once the one before it has handed over the pool's acts, or after 2 s (`net::HEAD_START`): a removal
+  an earlier member carries is held before the removed device would be dialed, and a slow member holds up the next no longer.
 - **The page.** Founding, joining, adding or removing a device and leaving take a window that signed in with a launch ticket, also before
   there is a pool. Without a session, a page on this computer answers only a request addressed to an address or `localhost`.
 

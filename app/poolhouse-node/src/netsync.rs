@@ -168,10 +168,22 @@ pub fn sync_all(node: &Mutex<Node>, c: &mut PeerClient) -> Result<BTreeMap<Strin
     sync_all_admitted(node,c,&effect)
 }
 pub(crate) fn sync_all_admitted(node: &Mutex<Node>, c: &mut PeerClient, effect: &AdmittedEffect) -> Result<BTreeMap<String, Report>> {
+    sync_pool_admitted(node, c, effect)?;
+    sync_shared_admitted(node, c, effect)
+}
+
+/// The first part of `sync_all`: the builds and the pool's acts, with which this device hears of a removal the peer holds.
+pub(crate) fn sync_pool_admitted(node: &Mutex<Node>, c: &mut PeerClient, effect: &AdmittedEffect) -> Result<()> {
     let registry=locked(node)?.activity.clone();
     let _child=registry.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
     sync_members_admitted(node, c, effect)?;
-    crate::gov::wire::sync_acts(node, c)?;
+    crate::gov::wire::sync_acts(node, c).map(drop)
+}
+
+/// The rest of `sync_all`: every board both devices hold and share with each other.
+pub(crate) fn sync_shared_admitted(node: &Mutex<Node>, c: &mut PeerClient, effect: &AdmittedEffect) -> Result<BTreeMap<String, Report>> {
+    let registry=locked(node)?.activity.clone();
+    let _child=registry.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
     let theirs = peer_boards(c)?;
     let mine = locked_for(node, &c.fingerprint)?.boards_shared_with(&c.fingerprint);
     let mut out = BTreeMap::new();

@@ -313,7 +313,9 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
           ...members.map(m => el("div", { class: "row" },
             el("span", {}, el("b", {}, m.name),
               el("span", { class: "why" }, (m.this_device ? "This device" : m.connected ? "Connected" : "Known")
-                + (m.this_device || m.shared ? "" : " · gets none of this computer's boards"))),
+                + (m.this_device || m.shared ? "" : " · gets none of this computer's boards")),
+              // a name is whatever that computer chose: before its boards are shared, its words are compared with its screen
+              ...M.kids(m.this_device ? null : el("span", { class: "why" }, "Its fingerprint words: ", el("code", { class: "pool-member-words" }, m.words)))),
             ...M.kids(m.this_device || (m.shared && m.joined_by !== "open") ? null : el("button", { class: "ghost small", onclick: async () => {
               const done = await api("/ui/pool/share", { method: "POST", body: JSON.stringify({ device: m.fingerprint, shared: !m.shared }) });
               if (done.error || done.ok === false) { fail(done.error || "Could not change what this device is shared."); return; }

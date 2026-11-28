@@ -298,6 +298,6 @@ mod tests {
     #[test]
     fn the_pool_line_says_what_the_policy_means_and_what_a_change_would_do() {
         assert!(pool_line("secure", false).starts_with("POOL: SECURE. Each device needs your code"));
-        assert!(pool_line("open", false).contains("without asking"));
+        assert_eq!(pool_line("open", false), "POOL: OPEN. A device on the same network can join without a code and is shared no board until you share one.");
     }
 }

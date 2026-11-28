@@ -60,6 +60,8 @@ class Member:
     code until `share`."""
     joined_by: str = ""
     """How it came into the pool: ``found``, ``join-code``, ``open`` (without a code) and so on."""
+    words: str = ""
+    """The device's fingerprint words, to compare with what its screen shows: its name is whatever it chose."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,7 +134,7 @@ def _member(raw: dict) -> Member:
     return Member(str(name), str(raw["fingerprint"]), raw.get("status") == "active", bool(raw.get("self")),
                   bool(raw.get("connected")), str(raw.get("addr") or ""), int(raw.get("last_seen_ms") or 0),
                   int(raw.get("last_sync_ms") or 0), str(raw.get("last_error") or ""), str(raw.get("reach") or "unknown"),
-                  str(raw.get("reach_hint") or ""), bool(raw.get("shared", True)), str(raw.get("by") or ""))
+                  str(raw.get("reach_hint") or ""), bool(raw.get("shared", True)), str(raw.get("by") or ""), _words(str(raw["fingerprint"])))
 
 
 def _missing(gov: dict) -> str:
