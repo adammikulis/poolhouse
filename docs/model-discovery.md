@@ -205,7 +205,8 @@ against `poolhouse.testing.fakehub`.
 ## New uploads
 
 While Poolhouse runs, the daemon checks once a day (`poolhouse.hub.uploads`) the `unsloth/*` repositories that have a model file
-in the Hub cache. It asks only the official Hub for their file lists, through the net pipeline and without a token; with
+in the Hub cache. Starting a server on one of those files makes the day's check too where none has run, so a machine with no
+daemon is told; the changes in the served repositories are said where the load is reported. It asks only the official Hub for their file lists, through the net pipeline and without a token; with
 `$HF_ENDPOINT` pointing elsewhere it asks nothing. It never downloads or deletes, and what it finds only informs. It finds:
 
 - a held file the repository replaced under the same name (another size, or another digest than the Hub cache names its bytes
@@ -214,7 +215,14 @@ in the Hub cache. It asks only the official Hub for their file lists, through th
 - a `.gguf` model file added to the repository since the first check of it, which counts everything then listed as seen;
 - a draft head, projector or other companion added or changed since then, and any held one replaced.
 
-`poolhouse-models list` and the app's Models view show each until the file is fetched. Each distinct change is announced once on
+`poolhouse-models list` and the app's Models view show each until the file is fetched.
+
+A draft head is fetched as any model file is: by `poolhouse-models fetch`, or by a server start that uses it. A mainline
+llama.cpp server about to start with a held `unsloth/*` head asks whether that file was replaced and fetches the new one
+(`serve.drafthead`); a held `qwen4exp` head it cannot load (its draft block has compress ratio 0) is fetched the same way.
+The old copy stays on disk, so a running server keeps it. If the Hub cannot be asked, the download fails or the new copy
+does not load, the held one is served. `poolhouse-models updates --off` stops the asking. Nothing is fetched when
+Poolhouse is upgraded. Each distinct change is announced once on
 one workspace (the daemon's preferred project, else the first one present); with none, the next check offers it again. The first
 check reports the held files that are stale already. `poolhouse-models updates` shows the findings, `--now` checks at once without
 posting, and `--off` stops the daily check and hides its findings (`--on` resumes). The switch and the cache are

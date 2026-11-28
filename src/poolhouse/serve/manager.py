@@ -21,7 +21,7 @@ from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.chat import forget_server
 from poolhouse.client.health import refuses_key, serving_params
 from poolhouse.files import write_json
-from poolhouse.hub import free_memory, room as machine_room
+from poolhouse.hub import free_memory, room as machine_room, uploads
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
 from poolhouse.ownership import lease_file, recorded_servers, same_process
@@ -437,6 +437,7 @@ class ServerManager(Admitting):
                 info = replace(info, mtp=Path(str(spec.draft)).name if spec.draft else "embedded",
                                mtp_note=f"MTP on: {spec.spec_type}")
         emit(on_event, "ready", port=spec.port, load_s=info.load_s, warmup_s=info.warmup_s)
+        uploads.serving(spec.model, spec.draft or "", say=self.say or logger.warning)
         return info
 
     def _slots_shortfall(self, spec: ServerSpec) -> ServerSpec | None:

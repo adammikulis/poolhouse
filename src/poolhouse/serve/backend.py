@@ -21,7 +21,7 @@ from poolhouse import errors, home, serverkeys
 from poolhouse.client import families, wait_for_health
 from poolhouse.ownership import listens_on, recorded_servers
 from poolhouse.platform import end_child, process_group_kwargs
-from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, startup
+from poolhouse.serve import confined as confinement, drafthead, exit_guard, grant, kvcache, startup
 from poolhouse.serve.binary import child_env, require_binary, vetted
 from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
@@ -783,7 +783,8 @@ class LlamaServerBackend(ServerBackend):
         ``starting`` takes ``check_flags``, ``preflight`` and ``warmup_request``, each
         ``True`` unless passed otherwise.
         """
-        spec = self.resolved_draft(self.resolved_model(spec))
+        spec = self.resolved_model(spec)
+        spec = self.resolved_draft(drafthead.fitting(spec, self.binary))
         if spec.mmproj:
             spec = replace(spec, mmproj=fetched(spec.mmproj, "projector"))
         spec, yarn_said = self.resolved_context(spec)
