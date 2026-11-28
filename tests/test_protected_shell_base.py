@@ -14,12 +14,17 @@ from pathlib import Path
 
 import pytest
 from test_protected_shell import (
+    COMPOUND_COMMANDS,
     DATA_IN_HEREDOCS,
+    GLUED_OPERATORS,
     HANDED_TO_A_PROGRAM,
     HARMLESS,
     HIDDEN_BY_A_COMMENT,
+    INTERPRETER_NAMES,
     PROSE,
+    REDIRECT_SPELLINGS,
     SHAPES,
+    SLOW,
     UNSEEN,
 )
 
@@ -56,10 +61,25 @@ EARLIER = (
     "ls # see ~/.poolhouse/person\nls", "python3 -c 'print(\".poolhouse/person\")'", "grep -rn '.poolhouse/person' docs",
     "grep -rn '.git/hooks' docs", f"python3 -c 'print(open(\"{TOKEN}\").read())'", "echo ~/.poolhouse/person",
     "git push origin x # not main", "grep -n 'git stash' x", "git commit -m 'never git add -A'", "ls <<< 'git push --force'",
-    "wc -c <<< '/**/*'", "echo a**b; ls", "cat a\x00b; git push --force origin x", "true $'\\0'; git push --force origin x")
+    "wc -c <<< '/**/*'", "echo a**b; ls", "cat a\x00b; git push --force origin x", "true $'\\0'; git push --force origin x",
+    f"python3 -c 'import inspect\ndef f():\n \"{PERSON}\"\nprint(open(inspect.getdoc(f)).read())'",
+    f"python3 -c 'match open:\n case print: pass\nsys=print(\"{PERSON}\").read()'",
+    f"python3 -c 'import builtins\nbuiltins.__dict__[\"print\"]=open\nx=print(\"{PERSON}\").read()'",
+    f"python3 -c 'import sys\nclass F:\n def write(s,t): t.strip() and open(t)\nprint(\"{PERSON}\", file=F())'",
+    f"echo(){{ cat \"$@\";}}; echo {KEY}", f"grep() {{ cat \"$@\"; }}; grep {KEY}", f"rg -r -- '-.' {KEY}", f"grep -e {{x,{KEY}}}",
+    "grep ~/.poolhouse/person/key*", "grep -E -- '--z=|.' \"$HOME/.poolhouse/person/key\"", "grep {.,\"$HOME/.poolhouse/person/key\"}",
+    "python3 -c 'print(\".git/hooks\")'", "gh pr comment 3 --body 'see .poolhouse/person'",
+    "bash -c 'for f in a; do echo x > .git/hooks/pre-push; done'", "bash w2.sh", "bash r2.sh", "bash r3.sh", "bash r4.sh", "bash r6.sh",
+    "touch ${x:-a .git/hooks/pre-push b}", "cp ${x:-a .git/hooks/pre-push}", "touch \"${x:-\"a ; b\"}\" .git/hooks/pre-push",
+    "gh pr merge 3 ${x:- --admin}", "poolhouse-workspace inbox ${x:- --agent claude-other }",
+    "poolhouse-workspace inbox ${x:---agent=claude-other}", "env ${x:- POOLHOUSE_WORKSPACE_AGENT=claude-other } poolhouse-workspace inbox",
+    "true $'\\0' && git add -A", "wc -c <<< 'a**b'; git push --force origin x")
 """The cases of the earlier attack passes."""
 FILES = {"names.sh": f"#!/bin/sh\necho {KEY}\n", "vars.sh": f"p={KEY}\n", "w.sh": "echo x >& .git/hooks/pre-push\n",
-         "r5.sh": f"echo start\n\n\ncat {KEY}\n", "hidden.py": f"# coding: utf-7\n# {PERSON}\n"}
+         "w2.sh": "if true; then\n  rm .git/hooks/pre-push\nfi\n", "r2.sh": "d=~/.poolhouse/person\ncd \"$d\" && cat *\n",
+         "r3.sh": "cd ~/.poolhouse/person\nif true; then cat key; fi\n", "r4.sh": f"ls '<<X'\ncat {KEY}\n",
+         "r5.sh": f"echo start\n\n\ncat {KEY}\n", "r6.sh": f"set -- {KEY}\ncat \"$1\"\n",
+         "hidden.py": f"# coding: utf-7\n# {PERSON}\n"}
 PIECES = (
     "ls", "true", "echo hi", "# note", "ls # <<X", "ls '<<X'", "echo \"<<X\"", "ls $((1<<x))", "(( x = 1<<y ))", "echo $[1<<x]",
     "a[1<<x]=1", "echo ${a[1<<x]}", "if((1<<x));then :;fi", "[[ 1 -lt 1<<x ]]", "cat <<$'X'", "cat <<X(1)", "cat <<X\ny\nX",
@@ -132,7 +152,9 @@ def attacks() -> list[str]:
     shaped = [shape.replace("@@", payload) for shape in SHAPES.values() for payload in PAYLOADS]
     redirected = [shape.replace("@R", target) for shape in REDIRECTED
                   for target in (".git/hooks/pre-push", "~/.poolhouse/authority.json", "out.txt")]
-    whole = [*shaped, *redirected, *EARLIER, *HIDDEN_BY_A_COMMENT.values(), *HANDED_TO_A_PROGRAM.values()]
+    grouped = (HIDDEN_BY_A_COMMENT, GLUED_OPERATORS, REDIRECT_SPELLINGS, COMPOUND_COMMANDS, INTERPRETER_NAMES, HANDED_TO_A_PROGRAM,
+               SLOW)
+    whole = [*shaped, *redirected, *EARLIER, *(command for group in grouped for command in group.values())]
     return [*whole, *(UNSEEN + one for one in whole)]
 
 
