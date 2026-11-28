@@ -10,14 +10,16 @@ is never read at all. Every refusal is a status and a fixed sentence: nothing th
 
 from __future__ import annotations
 
+import base64
+import hmac
 import re
 import socket
 import time
 from dataclasses import dataclass
 from http import HTTPStatus
 
-__all__ = ["MAX_HEAD", "MAX_HEADERS", "TARGET", "Head", "Refusal", "answer", "length_of", "origin_form", "parse_head", "read_body", "read_head",
-           "reason", "send"]
+__all__ = ["CHALLENGE", "MAX_HEAD", "MAX_HEADERS", "TARGET", "Head", "Refusal", "answer", "basic", "length_of", "origin_form", "parse_head",
+           "presented", "read_body", "read_head", "reason", "send"]
 
 MAX_HEAD = 65536
 """The most bytes a request's head may have: `http.client`'s limit on one line (`_MAXLINE`), an existing constant with no recorded reason."""
@@ -36,6 +38,19 @@ ONCE = frozenset({"host", "authorization", "x-api-key", "content-type", "content
 REFUSED_FIELDS = frozenset({"upgrade", "expect", "transfer-encoding"})
 """A request with any of these is refused: an upgrade leaves HTTP, `Expect` waits for a second answer, and a body with a transfer coding
 has a second way to state its length (the bridge accepts a body only by `Content-Length`)."""
+CHALLENGE = ("Proxy-Authenticate", 'Basic realm="poolhouse"')
+"""The field a proxy's 407 asks for its credential with."""
+
+
+def basic(user: str, secret: str) -> str:
+    """The `Proxy-Authorization` value that carries ``user`` and ``secret``."""
+    return "Basic " + base64.b64encode(f"{user}:{secret}".encode()).decode()
+
+
+def presented(head: Head, expected: str) -> bool:
+    """Whether a proxy request carries exactly ``expected`` (`basic`); a caller that does not is never told which part was wrong."""
+    given = head.one("proxy-authorization")
+    return given is not None and hmac.compare_digest(given.strip().encode(), expected.encode())
 
 
 class Refusal(Exception):

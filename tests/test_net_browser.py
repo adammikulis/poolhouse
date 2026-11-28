@@ -2,9 +2,12 @@
 the guard's proxy. Every server here is plumbing only: fixed bytes on loopback. The one the guard is told it may reach (``outside``)
 stands for the public page; the other (``local``) is the service on this machine that nothing may reach. No name resolves."""
 
+import base64
 import contextlib
 import importlib
+import os
 import socket
+import sys
 import threading
 import urllib.parse
 from http.server import BaseHTTPRequestHandler
@@ -15,6 +18,7 @@ from poolhouse import httpguard, web
 from poolhouse.http import Refused, Server
 from poolhouse.httpguard import Limits
 
+pytest_plugins = ["tests.sandbox_kit"]
 browser = importlib.import_module("poolhouse.scrape.browser")  # the package exports a function of the same name
 SECRET = "CANNED-LOCAL-SERVICE-CONTENT"
 
@@ -97,9 +101,15 @@ def test_a_public_address_may_be_connected_to_and_is_the_address_given_back():
     assert browserguard.allowed("https://tessyn.example/", mixed) == [], "one private answer refuses the name"
 
 
-def asked(port: int, request: bytes, then: bytes = b"") -> bytes:
-    """Everything the proxy on ``port`` answers to ``request``; ``then`` is sent once the first answer has arrived."""
-    with socket.create_connection(("127.0.0.1", port), timeout=10) as client:
+def asked(guard, request: bytes, then: bytes = b"", credential: bytes | None = None) -> bytes:
+    """Everything ``guard``'s proxy answers to ``request``, which presents the guard's own credential unless ``credential`` gives
+    other header lines; ``then`` is sent once the first answer has arrived."""
+    if credential is None:
+        encoded = base64.b64encode(f"poolhouse:{guard.password}".encode())
+        credential = b"Proxy-Authorization: Basic " + encoded + b"\r\n"
+    first, rest = request.split(b"\r\n", 1)
+    request = first + b"\r\n" + credential + rest
+    with socket.create_connection(("127.0.0.1", guard.port), timeout=10) as client:
         client.sendall(request)
         got = bytearray()
         while data := client.recv(65536):
@@ -146,7 +156,7 @@ def test_the_proxy_connects_to_nothing_on_this_machine_however_it_is_named(reque
     rebound = Limits(resolver=lambda host, port: ["127.0.0.1"])   # the name's answer by the time the browser connects
     with Canned(SECRET) as local, browserguard.Guard(rebound) as guard:
         line = request_line.format(port=local.port)
-        answer = asked(guard.port, f"{line}\r\nHost: x\r\n\r\n".encode())
+        answer = asked(guard, f"{line}\r\nHost: x\r\n\r\n".encode())
         assert answer.startswith(b"HTTP/1.1 403 ") and SECRET.encode() not in answer
         assert local.connections == 0 and len(guard.refused) == 1
 
@@ -167,7 +177,7 @@ def test_the_proxy_dials_the_address_it_checked_and_sends_one_request_for_one_ch
             request = (f"POST http://outside.example:{port}/a?x=1 HTTP/1.1\r\nHost: elsewhere\r\nProxy-Connection: keep-alive\r\n"
                        "Content-Length: 3\r\n\r\nabc"
                        "GET http://127.0.0.1:1/second HTTP/1.1\r\nHost: x\r\n\r\n").encode()
-            answer = asked(guard.port, request, then=b"GET http://127.0.0.1:1/third HTTP/1.1\r\nHost: x\r\n\r\n")
+            answer = asked(guard, request, then=b"GET http://127.0.0.1:1/third HTTP/1.1\r\nHost: x\r\n\r\n")
     assert answer == b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
     assert bytes(got) == (f"POST /a?x=1 HTTP/1.1\r\nHost: outside.example:{port}\r\ncontent-length: 3\r\n"
                           "Connection: close\r\n\r\nabc").encode()
@@ -180,7 +190,7 @@ def test_the_proxy_tunnels_to_a_host_it_may_reach():
     with recording(b"pong") as (port, got):
         limits = Limits(allow_hosts=frozenset({"outside.example"}), resolver=lambda host, number: ["127.0.0.1"])
         with browserguard.Guard(limits) as guard:
-            answer = asked(guard.port, f"CONNECT outside.example:{port} HTTP/1.1\r\nHost: x\r\n\r\n".encode(), then=b"ping")
+            answer = asked(guard, f"CONNECT outside.example:{port} HTTP/1.1\r\nHost: x\r\n\r\n".encode(), then=b"ping")
     assert answer == b"HTTP/1.1 200 Connection established\r\n\r\npong"
     assert bytes(got) == b"ping"
 
@@ -194,8 +204,53 @@ def test_the_proxy_takes_no_request_it_would_have_to_guess_at(outside, request_b
     from poolhouse.scrape import browserguard
 
     with browserguard.Guard() as guard:
-        answer = asked(guard.port, request_bytes.replace(b"PORT", str(outside.port).encode()))
+        answer = asked(guard, request_bytes.replace(b"PORT", str(outside.port).encode()))
     assert answer.startswith(b"HTTP/1.1 400 ") and outside.connections == 0
+
+
+NAMED = Limits(allow_hosts=frozenset({"beyond.example"}), resolver=lambda host, port: ["127.0.0.1"])
+"""A canned server stands for a host beyond this machine, which only the guard's own resolver names."""
+
+
+@pytest.mark.parametrize("credential", [
+    b"", b"Proxy-Authorization: Basic cG9vbGhvdXNlOndyb25n\r\n", b"Authorization: Basic cG9vbGhvdXNlOndyb25n\r\n", b"another guard's",
+])
+@pytest.mark.parametrize("request_line", ["CONNECT beyond.example:{port} HTTP/1.1", "GET http://beyond.example:{port}/x HTTP/1.1"])
+def test_the_proxy_serves_nobody_without_its_guards_own_credential(credential, request_line):
+    from poolhouse.scrape import browserguard
+
+    with Canned(SECRET) as beyond, browserguard.Guard(NAMED) as guard, browserguard.Guard(NAMED) as other:
+        assert guard.password != other.password and guard.password not in repr(guard)
+        if credential == b"another guard's":
+            credential = b"Proxy-Authorization: Basic " + base64.b64encode(f"poolhouse:{other.password}".encode()) + b"\r\n"
+        answer = asked(guard, (request_line.format(port=beyond.port) + "\r\nHost: x\r\n\r\n").encode(), credential=credential)
+        assert answer.startswith(b"HTTP/1.1 407 ") and b'Proxy-Authenticate: Basic realm="poolhouse"' in answer
+        assert beyond.connections == 0 and guard.refused == []
+
+
+CALLER = """import socket, sys
+s = socket.create_connection(('127.0.0.1', int(sys.argv[1])), 10)
+s.sendall(('CONNECT beyond.example:' + sys.argv[2] + ' HTTP/1.1\\r\\n\\r\\n').encode())
+print(s.recv(200).split(b'\\r\\n')[0].decode())"""
+
+
+@pytest.mark.slow
+def test_a_process_in_an_open_coding_box_cannot_leave_this_machine_through_a_guards_proxy(tmp_path, seatbelt):
+    from poolhouse.sandbox import run as boxed
+    from poolhouse.sandbox.policy import Limits as Bounds, Net, Policy
+    from poolhouse.scrape import browserguard
+
+    work = str(tmp_path.resolve())
+    reads = tuple(dict.fromkeys(os.path.realpath(each) for each in (sys.prefix, sys.base_prefix)))
+    python = os.path.realpath(sys.executable)
+    policy = Policy("coding-probe", read=(*reads, work, os.path.realpath("/etc/ssl")), write=(work,), exec=(python, *reads),
+                    net=Net.loopback(), env={"HOME": work, "TMPDIR": work, "PATH": "/usr/bin:/bin"}, strict=True, open=True,
+                    limits=Bounds(wall_seconds=60))
+    with Canned(SECRET) as beyond, browserguard.Guard(NAMED) as guard:
+        done = boxed([python, "-I", "-B", "-c", CALLER, str(guard.port), str(beyond.port)], policy, cwd=work)
+        said = done.stdout if isinstance(done.stdout, str) else done.stdout.decode()
+        assert (done.returncode, said.strip()) == (0, "HTTP/1.1 407 Proxy Authentication Required"), done.stderr
+        assert beyond.connections == 0
 
 
 PAGE = """<!doctype html><title>outside</title><body><p>hello</p>
@@ -233,21 +288,6 @@ FORM = """(action) => { const f = document.createElement('form'); f.method = 'po
   document.body.appendChild(f); setTimeout(() => f.submit(), 50); }"""
 
 
-@pytest.fixture
-def nested(monkeypatch):
-    """The suite may itself run inside a sandbox, where Chromium's own cannot start (`test_first_use_tools` holds that option of a
-    guarded window); every other launch option is the window's."""
-    real = browser._context
-
-    def launched(play, *rest):
-        launch = play.chromium.launch_persistent_context
-        monkeypatch.setattr(play.chromium, "launch_persistent_context",
-                            lambda *a, **k: launch(*a, **{**k, "chromium_sandbox": False, "timeout": 30_000}))
-        return real(play, *rest)
-
-    monkeypatch.setattr(browser, "_context", launched)
-
-
 @contextlib.contextmanager
 def guarded(profile):
     """A page of the guarded window as `scrape.browser` makes one; the test is skipped where no browser is installed."""
@@ -265,7 +305,7 @@ def guarded(profile):
 
 
 @pytest.mark.slow
-def test_a_real_guarded_browser_reaches_this_machine_by_no_redirect_form_or_socket(outside, nested, tmp_path, caplog):
+def test_a_real_guarded_browser_reaches_this_machine_by_no_redirect_form_or_socket(outside, tmp_path, caplog):
     with Canned(SECRET) as local:
         outside.page = PAGE.replace("LOCAL", local.base).replace("PORT", str(local.port))
         with guarded(tmp_path / "profile") as page:
@@ -286,7 +326,7 @@ def test_a_real_guarded_browser_reaches_this_machine_by_no_redirect_form_or_sock
 
 
 @pytest.mark.slow
-def test_a_web_read_that_is_redirected_to_this_machine_returns_nothing_of_it(outside, nested, tmp_path):
+def test_a_web_read_that_is_redirected_to_this_machine_returns_nothing_of_it(outside, tmp_path):
     def refused(url):
         raise Refused("plumbing only: the plain fetch refuses this redirect")
 
@@ -315,7 +355,7 @@ DATAGRAMS = """async ([port, tcp]) => {
 
 @pytest.mark.slow
 @pytest.mark.parametrize("script", [True, False])
-def test_a_real_guarded_browser_sends_no_datagram_with_or_without_the_removal(outside, nested, tmp_path, monkeypatch, script):
+def test_a_real_guarded_browser_sends_no_datagram_with_or_without_the_removal(outside, tmp_path, monkeypatch, script):
     from poolhouse.scrape import browserguard
 
     if not script:   # the launch options alone, as for a frame the script has not reached

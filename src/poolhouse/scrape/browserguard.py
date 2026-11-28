@@ -2,13 +2,15 @@
 its own, loopback addresses included. The proxy resolves the name once, refuses it unless every address is public (`allowed`, the
 rule of every guarded fetch) and connects to the address it checked, so a first address, a redirect, a form, either socket API and a
 name whose answer changes are all held to that one rule, whatever in the page asked. What a proxy cannot carry, datagrams, is taken
-away, and downloads are off."""
+away, and downloads are off. The proxy serves only the browser it was made for, which holds a password made for that one guard:
+another program on this machine, one confined to loopback among them, gets a 407 and goes nowhere."""
 
 from __future__ import annotations
 
 import json
 import logging
 import re
+import secrets
 import selectors
 import socket
 import sys
@@ -34,6 +36,7 @@ HOP = frozenset({"connection", "keep-alive", "proxy-connection", "proxy-authoriz
 """Header fields of one connection, which a proxy does not pass on."""
 MOST_ANSWER_HEAD = 4 * wire.MAX_HEAD
 """The most bytes an answer's head may have: Chromium's own limit on one."""
+USER = "poolhouse"
 
 
 def allowed(url: str, limits: Limits | None = None) -> list[str]:
@@ -54,6 +57,9 @@ class Guard:
         self.limits = limits or Limits()
         self.refused: list[str] = []
         self.port = 0
+        self.password = secrets.token_urlsafe(32)
+        """What the browser presents with every connection; it reaches the browser through Playwright, never on a command line."""
+        self._expected = wire.basic(USER, self.password)
         self._server = Server(socket.AF_INET, ("127.0.0.1", 0), self._connection)
 
     def __enter__(self) -> Guard:
@@ -66,8 +72,8 @@ class Guard:
     def options(self, args: list[str]) -> dict[str, Any]:
         """The launch options that hold a browser started with ``args`` to this proxy. Chromium sends loopback addresses past a
         proxy unless ``<-loopback>`` says otherwise."""
-        return {"proxy": {"server": f"http://127.0.0.1:{self.port}", "bypass": "<-loopback>"}, "args": [*args, *FLAGS],
-                "accept_downloads": False,
+        proxy = {"server": f"http://127.0.0.1:{self.port}", "bypass": "<-loopback>", "username": USER, "password": self.password}
+        return {"proxy": proxy, "args": [*args, *FLAGS], "accept_downloads": False,
                 "service_workers": "block"}   # `_REMOVE` does not run inside one either
 
     def install(self, context: Any) -> None:
@@ -80,7 +86,9 @@ class Guard:
         buffer = bytearray()
         try:
             head = wire.read_head(client, buffer, tunnel=True, within=IDLE_SECONDS)
-            if head.method == "CONNECT":
+            if not wire.presented(head, self._expected):
+                wire.answer(client, 407, b"", extra=(wire.CHALLENGE,))
+            elif head.method == "CONNECT":
                 self._tunnel(client, head.target, bytes(buffer))
             else:
                 self._exchange(client, head, bytes(buffer))
