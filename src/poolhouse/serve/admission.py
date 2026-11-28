@@ -108,7 +108,8 @@ def estimate_bytes(spec: ServerSpec) -> int:
     except (OSError, ValueError, struct.error):
         kv = 0
     return (weights + _size(spec.draft) + _size(spec.mmproj) + kv
-            + draft_kv_estimate_bytes(spec) + RUNTIME_ALLOWANCE_BYTES)
+            + draft_kv_estimate_bytes(spec) + RUNTIME_ALLOWANCE_BYTES
+            + (max(0, spec.cache_ram_mb or 0) * MIB if spec.private else 0))   # its conversations held in memory count too
 
 
 def live(entry: Mapping[str, Any]) -> bool:
@@ -135,6 +136,8 @@ def differences(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str
     (from `serving_mismatch`) and then the recorded settings that were asked for and are not
     the server's. Empty when it can serve ``spec`` as it is."""
     out = list(mismatches)
+    if spec.private != str(entry.get("private") or ""):
+        out.append("private: " + ("the server is for someone else alone" if entry.get("private") else "a server of its own was asked for"))
     if bool(entry.get("embedding")) != bool(spec.embedding):
         out.append("embedding: the server " + ("serves embeddings" if entry.get("embedding") else "does not"))
     if bool(entry.get("reranking")) != bool(spec.reranking):

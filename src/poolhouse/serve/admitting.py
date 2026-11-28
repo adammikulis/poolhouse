@@ -160,8 +160,10 @@ class Admitting:
         """``(a running server on another port that serves spec as asked, whether one that
         would is still loading)``."""
         loading = False
+        if spec.private:   # a private server is a process of its own, never one that was already up
+            return None, loading
         for port, entry in records.items():
-            if (port == spec.port or not admission.live(entry)
+            if (entry.get("private") or port == spec.port or not admission.live(entry)
                     or not model_matches(str(entry.get("model") or ""), spec.model)):
                 continue
             if entry.get("pending"):
@@ -195,7 +197,7 @@ class Admitting:
         registry when the adoption setting allows it and it passes every check; else
         ``None``."""
         how = unmanaged.mode()
-        if how == "off":
+        if how == "off" or spec.private:
             return None
         seen = unmanaged.examine(spec.port)
         if not seen.ok:

@@ -41,6 +41,7 @@ from poolhouse.board.client import NodeError
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.client import is_healthy, refuses_key
 from poolhouse.errors import Denied
+from poolhouse.guest.store import is_guest_endpoint
 from poolhouse.http import shown
 from poolhouse.hub.naming import DENSE_27B
 from poolhouse.hub.probe import MachineMemory
@@ -257,7 +258,7 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
     asked = want.ctx // max(1, want.slots) if want.ctx else 0
     for port in sorted(records, key=lambda p: (p != want.port, p)):
         entry = records[port]
-        if (entry.get("embedding") or not admission.live(entry)
+        if (entry.get("embedding") or entry.get("private") or not admission.live(entry)
                 or not model_matches(str(entry.get("model") or ""), found)):
             continue
         up = f"the server already up on port {port}"
@@ -529,6 +530,9 @@ def checked(args: argparse.Namespace, name: str, say: Callable[[str], None], *, 
         say("error: --on names a server already running; do not name a model as well")
         return False
     args.asked, args.permissions = args.permissions or "", args.permissions or coding_policy.GUARDED
+    if args.on and not args.sandbox and is_guest_endpoint(args.on):
+        args.sandbox = True   # replies there come from another person's computer: their tool calls run only in the sandbox
+        say("--on is a guest connection to someone else's computer, so this run is sandboxed")
     try:
         coding_policy.Policy(args.permissions, args.execution_mode)
         asked, args.project = args.project, str(check_project(args.project, sandbox=args.sandbox))

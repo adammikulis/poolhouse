@@ -1,10 +1,10 @@
 {
- "surfaces": 898,
+ "surfaces": 907,
  "by_status": {
-  "covered": 569,
-  "partial": 189,
+  "covered": 573,
+  "partial": 193,
   "uncovered": 51,
-  "n/a": 89,
+  "n/a": 90,
   "unmapped": 0
  },
  "by_kind": {
@@ -38,20 +38,20 @@
   },
   "egress": {
    "covered": 66,
-   "partial": 46,
+   "partial": 50,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 0
   },
   "handler": {
-   "covered": 29,
+   "covered": 32,
    "partial": 2,
    "uncovered": 0,
    "n/a": 0,
    "unmapped": 0
   },
   "human": {
-   "covered": 56,
+   "covered": 57,
    "partial": 0,
    "uncovered": 0,
    "n/a": 1,
@@ -68,7 +68,7 @@
    "covered": 7,
    "partial": 3,
    "uncovered": 0,
-   "n/a": 33,
+   "n/a": 34,
    "unmapped": 0
   },
   "mcp-tool": {
@@ -2192,6 +2192,54 @@
    "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
   },
   {
+   "id": "egress:guest/gateway.py:Gateway._ask",
+   "kind": "egress",
+   "source": "guest/gateway.py:Gateway._ask",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "partial",
+   "tests": [
+    "tests/test_net_no_bypass.py"
+   ],
+   "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
+  },
+  {
+   "id": "egress:guest/joining.py:Joins.scan",
+   "kind": "egress",
+   "source": "guest/joining.py:Joins.scan",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "partial",
+   "tests": [
+    "tests/test_net_no_bypass.py"
+   ],
+   "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
+  },
+  {
+   "id": "egress:guest/local.py:connect",
+   "kind": "egress",
+   "source": "guest/local.py:connect",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "partial",
+   "tests": [
+    "tests/test_net_no_bypass.py"
+   ],
+   "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
+  },
+  {
+   "id": "egress:guest/wire.py:private_address",
+   "kind": "egress",
+   "source": "guest/wire.py:private_address",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "partial",
+   "tests": [
+    "tests/test_net_no_bypass.py"
+   ],
+   "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
+  },
+  {
    "id": "egress:harnessing.py:serve_and_run",
    "kind": "egress",
    "source": "harnessing.py:serve_and_run",
@@ -3568,6 +3616,50 @@
    "note": ""
   },
   {
+   "id": "handler:guest/gateway.py:Handler",
+   "kind": "handler",
+   "source": "guest/gateway.py:Handler",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_guest.py::test_a_guest_reaches_nothing_but_model_calls",
+    "tests/test_guest.py::test_a_computer_that_was_not_joined_gets_no_connection",
+    "tests/test_guest.py::test_removal_cuts_a_request_in_flight_and_every_later_one",
+    "tests/test_guest.py::test_limits_refuse_further_requests",
+    "tests/test_guest.py::test_a_marker_prompt_and_reply_reach_no_file_and_no_log",
+    "tests/test_guest.py::test_a_guest_who_does_not_read_her_reply_does_not_keep_the_owner_waiting"
+   ],
+   "note": "Real mutual TLS on loopback: an unjoined or bare client completes no handshake, every other path is refused without reaching the model side, switching fields are dropped, removal cuts a held request, and content reaches no file or log. The model side is a marked plumbing server."
+  },
+  {
+   "id": "handler:guest/joining.py:Handler",
+   "kind": "handler",
+   "source": "guest/joining.py:Handler",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_guest.py::test_a_code_is_good_for_one_computer_and_unknown_ids_are_expired",
+    "tests/test_guest.py::test_a_wrong_secret_or_key_pins_nothing",
+    "tests/test_guest.py::test_words_that_do_not_match_allow_nothing"
+   ],
+   "note": "A used code, a wrong secret and a wrong key fingerprint allow nothing, and nothing is recorded before the person confirms the words."
+  },
+  {
+   "id": "handler:guest/local.py:Handler",
+   "kind": "handler",
+   "source": "guest/local.py:Handler",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_guest.py::test_the_local_address_refuses_pages_other_names_and_strangers",
+    "tests/test_guest.py::test_the_guest_accepts_only_the_joined_certificate"
+   ],
+   "note": "A browser origin, another host name and a guessed token are refused on a loopback-only listener, and only the pinned certificate is spoken to."
+  },
+  {
    "id": "handler:net/pdfchild.py:Interpreter",
    "kind": "handler",
    "source": "net/pdfchild.py:Interpreter",
@@ -3837,6 +3929,21 @@
    "id": "human:fleet/runtime_wheel.py:prepare",
    "kind": "human",
    "source": "fleet/runtime_wheel.py:prepare",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
+    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:guest/__main__.py:permit",
+   "kind": "human",
+   "source": "guest/__main__.py:permit",
    "trust": "an agent process or a member",
    "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",
@@ -4816,6 +4923,16 @@
    "id": "listener:guard/__init__.py:start",
    "kind": "listener",
    "source": "guard/__init__.py:start",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
+  },
+  {
+   "id": "listener:guest/wire.py:Server.server_bind",
+   "kind": "listener",
+   "source": "guest/wire.py:Server.server_bind",
    "trust": "anything that can connect to the address",
    "attacker": "an unauthenticated or cross-origin client reaches the port",
    "status": "n/a",

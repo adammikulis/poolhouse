@@ -34,6 +34,7 @@ from poolhouse.serve import (
     ledger,
     llamacpp_provider,
     mtp,
+    private,
     provenance,
     quant_guard,
     stopping,
@@ -351,8 +352,8 @@ class ServerManager(Admitting):
     def _permitted(self, spec: ServerSpec, escalate: bool) -> ServerSpec:
         """``spec`` as it will be started, or `ServerFailed` when the port was just given up
         on or a limit on this machine refuses the lease."""
-        spec = reusing_installed(spec)
-        if escalate:
+        spec = private.sealed(reusing_installed(spec))
+        if escalate and not spec.private:   # escalating saves slots to disk, which a private server never does
             # llama.cpp's slot-save file carries the cache's stream count, and a restore
             # raises "n_stream mismatch" the moment that count differs from the file's --
             # which a change in slot count always does unless every stream is one shared

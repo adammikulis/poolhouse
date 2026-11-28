@@ -21,7 +21,7 @@ from poolhouse import errors, home, serverkeys
 from poolhouse.client import families, wait_for_health
 from poolhouse.ownership import listens_on, recorded_servers
 from poolhouse.platform import end_child, process_group_kwargs
-from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, startup
+from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, private, startup
 from poolhouse.serve.binary import child_env, require_binary, vetted
 from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
@@ -381,6 +381,7 @@ class ServerSpec:
     # "" serves with llama-server (or tree decoding for MLX weights); "vllm" or "sglang"
     # serves Hugging Face weights with that engine.
     engine: str = ""
+    private: str = ""   # who alone it is for, "" for an ordinary one: `poolhouse.serve.private`
 
     @property
     def is_hf_ref(self) -> bool:
@@ -571,10 +572,11 @@ class LlamaServerBackend(ServerBackend):
             raise UnknownFlag("\n".join(
                 f"this llama-server has no {flag}" + (f"; it has {near}" if near else "")
                 for flag, near in lacking))
-        return [*argv, "--metrics"] if "--metrics" in known else argv
+        return [*argv, "--metrics"] if "--metrics" in known and not private.sealed_argv(argv) else argv
 
     def command(self, spec: ServerSpec) -> list[str]:
         """Build the argv."""
+        spec = private.sealed(spec)
         argv = [str(self.binary), "--host", DEFAULT_HOST, "--port", str(spec.port)]
         if spec.api_key:   # a file of mode 0600, never the command line every process of the machine can read
             argv += ["--api-key-file", str(serverkeys.write_key_file(spec.port, spec.api_key))]
@@ -593,7 +595,7 @@ class LlamaServerBackend(ServerBackend):
         if flag := unlisted_flag(list(spec.extra_args), LLAMA_FLAGS):
             raise ServerFailed(f"{flag} is not a flag Poolhouse passes to llama-server: a flag that "
                                f"names a file or a repository is set on the spec and verified")
-        argv += list(spec.extra_args)
+        argv += [*spec.extra_args, *private.flags(spec)]
         return argv
 
     @staticmethod
@@ -783,7 +785,7 @@ class LlamaServerBackend(ServerBackend):
         ``starting`` takes ``check_flags``, ``preflight`` and ``warmup_request``, each
         ``True`` unless passed otherwise.
         """
-        spec = self.resolved_draft(self.resolved_model(spec))
+        spec = self.resolved_draft(self.resolved_model(private.sealed(spec)))
         if spec.mmproj:
             spec = replace(spec, mmproj=fetched(spec.mmproj, "projector"))
         spec, yarn_said = self.resolved_context(spec)
@@ -812,7 +814,7 @@ class LlamaServerBackend(ServerBackend):
             # llama-server refuses to start rather than create this itself: "not a
             # directory" is its whole complaint.
             Path(spec.slot_save_path).mkdir(parents=True, exist_ok=True)
-        log_path = server_log("llama-server", spec.port)
+        log_path = private.NOWHERE if spec.private else server_log("llama-server", spec.port)
         logger.info("starting: %s", " ".join(argv))
 
         extra_env = {}
@@ -823,7 +825,7 @@ class LlamaServerBackend(ServerBackend):
             # nothing to summarise.
             extra_env["LLAMA_SERVER_SLOTS_DEBUG"] = "1"
 
-        env = self.environment(extra_env or None)
+        env = private.environment(self.environment(extra_env or None), spec.private)
         evidence = startup.capture(spec, self.binary, argv, environment=env)
         confined = None
         if confinement.wanted(self.sandboxed):

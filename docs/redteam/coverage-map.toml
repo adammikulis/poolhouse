@@ -15,6 +15,27 @@ uncovered = 51
 partial = 180
 
 [[group]]
+match = ["handler:guest/gateway.py:Handler"]
+status = "covered"
+count = 1
+tests = ["tests/test_guest.py::test_a_guest_reaches_nothing_but_model_calls", "tests/test_guest.py::test_a_computer_that_was_not_joined_gets_no_connection", "tests/test_guest.py::test_removal_cuts_a_request_in_flight_and_every_later_one", "tests/test_guest.py::test_limits_refuse_further_requests", "tests/test_guest.py::test_a_marker_prompt_and_reply_reach_no_file_and_no_log", "tests/test_guest.py::test_a_guest_who_does_not_read_her_reply_does_not_keep_the_owner_waiting"]
+note = "Real mutual TLS on loopback: an unjoined or bare client completes no handshake, every other path is refused without reaching the model side, switching fields are dropped, removal cuts a held request, and content reaches no file or log. The model side is a marked plumbing server."
+
+[[group]]
+match = ["handler:guest/joining.py:Handler"]
+status = "covered"
+count = 1
+tests = ["tests/test_guest.py::test_a_code_is_good_for_one_computer_and_unknown_ids_are_expired", "tests/test_guest.py::test_a_wrong_secret_or_key_pins_nothing", "tests/test_guest.py::test_words_that_do_not_match_allow_nothing"]
+note = "A used code, a wrong secret and a wrong key fingerprint allow nothing, and nothing is recorded before the person confirms the words."
+
+[[group]]
+match = ["handler:guest/local.py:Handler"]
+status = "covered"
+count = 1
+tests = ["tests/test_guest.py::test_the_local_address_refuses_pages_other_names_and_strangers", "tests/test_guest.py::test_the_guest_accepts_only_the_joined_certificate"]
+note = "A browser origin, another host name and a guessed token are refused on a loopback-only listener, and only the pinned certificate is spoken to."
+
+[[group]]
 match = ["egress:isolation/model_bridge.py:ModelBridge._relay", "egress:isolation/egress_proxy.py:_dial"]
 status = "covered"
 count = 2

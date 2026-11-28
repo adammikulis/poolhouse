@@ -70,7 +70,7 @@ _FLAGS = ("context", "n_gpu_layers", "device", "parallel", "mtp", "spec_type", "
 def _shape_of(settings: Mapping[str, Any]) -> dict[str, Any]:
     """The settings of a server that decide whether it can be shared, from an ask's spec, a
     `ServerSpec` as a dict or a lease record."""
-    out: dict[str, Any] = {"device": admission.device_of(settings)}
+    out: dict[str, Any] = {"device": admission.device_of(settings), "private": str(settings.get("private") or "")}
     for key in ("context", "parallel", "cache_type_k", "cache_type_v", "spec_type", "mtp",
                 "embedding", "reranking", "draft", "chat_template_file", "spec_draft_max", "spec_p_min"):
         if key in settings and settings[key] is not None:
@@ -189,6 +189,8 @@ class Held:
         speculation kind asked for, on the device asked for. Sharing by model alone served a 256K request from a
         32K server."""
         have = self.shape
+        if asked.get("private") or have.get("private"):
+            return f"port {self.port} is a private server" if have.get("private") else "a private server was asked for"
         if (device := admission.device_of(asked)) != have.get("device", device):
             return f"port {self.port} computes on {have['device']}, {device} asked"
         for key, what in (("context", "tokens of context"), ("parallel", "slot(s)")):
@@ -574,7 +576,7 @@ class Broker(BrokerStops, BrokerHolds):
             return None, [], "; ".join(
                 [*(h.short_of(ask.spec) for h in busy if h.serves(ask.models)
                    and h.short_of(ask.spec)), *(self._held_said(h) for h in busy)])
-        evict = [h for h in mine if h.ours]
+        evict = [h for h in mine if h.ours and not ask.spec.get("private")]
         return self._fit(ask, evict)
 
     def _fit(self, ask: Ask, evict: list[Held]) -> tuple[None, list[Held], str]:
@@ -582,9 +584,9 @@ class Broker(BrokerStops, BrokerHolds):
         if not need or room is None:
             return None, evict, ""
         freed = sum(h.weight for h in evict)
-        spare = sorted((h for h in self.servers.values() if h.ours and not h.loading
-                        and not h.holders and not h.spared_why() and h not in evict),
-                       key=lambda h: h.idle_since)
+        spare = [] if ask.spec.get("private") else sorted(   # a private server (a guest's) never has another one stopped for it
+            (h for h in self.servers.values() if h.ours and not h.loading
+             and not h.holders and not h.spared_why() and h not in evict), key=lambda h: h.idle_since)
         while need > room + freed and spare:
             evict.append(spare.pop(0))
             freed += evict[-1].weight
