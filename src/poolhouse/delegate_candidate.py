@@ -3,11 +3,12 @@ found by comparing a folder with the copy taken before the work."""
 
 from __future__ import annotations
 
+import contextlib
 import difflib
 import os
 import shutil
 import subprocess
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -144,16 +145,55 @@ def diff(changes: Sequence[Edit], limit: int = 0) -> str:
     return text[:limit] + CUT if limit and len(text) > limit else text
 
 
+SAID_WITH = {"status": ("--ignore-submodules=dirty",),
+             "diff": ("--ignore-submodules=dirty", "--submodule=short", "--no-ext-diff", "--no-textconv")}
+"""What a command is also told: to read no nested repository's working tree or history, and to compare and write a patch with git alone."""
+
+
+def _command(words: Sequence[str]) -> int:
+    """Where in ``words`` the git command is, after the options of git itself."""
+    at = 0
+    while at < len(words) and words[at].startswith("-"):
+        at += 2 if words[at] == "-c" else 1
+    return at
+
+
+@contextlib.contextmanager
+def _nested_unread(folder: str | Path, env: Mapping[str, str] | None) -> Iterator[None]:
+    """While an ``add`` runs in ``folder``, each nested repository still at the commit the index holds is marked unchanged: there is nothing
+    to add of one, and git would run itself inside it to see whether it was edited. The marks set here are taken off again."""
+    top = Path(os.fsdecode(git(folder, "rev-parse", "--show-toplevel", env=env).removesuffix(b"\n")))
+    marked = []
+    for row in git(top, "ls-files", "-s", "-v", "-z", env=env).split(b"\0"):
+        fields, _, path = row.partition(b"\t")
+        nested = top / os.fsdecode(path)
+        if (fields.startswith(b"H 160000 ") and os.path.lexists(nested / ".git")   # H: held, with no mark of its own
+                and git(nested, "--git-dir", ".git", "rev-parse", "--verify", "HEAD").strip() == fields.split()[2]):
+            marked.append(os.fsdecode(path))
+    if marked:
+        git(top, "update-index", "--assume-unchanged", "--", *marked, env=env)
+    try:
+        yield
+    finally:
+        if marked:
+            git(top, "update-index", "--no-assume-unchanged", "--", *marked, env=env)
+
+
 def git(folder: str | Path, *words: str, env: Mapping[str, str] | None = None) -> bytes:
-    """What git says of ``words`` in ``folder``, with ``env`` added to a closed environment: no hook, file monitor, global configuration or
-    optional lock. ValueError when there is no git or it fails."""
+    """What git says of ``words`` in ``folder``, with ``env`` added to a closed environment: no hook, file monitor, external diff, text
+    conversion, global configuration or optional lock, and a nested repository is compared by its commit alone. A content filter the
+    repository's own configuration names does run: it decides what git compares and commits. ValueError when there is no git or it fails."""
     program = safelaunch.which("git")
     if not program:
         raise ValueError("git is not installed")
-    argv = [program, "-c", "core.fsmonitor=false", "-c", f"core.hooksPath={os.devnull}", "--no-optional-locks", "-C", str(folder), *words]
+    at = _command(words)
+    verb = words[at] if at < len(words) else ""
+    argv = [program, "-c", "core.fsmonitor=false", "-c", f"core.hooksPath={os.devnull}", "--no-optional-locks", "-C", str(folder),
+            *words[:at + 1], *SAID_WITH.get(verb, ()), *words[at + 1:]]
     given = {**source_snapshot.git_environment(), **(env or {})}
     try:
-        done = subprocess.run(argv, env=given, stdin=subprocess.DEVNULL, capture_output=True, timeout=120, check=False)
+        with _nested_unread(folder, env) if verb == "add" else contextlib.nullcontext():
+            done = subprocess.run(argv, env=given, stdin=subprocess.DEVNULL, capture_output=True, timeout=120, check=False)
     except subprocess.TimeoutExpired as why:
         raise ValueError(f"git did not end within {why.timeout:.0f}s") from why
     if done.returncode:

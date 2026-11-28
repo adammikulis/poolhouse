@@ -1396,6 +1396,95 @@ tests = ["tests/test_release_check.py::test_a_checkout_with_uncommitted_changes_
 note = "fixed git argument vectors with a timeout read the commit and the dirtiness a merge into a protected branch is judged on; a failure to read is a refusal"
 
 [[group]]
+match = ["spawn:activity/gate.py:_pin_nested.said", "spawn:activity/gate.py:_own_store", "spawn:activity/gate.py:_written"]
+status = "covered"
+count = 3
+tests = ["tests/test_redteam_spawn_git.py::test_a_working_tree_of_hostile_names_is_hashed_as_data",
+         "tests/test_redteam_spawn_git.py::test_a_nested_repository_the_index_holds_runs_nothing_it_configures_while_the_tree_is_hashed",
+         "tests/test_redteam_spawn_git.py::test_a_sparse_checkout_does_not_open_a_nested_repository_while_the_tree_is_hashed",
+         "tests/test_redteam_spawn_git.py::test_a_nested_repository_under_an_ignored_path_is_hashed_and_stays_closed",
+         "tests/test_redteam_spawn_git.py::test_a_nested_repository_stays_closed_however_the_index_holds_it",
+         "tests/test_redteam_spawn_git.py::test_a_nested_repository_is_found_whatever_code_page_text_is_read_in",
+         "tests/test_redteam_spawn_git.py::test_a_checkout_under_a_name_outside_ascii_is_hashed_whatever_code_page_text_is_read_in",
+         "tests/test_gitstate.py::test_a_hidden_name_outside_ascii_is_read_whatever_code_page_text_is_read_in",
+         "tests/test_redteam_spawn_git.py::test_a_nested_repository_with_no_commit_to_name_gives_no_tree_hash",
+         "tests/test_redteam_spawn_git.py::test_a_store_nothing_may_write_takes_new_objects_aside_whatever_the_checkouts_path_says"]
+note = "file names, the checkout's path and attributes shaped like options and shell text are hashed as data and the real index is untouched; a nested repository the index holds is pinned to its commit and marked unchanged, under a sparse checkout, a split index and an ignored path too, so git add runs neither its file monitor nor its filters, and its path is read as git writes it whatever the code page; an unwritable object store receives nothing. The checkout's own configuration is the account's and is honoured"
+
+[[group]]
+match = ["spawn:delegate_candidate.py:git"]
+status = "partial"
+count = 1
+tests = ["tests/test_redteam_spawn_git.py::test_a_delegates_reader_of_a_hostile_repository_runs_nothing_and_reads_that_repository",
+         "tests/test_redteam_spawn_git.py::test_a_delegates_reader_runs_nothing_a_nested_repository_configures",
+         "tests/test_redteam_spawn_git.py::test_a_delegates_diff_of_a_moved_nested_repository_opens_nothing_in_it",
+         "tests/test_redteam_spawn_git.py::test_a_delegates_add_naming_a_nested_repository_opens_nothing_in_it",
+         "tests/test_redteam_spawn_git.py::test_a_delegates_add_of_a_folder_holding_a_nested_repository_opens_nothing_in_it",
+         "tests/test_redteam_spawn_git.py::test_a_delegates_add_over_an_ignored_nested_repository_adds_the_rest",
+         "tests/test_redteam_spawn_git.py::test_a_delegates_add_leaves_the_index_marks_as_it_found_them",
+         "tests/test_redteam_spawn_git.py::test_a_delegates_commands_run_no_program_of_the_repository_but_its_content_filters"]
+note = "open: a content filter the repository's own configuration names runs on status, diff, add, commit and making a worktree. Attacked and holding: its file monitor, external diff and text conversion programs, account configuration and caller variables run nothing; a status, a diff, and an add naming a nested repository, a folder holding one or an ignored path around one start nothing that a repository at its recorded commit configures; names stay single arguments"
+
+[[group]]
+match = ["spawn:platform.py:low_power"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_spawn_programs.py::test_only_the_low_power_line_itself_turns_low_power_on",
+         "tests/test_redteam_spawn_programs.py::test_the_power_question_is_put_to_the_systems_program_whatever_the_callers_path_and_folder_hold",
+         "tests/test_redteam_spawn_programs.py::test_a_power_question_that_cannot_be_asked_is_read_as_off"]
+note = "a fixed argument vector to the system's pmset by its full path, so a program planted on the caller's path or folder is not run; only a line, ended by a newline alone, whose first two words are the setting and 1 turns it on, whatever bytes are around it; a program that is not there is read as off. A newline inside a name pmset prints would still start such a line"
+
+[[group]]
+match = ["spawn:isolation/history.py:_git"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_spawn_git.py::test_a_hostile_projects_history_is_given_to_a_stage_without_running_anything"]
+note = "the project's file monitor, diff drivers, filters, the account's configuration and caller variables run nothing and redirect nothing; a branch and a subject of shell text and option text arrive as names; the project's settings are not carried into the stage"
+
+[[group]]
+match = ["spawn:isolation/ports.py:in_use"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_spawn_programs.py::test_the_port_listing_is_the_systems_whatever_the_callers_path_and_folder_hold",
+         "tests/test_redteam_spawn_programs.py::test_a_port_listing_that_cannot_be_made_opens_no_window",
+         "tests/test_redteam_spawn_programs.py::test_a_port_listing_of_unexpected_lines_yields_only_port_numbers"]
+note = "a fixed argument vector to the system's netstat by its full path: a planted program on the caller's path or folder is not run, a listing that fails opens no window, and only port numbers are read from what it prints"
+
+[[group]]
+match = ["spawn:workspace/integration_git.py:_gh"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_spawn_programs.py::test_a_commit_subject_and_a_body_of_options_reach_the_pull_request_command_as_values",
+         "tests/test_redteam_spawn_programs.py::test_the_rules_asked_for_are_those_of_the_branch_named_and_no_other",
+         "tests/test_redteam_spawn_programs.py::test_a_failing_github_command_reports_without_the_token_it_printed"]
+note = "a commit subject and a body shaped like options are the values of their flags, a branch name is encoded so that it asks for that branch's rules and no other, and a failure is reported with credentials removed"
+
+[[group]]
+match = ["spawn:workspace/release_check.py:pull_request"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_spawn_programs.py::test_a_pull_request_that_is_not_named_by_a_number_is_never_asked_about",
+         "tests/test_redteam_spawn_programs.py::test_a_numbered_pull_request_is_one_fixed_question_in_the_folder_given",
+         "tests/test_redteam_spawn_programs.py::test_an_answer_that_describes_no_pull_request_is_an_error"]
+note = "only digits name a pull request, so no flag, address or second word reaches gh; an answer that is not one JSON object is an error"
+
+[[group]]
+match = ["spawn:speech/tts.py:SystemTTS.synthesize"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_spawn_programs.py::test_words_shaped_like_an_option_are_spoken_and_name_no_file_to_the_system_voice",
+         "tests/test_redteam_spawn_programs.py::test_the_words_reach_the_speech_program_on_its_input_and_never_as_an_argument"]
+note = "the words go to the speech program on its input, so words shaped like an option name no output or input file; the voice is the value of its flag"
+
+[[group]]
+match = ["spawn:workspace/backlog.py:fetch"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_spawn_programs.py::test_a_repository_name_is_one_argument_of_the_issue_listing",
+         "tests/test_redteam_spawn_programs.py::test_issues_that_are_not_the_repositorys_own_are_dropped_from_the_listing"]
+note = "the repository name is the value of --repo and nothing else; rows with another repository's address, a number that is none or no object are dropped"
+
+[[group]]
 match = ["spawn:*"]
 status = "partial"
 tests = ["tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"]
@@ -1572,18 +1661,21 @@ tests = ["tests/test_keystore.py",
 note = "refusal, rate ceiling, background process, other-purpose key, label collision, master in no file or log"
 
 [[group]]
-match = ["keystore:guard/unboxed.py:<module>"]
-status = "covered"
-count = 1
-tests = ["tests/test_delegate_unsandboxed_blocks.py::test_a_read_of_a_common_credential_store_is_refused"]
-note = "the module only names the credential-store commands it refuses, opens no keystore and holds no secret; a call that reads a common credential store is refused"
-
-[[group]]
 match = ["keystore:installed.py:<module>"]
 status = "covered"
 count = 1
 tests = ["tests/test_redteam_installed_keystore.py"]
 note = "the module only names keyring and the other extras; listing them finds a module with find_spec and never imports or runs it, so a shadow copy on the path or in the working directory runs nothing and a hostile module name is absent without raising"
+
+[[group]]
+match = ["keystore:guard/unboxed.py:<module>"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_unboxed_credentials.py::test_a_credential_store_read_is_refused_in_each_listed_form_and_nothing_is_run",
+         "tests/test_redteam_unboxed_credentials.py::test_the_program_is_known_by_its_name_whatever_path_or_case_leads_to_it",
+         "tests/test_redteam_unboxed_credentials.py::test_a_refusal_of_a_secret_file_holds_nothing_of_what_the_file_says",
+         "tests/test_delegate_unsandboxed_blocks.py::test_a_read_of_a_common_credential_store_is_refused"]
+note = "the module only names the credential-store commands it refuses. Judging a call starts no program; the listed reads are refused in the forms the test lists (a path, env, nohup, a plain timeout, command, exec, sudo, sh -c, bash -lc, eval, substitutions, chains, a pipe and a leading assignment); a refusal holds nothing of a secret. It reads command text and is no boundary: timeout or env with options, xargs, if, for, braces, !, find -exec, arch, xcrun, a program in a variable, text piped or fed into a shell, an interpreter's own shell call and `gh auth status -t` get through, and writing or deleting a stored credential is not named"
 
 [[group]]
 match = ["context:chat.py", "context:agent/loop.py", "context:agent/compact.py",
@@ -1673,6 +1765,15 @@ count = 1
 tests = ["tests/test_redteam_board_client.py::test_a_notes_command_is_never_run_through_a_shell",
          "tests/test_redteam_board_client.py::test_a_command_off_the_allow_list_is_refused_whatever_the_note_says"]
 note = "a note's verify command runs only when it is on the owner's allow list, and never through a shell"
+
+[[group]]
+match = ["parser:workspace/release_check.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_redteam_spawn_programs.py::test_an_answer_that_describes_no_pull_request_is_an_error",
+         "tests/test_redteam_spawn_programs.py::test_a_status_list_of_another_shape_passes_no_review",
+         "tests/test_redteam_spawn_programs.py::test_a_head_commit_that_is_a_long_text_is_not_repeated_in_the_refusal"]
+note = "GitHub's answer about a pull request: one that is not one JSON object, or is nested past the reader's limit, is an error; a status list of another shape passes no review; no more than the first seven characters of the head it names are repeated. The size of the answer is not bounded"
 
 [[group]]
 match = ["parser:workspace/*"]

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from poolhouse.board.session import Session
 
-__all__ = ["accepts", "rejected", "review", "standing", "trust"]
+__all__ = ["accepts", "rejected", "rejecters", "review", "standing", "trust"]
 
 CAUSES = ("revoked", "forged")
 
@@ -59,13 +59,18 @@ def _live(s: Session, found: dict[str, Any]) -> dict[str, str]:
     return live
 
 
-def rejected(s: Session, found: dict[str, Any]) -> bool:
-    """Whether a reviewer in ``found`` (from `accepts`) stands with a reject.
+def rejecters(s: Session, found: dict[str, Any]) -> list[str]:
+    """The reviewers in ``found`` (from `accepts`) who stand with a reject.
 
     The node stamped each reviewer's name and model on its review, so a reviewer that ended normally still counts;
     one retired as ``revoked`` or ``forged`` after it reviewed no longer does.
     """
-    return "reject" in _live(s, found).values()
+    return sorted(who for who, verdict in _live(s, found).items() if verdict == "reject")
+
+
+def rejected(s: Session, found: dict[str, Any]) -> bool:
+    """Whether a reviewer in ``found`` stands with a reject (`rejecters`)."""
+    return bool(rejecters(s, found))
 
 
 def standing(s: Session, found: dict[str, Any]) -> str:

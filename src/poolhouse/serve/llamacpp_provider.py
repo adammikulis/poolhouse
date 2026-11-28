@@ -24,7 +24,19 @@ REVISION = '73bfe6cc485554822f80c473a3c0c4f25e80f41b'
 RELEASE = 'prism-b10787-73bfe6c'
 PREFIX = 'llama-' + RELEASE
 ARCHIVE_SHA256 = '59230b0d3e90715095a3f1b9a42bb6723308e7cf3d2d3ef562f49213e95fcfc1'
+ARCHIVE_BYTES = 11573797
 URL = f'https://github.com/PrismML-Eng/llama.cpp/releases/download/{RELEASE}/{PREFIX}-bin-macos-arm64.tar.gz'
+
+
+def supported() -> bool:
+    """Whether the publisher supplies this runtime for this computer."""
+    return platform.system() == 'Darwin' and platform.machine().lower() in ('arm64', 'aarch64')
+
+
+def archive_want() -> net.Want:
+    """What the downloaded release archive must be: the pinned size and digest, under a size ceiling."""
+    return net.Want(sha256=ARCHIVE_SHA256, require_digest=True, size=ARCHIVE_BYTES, max_bytes=32 << 20,
+                    purpose='fixed Bonsai serving runtime')
 
 
 def identity(model) -> tuple:
@@ -115,7 +127,7 @@ def environment(extra=None) -> dict[str, str]:
 def install(lease: Lease) -> Path:
     """Prepare only the fixed dependency while the broker owns an admitted start."""
     grant.require(lease, Lease)
-    if platform.system() != 'Darwin' or platform.machine().lower() not in ('arm64', 'aarch64'):
+    if not supported():
         raise ServerFailed('This Bonsai packing needs a runtime currently supplied for Apple Silicon')
     root = directory()
     if root.exists() or root.is_symlink():
@@ -126,9 +138,7 @@ def install(lease: Lease) -> Path:
         stage = Path(temporary) / 'payload'
         stage.mkdir(mode=0o700)
         archive = Path(temporary) / 'download' / 'release.tar.gz'
-        net.download(URL, archive, net.Want(sha256=ARCHIVE_SHA256, require_digest=True,
-                     size=11573797, max_bytes=32 << 20,
-                     purpose='fixed Bonsai serving runtime'), pipeline=net.default())
+        net.download(URL, archive, archive_want(), pipeline=net.default())
         entries = provider_archive.contents(archive, ARCHIVE_SHA256, PREFIX)
         promote(archive, stage / 'release.tar.gz')
         for name, entry in entries.items():

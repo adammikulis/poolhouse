@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
+import testhang
 import testslots
 import testslots_rpc
 from testkit.kernel_endpoint import AdmissionUnreachable
@@ -91,6 +92,7 @@ def pytest_unconfigure(config):
 def pytest_configure(config):
     if "DEV_TEST_PYTEST_ENDPOINT" not in os.environ:
         raise pytest.UsageError("testslots_pytest requires the testslots supervisor")
+    config.pluginmanager.register(testhang, "testhang")   # a test no timeout ends is named and ended, in every process that runs one
     if not hasattr(config, "workerinput"):
         workers = getattr(config.option, "numprocesses", 0) or 0
         if not isinstance(workers, int) or workers > int(os.environ["DEV_TEST_WORKERS"]):

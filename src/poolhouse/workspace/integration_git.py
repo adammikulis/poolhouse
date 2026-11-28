@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import quote
 
 from poolhouse import trees, worktreerules
 from poolhouse.errors import Denied
@@ -133,7 +134,7 @@ def requires_pull_request(root: Path, branch: str) -> bool:
     if 'origin' not in git(root, 'remote').splitlines() or 'github.com' not in git(root, 'config', '--get', 'remote.origin.url'):
         return False
     try:
-        rules = json.loads(_gh(root, 'api', 'repos/{owner}/{repo}/rules/branches/' + branch))
+        rules = json.loads(_gh(root, 'api', 'repos/{owner}/{repo}/rules/branches/' + quote(branch, safe='/')))
     except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
         return False
     return isinstance(rules, list) and any(isinstance(rule, dict) and rule.get('type') == 'pull_request' for rule in rules)

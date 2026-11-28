@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import ast
 import shlex
 import subprocess
 import sys
@@ -18,6 +17,7 @@ HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parent), str(HERE.parents[1] / "src")]
 sys.path.append(str(HERE))    # last: the hook scripts here must not shadow a module of scripts/ or src/
 try:
+    import sealed_git_parse
     import sealed_git as lg
 except ImportError as exc:
     raise SystemExit(f"pushed: the git helper could not load ({exc}); the push is refused") from None
@@ -63,24 +63,6 @@ def leftover_worktrees(tip: str) -> list[tuple[str, str]]:
                      or not any(ln.startswith("+") for ln in lg.sealed(root, "cherry", tip, head, check=False).stdout.splitlines())):
             out.append((keys["worktree"], branch))
     return out
-
-
-def unparseable(base: str, tip: str) -> list[str]:
-    """Python files changed in ``base..tip`` that do not parse at ``tip``."""
-    root = Path.cwd()
-    names = lg.changed(root, base, tip, "--diff-filter=ACMR") if lg.commit_id(root, base) else lg.unpushed_names(root, tip)
-    bad = []
-    for name in sorted({n for n in names if n.endswith(".py")}):
-        source = lg.blob(root, tip, name)
-        if source is None:
-            continue
-        try:
-            ast.parse(source, filename=name)
-        except SyntaxError as exc:
-            bad.append(f"  {name}:{exc.lineno}: {exc.msg}")
-        except ValueError as exc:
-            bad.append(f"  {name}: {exc}")
-    return bad
 
 
 def warn(text: str) -> None:
@@ -162,7 +144,7 @@ def main(dev: str, lines: list[str]) -> int:
                 print(f"pushed: warning: {branch} has nothing outside {dev}; remove its worktree:",
                       f"  git worktree remove {shlex.quote(where)}", f"  git branch -d {shlex.quote(branch)}", sep="\n", file=sys.stderr)
         try:
-            bad = unparseable(base, tip)
+            bad = sealed_git_parse.unparseable(Path.cwd(), base, tip)
         except RuntimeError as exc:
             bad = [f"  the pushed files could not be read ({exc})"]
         if bad:

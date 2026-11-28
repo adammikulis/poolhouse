@@ -25,6 +25,15 @@ from poolhouse.files import write_json
 
 __all__ = ["Run", "evidence", "read_counts", "record_run", "tree_hash"]
 
+REPOSITORY = frozenset({"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY",
+                        "GIT_ALTERNATE_OBJECT_DIRECTORIES"})
+"""The variables that say which repository git works on, which a command run in a nested one does not inherit."""
+
+
+def _path(said: bytes) -> str:
+    """The path git printed as ``said``. Git prints a name as the file system holds it, not in the code page text is otherwise read in."""
+    return os.fsdecode(said.removesuffix(b"\n"))
+
 
 def _plain_index(root: Path) -> bool:
     """Whether the checkout's index has no entry that hides an edit from git."""
@@ -37,10 +46,10 @@ def _plain_index(root: Path) -> bool:
 def _seed_index(root: Path, index: Path) -> None:
     """Copy the checkout's index, timestamps kept, to ``index`` so ``git add -A`` rehashes only the files that changed."""
     done = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-path", "index"],
-                          capture_output=True, text=True, check=False)
+                          capture_output=True, check=False)
     if done.returncode == 0 and _plain_index(root):
         with contextlib.suppress(OSError):
-            shutil.copy2(done.stdout.strip(), index)
+            shutil.copy2(_path(done.stdout), index)
 
 
 def tree_hash(root: Path) -> str:
@@ -57,20 +66,49 @@ def tree_hash(root: Path) -> str:
 def _own_store(root: Path, store: Path) -> dict[str, str]:
     """The environment that has git write new objects into ``store`` and read the checkout's own; empty when ``root`` has none."""
     done = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-path", "objects"],
-                          capture_output=True, text=True, check=False)
+                          capture_output=True, check=False)
     if done.returncode:
         return {}
     store.mkdir(exist_ok=True)
-    return {"GIT_OBJECT_DIRECTORY": str(store), "GIT_ALTERNATE_OBJECT_DIRECTORIES": done.stdout.strip()}
+    return {"GIT_OBJECT_DIRECTORY": str(store), "GIT_ALTERNATE_OBJECT_DIRECTORIES": _path(done.stdout)}
+
+
+def _pin_nested(root: Path, env: dict[str, str]) -> bool:
+    """Set each checked-out nested repository of the throwaway index of ``env`` to the commit it is at and mark it unchanged, so that
+    ``git add`` starts no git inside it, which would run the programs the repository's own configuration names. A sparse checkout leaves
+    this mark on an entry that is there, and an ignored folder around the entry does not matter to it. False when a repository cannot be
+    read."""
+    def said(where: str | Path, words: list[str], given: dict[str, str]) -> bytes | None:
+        done = subprocess.run(["git", "-C", str(where), *words], env=given, capture_output=True, check=False)
+        return None if done.returncode else done.stdout
+
+    top = _path(said(root, ["rev-parse", "--show-toplevel"], env) or b"")
+    listed = said(top, ["ls-files", "-s", "-z"], env) if top else None
+    if listed is None:
+        return False
+    own = {name: value for name, value in env.items() if name not in REPOSITORY}
+    pinned = []
+    for row in listed.split(b"\0"):
+        mode, _, path = row.partition(b"\t")
+        name = os.fsdecode(path)
+        if not mode.startswith(b"160000 ") or not os.path.lexists(Path(top, name, ".git")):
+            continue
+        head = said(Path(top, name), ["--git-dir", ".git", "rev-parse", "--verify", "HEAD"], own)
+        if head is None or said(top, ["update-index", "--add", "--cacheinfo", f"160000,{head.decode().strip()},{name}"], env) is None:
+            return False
+        pinned.append(name)
+    return not pinned or said(top, ["update-index", "--assume-unchanged", "--", *pinned], env) is not None
 
 
 def _written(root: Path, env: dict[str, str]) -> str:
     """The tree of the working copy as git writes it under ``env``; empty when it cannot."""
+    if not _pin_nested(root, env):
+        return ""
     for step in (["add", "-A"], ["write-tree"]):
-        done = subprocess.run(["git", "-C", str(root), *step], env=env, capture_output=True, text=True, check=False)
+        done = subprocess.run(["git", "-C", str(root), *step], env=env, capture_output=True, check=False)
         if done.returncode:
             return ""
-    return done.stdout.strip()
+    return done.stdout.decode().strip()
 
 
 def read_counts(junit: Path) -> dict[str, int]:

@@ -32,6 +32,14 @@ request (the repository is public) and sets the `lead-review` commit status on t
 gh pr merge <PR> --merge --delete-branch --match-head-commit <SHA>
 ```
 
+**A standing reject holds the merge.** Before an accept, the command fetches the development branch and asks the board
+about every commit the pull request would merge (those of `<SHA>` that the branch does not hold). While another reviewer's
+reject of any of them stands, it records no accept, sets `lead-review` to failed on `<SHA>` and names the commit and the
+reviewer; a board or a commit it cannot read refuses the accept as well. The reviewer who rejected clears it with
+`poolhouse-workspace land-review BRANCH COMMIT --verdict accept`, or, when it is the one accepting the new head, by that
+accept. A reject posted with `land-review` after the accept changes no status by itself: post it with
+`scripts/lead-review ... --verdict reject`, which sets the status to failed.
+
 The guard (`poolhouse.workspace.release_check`) allows an agent that exact command, alone on its line, when the pull
 request targets the development branch, its head is `<SHA>` and the `lead-review` status there passed. No agent skips a
 required check: `gh pr merge --admin` and a write to the merge API are refused. Any other
@@ -55,7 +63,9 @@ not for the hook.
 
 The hook does not run tests, builds, Python/data scans, board review queries, worktree scans or CI watchers. Run focused
 tests for the change separately; CI runs the quick checks on pull requests into development and broader suites on pull
-requests into main, main and nightly schedules.
+requests into main, main and nightly schedules. The required `gates` job of a pull request fails on a changed Python
+file that does not parse (`scripts/sealed_git_parse.py`) and on a data or weight file (`scripts/hooks/no-data-files`);
+`scripts/lead-review` holds a standing reject ("Review of a pull request").
 
 `python scripts/hooks/affected_push.py` remains an explicit affected-test check when useful. It is not invoked by
 Git's push hook; the CI job `affected` runs it on a pull request into development. Existing pre-commit checks and the
