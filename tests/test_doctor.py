@@ -490,6 +490,7 @@ def test_a_development_linked_install_is_reported_with_the_command_that_removes_
     monkeypatch.delenv("PYENV_ROOT", raising=False)
     monkeypatch.setattr(devinstall, "interpreters", INTERPRETERS)
     monkeypatch.setattr(devinstall, "own_interpreter", list)
+    monkeypatch.setattr(devinstall, "usual_folders", lambda environ: [], raising=False)
     assert main(["--bench-home", str(tmp_path / "bench")]) == 1
     out = capsys.readouterr().out
     assert f"  ! python: development install: {linked} runs Poolhouse straight from {source}" in out
@@ -497,5 +498,18 @@ def test_a_development_linked_install_is_reported_with_the_command_that_removes_
     assert out.count(f"fix: {linked} ") == 1, "one interpreter named twice on PATH is one finding"
     assert f"fix: uv pip uninstall --python {no_pip} poolhouse" in out
     assert f"fix: {versions / '3.13.0' / 'bin' / 'python'} -m pip uninstall -y poolhouse" in out
-    assert str(copy) not in out, "an installed copy is no finding"
+    assert f"  ! python: another copy of Poolhouse: {copy} holds another copy of Poolhouse" in out
     assert not list(tmp_path.glob("**/*.started")), "no interpreter is started"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the prefixes here are laid out as macOS and Linux lay them out")
+def test_a_machine_with_only_the_installed_poolhouse_is_told_of_no_stray_copy(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "poolhouse"))
+    installed = python_with(tmp_path / "poolhouse" / "venv", editable=False, source=tmp_path / "checkout")
+    monkeypatch.setenv("PATH", str(installed.parent))
+    monkeypatch.delenv("PYENV_ROOT", raising=False)
+    monkeypatch.setattr(devinstall, "interpreters", INTERPRETERS)
+    monkeypatch.setattr(devinstall, "own_interpreter", list)
+    monkeypatch.setattr(devinstall, "usual_folders", lambda environ: [])
+    main(["--bench-home", str(tmp_path / "bench")])
+    assert "python:" not in capsys.readouterr().out

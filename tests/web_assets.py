@@ -79,6 +79,7 @@ def shell_answers(theme="dark"):
         "/ui/fleet": fleet_answer(),
         "/ui/pool": pool_answer(),
         "/ui/setup/jobs": {"jobs": []},
+        "/ui/stray-copies": {"error": "", "copies": []},
         "/ui/room": {"machine": {"supported": False}, "kv_types": [], "contexts": [], "models": []},
         "/ui/workspace/jobs": {"jobs": [], "capacity": capacity},
         "/ui/chat": {"models": [], "runtime_ready": True, "runtime_error": ""},

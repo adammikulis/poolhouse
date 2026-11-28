@@ -36,6 +36,7 @@ from .session import SignInHeld, parse_cookie
 from .setup_jobs import jobs, libraries, provenance, server
 from .setup_preparation import choices_for
 from .setup_routes import SetupRoutes
+from .stray_copy_routes import StrayCopyRoutes
 from .studio_native_picks import NativePickRoutes
 from .studio_routes import StudioRoutes
 from .themes import default_appearance, registry, resolve
@@ -597,7 +598,7 @@ class JobRoutes:
         return True
 
 
-class Router(InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
+class Router(InitialSetupRoutes, RuntimeRepairRoutes, StrayCopyRoutes, PageRoutes,SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
              BoardRoutes, DelegateRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
              KnowledgeRoutes, *experimental_routes.load(), NativePickRoutes, StudioRoutes, WorkspaceRoutes, LaunchRoutes, ExtensionRoutes, Base):
     """Every screen's routes, in the order a request meets them."""

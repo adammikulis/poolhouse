@@ -159,6 +159,12 @@ own `~\.poolhouse`.
 scratch prefix, the console scripts on its own PATH, then `-Uninstall` taking the venv away
 again -- against a wheel built in the same job, with no model and no network.
 
+**Stray copies.** `poolhouse-doctor`, which the headless, dev and system installs run at their end, and the app's own window name
+any other copy of Poolhouse a Python of this computer holds that could run instead of the installed one: a development-linked
+(editable) install, or another installed copy. Each is shown with its Python and the command that removes only Poolhouse from that
+Python; in the app a button runs it. Nothing is removed without that click or command, nothing asks in a terminal, an install is
+never held up by it, and a computer with no stray copy shows nothing.
+
 **If you write Python**, on 3.12 and later (developed and tested on 3.13):
 
 ```
