@@ -140,7 +140,7 @@ class TestChattingThroughTheInterface:
         ui = UIServing(tmp_path / "bare", name="laptop")
         # The node derives the secret for two of its authorized services; here the one member is a plain daemon whose
         # owner token the test knows, so the row's token stands in for what `Pool.secret` would return for its fingerprint.
-        monkeypatch.setattr(chat_routes, "_secret", lambda row, root: row.get("token", ""))
+        monkeypatch.setattr(chat_routes, "_reach", lambda row, root: {"token": row.get("token", "")})
         _, _, headers = ui.ticket_session()
         assert ui.ui.models is None
         assert ui.ui.serving is None

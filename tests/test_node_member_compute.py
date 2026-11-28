@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from remote_client_support import RemoteClientServer
 from service_kit import node_binary, two_nodes  # noqa: F401  (fixtures)
 
-from poolhouse import node_health
+from poolhouse import http, node_health
 from poolhouse.board.service_binding import Keeper
 from poolhouse.fleet import chat, chat_routes, roster, service_pool, tls
 from poolhouse.fleet.api import Daemon, make_handler
@@ -136,3 +136,12 @@ def test_a_member_reads_how_busy_the_slots_are_and_none_of_their_text(used):
                          "next_token": [{"content": OWNERS}], "params": {"grammar": OWNERS}}]
     _, body, _ = used.member._request("GET", "/infer/slots")
     assert json.loads(body) == [{"id": 0, "n_ctx": 4096, "is_processing": True}]
+
+
+def test_plain_http_to_another_machine_is_said_once(capsys):
+    for _ in range(2):
+        http.build_request("http://192.0.2.77:8080/v1/chat/completions", data=b"{}")
+    http.build_request("http://127.0.0.1:8080/v1/chat/completions", data=b"{}")
+    http.build_request("https://192.0.2.78/v1/chat/completions", data=b"{}")
+    said = capsys.readouterr().err
+    assert said.count("plain http to 192.0.2.77:8080") == 1 and "127.0.0.1" not in said and "192.0.2.78" not in said
