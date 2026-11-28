@@ -1,9 +1,11 @@
 """The engine benchmark's own logic: arms, planted facts, contention counters, figures and the drafting choice."""
 
+import contextlib
 import json
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -33,6 +35,23 @@ def test_a_strata_arm_is_leased_from_its_engine_with_its_drafter_at_the_engines_
     assert spec.mtp is None and not spec.draft
     with pytest.raises(ValueError, match="mtp, dflash2 or none"):
         engines.strata_spec(replace(arms["strata-iq2"], spec_type="draft-mtp"), 262144, 8090)
+
+
+def test_a_strata_lease_is_not_refused_by_the_campaigns_own_measurement(monkeypatch):
+    """Plumbing only: no server is started; the words handed to the lease are what is checked."""
+    asked = {}
+
+    @contextlib.contextmanager
+    def leased(model, **words):
+        asked.update(words, model=model)
+        yield SimpleNamespace(base_url="plumbing-only", load_s=0.0, mtp_note="", pid=4321)
+
+    monkeypatch.setattr(engines.managed, "serve", leased)
+    arm = engines.arms_of(CAMPAIGN, "mac", "strata-iq2")[0]
+    with engines.strata_up(SimpleNamespace(context=262144, serve_port=8090), arm, {"iq2": Path("set.gguf")}) as (_, record):
+        pass
+    assert asked["anyway"] is True and asked["engine"] == "strata"
+    assert record["served_pid"] == 4321, "the arm's own process tree is what contention and memory are read from"
 
 
 def test_arms_are_narrowed_in_the_order_asked_and_an_unknown_one_is_refused():

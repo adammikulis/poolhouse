@@ -23,6 +23,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import psutil
@@ -155,10 +156,11 @@ def strata_spec(arm: Arm, context: int, port: int) -> dict[str, Any]:
 @contextlib.contextmanager
 def strata_up(args: Any, arm: Arm, files: Mapping[str, Path]) -> Iterator[tuple[str, dict[str, Any]]]:
     """``(url, record)`` for a Strata ``arm`` leased from the broker and released on the way out; the record says which drafter
-    the server loaded and why."""
-    with managed.serve(str(files[arm.model]), timeout=1800.0, reason=f"engine benchmark of {arm.name}",
+    the server loaded and why. The caller holds the measuring lock, and the broker's ``start`` does not learn who asks,
+    so the lease says ``anyway``: without it the campaign's own measurement refuses its server."""
+    with managed.serve(str(files[arm.model]), timeout=1800.0, reason=f"engine benchmark of {arm.name}", anyway=True,
                        **strata_spec(arm, args.context, args.serve_port)) as server:
-        yield server.base_url, {"loaded_s": server.load_s, "strata": {"drafting": server.mtp_note}}
+        yield server.base_url, {"loaded_s": server.load_s, "served_pid": server.pid, "strata": {"drafting": server.mtp_note}}
 
 
 #: How each engine named in a campaign is leased.
@@ -247,11 +249,18 @@ def settled(minutes: float) -> list[str]:
 
 @contextlib.contextmanager
 def held_arm(args: Any, arm: Arm, files: Mapping[str, Path]) -> Iterator[tuple[str, list[int], dict[str, Any]]]:
-    """``(url, pids, record)`` for an arm that is up, with the memory it held written into the record on the way out."""
+    """``(url, pids, record)`` for an arm that is up, with the memory it held written into the record on the way out.
+    An engine that is not a llama-server names the process it leased (``served_pid``): its whole tree is the arm's own,
+    for the memory figures and so its work is not counted as another program's."""
     before = machine_memory()
     with ENGINES[arm.engine](args, arm, files) as (url, record):
-        watched = Watching(url, baseline=before)
-        pids = [int(getattr(p, "pid", 0)) for p in process_tree(serving_pids(url))]
+        served = record.pop("served_pid", 0)
+        named = SimpleNamespace(processes=lambda: [served]) if served else None
+        watched = Watching(url, baseline=before, client=named)
+        pids = [int(getattr(p, "pid", 0)) for p in process_tree(serving_pids(url, named))]
+        if served and not pids:
+            raise RuntimeError(f"arm {arm.name}: the leased server's process {served} is not here, so nothing it does "
+                               "could be told from another program's")
         record.update({"engine": arm.engine, "arm": arm.name, "flags": flags_of(pids),
                        "files": {key: plan_files.identity(files[key]) for key in (arm.model, arm.head) if key}})
         try:
