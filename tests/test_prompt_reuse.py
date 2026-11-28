@@ -25,7 +25,9 @@ from poolhouse import (
     harnessing,
     http,
 )
-from poolhouse.isolation import Lease, ModelBridge, prompt_watch
+from poolhouse.isolation import Lease, ModelBridge, model_bridge, prompt_watch
+from poolhouse.serve import admission
+from poolhouse.serve.backend import ServerSpec
 from poolhouse.testing import canned
 
 CHAT = "/v1/chat/completions"
@@ -95,16 +97,40 @@ def test_what_a_hosted_style_harness_moves_between_requests_without_changing_the
     assert not got.rewrite, got
 
 
+def test_the_summary_of_a_compaction_replaces_the_history_without_being_called_a_rewrite():
+    watch = prompt_watch.Watch()
+    seen(watch, asked(*GROWN))
+    assert seen(watch, asked(*GROWN, said("user", SUMMARIZE))).compaction
+    checkpoint = said("user", f"<conversation-checkpoint>\n{LONG}\n</conversation-checkpoint>")
+    for body in (asked(checkpoint), asked(checkpoint, said("assistant", LONG), said("tool", "PLUMBING"))):
+        got = seen(watch, body)
+        assert not got.rewrite, got
+    other = seen(watch, asked(checkpoint, said("assistant", LONG), tools=("opencode_x",)))
+    assert "tool 1" in other.rewrite, "after it, a change is said as before"
+
+
+OURS = ("PLUMBING our newest tool result, long enough to be ours",)
+
+
+def slot(prompt=OURS[0], **counts):
+    return {"is_processing": True, "prompt": f"<templated>{prompt}</templated>", "n_prompt_tokens": 900, "n_prompt_tokens_cache": 0,
+            "next_token": [{"n_decoded": 0}], **counts}
+
+
 @pytest.mark.parametrize("slots,found", [
-    ([{"is_processing": True, "n_prompt_tokens": 40_960, "n_prompt_tokens_cache": 8, "next_token": [{"n_decoded": 0}]}], (40_960, 8, 0)),
-    ([{"is_processing": True, "n_prompt_tokens": 900, "n_prompt_tokens_cache": 0, "next_token": {"n_decoded": 12}}], (900, 0, 12)),
-    ([{"is_processing": False, "n_prompt_tokens": 900}], None),
-    ([{"is_processing": True}], None),
+    ([slot(n_prompt_tokens=40_960, n_prompt_tokens_cache=8)], (40_960, 8, 0)),
+    ([slot(next_token={"n_decoded": 12})], (900, 0, 12)),
+    ([slot("another client's"), slot(n_prompt_tokens=7)], (7, 0, 0)),
+    ([slot("another client's")], None),
+    ([{"is_processing": True, "n_prompt_tokens": 900}], None),
+    ([slot(is_processing=False)], None),
+    ([slot(n_prompt_tokens=0)], None),
     ({"error": "PLUMBING"}, None),
 ])
-def test_progress_is_read_from_the_counters_of_the_one_slot_at_work(slots, found):
-    got = prompt_watch.progress(slots)
+def test_progress_is_read_from_the_counters_of_the_slot_that_holds_this_sessions_request(slots, found):
+    got = prompt_watch.progress(slots, OURS)
     assert (None if got is None else (got.read, got.cached, got.written)) == found
+    assert prompt_watch.progress(slots, ()) is None, "a request that cannot be told from another's is given no counts"
 
 
 def until(holds, seconds=10.0):
@@ -118,7 +144,7 @@ def test_the_bridge_says_what_it_saw_and_how_far_the_server_is_while_a_request_i
     with canned.canned_server() as server:
         server.api_key = "PLUMBING-key"
         server.slots = [{"id": 0, "is_processing": True, "n_prompt_tokens": 4096, "n_prompt_tokens_cache": 0, "next_token": [{"n_decoded": 0}],
-                         "prompt": "PLUMBING prompt text the bridge must not keep"}]
+                         "prompt": f"PLUMBING prompt text the bridge must not keep: PLUMBING task {LONG} {SUMMARIZE}"}]
         looks = []
 
         def slow(_body):
@@ -139,6 +165,66 @@ def test_the_bridge_says_what_it_saw_and_how_far_the_server_is_while_a_request_i
         assert during.compacting and during.progress.read == 4096 and not during.waiting, during
         assert "opencode_x" in during.rewrites[0] and after.rewrites == during.rewrites and not after.compacting and after.progress is None, after
         assert "PLUMBING prompt text" not in repr(during)
+
+
+@contextlib.contextmanager
+def bridged(server, watch=None):
+    """A bridge on the canned ``server``, comparing with ``watch`` where one is given, and ``ask(body)`` through it."""
+    bridge = ModelBridge(server.base_url, Lease.of(canned.CANNED_MODEL_ID, 262_144, 1), key=server.api_key)
+    bridge.watch = watch or bridge.watch
+    try:
+        url = f"http://127.0.0.1:{bridge.start()}{CHAT}"
+        options = http.Options(headers={"Authorization": f"Bearer {bridge.token}"}, timeout=30)
+        yield SimpleNamespace(bridge=bridge, ask=lambda body: http.request_json(url, payload=body, options=options))
+    finally:
+        bridge.stop()
+
+
+def test_the_switches_of_the_chat_template_reach_the_server_and_nothing_else_under_their_name():
+    """A delegate turns thinking off by them; without them a Qwen template thinks at its highest effort."""
+    with canned.canned_server() as server, bridged(server) as through:
+        wanted = {"enable_thinking": False, "preserve_thinking": True, "reasoning_effort": "low"}
+        through.ask({**asked(*FIRST), "chat_template_kwargs": {**wanted, "custom": "PLUMBING", "bos_token": "x"}})
+        through.ask({**asked(*FIRST), "chat_template_kwargs": {"enable_thinking": "no", "reasoning_effort": "PLUMBING"}})
+        through.ask({**asked(*FIRST), "chat_template_kwargs": "PLUMBING"})
+        first, wrong, text = server.bodies
+    assert first["chat_template_kwargs"] == wanted
+    assert "chat_template_kwargs" not in wrong and "chat_template_kwargs" not in text
+
+
+def test_a_rewrite_between_two_boxes_of_one_conversation_is_seen():
+    watch = prompt_watch.Watch()
+    with canned.canned_server() as server:
+        with bridged(server, watch=watch) as first:
+            first.ask(asked(*GROWN))
+        with bridged(server, watch=watch) as second:
+            second.ask(asked(*GROWN, tools=("glob", "opencode_x")))
+            got = second.bridge.look().rewrites
+    assert len(got) == 1 and "opencode_x" in got[0], got
+
+
+def test_the_servers_counters_are_asked_for_at_intervals_without_following_a_redirect(monkeypatch):
+    calls, real = [], http.request_json
+
+    def counted(url, **more):
+        if url.endswith("/slots"):
+            calls.append(more["options"])
+        return real(url, **more)
+
+    monkeypatch.setattr(model_bridge.http, "request_json", counted)
+    with canned.canned_server() as server:
+        server.slots = [slot("another client's"), slot("another client's")]
+
+        def slow(_body):
+            for _ in range(40):
+                through.bridge.look()
+                time.sleep(0.02)
+            return "PLUMBING"
+
+        server.canned = canned.Canned(answer=slow)
+        with bridged(server) as through:
+            through.ask(asked(*FIRST))
+    assert len(calls) == 1 and calls[0].follow_redirects is False, calls
 
 
 def a_run(name="reuse-1"):
@@ -174,12 +260,44 @@ def test_the_status_says_how_much_of_the_prompt_is_read_when_it_is_generating_an
     assert "generating: 1,234 tokens written" in doing(name), doing(name)
     going.beat(True, look(waiting=True))
     assert "waiting for the model server's slot" in doing(name), doing(name)
-    going.beat(True, look(8_192, compacting=True))
-    assert "compacting the conversation, reading its prompt: 8,192" in doing(name), doing(name)
+    going.beat(True, look(8_192, compacting=True, compactions=1))
+    going.beat(True, look(8_200, compacting=True, compactions=1))
+    assert "compacting the conversation, reading its prompt: 8,200 of about 166,600" in doing(name), doing(name)
     [event] = [each for each in delegate_record.read(name)[0] if each["kind"] == "compaction"]
     assert event["turn"] == 1
+    going.beat(True, look(9_000, compactions=1))   # the first request after it: the history it replaced says nothing of its size
+    assert "reading its prompt: 9,000 tokens so far" in doing(name), doing(name)
+    finished(going, 40_000, 5_000, 100)
+    assert not [each for each in delegate_record.read(name)[0] if each["kind"] == "reread"], "the shorter history is read once, as it must be"
     going.beat(False)
     assert store.status(name)["now"]["doing"] == "idle" and "reading" not in doing(name)
+
+
+def test_a_continued_pass_is_held_to_the_conversation_it_took_up_and_a_review_starts_its_own():
+    name = a_run("reuse-4")
+    recorder = delegate_recorder.of(name)
+    finished(recorder.of_pass(WORK), 100_000, 0, 100)
+    finished(recorder.of_pass(delegate_review.Pass("review", 1, "task", "brief", ("read",), "read-only", None)), 40_000, 0, 100)
+    assert not [each for each in delegate_record.read(name)[0] if each["kind"] == "reread"]
+    again = delegate_review.Pass("work", 0, "task", "brief", ("shell",), "guarded", None)
+    finished(recorder.of_pass(again), 100_200, 0, 100)   # the server restarted, or another conversation took the slot
+    [event] = [each for each in delegate_record.read(name)[0] if each["kind"] == "reread"]
+    assert event["input_tokens"] == 100_200
+
+
+def test_the_lead_is_told_of_the_first_rewrite_and_the_first_reread_of_a_run_and_the_record_holds_the_rest():
+    name = a_run("reuse-5")
+    told = []
+    teller = delegate_notices.Teller(name, lambda about, text: told.append(about))
+    going = delegate_recorder.of(name).of_pass(WORK)
+    finished(going, 100_000, 0, 100)
+    for number in range(4):
+        going.beat(True, look(10, rewrites=[f"PLUMBING: differs at message {number}"]))
+        finished(going, 160_000 + number, 0, 100)
+    teller.look()
+    kinds = [each["kind"] for each in delegate_record.read(name)[0]]
+    assert (kinds.count("rewrite"), kinds.count("reread")) == (4, 4), kinds
+    assert sorted(told) == ["history rewritten", "prompt read again"], told
 
 
 def test_a_rewritten_history_and_a_history_read_again_are_recorded_and_told_to_the_lead():
@@ -219,10 +337,28 @@ def test_a_lease_that_cannot_be_given_up_leaves_the_stop_that_was_on_its_way(mon
         pass
 
 
-@pytest.mark.parametrize("total_gib,kv_per_token,expected", [(128, 26_000, 26_000 * 262_144 * 4 // 2**20), (64, 26_000, 16_384),
-                                                              (32, 26_000, None), (128, 0, None)])
-def test_the_prompt_cache_of_a_coding_session_holds_two_conversations_where_the_machine_has_room(total_gib, kv_per_token, expected):
-    assert harnessing.prompt_cache_mb(kv_per_token * 262_144, total_gib * 2**30) == expected
+KV = 26_000 * 262_144
+"""The bytes of KV cache of a window of 262,144 tokens at 26,000 bytes a token: about 6.5 GiB."""
+
+
+@pytest.mark.parametrize("total_gib,left_gib,kv,expected", [
+    (128, 100, KV, 4 * KV // 2**20),   # two conversations
+    (128, 30, KV, 15 * 1024),          # half of what the model leaves of the memory servers are admitted against
+    (64, 60, KV, 16 * 1024),           # a quarter of the machine
+    (128, 16, KV, None),               # llama-server's own 8192 MiB holds as much
+    (128, -5, KV, None),
+    (32, 20, KV, None),
+    (128, 100, 0, None),
+])
+def test_the_prompt_cache_of_a_coding_session_holds_two_conversations_only_in_memory_the_model_leaves(total_gib, left_gib, kv, expected):
+    assert harnessing.prompt_cache_mb(kv, total_gib * 2**30, left_gib * 2**30) == expected
+
+
+def test_a_prompt_cache_asked_for_is_counted_in_what_the_server_takes(monkeypatch, tmp_path):
+    monkeypatch.setattr(admission, "_size", lambda ref: 10**9 if ref else 0)
+    spec = ServerSpec(model=str(tmp_path / "PLUMBING.gguf"), context=4096)
+    asked_for = ServerSpec(model=spec.model, context=4096, cache_ram_mb=20_000)
+    assert admission.estimate_bytes(asked_for) - admission.estimate_bytes(spec) == 20_000 * 2**20
 
 
 def test_a_coding_session_asks_for_that_prompt_cache_when_it_starts_the_server(monkeypatch):
@@ -231,5 +367,7 @@ def test_a_coding_session_asks_for_that_prompt_cache_when_it_starts_the_server(m
     monkeypatch.setattr(harnessing.estimate, "read_meta", lambda _path: {"PLUMBING": 1})
     monkeypatch.setattr(harnessing.estimate, "estimate_meta", lambda *_a, **_k: SimpleNamespace(kv_cache_bytes=26_000 * 262_144))
     monkeypatch.setattr(harnessing.hub, "total_memory", lambda: 128 * 2**30)
+    monkeypatch.setattr(harnessing.admission, "budget_mb", lambda: 90 * 1024)
+    monkeypatch.setattr(harnessing.admission, "estimate_bytes", lambda spec: 62 * 2**30 + (spec.cache_ram_mb or 0) * 2**20)
     got = harnessing.config_for("/PLUMBING/m.gguf", harnessing.Want(ctx=262_144), lambda _line: None)
-    assert got.serving.cache_ram_mb == 26_000 * 262_144 * 4 // 2**20
+    assert got.serving.cache_ram_mb == 14 * 1024 and got.lease()["cache_ram_mb"] == 14 * 1024

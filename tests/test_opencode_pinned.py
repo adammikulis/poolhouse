@@ -40,6 +40,7 @@ from poolhouse import (
     procscan,
     serverkeys,
 )
+from poolhouse.isolation import preflight, prompt_watch
 from poolhouse.ownership import cmdline_digest, lease_file
 from poolhouse.serve.process import kill_process_tree, started_at
 from poolhouse.testing import canned
@@ -244,6 +245,44 @@ def rewritten(requests):
             said = [*after["messages"], *[None] * len(before["messages"])]
             found.append((number, next((one, two) for one, two in zip(before["messages"], said, strict=False) if one != two)))
     return found
+
+
+def test_a_box_that_finds_something_else_than_the_first_one_did_keeps_the_prompt_and_is_watched_with_it(delegated, served, monkeypatch):
+    """The preflight of each box says something of its own (PLUMBING, not a model): the system prompt keeps the first box's words, the model is told
+    what is new at the end of the conversation, and every box's requests are compared with the ones before."""
+    heard, original, boxes, watched = delegate_confined.Hooks.heard, delegate_resume.waited, [], []
+    sent = prompt_watch.Watch.sent
+
+    def broken(self, event, payload, said):
+        if event == "post" and "tool_use_id" in payload and not served.refused_once:
+            served.refuse[canned.CHAT] = 400
+        heard(self, event, payload, said)
+
+    def mended(model, say):
+        served.refused_once, served.refuse = True, {}
+        served.turns = turns([])
+        return original(model, say)
+
+    def found(_self):
+        boxes.append(None)
+        return f"PLUMBING finding number {len(boxes)}."
+
+    def seen_by(self, route, body):
+        watched.append(self)
+        return sent(self, route, body)
+
+    served.refused_once = False
+    monkeypatch.setattr(delegate_confined.Hooks, "heard", broken)
+    monkeypatch.setattr(delegate_resume, "waited", mended)
+    monkeypatch.setattr(preflight.Found, "words", found)
+    monkeypatch.setattr(prompt_watch.Watch, "sent", seen_by)
+    ran = delegated.run([("glob", {"pattern": "**/*"})], resumes=1)
+    assert ran.status == 0 and len(boxes) == 2, (ran.row, ran.log[-4000:])
+    requests = offered(served)[0]
+    assert rewritten(requests) == [], "the second box asks with the first one's prompt"
+    assert "PLUMBING finding number 1." in system_of(requests[-1]) and "number 2" not in system_of(requests[-1])
+    assert "PLUMBING finding number 2." in str(requests[-1]["messages"][-1]["content"]), requests[-1]["messages"][-3:]
+    assert len(watched) >= 3 and all(each is watched[0] for each in watched), "one conversation, one watch"
 
 
 def test_a_delegate_broken_off_twice_on_the_pinned_release_keeps_one_conversation(delegated, served, monkeypatch):

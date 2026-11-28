@@ -124,7 +124,8 @@ class Rendering:
     """Whether the harness runs a server of its own (OpenCode's), on `Context.server_socket` where there is one: the profile then lets the session
     serve on that socket's folder."""
     noted: Callable[[str], Mapping[str, str]] | None = None
-    """The files to write again when the box lacks something, given the sentence the harness's brief is to say; ``None`` where it has no brief."""
+    """The files to write again, given the sentence of what the box lacks that the harness's brief is to say, empty for a box that lacks nothing;
+    asked once of every box. ``None`` where the harness has no brief."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,6 +150,8 @@ class Plan:
     interactive: bool = False
     bounds: Bounds | None = None
     """What the session may take (`isolation.bounds`); ``None`` derives each from the machine at launch."""
+    watch: prompt_watch.Watch | None = None
+    """What compares the session's prompts (`ModelBridge`); a caller's own for a conversation that goes on from an earlier box."""
 
 
 class Admission:
@@ -403,6 +406,7 @@ class Confinement:
 def _services(plan: Plan, session: Session, parts: Parts) -> tuple[ModelBridge, SessionBridge]:
     """Start the model bridge and the session bridge. A service that cannot start refuses the launch."""
     model = ModelBridge(plan.upstream, plan.lease, key=plan.key, events=_events)
+    model.watch = plan.watch or model.watch
     model.start()
     parts.stack.append(model)
 
@@ -531,9 +535,9 @@ def prepare(plan: Plan) -> Confinement:
         if lacks := " ".join(each for each in (session.note(), found.words()) if each):
             # said at once to the launching session, then in the brief (before the harness reads its files) and in the result
             session.reports.send([Refusal("(preflight)", "preflight")], f"{HEAD} {lacks}")
-            for name, text in (rendering.noted(lacks) if rendering.noted else {}).items():
-                (agent_home / name).chmod(stat.S_IRUSR | stat.S_IWUSR)
-                _write(agent_home / name, text)
+        for name, text in (rendering.noted(lacks) if rendering.noted else {}).items():   # asked of every box, one that lacks nothing too
+            (agent_home / name).chmod(stat.S_IRUSR | stat.S_IWUSR)
+            _write(agent_home / name, text)
     finally:
         if proved is None:
             _abandon(session, stack, scratch)

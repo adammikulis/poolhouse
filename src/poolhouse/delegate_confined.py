@@ -427,17 +427,32 @@ def work_pass(rec: store.Delegate) -> delegate_review.Pass:
     return delegate_review.Pass("work", 0, rec.message(), brief_of(rec), tools_of(rec.edit), tier(rec), rec.max_turns)
 
 
+@dataclass
+class Kept:
+    """What every box of one run is given alike, so a conversation taken up in a later one is asked with the prompt it was begun with: ``paths``,
+    the `opencode.lasting` replacements of the boxes made so far (a later one's conversation still names them), and ``lacks``, by a pass's brief,
+    what the first box of it lacked, which stands in the system prompt of every later one."""
+
+    paths: list[list[str]] = field(default_factory=list)
+    lacks: dict[str, str] = field(default_factory=dict)
+
+    def message(self, ask: delegate_review.Pass, lacks: str) -> bytes:
+        """What the model is told by the pass ``ask`` in a box that lacks ``lacks``: its message, and at the end what the box lacks that the system
+        prompt, kept from the first one, does not say."""
+        return (ask.message if lacks in ("", self.lacks.get(ask.brief)) else f"{ask.message}\n{lacks}").encode()
+
+
 def renderer(rec: store.Delegate, binary: str, served: tuple[str, str, int], ask: delegate_review.Pass | None = None,
-             earlier: list[list[str]] | None = None) -> Callable[[isolation.Context], isolation.Rendering]:
+             kept: Kept | None = None) -> Callable[[isolation.Context], isolation.Rendering]:
     """What OpenCode needs written in its home before it starts, and its command line: a config whose one agent has the prompt and the tools of the
     pass ``ask`` (by default the work's), the plugin (which offers the model no other tool, keeps the paths that differ from box to box out of the
-    prompt (`opencode.lasting`), those of the ``earlier`` boxes a continued conversation still names among them, and ends each shell command at its
-    timeout) and, for one with a shell, the program that ends them. This box's paths are added to ``earlier``. It prints one JSON line per event."""
+    prompt and ends each shell command at its timeout) and, for one with a shell, the program that ends them. ``kept`` is what the run's earlier
+    boxes leave this one (`Kept`), to which it adds. It prints one JSON line per event."""
     def render(context: isolation.Context) -> isolation.Rendering:
         made = ask or work_pass(rec)
-        before = earlier if earlier is not None else []
-        settings: dict[str, Any] = {"tools": list(made.tools), "fixed": [*opencode.lasting(context), *before]}
-        before.extend(opencode.lasting(context))
+        held = kept or Kept()
+        settings: dict[str, Any] = {"tools": list(made.tools), "fixed": [*opencode.lasting(context), *held.paths]}
+        held.paths.extend(opencode.lasting(context))
         files: dict[str, str] = {}
         if "shell" in made.tools:
             files["session/bounded.py"] = BOUNDED
@@ -445,7 +460,9 @@ def renderer(rec: store.Delegate, binary: str, served: tuple[str, str, int], ask
                                  "default": SHELL_DEFAULT_S, "most": SHELL_MAX_S}
         agent = {"mode": "primary", "system": made.brief, "permissions": permissions(made.tools)}
         command = (binary, *(("--session", made.session) if made.session else ()), "--title", "delegate")
-        return opencode.rendering(context, opencode.Setup(served, "", "", (), agent=agent), command, settings, files)
+        rendering = opencode.rendering(context, opencode.Setup(served, "", "", (), agent=agent), command, settings, files)
+        note = rendering.noted
+        return rendering if note is None else replace(rendering, noted=lambda lacks: note(held.lacks.setdefault(made.brief, lacks)))
 
     return render
 
@@ -520,8 +537,10 @@ class _Boxed:
     tried: bool = False
     box: isolation.Confinement | None = None
     """The work's confinement, which holds the change."""
-    paths: list[list[str]] = field(default_factory=list)
-    """The `opencode.lasting` replacements of every box made so far: a conversation taken up in a later one still names the paths of where it was held."""
+    kept: Kept = field(default_factory=Kept)
+    """What each box is given of the ones before it."""
+    watches: dict[tuple[str, int], prompt_watch.Watch] = field(default_factory=dict)
+    """What compares the prompts of each pass, by its phase and round: one for every box its conversation is held in."""
 
     @property
     def window(self) -> int:
@@ -552,9 +571,10 @@ class _Boxed:
         reach = UNASKED if bridge is None else lead_bridge.reach(lambda: bridge)
         url, alias = self.model.url, self.model.alias
         served = (url, alias, self.model.window)
-        how = harnessing.Harness("opencode", self.binary, served, say, lead=lambda _helper: reach, conversation="", observe=hooks.heard)
+        how = harnessing.Harness("opencode", self.binary, served, say, lead=lambda _helper: reach, conversation="", observe=hooks.heard,
+                                 watch=self.watches.setdefault((ask.phase, ask.round), prompt_watch.Watch()))
         run = harnessing.Session(helper, Path(args.project), ask.brief)
-        with harnessing.confined(args, run, how, renderer(rec, self.binary, served, ask, self.paths)) as box:
+        with harnessing.confined(args, run, how, renderer(rec, self.binary, served, ask, self.kept)) as box:
             stream.record.boxed(box)
 
             def go(before: Callable[[], None] = lambda: None) -> delegate_review.Ran:
@@ -567,7 +587,7 @@ class _Boxed:
                     before()
                     with store.log_file(rec.name).open("ab") as errors:
                         process = box.popen(stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
-                        follow(box, process, ask.message.encode(), stream,
+                        follow(box, process, self.kept.message(ask, box.made.lacks), stream,
                                (progress, lambda: bool(bridge and bridge.asking) or hooks.running(), over))
                     status, read = process.returncode, True
                 except (SystemExit, KeyboardInterrupt) as stop:

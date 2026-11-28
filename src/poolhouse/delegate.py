@@ -383,8 +383,9 @@ def stop(args: argparse.Namespace) -> int:
     if rec is None:
         raise ValueError(f"no delegate {args.name}; `poolhouse-delegate status` lists them")
     here = store.folder(rec.name)
-    if jobs.alive(JOB, home=here):
-        jobs.stop(JOB, home=here, say=say)
+    if jobs.alive(JOB, home=here) and jobs.stop(JOB, home=here, say=say) and jobs.alive(JOB, home=here):
+        say(f"{rec.name} is still ending: nothing was removed and it is not marked stopped; run stop again once `status` shows it has ended")
+        return 1
     if not store.finished(rec.name):
         store.set_status(rec.name, "stopped", "stopped by the lead")
     if not store.graded(rec.name)["run"].get("state"):   # a runner that ended wrote its own
@@ -398,11 +399,20 @@ def stop(args: argparse.Namespace) -> int:
     elif rec.workdir != rec.source:
         shutil.rmtree(rec.workdir, ignore_errors=True)
     say(f"stopped {rec.name}")
-    if row := store.result(rec.name):   # what the run came to: its turns and tokens, and where its changes are kept
-        came = (f"{row.get('state')}: {row.get('turns')} turn(s), {row.get('input_tokens')} read, {row.get('output_tokens')} written; "
-                f"{row.get('detail') or 'nothing was kept'}")
-        say(nudge_fence.clean(came).replace("\n", " "))
+    if row := store.result(rec.name):
+        say(nudge_fence.clean(_came_to(rec, row)).replace("\n", " "))
     return 0
+
+
+def _came_to(rec: store.Delegate, row: dict) -> str:
+    """What a run with a result came to, in one line: its state, turns and tokens and, where its record says, what became of its changes."""
+    changed = str(row.get("detail") or "")
+    if not changed and row.get("applied"):
+        changed = f"{len(row['applied'])} file(s) applied to the project"
+    elif not changed and rec.edit and not rec.sandboxed:
+        changed = "whatever it changed is in the folder itself"
+    came = f"{row.get('state')}: {row.get('turns')} turn(s), {row.get('input_tokens')} read, {row.get('output_tokens')} written"
+    return f"{came}; {changed}" if changed else came
 
 
 @COMMANDS.command("grade", help="grade a delegate's work, as the lead or another agent; the run's own model never can", options=[

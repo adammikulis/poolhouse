@@ -286,7 +286,9 @@ def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], 
         through = (context.server_socket, str(context.file(SOCKET_PRELOAD)))
 
     def noted(lacks: str) -> dict[str, str]:
-        """The config again, with what the box lacks at the end of the agent's own system prompt."""
+        """The config again, with what the box lacks at the end of the agent's own system prompt; nothing to write for a box that lacks nothing."""
+        if not lacks:
+            return {}
         agent = {**made.agent, "system": f"{made.agent['system']}{lacks}\n"}
         return {f".opencode-config/{CONFIG}": config(replace(made, agent=agent))}
 

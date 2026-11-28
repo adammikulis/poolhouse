@@ -374,11 +374,17 @@ about a quarter of an hour. Every harness that points at a local model keeps to 
   limit (15 % of the window kept free), asked as the conversation with the summary's words at its end. 2.4.2 prunes no old tool output, and a
   delegate's title is given, so no title is asked for.
 - **Room in the server's prompt cache.** A server a coding session starts is given `--cache-ram` for two conversations of its window, at most a
-  quarter of the machine and never under llama-server's 8192 MiB (`harnessing.prompt_cache_mb`): one conversation of Qwen3.8-Flash-Next is about
-  7 GiB at 166,000 tokens, so with 8192 MiB one other request pushed it out. A server already up keeps its own setting.
-- **A rewrite is said.** The model bridge compares each prompt with those before it (`isolation.prompt_watch`) and says one that makes the server
-  read much of a conversation again, naming where it differs; a delegate records it and tells its lead, and a step that read much of its
-  conversation again without the cache is told too. A run in place talks to the server itself and is not compared.
+  quarter of the machine and half of what the model leaves of the memory servers are admitted against (`harnessing.prompt_cache_mb`), and the
+  broker counts it with the server (`admission.estimate_bytes`); where that is under llama-server's 8192 MiB, nothing is asked. One conversation of
+  Qwen3.8-Flash-Next is about 7 GiB at 166,000 tokens, so with 8192 MiB one other request pushed it out. A server already up keeps its own setting.
+- **The same prompt in every box.** A delegate's conversation taken up in a later box is asked with the system prompt it was begun with: the box's
+  paths are replaced (those of earlier boxes too), and what the first box lacked stays in it, what a later one lacks being said at the end.
+- **A rewrite is said.** The model bridge compares each prompt with those before it (`isolation.prompt_watch`), one comparison for every box of a
+  pass, and says one that makes the server read much of a conversation again, naming where it differs; the shorter history a compaction leaves is
+  none. A delegate records each, as it does a step that read much of its conversation again without the cache, and tells its lead the first of
+  each. A run in place talks to the server itself and is not compared.
+- **Template switches.** The bridge passes `chat_template_kwargs` on with `enable_thinking`, `preserve_thinking` and `reasoning_effort` and no
+  other name, so a delegate's thinking is off.
 - **Hybrid models.** Qwen3.8-Flash-Next keeps recurrent state, so llama-server cannot cut its cache at any token: it goes back to a saved context
   checkpoint before the difference, or to the start when it has none there (32 a slot, its default, saved near the end of each prompt).
 
@@ -434,7 +440,9 @@ and messages out, past 24 MB it adds only what says how the run went, and it end
 **`status`** prints one line per run, fenced as data: its state, what it is doing now and for how long (running a named command; waiting for the
 model server's slot, reading its prompt as tokens read of about how many, generating with the tokens written, each also for a compaction; waiting for
 the lead, the model or the next step; and how long ago the last event was), its turn and its last test run. The counts are the server's own `/slots`
-counters, read at most every 10 s by the bridge, which alone holds the server's key; "about how many" is the size of the conversation at the last step.
+counters, read at most every 10 s by the bridge, which alone holds the server's key, from the slot whose prompt holds the end of the request: a
+server that does not say its slots' prompts (it does when started to save slots, as a coding session's is) gives no counts, and another client's are
+never shown. "About how many" is the size of the conversation at the last step, and is left out after a compaction.
 **`follow NAME`** prints the whole record from the start, fenced as data, and goes on while the run does (`--once` prints what there is).
 **The page.** The web app's **Work > Delegates** view (`/ui/#delegates`) lists the runs and shows one run's timeline as it grows. Its routes
 (`/ui/delegates`, `/ui/delegates/NAME?after=N`) are read-only, behind the page's own sign-in, and answered to this computer alone.
@@ -444,8 +452,9 @@ counters, read at most every 10 s by the bridge, which alone holds the server's 
 Besides the question a delegate asks and the message that its run ended, `poolhouse.delegate_notices` sends the lead a message, subject
 `delegate notice: ...`, when: an attempt is broken off from outside, or a review fails (an error that ends the run is the last message); a restart
 begins; the preflight in the box fails; a test run in the box fails for what looks like setup (a command that cannot start, a runner that cannot
-collect, a module, a permission or a connection the box lacks), once for each such line; a request rewrote history the model server had read, or a
-step read 32,000 tokens or more without the cache while reusing less than half of the conversation before it ("Prompt reuse"); and nothing has happened
+collect, a module, a permission or a connection the box lacks), once for each such line; for the first time in the run, a request rewrote history
+the model server had read, or a step read 32,000 tokens or more without the cache while reusing less than half of the conversation before it
+("Prompt reuse"); and nothing has happened
 for 10 minutes, again after 20, 40 and so on. A run sends at most 30. Nothing waits for an answer to one.
 
 ### Self-check before delivery

@@ -7,6 +7,7 @@ itself), and every word standing in for a model's says it is `[CANNED RESPONSE, 
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import time
@@ -240,6 +241,51 @@ def test_stop_says_what_the_run_came_to_and_where_its_changes_are_kept(lead_node
     capsys.readouterr()
     assert delegate.main(["stop", name]) == 0
     assert "stopped: 91 turn(s), 600 read, 42 written; kept patches: /PLUMBING/kept.patch" in said(capsys)
+
+
+@pytest.mark.parametrize("applied,line", [
+    (["a.py", "b.py"], "done: 3 turn(s), 6 read, 4 written; 2 file(s) applied to the project"),
+    ([], "done: 3 turn(s), 6 read, 4 written"),
+])
+def test_stop_of_a_run_that_changed_files_never_says_nothing_was_kept(lead_node, detached, capsys, applied, line):
+    node, lead, _project = lead_node
+    started("--task", "run the tests")
+    [name] = agent_names(node, lead)
+    store.save_result(name, {"state": "done", "turns": 3, "input_tokens": 6, "output_tokens": 4, "text": "", "error": "", "applied": applied,
+                             "detail": ""})
+    store.set_status(name, "done")
+    capsys.readouterr()
+    assert delegate.main(["stop", name]) == 0
+    shown = said(capsys)
+    assert line in shown and "nothing was kept" not in shown, shown
+
+
+def test_stop_of_a_run_on_the_folder_itself_says_its_changes_are_there(lead_node, detached, capsys):
+    node, lead, _project = lead_node
+    started("--task", "run the tests")
+    [name] = agent_names(node, lead)
+    store.save(dataclasses.replace(store.load(name), edit=True, sandboxed=False, branch=""))
+    store.save_result(name, {"state": "done", "turns": 3, "input_tokens": 6, "output_tokens": 4, "text": "", "error": "", "detail": ""})
+    store.set_status(name, "done")
+    capsys.readouterr()
+    assert delegate.main(["stop", name]) == 0
+    assert "whatever it changed is in the folder itself" in said(capsys)
+
+
+def test_stop_removes_nothing_of_a_run_that_has_not_ended(lead_node, detached, monkeypatch, capsys):
+    node, lead, _project = lead_node
+    started("--task", "run the tests")
+    [name] = agent_names(node, lead)
+    store.set_status(name, "working", "alias")
+    monkeypatch.setattr(delegate.jobs, "alive", lambda *_a, **_k: True)
+    monkeypatch.setattr(delegate.jobs, "stop", lambda *_a, **_k: 1)
+    removed = []
+    monkeypatch.setattr(delegate.shutil, "rmtree", lambda path, **_: removed.append(path))
+    capsys.readouterr()
+    assert delegate.main(["stop", name]) == 1
+    shown = said(capsys)
+    assert "still ending" in shown and f"stopped {name}" not in shown and not removed, shown
+    assert store.status(name)["state"] == "working" and store.graded(name)["run"].get("state") is None
 
 
 def posted(node, lead, name):

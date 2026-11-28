@@ -46,6 +46,9 @@ class Recorder:
     def __init__(self, name: str) -> None:
         self.name = name
         self.spent: dict[str, float] = {}
+        self.contexts: dict[tuple[str, int], int] = {}
+        """The tokens of each pass's conversation as its last step left it, by phase and round: about what its next prompt holds, in a later
+        attempt too."""
         self._lock = threading.RLock()
 
     def hide(self, *values: str) -> None:
@@ -91,8 +94,9 @@ class Pass:
         """The calls the hook let through that have no result yet, by id: the tool, what it is about and when it was asked."""
         self._busy, self._looked, self._model_s = False, time.monotonic(), 0.0
         self._doing: tuple[str, str] | None = None
-        self._context = 0
-        """The tokens of the conversation as the last step that ended left it: about what the next prompt holds."""
+        self._compactions = 0
+        self._compacted = False
+        """Whether a compaction was asked for and its request is not yet over: the conversation's size says nothing after it."""
         self._model: dict[str, Any] | None = None
         self._rewritten: set[str] = set()
         self._lock = threading.RLock()
@@ -169,8 +173,11 @@ class Pass:
             if said not in self._rewritten:
                 self._rewritten.add(said)
                 self.recorder.add("rewrite", turn=self.turn, why=said)
-        if look.compacting and not (self._model or {}).get("compacting"):
+        if look.compactions > self._compactions:
+            self._compactions, self._compacted = look.compactions, True
             self.recorder.add("compaction", turn=self.turn, tokens=self._context)
+        if self._compacted and not look.compacting:
+            self._forgotten()
         held = None
         if self._busy:
             far = look.progress
@@ -179,6 +186,15 @@ class Pass:
         if held != self._model:
             self._model = held
             store.note(self.recorder.name, model=held)
+
+    @property
+    def _context(self) -> int:
+        return self.recorder.contexts.get((self.ask.phase, self.ask.round), 0)
+
+    def _forgotten(self) -> None:
+        """A compaction is over: the shorter history it leaves is read once, as it must be, and is held to nothing before it."""
+        self._compacted = False
+        self.recorder.contexts.pop((self.ask.phase, self.ask.round), None)
 
     def _ran(self, part: Mapping[str, Any]) -> None:
         """A tool call that has ended, completed or in an error."""
@@ -214,7 +230,11 @@ class Pass:
                          cache_read_tokens=reused, reuse_percent=round(100 * reused / prompt) if prompt else None, model_seconds=seconds,
                          tokens_per_second=round(wrote / seconds, 1) if wrote and seconds >= 0.5 else None)
         self.recorder.spend(input_tokens=read, output_tokens=wrote, cache_read_tokens=reused, model_seconds=seconds)
-        before, self._context = self._context, prompt + wrote
+        with self._lock:
+            if self._compacted:   # a step that ends first of all after a compaction, between two looks
+                self._forgotten()
+            before = self._context
+            self.recorder.contexts[(self.ask.phase, self.ask.round)] = prompt + wrote
         if read >= REREAD and reused < before // 2:
             self.recorder.add("reread", turn=self.turn, input_tokens=read, cache_read_tokens=reused)
 

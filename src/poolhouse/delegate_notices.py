@@ -80,11 +80,12 @@ class Teller:
         elif kind == "preflight" and not event.get("ok"):
             found = str(event.get("lacks") or event.get("untested"))
             self._tell("preflight failed", f"the preflight in the box failed: {found}", once=f"preflight {event.get('untested')}")
-        elif kind == "rewrite":
-            self._tell("history rewritten", str(event.get("why")), once=f"rewrite {event.get('why')}")
+        elif kind == "rewrite":   # the first of each is told; a run that goes on doing it would fill the lead's inbox, and its record holds all
+            self._tell("history rewritten", f"{event.get('why')}. Later ones of this run are in its record only.", once="rewrite")
         elif kind == "reread":
             self._tell("prompt read again", f"step {event.get('turn')} read {int(event.get('input_tokens') or 0):,} tokens of its prompt again; "
-                       f"only {int(event.get('cache_read_tokens') or 0):,} came from the server's cache")
+                       f"only {int(event.get('cache_read_tokens') or 0):,} came from the server's cache. Later ones of this run are in its record "
+                       "only.", once="reread")
         elif kind == "test" and event.get("setup"):
             self._tell("test setup", f"a test run in the box failed and it looks like setup, not the work: command {event.get('command')!r}, "
                        f"{delegate_record.counts(event)}: {event['setup']}", once=f"setup {event['setup']}")

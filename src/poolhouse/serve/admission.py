@@ -1,8 +1,8 @@
 """What a model server asks of this device, and what the node's lease table gives it: memory and a slot for the model.
 
 A server about to start is a lease of the node (`poolhouse.leasetable`) tagged with its port: the memory it will take
-(`estimate_bytes`: the weights, the draft and projector files, the KV cache read off the GGUF header and a fixed allowance for the
-runtime) and its slot (`slot_name`). The node holds the machine's budget, the red share of what `poolhouse.hub.room` allows,
+(`estimate_bytes`: the weights, the draft and projector files, the KV cache read off the GGUF header, a prompt cache asked for and a
+fixed allowance for the runtime) and its slot (`slot_name`). The node holds the machine's budget, the red share of what `poolhouse.hub.room` allows,
 queues a start that does not fit beside the servers up, refuses one that could never fit, and ends the lease when the process it
 is bound to ends. A server runs on the device ``gpu``, or on ``cpu`` when it offloads no layer or says so. `poolhouse.gate` queues
 the requests of a device.
@@ -94,8 +94,9 @@ def _size(ref: str | Path | None) -> int:
 
 def estimate_bytes(spec: ServerSpec) -> int:
     """What serving ``spec`` will take: weights, draft and projector files, the KV cache
-    read off the GGUF header, and a fixed allowance for the runtime. Weights not on disk
-    are unknown and count as 0."""
+    read off the GGUF header, a prompt cache the spec asks for (llama-server's own default,
+    when it asks for none, is not counted) and a fixed allowance for the runtime. Weights
+    not on disk are unknown and count as 0."""
     weights = _size(spec.model)
     if not weights:
         return 0
@@ -108,7 +109,7 @@ def estimate_bytes(spec: ServerSpec) -> int:
     except (OSError, ValueError, struct.error):
         kv = 0
     return (weights + _size(spec.draft) + _size(spec.mmproj) + kv
-            + draft_kv_estimate_bytes(spec) + RUNTIME_ALLOWANCE_BYTES)
+            + draft_kv_estimate_bytes(spec) + max(spec.cache_ram_mb or 0, 0) * MIB + RUNTIME_ALLOWANCE_BYTES)
 
 
 def live(entry: Mapping[str, Any]) -> bool:

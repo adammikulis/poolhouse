@@ -49,6 +49,7 @@ from poolhouse import (
 )
 from poolhouse.client import families
 from poolhouse.errors import Denied
+from poolhouse.isolation import prompt_watch
 from poolhouse.isolation.environment import OPENCODE_OFFLINE, SHELL, SHELL_DEFAULT_S, SHELL_MAX_S
 from poolhouse.log import say as log
 from poolhouse.workspace import nudge_fence
@@ -152,6 +153,8 @@ class _InPlace:
         self.before: delegate_candidate.Folder | None = None
         self.uncompared = "no copy of the folder was taken before the work"
         self.paths: list[list[str]] = []
+        self.watches: dict[tuple[str, int], prompt_watch.Watch] = {}
+        """What compares the prompts of each pass, by its phase and round: one for every attempt of it."""
 
     def run(self) -> harness.Answer:
         """The work, and its self-check when the record asks for one."""
@@ -200,6 +203,7 @@ class _InPlace:
         began, hooks = time.time(), delegate_confined.Hooks()
         url, alias, window = self.model.url, self.model.alias, self.model.window
         bridge = isolation.ModelBridge(url, isolation.Lease.of(alias, window, 1), key=serverkeys.for_url(url))
+        bridge.watch = self.watches.setdefault((ask.phase, ask.round), bridge.watch)
         broke = ""
         try:
             folder = Path(self.rec.workdir)
