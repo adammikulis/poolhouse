@@ -96,6 +96,9 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | Canned node replies in tests | `test_fleet_plan.py`, `test_setup.py`, `test_fleet_tls.py`, `test_node_health_deadline.py`, `test_node_service_pool.py`, `test_fleet_pausing.py` and `test_fleet_roster.py` answer for the node; replacing them with `two_nodes` needs node-side service unbind | `tests/` |
 | `node_key.migrate` passphrase branch | Reported unreachable (the `elif passphrase` arm), not proved. Delete it with its test once confirmed | `src/poolhouse/node_key.py` |
 | `bench` builds a `telemetry.Call` itself | `Call.from_reply(reply, 0.0)` in the backend instead of the client's own record | `src/poolhouse/bench/backends.py` |
+| Test helpers and images that nothing uses | Delete them | `tests/replica_server.py`, `docs/images/` |
+| Functions that nothing calls | Delete them | `src/poolhouse` |
+| Functions over 80 statements, which the `long-functions` gate lists | Split each where it changes subject, behaviour unchanged | `src/poolhouse/world`, `src/poolhouse/graph`, `src/poolhouse/ingest` |
 | `contracts/node/retained-features.json` | Mostly paths of deleted code; no script, source or test reads it, but other files in `contracts/` cite it with a sha256, so deleting it means rewriting those pins | `contracts/node/` |
 | `scripts/sync-dev` | Its own shell fast-forward beside `scripts/primary_sync.py`; merging them changes messages `tests/test_sync_dev.py` asserts and adds a Python dependency to a script for a plain clone | `scripts/sync-dev` |
 

@@ -1,0 +1,14 @@
+title = "Delete two fleet helpers nothing calls"
+row = "Functions that nothing calls"
+task = """
+Nothing calls `byte_range` of src/poolhouse/fleet/files.py or `default_path` of src/poolhouse/fleet/rates.py. Confirm with
+`git grep -n -w -e byte_range -e default_path -- src tests scripts` (the two definitions and the `__all__` of rates.py), delete both functions, take
+`default_path` out of that `__all__`, and delete any import only they used. Change nothing else; `_DOC` stays. This is a removal: no test changes, so
+report it as exempt from fail first.
+"""
+read = []
+write = ["src/poolhouse/fleet/files.py", "src/poolhouse/fleet/rates.py"]
+check = "scripts/test all tests/test_fleet_fetcher.py tests/test_fleet_work.py"
+step = 2
+closes = true
+memory = false

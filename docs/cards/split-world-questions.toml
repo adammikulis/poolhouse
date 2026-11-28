@@ -1,0 +1,20 @@
+title = "Split the world question builder by kind of question"
+row = "Functions over 80 statements"
+task = """
+`_buckets` in src/poolhouse/world/questions.py has over 80 statements: one block for each group of questions, each under a `# ---` comment. Move
+blocks into private functions in the same file, so that no function is over 80 statements and no signature has over 8 parameters. Every question must
+come out in the same order, so call the blocks in the order they stand and draw from `rng` in the same order.
+
+Before the first edit, keep what it makes:
+`PYTHONPATH=src python3 -c "import json; from poolhouse.world.organisation import KINDS, make; from poolhouse.world.questions import questions; print(json.dumps([questions(make(k, 'small', 7), 100000) for k in KINDS]))" > $TMPDIR/before.json`
+After the change run the same into $TMPDIR/after.json; `cmp $TMPDIR/before.json $TMPDIR/after.json` prints nothing, and your report says so.
+Change no test. Confirm the gate no longer lists the file:
+`python3 -c "import sys; sys.path.insert(0, 'scripts'); from pathlib import Path; from gates import long_functions as a, wide_signatures as b; print([(f.path, f.line) for g in (a, b) for f in g.find(Path('.')) if 'world/questions' in str(f.path)])"`
+prints []. A pure refactor: report it as exempt from fail first.
+"""
+read = []
+write = ["src/poolhouse/world/questions.py"]
+check = "scripts/test all tests/test_world_company.py tests/test_world_relations.py"
+step = 3
+closes = true
+memory = false

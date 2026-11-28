@@ -1,0 +1,15 @@
+title = "Split `tidy` into functions of at most 80 statements"
+row = "Functions over 80 statements"
+task = """
+`tidy` in src/poolhouse/graph/tidy.py has over 80 statements. Split it into private functions in the same file where it changes subject, so that no
+function is over 80 statements and no signature has over 8 parameters (pass a small dataclass where it would). Behaviour, the order of what it does
+and returns, what a dry run leaves untouched, log lines and public names stay as they are. Change no test. Confirm the gate no longer lists the file:
+`python3 -c "import sys; sys.path.insert(0, 'scripts'); from pathlib import Path; from gates import long_functions as a, wide_signatures as b; print([(f.path, f.line) for g in (a, b) for f in g.find(Path('.')) if 'graph/tidy' in str(f.path)])"`
+prints []. A pure refactor: report it as exempt from fail first.
+"""
+read = []
+write = ["src/poolhouse/graph/tidy.py"]
+check = "scripts/test all tests/test_graph_tidy.py tests/test_graph_tidy_judge.py"
+step = 4
+closes = true
+memory = false

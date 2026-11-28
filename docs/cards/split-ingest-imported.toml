@@ -1,0 +1,16 @@
+title = "Split the CSV pair import into functions of at most 80 statements"
+row = "Functions over 80 statements"
+task = """
+`imported` in src/poolhouse/ingest/imports.py has over 80 statements, with several functions nested in it. Split it into private functions of the
+module (a small class or dataclass may hold what the nested ones share), so that no function is over 80 statements, no signature you add has over 8
+parameters and the file stays under 900 lines. `imported` keeps its signature, and what it returns, in order, stays the same. Change no test. Confirm
+the gate no longer lists the file:
+`python3 -c "import sys; sys.path.insert(0, 'scripts'); from pathlib import Path; from gates import long_functions as a; print([(f.path, f.line) for f in a.find(Path('.')) if 'ingest/imports' in str(f.path)])"`
+prints []. A pure refactor: report it as exempt from fail first.
+"""
+read = []
+write = ["src/poolhouse/ingest/imports.py"]
+check = "scripts/test all tests/test_ingest_import.py"
+step = 5
+closes = true
+memory = false
