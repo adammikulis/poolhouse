@@ -1,16 +1,20 @@
 """A session card end to end: the lead releases the runner, the runner starts a real delegate in the real confinement, the delegate recalls and
-proposes a fact, asks its lead and runs the check, the lead is told, grades it, and only then is the fact saved. The model side is the kit's marked
-canned server and the harness a marked program (`test_delegate_confined.HARNESS`, NOT A MODEL and NOT OPENCODE)."""
+proposes a fact, asks its lead and runs the check, the lead is told, the runner runs the check again on the commit in a confinement of its own, the
+lead reads the fact and grades, and only then is the fact saved. The model side is the kit's marked canned server and the harness a marked program
+(`test_delegate_confined.HARNESS`, NOT A MODEL and NOT OPENCODE)."""
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
-from cards_kit import card, project as card_project
+from cards_kit import card, project as card_project, work
 from delegate_kit import agent_names, said
 from test_delegate_confined import CANNED, answering, editing  # noqa: F401 - the fixture
 
 from poolhouse import (
     cards,
+    cards_check,
     cards_ledger,
     cards_run,
     delegate,
@@ -37,7 +41,7 @@ def host(**more) -> cards_run.Host:
 
     return cards_run.Host(start, status=lambda: {"claims": {}, "servers": []},
                           servers=lambda: {8080: {"model": MODEL, "context": 262_144, "parallel": 1}}, live=lambda _entry: True,
-                          measuring=lambda: None, busy=lambda _url: False, queued=lambda _url: 0, idle_s=0.0, **more)
+                          measuring=lambda: None, busy=lambda _url: False, queued=lambda _url: 0, takes=lambda _model: True, idle_s=0.0, **more)
 
 
 def remembered(root, text: str = "") -> list[str]:
@@ -81,11 +85,17 @@ def test_a_card_is_run_asked_about_reported_graded_and_only_then_remembered(edit
     told = [(e.fields.get("type"), e.fields.get("subject", "")) for e in node.session(lead).read(inbox=True, limit=100).entries
             if e.sender == name]
     assert ("question", "question") in told and ("handoff", "delegate done (review waiting)") in told, told
-    assert cards_run.step(root, host())[0] == "settled"
+    said(capsys)
+    accepting = ["grade", name, "correct", "--critique", "the file is gone", "--check", "test ! -e junk.txt => exit 0"]
+    assert delegate.main(accepting) == 1, "the grade settles the run, then shows what it would save"
+    heard = said(capsys)
+    digest = delegate_memory.proposals(name)[0]
+    assert "the root module is at the top" in heard and f"--facts {digest}" in heard, heard
     entry = cards_ledger.read(root)["cards"]["junk-card"]
     assert entry["state"] == "review" and entry["commit"] == row["tree"]["commit"], entry
-    assert name in cards_run.needs(root)[0]
-    assert delegate.main(["grade", name, "correct", "--critique", "the file is gone", "--check", "test ! -e junk.txt => exit 0"]) == 0
+    assert name in cards_run.needs(root)[0] and not store.graded(name)["grades"][1:]
+    assert "the root module is at the top" not in remembered(root)
+    assert delegate.main([*accepting, "--facts", digest]) == 0
     heard = said(capsys)
     assert "card junk-card accepted" in heard and "1 of 1 proposed fact(s) saved" in heard, heard
     assert "the root module is at the top" in remembered(root)
@@ -94,8 +104,25 @@ def test_a_card_is_run_asked_about_reported_graded_and_only_then_remembered(edit
     assert not cards.problems(root)
 
 
-@pytest.mark.parametrize("words", [["release", "--why", "go"], ["hold", "--why", "stop"], ["retry", "junk-card"], ["run", "--once"]])
-def test_a_delegate_and_what_it_starts_can_neither_release_hold_retry_nor_run_the_cards(tmp_path, monkeypatch, capsys, words):
+def test_the_runner_runs_the_check_itself_on_the_committed_tree_in_a_confinement_of_its_own(editing, tmp_path):  # noqa: F811
+    _node, _lead, checkout = editing
+    root = card_project(checkout)
+    card(root, "junk-card")
+    git(root, "add", "HANDOFF.md", "AGENTS.md", "docs", "junk.txt", "left.txt")
+    git(root, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "cards")
+    done = work(root, "HEAD", {"junk.txt": None})
+    [found] = cards.load(root)[0]
+    log = tmp_path / "recheck.log"
+    assert cards_check.rerun(root, found, done, "run-1", log) == ""
+    assert "does not pass on the committed tree" in cards_check.rerun(root, found, "HEAD", "run-1", log)
+    reaching = dataclasses.replace(found, check=f"touch '{root}/escaped'; test ! -e junk.txt")
+    assert cards_check.rerun(root, reaching, done, "run-1", log) == ""
+    assert not (root / "escaped").exists() and (root / "junk.txt").exists() and "poolhouse-card-check" not in str(
+        cards_check.delegate_candidate.git(root, "worktree", "list"))
+
+
+@pytest.mark.parametrize("words", [["release", "--why", "go"], ["hold", "--why", "stop"], ["retry", "junk-card"], ["run", "--once"], ["wait"]])
+def test_a_delegate_and_what_it_starts_can_neither_release_hold_retry_run_nor_wait_on_the_cards(tmp_path, monkeypatch, capsys, words):
     root = card_project(tmp_path / "project")
     card(root, "junk-card")
     monkeypatch.setattr(isolation.ancestry, "unattended", lambda: True)

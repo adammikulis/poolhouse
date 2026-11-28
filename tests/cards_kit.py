@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import tempfile
 from pathlib import Path
 
 from poolhouse import cards
@@ -36,6 +38,38 @@ def card(root: Path, ident: str, **fields: object) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
+
+
+def git(root: Path, *words: str) -> str:
+    """What git says of ``words`` in the toy repository ``root``, committing as an invented person."""
+    done = subprocess.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgSign=false",
+                           *words], check=True, capture_output=True, text=True)
+    return done.stdout.strip()
+
+
+def committed(root: Path) -> str:
+    """Commit everything the toy repository at ``root`` holds, making it one first; the commit."""
+    if not (root / ".git").exists():
+        git(root, "init", "--quiet")
+    git(root, "add", "--all", ".")
+    git(root, "commit", "--quiet", "--allow-empty", "-m", "as it stands")
+    return git(root, "rev-parse", "HEAD")
+
+
+def work(root: Path, base: str, changes: dict[str, str | None]) -> str:
+    """A commit on ``base``, made in a worktree of its own, that writes each of ``changes`` (None deletes the file); the commit."""
+    with tempfile.TemporaryDirectory() as held:
+        tree = Path(held) / "tree"
+        git(root, "worktree", "add", "--quiet", "--detach", str(tree), base)
+        for name, text in changes.items():
+            if text is None:
+                (tree / name).unlink()
+            else:
+                (tree / name).parent.mkdir(parents=True, exist_ok=True)
+                (tree / name).write_text(text, encoding="utf-8")
+        made = committed(tree)
+        git(root, "worktree", "remove", "--force", str(tree))
+    return made
 
 
 def project(root: Path) -> Path:

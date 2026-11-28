@@ -4,6 +4,7 @@ is the same text and carries no per-request line, and `warm` fills the server's 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import socket
 import time
@@ -15,11 +16,12 @@ from poolhouse import (
     delegate_confined,
     delegate_store as store,
     harness,
+    harnessing,
     hub,
 )
 from poolhouse.ownership import lease_file, recorded_servers
 from poolhouse.serve import cli, holding, ops
-from poolhouse.serve.backend import LlamaServerBackend
+from poolhouse.serve.backend import LlamaServerBackend, ServerFailed
 from poolhouse.serve.broker import Broker
 from poolhouse.serve.manager import ServerManager, serve
 from poolhouse.testing.canned import canned_binary
@@ -102,3 +104,41 @@ def test_a_server_a_delegate_started_is_up_for_the_next_one_and_a_plain_lease_st
     while listening(gone) and time.monotonic() < deadline:
         time.sleep(0.2)
     assert not listening(gone)
+
+
+def test_a_lease_that_only_takes_a_server_already_up_starts_none(machine, tmp_path):
+    model = a_model(tmp_path)
+    with pytest.raises(ValueError, match="starts none"), delegate_confined.leased(model, lambda _line: None, adopt_only=True):
+        pytest.fail("a server was leased")
+    with pytest.raises(ServerFailed, match="starts none"), serve(model, manager=machine, context=4096, adopt_only=True):
+        pytest.fail("a server was started")
+    assert recorded_servers(lease_file()) == {}
+    with serve(model, manager=machine, context=4096, keep=True) as kept:
+        port = kept.port
+    with serve(model, port=port, manager=machine, context=4096, adopt_only=True) as taken:
+        assert (taken.port, taken.adopted) == (port, True)
+    assert listening(port)
+    assert cli.main(["down", str(port)]) == 0
+    with pytest.raises(ServerFailed, match="starts none"), serve(model, port=port, manager=machine, context=4096, adopt_only=True):
+        pytest.fail("the server its owner stopped was started again")
+    assert not listening(port)
+
+
+def test_only_a_session_cards_delegate_leases_a_server_already_up_and_nothing_else(monkeypatch):
+    asked: list[dict] = []
+
+    @contextlib.contextmanager
+    def leased(_model, _say, **how):
+        asked.append(how)
+        raise RuntimeError("the lease was asked for")
+        yield
+
+    monkeypatch.setattr(delegate_confined, "leased", leased)
+    monkeypatch.setattr(harnessing, "binary_for", lambda _name, pinned=False: "/bin/true")
+    for name, card in (("claude-plain1", ""), ("claude-card01", "junk-card")):
+        rec = a_delegate(name, edit=True)
+        rec.card = card
+        store.save(rec)
+        with pytest.raises(RuntimeError, match="the lease was asked for"):
+            delegate_confined.converse(rec, None, None, lambda _line: None)
+    assert asked == [{}, {"adopt_only": True}]

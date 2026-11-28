@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import threading
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -25,7 +26,7 @@ from poolhouse.client.health import refuses_key, serving_params
 from poolhouse.node_health import Refused
 from poolhouse.ownership import recorded_servers
 from poolhouse.serve import admission, inuse, ledger, node_memory, unmanaged
-from poolhouse.serve.backend import Lease, ServerBackend, ServerInfo, ServerSpec
+from poolhouse.serve.backend import Lease, ServerBackend, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.events import Event, emit
 from poolhouse.serve.leases import merge_state, orphaned
 from poolhouse.serve.matching import model_matches, serving_mismatch
@@ -54,6 +55,8 @@ class Admitting:
         def _save(self) -> None: ...
         def _pending(self, spec: ServerSpec, *, lease: str = "", est_mb: int = 0) -> Lease: ...
         def backend_for(self, spec: ServerSpec) -> ServerBackend: ...
+        def adopt(self, spec: ServerSpec) -> ServerInfo | None: ...
+        def _port_lock(self, port: int) -> threading.Lock: ...
 
     def _admitted(self, spec: ServerSpec, *, on_event: Event | None = None,
                   reuse: bool = False, load_s: float = 0.0) -> Lease | ServerInfo:
@@ -182,6 +185,15 @@ class Admitting:
     def _reusable(self, spec: ServerSpec, *, on_event: Event | None = None) -> ServerInfo | None:
         """A running server on another port that serves ``spec`` as asked, else ``None``."""
         return self._compatible(spec, recorded_servers(self.state_file), on_event)[0]
+
+    def _already_up(self, spec: ServerSpec, *, on_event: Event | None = None) -> ServerInfo:
+        """The running server that serves ``spec``, on its port or another; `ServerFailed` when none does. Nothing is started, grown or
+        stopped."""
+        with self._port_lock(spec.port):
+            found = self.adopt(spec) or self._reusable(spec, on_event=on_event)
+        if found is None:
+            raise ServerFailed(f"no server already up serves what port {spec.port} was asked for, and this lease starts none")
+        return found
 
     def register_unmanaged(self, port: int, seen: unmanaged.Examined) -> None:
         """Put the examined server on ``port`` in the registry as one poolhouse does not own."""

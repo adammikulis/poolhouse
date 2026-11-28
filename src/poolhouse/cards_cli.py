@@ -3,8 +3,8 @@
     list     check     show ID     next     split ID
     release --why TEXT [--tier N ...]     hold --why TEXT     retry ID     run [--once | --detach]     wait
 
-`release`, `hold`, `retry` and `run` are a lead's: a delegate, and whatever it starts, is refused. The lead that releases the runner is the one every
-card's delegate answers to.
+`release`, `hold`, `retry`, `run` and `wait` are a lead's: a delegate, and whatever it starts, is refused. The lead that releases the runner is the
+one every card's delegate answers to, and a release records each card as it stands: one added or changed since waits for the next release.
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ def _list(root: Path, args: argparse.Namespace) -> int:
     say(f"held: {shown['held']}" if shown["held"] else f"released for lead {release.get('lead')}{tiers}")
     say(nudge_fence.fenced([nudge_fence.clean(_line(row)) for row in shown["cards"]]) if shown["cards"] else "no card")
     for line in cards_run.needs(root):
-        say(f"waits for the lead: {nudge_fence.clean(line)}")
+        say(f"waits for the lead: {line}")
     return 0
 
 
@@ -105,7 +105,9 @@ def _known(root: Path, ident: str) -> cards_run.Standing:
 
 def _show(root: Path, args: argparse.Namespace) -> int:
     each = _known(root, args.card)
-    say(f"{each.card.id}: {each.state}" + (f", {each.why}" if each.why else ""))
+    say(f"{each.card.id}: {each.state}")
+    if each.why:
+        say(nudge_fence.fenced([nudge_fence.clean(each.why)]))
     say(f"row: {each.row.tier} / {each.row.item}" if each.row else f"row: none begins {each.card.row!r}")
     say(f"budget: {cards.estimate(root, each.card).said()} (most {cards.CAP:,}; compaction at {cards.COMPACTS_AT:,})")
     lead = str(cards_ledger.read(root)["release"].get("lead") or "the lead that releases the runner")
@@ -146,13 +148,14 @@ def _release(root: Path, args: argparse.Namespace) -> int:
     if store.load(lead) is not None:
         raise ValueError(f"{lead} is a delegate, which leads no card")
     release = {"lead": lead, "board": board, "why": why, "tiers": sorted(set(args.tier)), "at": time.time(),
-               "hold": cards_run.digest(cards_run.stated(root))}
+               "hold": cards_run.digest(cards_run.stated(root)),
+               "cards": {card.id: cards_run.card_digest(root, card) for card in cards.load(root)[0]}}
     cards_ledger.edit(root, lambda ledger: ledger.update(release=release, hold=""))
     caller.record("cards.release", lead=lead, project=str(root), why=why, tiers=release["tiers"])
     say(f"released: ready cards run as delegates of {lead}" + (f", paused tier(s) {', '.join(release['tiers'])} included" if args.tier else ""))
     say("`poolhouse-delegate cards run` starts the runner; run `poolhouse-delegate cards wait` in the background to be woken when a card needs you")
     for line in cards_run.needs(root):
-        say(f"waits for you: {nudge_fence.clean(line)}")
+        say(f"waits for you: {line}")
     cards_run.listing(root)
     return 0
 
@@ -178,20 +181,27 @@ def _retry(root: Path, args: argparse.Namespace) -> int:
     return 0
 
 
-def _wait(root: Path, _args: argparse.Namespace) -> int:
-    while not (found := cards_run.needs(root)):
-        time.sleep(cards_run.POLL_S)
+def _wait(root: Path, host: cards_run.Host) -> int:
+    _leads("waiting on the session cards")
+    while True:
+        cards_run.watch(root, host)   # settles an ended run and yields the model, whether or not a runner is polling
+        if found := cards_run.needs(root):
+            break
+        host.sleep(cards_run.POLL_S)
+    cards_run.listing(root)
     for line in found:
-        say(nudge_fence.clean(line))
+        say(line)
     return 0
 
 
 def command(args: argparse.Namespace, start: Callable[[list[str]], int]) -> int:
     """Run the action ``args`` names; ``start`` is `poolhouse-delegate`'s own command line, which the runner starts and stops delegates by."""
     root = project_of(args.project)
+    if args.action == "wait":
+        return _wait(root, cards_run.Host(start))
     if args.action != "run":
         actions = {"list": _list, "check": _check, "show": _show, "next": _next, "split": _split, "release": _release, "hold": _hold,
-                   "retry": _retry, "wait": _wait}
+                   "retry": _retry}
         return actions[args.action](root, args)
     _leads("running the session cards")
     if args.detach:

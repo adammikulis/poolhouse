@@ -15,7 +15,7 @@ from typing import Any
 
 from poolhouse import files, home, lock
 
-__all__ = ["VERSION", "edit", "folder", "graded", "landed", "publish", "published", "read"]
+__all__ = ["VERSION", "edit", "folder", "graded", "landed", "publish", "published", "read", "watching"]
 
 VERSION = 1
 
@@ -41,6 +41,11 @@ def read(project: Path) -> dict[str, Any]:
             "cards": cards if isinstance(cards, dict) else {}}
 
 
+def watching(project: Path) -> Path:
+    """The lock held while the running card of ``project`` is looked at, so one caller at a time settles or stops it."""
+    return _file(project).with_suffix(".watch.lock")
+
+
 @contextlib.contextmanager
 def _held(project: Path) -> Iterator[None]:
     with lock.held(_file(project).with_suffix(".lock")):
@@ -59,12 +64,15 @@ def edit(project: Path, change: Callable[[dict[str, Any]], Any]) -> Any:
 
 def graded(project: Path, card: str, name: str, grade: dict[str, Any]) -> str:
     """What a lead's ``grade`` of delegate ``name`` does to ``card``, as a sentence; empty when the grade is of no run that waits for it. A checked
-    `correct` accepts the work, which the lead then publishes; a lower verdict rejects it, and the next run is given the reasons."""
+    `correct` accepts work that waits for review, which the lead then publishes; work that was sent back is accepted by no grade. A lower verdict
+    rejects either, and the next run is given the reasons."""
     def change(ledger: dict[str, Any]) -> str:
         entry = ledger["cards"].get(card)
         if not entry or entry.get("delegate") != name or entry.get("state") not in ("review", "returned"):
             return ""
         if grade["verdict"] == "correct":
+            if entry["state"] != "review":
+                return f"card {card} was sent back, which no grade accepts: split it, correct it, or `poolhouse-delegate cards retry {card}`"
             if not grade.get("verified"):
                 return f"card {card} is accepted by a grade with a check (--check)"
             entry.update(state="accepted", why="")

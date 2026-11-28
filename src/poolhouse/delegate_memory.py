@@ -3,13 +3,16 @@ the facts its `remember` tool proposes, which are saved only when its lead's che
 
 The store is the project's own (`poolhouse.memory`, project scope only, never the person's); its key and file are opened by the runner and the
 grading command, never inside the sandbox. A proposal waits in the delegate's folder, passes the checks every fact passes, and is saved marked
-agent-observed, naming the card and the commit. Nobody is asked.
+agent-observed, naming the card and the commit. A grade saves exactly the proposals its lead was shown, named by their digest (`proposals`).
+Nobody is asked.
 """
 
 from __future__ import annotations
 
 import contextlib
 import dataclasses
+import hashlib
+import json
 import re
 from collections.abc import Iterator, Mapping
 from pathlib import Path
@@ -22,8 +25,9 @@ from poolhouse.memory.facts import Refused
 from poolhouse.memory.store import Setup, Store, Tampered
 from poolhouse.memory.tools import lookup, propose as checked
 from poolhouse.memory.vault import KeyUnavailable
+from poolhouse.workspace import nudge_fence
 
-__all__ = ["LIMIT", "NOTHING", "held", "opened", "propose", "reach", "recall", "settle"]
+__all__ = ["DROP", "LIMIT", "NOTHING", "held", "opened", "proposals", "propose", "reach", "recall", "settle", "unseen"]
 
 FILE = "memory.json"
 LIMIT = 5
@@ -35,6 +39,8 @@ STATUS = re.compile(r"(?i)\b(?:landed|merged|committed|pushed|pull request|PR ?#
                     r"still (?:to do|pending|failing)|not yet (?:done|built|landed))\b")
 """Words of the state of work, which the backlog and git hold and a fact must not."""
 ACCEPTS, REJECTS = ("correct",), ("partly", "wrong", "unusable")
+DROP = "drop"
+"""What a lead names instead of a digest to accept work and save none of its proposals."""
 FAILED = (OSError, RuntimeError, ValueError, ImportError)
 
 
@@ -143,9 +149,30 @@ def _saved(source: str, facts: list[str], about: list[str]) -> tuple[list[str], 
     return saved, refused
 
 
-def settle(rec: store.Delegate, from_lead: bool, verdict: str, verified: bool) -> str:
+def proposals(name: str) -> tuple[str, str]:
+    """``(digest, listing)`` of the facts delegate ``name`` proposed that are neither saved nor discarded: what a lead names to save exactly
+    these, and every one of them fenced as data; both empty when none waits."""
+    found = held(name)
+    if not found["proposed"] or found["saved"] is not None:
+        return "", ""
+    digest = hashlib.sha256(json.dumps(found["proposed"]).encode()).hexdigest()[:16]
+    return digest, nudge_fence.fenced([f"{at}. {nudge_fence.clean(fact)}" for at, fact in enumerate(found["proposed"], 1)])
+
+
+def unseen(rec: store.Delegate, from_lead: bool, grade: Mapping[str, Any], seen: str) -> str:
+    """Why a ``grade`` that would save what ``rec`` proposed is not taken yet, with every proposal shown: its lead's checked `correct` names the
+    digest of what it was shown (``seen``), or `DROP`. Empty for a grade that saves nothing or names it."""
+    digest, listing = proposals(rec.name)
+    if not (rec.memory and digest and from_lead and grade["verified"] and grade["verdict"] in ACCEPTS) or seen in (digest, DROP):
+        return ""
+    return (f"{rec.name} proposed these facts for the project's memory, a local model's words:\n{listing}\nread them, then grade again with "
+            f"--facts {digest} to save them, or --facts {DROP} to discard them")
+
+
+def settle(rec: store.Delegate, from_lead: bool, verdict: str, verified: bool, seen: str = "") -> str:
     """What a grade of ``verdict`` does to the facts ``rec`` proposed, as a sentence; empty when there is nothing to say. Only a lead's grade
-    (``from_lead``) counts: a checked `correct` saves them, any lower verdict discards them, and one without a check leaves them waiting."""
+    (``from_lead``) counts: a checked `correct` that names the digest of the proposals (``seen``, `proposals`) saves them, `DROP` or any lower
+    verdict discards them, and one without a check or without the digest leaves them waiting."""
     found = held(rec.name)
     if not rec.memory or not found["proposed"] or found["saved"] is not None:
         return ""
@@ -154,10 +181,13 @@ def settle(rec: store.Delegate, from_lead: bool, verdict: str, verified: bool) -
         return f"{count} proposed fact(s) wait for the grade of its lead, {rec.lead}"
     if verdict in ACCEPTS and not verified:
         return f"{count} proposed fact(s) wait for a grade with a check (--check)"
-    if verdict in REJECTS:
+    if verdict in REJECTS or seen == DROP:
         with _edited(rec.name) as changed:
             changed["saved"] = []
-        return f"{count} proposed fact(s) discarded: the work was not accepted"
+        why = "the work was not accepted" if verdict in REJECTS else "its lead dropped them"
+        return f"{count} proposed fact(s) discarded: {why}"
+    if seen != proposals(rec.name)[0]:
+        return f"{count} proposed fact(s) wait until its lead has read them: `poolhouse-delegate result {rec.name}`"
     commit = str((store.result(rec.name).get("tree") or {}).get("commit") or "")[:12]
     about = [f"task:{rec.card or rec.name}", *([f"task:commit {commit}"] if commit else [])]
     try:

@@ -85,6 +85,7 @@ __all__ = [
     "serving",
     "session_files",
     "stance",
+    "takes_up",
     "window_of",
 ]
 
@@ -244,6 +245,8 @@ class Want:
     draft: str = "auto"
     keep: bool = False
     """Leave a server this session started up when it ends, so the next session takes it warm (a delegate's)."""
+    adopt_only: bool = False
+    """Take a server already up as it stands and never start, grow or replace one (a session card's delegate)."""
 
 
 MIN_WINDOW = 65_536
@@ -292,6 +295,12 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
     for line in declined:
         say(line)
     return None
+
+
+def takes_up(model: str) -> bool:
+    """Whether a delegate on ``model`` would take a server already up as it stands, so that it starts none."""
+    found = str(hub.located(model, loose=True) or model)
+    return adopted(found, Want(keep=True), chat_template.written_beside(found), lambda _line: None) is not None
 
 
 def _same_file(recorded: object, patched: Path) -> bool:
@@ -351,12 +360,14 @@ def config_for(found: str, want: Want, say: Callable[[str], None]):
 @contextlib.contextmanager
 def serving(model: str, want: Want, say: Callable[[str], None], by: str) -> Iterator[tuple[str, object, str]]:
     """``(base_url, config, found)`` for the model served for the block; the server goes when
-    the block ends unless one was already up."""
+    the block ends unless one was already up. With ``want.adopt_only``, ValueError where no server up can be taken."""
     found = str(hub.located(model, loose=True) or model)
     note(found, by=by)
     patched = chat_template.written_beside(found)
     config = adopted(found, want, patched, say)
     taking = config is not None  # the server up is the one asked for; a second copy beside it is never started for the session
+    if config is None and want.adopt_only:
+        raise ValueError(f"no server already up serves {Path(found).name} as this session needs it, and this session starts none")
     if config is None:
         leasing = say if leases.already_up(found, want.port) is None else (lambda _line: None)
         config = config_for(found, want, leasing)
@@ -366,7 +377,8 @@ def serving(model: str, want: Want, say: Callable[[str], None], by: str) -> Iter
             leasing("this model's template refuses a system message after the first; serving "
                     f"with one that renders it instead ({patched.name})")
     with served(config, say=say, timeout=900.0, cache_reuse=256, warmup=False, escalate=True,
-                chat_template_file=patched, roam=not taking, keep=want.keep, reason=f"{by} session on {Path(found).name}",
+                chat_template_file=patched, roam=not taking, keep=want.keep, adopt_only=want.adopt_only,
+                reason=f"{by} session on {Path(found).name}",
                 on_event=lambda e: say(f"  {e.get('event')}: " + ", ".join(
                     f"{k}={v}" for k, v in e.items() if k != "event"))) as base_url:
         yield base_url, config, found

@@ -393,7 +393,7 @@ def editing(lead_node, detached, confinable, from_a_terminal, monkeypatch, tmp_p
     (release / "rg").chmod(0o755)
 
     @contextlib.contextmanager
-    def leased(_model, _say):
+    def leased(_model, _say, adopt_only=False):
         yield f"http://127.0.0.1:{server.server_port}", SimpleNamespace(serving=SimpleNamespace(slot_context=8192)), "canned.gguf"
 
     monkeypatch.setattr(delegate_confined, "leased", leased)

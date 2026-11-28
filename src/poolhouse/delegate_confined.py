@@ -404,11 +404,12 @@ def follow(confinement: isolation.Confinement, process: subprocess.Popen[bytes],
 
 
 @contextlib.contextmanager
-def leased(model: str, say: Callable[[str], None]) -> Iterator[tuple[str, Any, str]]:
+def leased(model: str, say: Callable[[str], None], adopt_only: bool = False) -> Iterator[tuple[str, Any, str]]:
     """The model served for the run (a server already up is taken as it stands), as ``(base URL, serving config, model file)``; a device that cannot
-    hold the model refuses with the reason, and a stop (`SystemExit` with the stop signal set) passes through."""
+    hold the model refuses with the reason, and a stop (`SystemExit` with the stop signal set) passes through. With ``adopt_only`` (a session
+    card's delegate) no server is ever started: ValueError where none up can be taken."""
     try:
-        with harnessing.serving(model, harnessing.Want(keep=True), say, "delegate") as served:
+        with harnessing.serving(model, harnessing.Want(keep=True, adopt_only=adopt_only), say, "delegate") as served:
             yield served
     except SystemExit as ended:
         if ended.code == 2:   # `serving` ends with 2 when the device cannot hold the model; the stop signal ends with 143
@@ -469,7 +470,8 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
     delegate's own session."""
     binary = harnessing.binary_for("opencode", pinned=True) or opencode_install.ensure()
     store.set_status(rec.name, "loading", rec.model)
-    taken = delegate_resume.Model(lambda: leased(rec.model, say), lambda model: told(rec, mine, model))
+    only_up = {"adopt_only": True} if rec.card else {}   # a card's delegate never starts a server, at its start or when it is broken off
+    taken = delegate_resume.Model(lambda: leased(rec.model, say, **only_up), lambda model: told(rec, mine, model))
     with taken as model, tempfile.TemporaryDirectory(prefix="poolhouse-delegate-talk-") as talk:
         return _Boxed(rec, bridge, mine, say, binary, model, Path(talk).resolve()).run()
 

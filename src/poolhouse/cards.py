@@ -19,8 +19,8 @@ from typing import Any
 
 from poolhouse import delegate_record, files, harnessing, lead_bridge, protectedwrites
 
-__all__ = ["CAP", "COMPACTS_AT", "FOLDER", "HOLD", "RULES", "Budget", "Card", "Row", "backlog", "brief", "estimate", "load", "ordered", "problems",
-           "row_of", "rows", "rules", "split"]
+__all__ = ["BACKLOG", "CAP", "COMPACTS_AT", "FOLDER", "HOLD", "RULES", "Budget", "Card", "Row", "backlog", "brief", "card_from", "cells", "estimate",
+           "guarded", "load", "ordered", "problems", "row_of", "rows", "rules", "split"]
 
 FOLDER = "docs/cards"
 HOLD = f"{FOLDER}/hold.txt"
@@ -37,11 +37,14 @@ REREADS = 1.5
 WRITE_TOKENS = 2_000
 CHECK_TOKENS = 20_000
 WORK_TOKENS = 20_000
-GUARD_CODE = ("scripts/hooks/", "src/poolhouse/guard/", "src/poolhouse/isolation/", "src/poolhouse/sandbox/", "src/poolhouse/keystore",
+GUARD_CODE = ("scripts/", "src/poolhouse/guard/", "src/poolhouse/isolation/", "src/poolhouse/sandbox/", "src/poolhouse/keystore",
               "src/poolhouse/credentials/", "src/poolhouse/protectedwrites.py", "src/poolhouse/worktreerules.py",
-              "src/poolhouse/harnesspolicy.py", "src/poolhouse/authority", ".github/", ".claude/", "budgets.json", "AGENTS.md",
-              "docs/agent-policy.md", HOLD)
-"""What no card may change: guards, confinement, keys, authority, the checks and the rules, and the hold on the runner."""
+              "src/poolhouse/harnesspolicy.py", "src/poolhouse/authority", "src/poolhouse/runtime", "src/poolhouse/fleet/runtime_",
+              "src/poolhouse/cards", "src/poolhouse/delegate", "src/poolhouse/activity/", "src/poolhouse/testing/", "src/poolhouse/testfarm/",
+              "pyproject.toml", "pytest.ini", "tox.ini", "setup.py", "setup.cfg", ".github/", ".claude/", "budgets.json", "AGENTS.md", "CLAUDE.md",
+              "docs/agent-policy.md", "docs/cards/")
+"""What no card may change: guards, confinement, keys, authority, runtime verification, the test runner and what it is configured by, the code
+that judges a card, the checks and rules, and the cards themselves. A `conftest.py` anywhere is one too (`guarded`)."""
 NODE_MARKERS = ("node_kit", "runner_binary")
 SELECTOR_TIER = ["scripts/test", "all"]
 RULES = (("AGENTS.md", "- Act as your authenticated agent"), ("AGENTS.md", "- Work lands on development by pull request"),
@@ -111,6 +114,16 @@ class Budget:
                 f"{self.writing:,} changes, {self.check:,} check output, {self.work:,} reasoning")
 
 
+def guarded(path: str) -> bool:
+    """Whether ``path`` of a project is one no card may change (`GUARD_CODE`)."""
+    return path.startswith(GUARD_CODE) or Path(path).name == "conftest.py" or protectedwrites.file_guarded(path)
+
+
+def cells(line: str) -> list[str]:
+    """The cells of one line of a backlog table; empty for a line that is none."""
+    return [cell.strip() for cell in line.strip().strip("|").split("|")] if line.startswith("|") else []
+
+
 def rows(text: str) -> list[Row]:
     """Every table row under a ``##`` heading of the backlog, in order. A tier is paused when its heading says so or it is the one for later."""
     found: list[Row] = []
@@ -122,11 +135,11 @@ def rows(text: str) -> list[Row]:
         elif not line.startswith("|"):
             column = None
         elif tier:
-            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            held = cells(line)
             if column is None:
-                column = cells.index("Item") if "Item" in cells else 0
-            elif column < len(cells) and not all(set(cell) <= set("-: ") for cell in cells):
-                found.append(Row(tier, cells[column], paused, (place, at)))
+                column = held.index("Item") if "Item" in held else 0
+            elif column < len(held) and not all(set(cell) <= set("-: ") for cell in held):
+                found.append(Row(tier, held[column], paused, (place, at)))
                 at += 1
     return found
 
@@ -142,9 +155,9 @@ def row_of(card: Card, found: Sequence[Row]) -> Row | None:
     return matches[0] if len(matches) == 1 else None
 
 
-def _parsed(path: Path) -> Card:
-    """The card ``path`` holds; ValueError saying what is wrong with it."""
-    held: dict[str, Any] = tomllib.loads(path.read_text(encoding="utf-8"))
+def card_from(ident: str, text: str) -> Card:
+    """The card ``ident`` whose file holds ``text``; ValueError saying what is wrong with it."""
+    held: dict[str, Any] = tomllib.loads(text)
     known = {each.name: each for each in fields(Card) if each.name != "id"}
     if extra := sorted(set(held) - set(known)):
         raise ValueError(f"unknown field(s): {', '.join(extra)}")
@@ -162,7 +175,7 @@ def _parsed(path: Path) -> Card:
             if type(value) is not wanted:
                 raise ValueError(f"{name} is a {wanted.__name__}")
             values[name] = value
-    return Card(path.stem, **values)
+    return Card(ident, **values)
 
 
 def load(root: Path) -> tuple[list[Card], dict[str, str]]:
@@ -170,7 +183,7 @@ def load(root: Path) -> tuple[list[Card], dict[str, str]]:
     cards, broken = [], {}
     for path in sorted((root / FOLDER).glob("*.toml")):
         try:
-            cards.append(_parsed(path))
+            cards.append(card_from(path.stem, path.read_text(encoding="utf-8")))
         except (OSError, ValueError, tomllib.TOMLDecodeError) as why:
             broken[path.stem] = str(why)
     return cards, broken
@@ -248,10 +261,11 @@ def _check_problems(root: Path, card: Card) -> list[str]:
 
 def _write_problems(root: Path, card: Card) -> list[str]:
     found = [] if card.write else ["write names the files it may change"]
-    for path in card.write:
+    made = [path for path in card.creates if "::" not in path and path not in card.write]
+    for path in (*card.write, *made):
         if Path(path).is_absolute() or ".." in Path(path).parts:
             found.append(f"{path} is not a path inside the project")
-        elif path.startswith(GUARD_CODE) or protectedwrites.file_guarded(path):
+        elif guarded(path):
             found.append(f"{path} is guard code, a check or a rule, which is not for the local model")
         elif not (root / path).is_file() and path not in card.creates:
             found.append(f"{path} does not exist and is not in creates")

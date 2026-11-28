@@ -337,7 +337,8 @@ class Broker(BrokerStops, BrokerHolds):
         how = Starting(**{**{k: v for k, v in options.items() if k != "backend"},
                           "who": caller.label or who()})
         pid = caller.pid or os.getpid()
-        refused_keys.settle(self, spec, caller.say or manager.say or self.say)
+        if not how.adopt_only:   # settling a server that refuses the key may replace it
+            refused_keys.settle(self, spec, caller.say or manager.say or self.say)
         reservation = self._reserve_model_start(pid, str(spec.model), timeout)
         try:
             with grant.broker_grant():

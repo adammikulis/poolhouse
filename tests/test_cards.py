@@ -39,10 +39,22 @@ def test_every_card_of_this_repository_names_one_row_of_its_backlog():
     assert [each.id for each in found if cards.row_of(each, rows) is None] == []
 
 
+def test_no_card_of_this_repository_writes_what_judges_it_or_verifies_the_runtime():
+    judges = ("scripts/", "src/poolhouse/runtime", "src/poolhouse/fleet/runtime_")
+    assert [(card.id, path) for card in cards.load(REPO)[0] for path in (*card.write, *card.creates)
+            if path.startswith(judges) or path.endswith("conftest.py")] == []
+
+
 @pytest.mark.parametrize(("fields", "said"), [
     ({"row": "No such row"}, "begins no one row"),
     ({"write": '["src/poolhouse/guard/secrets.py"]', "creates": '["src/poolhouse/guard/secrets.py"]'}, "not for the local model"),
     ({"write": '["AGENTS.md"]'}, "not for the local model"),
+    ({"write": '["scripts/test"]', "creates": '["scripts/test"]'}, "not for the local model"),
+    ({"write": '["tests/web/conftest.py"]', "creates": '["tests/web/conftest.py"]'}, "not for the local model"),
+    ({"write": '["pyproject.toml"]', "creates": '["pyproject.toml"]'}, "not for the local model"),
+    ({"write": '["src/poolhouse/runtime_store.py"]', "creates": '["src/poolhouse/runtime_store.py"]'}, "not for the local model"),
+    ({"write": '["src/poolhouse/cards_run.py"]', "creates": '["src/poolhouse/cards_run.py"]'}, "not for the local model"),
+    ({"write": '["junk.txt"]', "creates": '["docs/cards/other-card.toml"]'}, "not for the local model"),
     ({"write": '["missing.py"]'}, "does not exist"),
     ({"check": "test ! -e gone.txt"}, "already holds"),
     ({"check": "pytest tests/test_x.py"}, "a check is"),

@@ -88,7 +88,8 @@ class Model:
         return None if block is None else block.__exit__(*exc)
 
     def again(self) -> None:
-        """Give the lease up and take the model again: a server that is up is taken as it stands, else one is started."""
+        """Give the lease up and take the model again: a server that is up is taken as it stands, else one is started, which a session card's
+        delegate never does (`delegate_confined.leased`)."""
         self.__exit__(None, None, None)
         self.__enter__()
 
