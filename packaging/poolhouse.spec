@@ -13,6 +13,9 @@ datas = [
     (str(package_dir("poolhouse.fleet") / "web"), "poolhouse/fleet/web"),
     (str(package_dir("poolhouse.ui") / "assets"), "poolhouse/ui/assets"),
     (str(package_dir("poolhouse.contracts") / "_data"), "poolhouse/contracts/_data"),
+    # what a download is held to: the verified llama.cpp release and the hashed lock
+    (str(package_dir("poolhouse.serve") / "_patches"), "poolhouse/serve/_patches"),
+    (str(package_dir("poolhouse") / "requirements.lock"), "poolhouse"),
     *copy_metadata("poolhouse"),
     *copy_metadata("openai-agents", recursive=True),
     *collect_data_files("agents"),

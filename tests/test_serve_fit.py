@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import json
 import struct
+import sys
 from pathlib import Path
 
 import pytest
 from conftest import write_gguf
 
+from poolhouse import provision
 from poolhouse.serve import charts, fit as fit_mod, loadlog, measuring, tensors as tensors_mod
 from poolhouse.serve.fit import Fit, parse_room, records, render
 from poolhouse.serve.loadlog import Measured, parse_load_log
@@ -944,20 +946,15 @@ class TestTheCommandDraws:
         assert "![" not in page.read_text(encoding="utf-8")
         capsys.readouterr()
 
-    def test_without_matplotlib_the_refusal_says_how_to_get_it(self, tmp_path, monkeypatch,
-                                                               capsys, _fit_files_in_tmp):
-        """Optional the way every other heavy dependency here is optional. Mutation: let
-        the ImportError out, and a person gets a traceback instead of an install line."""
+    def test_a_matplotlib_that_cannot_be_installed_is_said_with_why(self, tmp_path, monkeypatch,
+                                                                    capsys, _fit_files_in_tmp):
+        """Installed at first use; where it cannot be, a person gets the reason and no traceback or install line."""
         self.some_records(_fit_files_in_tmp)
         monkeypatch.setattr("poolhouse.hub.room", lambda: 110 * GIB)
-
-        def missing():
-            raise RuntimeError(
-                "drawing the fit chart needs matplotlib: pip install 'poolhouse[plot]'")
-
-        monkeypatch.setattr(charts, "_pyplot", missing)
+        monkeypatch.setitem(sys.modules, "matplotlib", None)
         assert self.run(["--plot", str(tmp_path / "fit.png")]) == 2
-        assert "pip install 'poolhouse[plot]'" in capsys.readouterr().err
+        said = capsys.readouterr().err
+        assert "needs matplotlib" in said and provision.SWITCH in said and "pip install" not in said
 
 
 # -- the estimate, for when nothing has been measured -------------------------------------

@@ -5,13 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-try:
-    import numpy as np
-except ModuleNotFoundError as exc:  # pragma: no cover - depends on the install
-    raise ModuleNotFoundError(
-        "poolhouse.graph.topology needs numpy: "
-        "pip install 'poolhouse[graph]'") from exc
+from poolhouse import provision
 
+np = provision.module("numpy", "graph")
 Tensor = Any
 
 

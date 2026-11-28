@@ -6,13 +6,13 @@ from __future__ import annotations
 import hashlib
 import os
 import re
-import shutil
 import subprocess
 import tempfile
 import urllib.parse
 from collections.abc import Sequence
 from pathlib import Path
 
+from poolhouse import safelaunch
 from poolhouse.activity.source_snapshot import git_environment
 from poolhouse.httpguard import Refused
 from poolhouse.net import policy as hosts, provenance
@@ -74,7 +74,7 @@ def guarded(url: str, policy: hosts.Policy | None = None, protocols: str = "http
 
 
 def _git() -> str:
-    found = shutil.which("git")
+    found = safelaunch.which("git")
     if found is None:
         raise GitFailed("git is not on PATH")
     return found

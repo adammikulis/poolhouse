@@ -144,9 +144,10 @@ def scan_policy(args: argparse.Namespace) -> int:
             warn(f"poolhouse security: {exc}")
             return 2
         if args.category == "scan_models":
-            current = ScanPolicy(**{**vars_of(current), "scan_models": args.action == "on"})
+            current = ScanPolicy(**{**vars_of(current), "scan_models": args.action == "on"}, chosen=current.chosen)
         else:
-            current = ScanPolicy(**{**vars_of(current), args.category: args.action})
+            current = ScanPolicy(**{**vars_of(current), args.category: args.action},
+                                 chosen=(*current.chosen, args.category))
         current.save()
     data = vars_of(current)
     return _out(args, data, lambda: [f"{k}: {v}" for k, v in data.items()])

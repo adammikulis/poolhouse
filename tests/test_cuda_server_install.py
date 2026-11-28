@@ -16,7 +16,8 @@ class CudaServerInstallTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         isolated = patch.dict(os.environ, {"POOLHOUSE_HOME": str(self.root / "state"),
-                                          "POOLHOUSE_CACHE": str(self.root / "cache")})
+                                          "POOLHOUSE_CACHE": str(self.root / "cache"),
+                                          "POOLHOUSE_INSTALL_AT_NEED": ""})
         isolated.start()
         self.addCleanup(isolated.stop)
         self.llama = importlib.import_module("poolhouse.fleet.llama")
@@ -79,7 +80,7 @@ class CudaServerInstallTests(unittest.TestCase):
         server, runtime = self.archives()
         messages = []
         with patch.object(self.llama, "_tokens", return_value=(self.token,)), patch.object(
-                self.llama, "latest", return_value=self.release), patch.object(
+                self.llama, "pinned_release", return_value=self.release), patch.object(
                 self.llama.shutil, "which", return_value=None), patch.object(
                 self.llama, "download", side_effect=[server, runtime]) as download, patch.object(
                 self.llama, "cuda_ready", return_value=True):
@@ -97,7 +98,7 @@ class CudaServerInstallTests(unittest.TestCase):
         def fetch(asset, directory, **options):
             return server if asset is self.asset else original(asset, directory, **options)
         with patch.object(self.llama, "_tokens", return_value=(self.token,)), patch.object(
-                self.llama, "latest", return_value=self.release), patch.object(
+                self.llama, "pinned_release", return_value=self.release), patch.object(
                 self.llama.shutil, "which", return_value=None), patch.object(
                 self.llama, "download", side_effect=fetch), self.assertRaisesRegex(
                 self.llama.LlamaError, "sha256 digest"):
@@ -106,7 +107,7 @@ class CudaServerInstallTests(unittest.TestCase):
     def test_server_that_cannot_initialize_cuda_is_refused(self):
         server, runtime = self.archives()
         with patch.object(self.llama, "_tokens", return_value=(self.token,)), patch.object(
-                self.llama, "latest", return_value=self.release), patch.object(
+                self.llama, "pinned_release", return_value=self.release), patch.object(
                 self.llama.shutil, "which", return_value=None), patch.object(
                 self.llama, "download", side_effect=[server, runtime]), patch.object(
                 self.llama, "cuda_ready", return_value=False), self.assertRaisesRegex(

@@ -71,6 +71,7 @@ import testreuse_key
 import testreuse_run
 import testreuse_store
 import testscope
+import testsecrets
 import testselectors
 import testslots
 import testslots_policy
@@ -170,8 +171,8 @@ def confining(environment: dict[str, str]) -> bool:
 
 
 def launch(command: list[str], env: dict[str, str] | None = None, tier: str = "", *, artifact_output: bool = False) -> int:
-    """Run pytest in the repository and record its local evidence artifacts."""
-    environment = dict(os.environ if env is None else env)
+    """Run pytest in the repository, without the shell's credentials, and record its local evidence artifacts."""
+    environment = testsecrets.without_credentials(os.environ if env is None else env)
     environment.pop("DEV_TEST_JOB", None)
     given = next((a.split("=", 1)[1] for a in command if a.startswith("--junitxml=")), "")
     artifacts = None

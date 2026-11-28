@@ -10,19 +10,18 @@ an unreadable or encrypted file raises :class:`~poolhouse.net.pdfread.PdfRefused
 from __future__ import annotations
 
 import base64
-import importlib.util
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from poolhouse import provision
 from poolhouse.net.pdfread import PdfRefused, run_child
 
-__all__ = ["RenderLimits", "Rendered", "available", "render_pages"]
+__all__ = ["RenderLimits", "Rendered", "render_pages"]
 
 CHILD = Path(__file__).with_name("pdfrenderchild.py")
 """Run by path (``-P``), so it depends on no copy of poolhouse; it imports pypdfium2 and Pillow."""
-NEEDS = ("rendering a page needs PDFium (pypdfium2, Apache-2.0/BSD-3-Clause): "
-         "pip install 'poolhouse[pdf-render]'")
+NEEDS = "rendering a page needs PDFium (pypdfium2, Apache-2.0/BSD-3-Clause)"
 
 
 @dataclass(frozen=True)
@@ -53,11 +52,6 @@ class Rendered:
     blank: bool
 
 
-def available() -> bool:
-    """Whether PDFium can be imported here (without importing it)."""
-    return importlib.util.find_spec("pypdfium2") is not None
-
-
 def render_pages(path: str | Path, pages: Sequence[int], *, dpi: int = 150, crop: bool = False,  # noqa: PLR0913 - the facts of one rendering
                  max_width: int = 1568, pad_pt: float = 14.0,
                  limits: RenderLimits | None = None) -> list[Rendered]:
@@ -66,10 +60,12 @@ def render_pages(path: str | Path, pages: Sequence[int], *, dpi: int = 150, crop
     The scale is ``dpi`` unless that would pass ``max_width`` pixels (uncropped) or
     ``limits.max_pixels`` for the page. ``crop`` cuts each page to the box around everything
     that is not white, grown by ``pad_pt`` points. Raises :class:`PdfRefused` on any bound and
-    ``RuntimeError`` naming the extra when PDFium is not installed.
+    ``RuntimeError`` when PDFium is not here and could not be installed.
     """
-    if not available():
-        raise RuntimeError(NEEDS)
+    try:   # the child imports them from this environment, so they are put here first
+        provision.ensure("pdf-render", "pypdfium2", "PIL")
+    except ImportError as exc:
+        raise RuntimeError(f"{NEEDS}: {exc}") from exc
     limits = limits or RenderLimits()
     where = Path(path).expanduser()
     try:
