@@ -31,6 +31,8 @@ use crate::poolops::wall_ms;
 use crate::shard::{self, Shards};
 use crate::tls::{server_config, StandingFn};
 
+/// How often a node on a network swaps pool records and boards with every member, unless it is started with another interval.
+pub const SYNC_EVERY: Duration = Duration::from_secs(20);
 /// How long a device does not ask again a pool that refused it a join.
 const REFUSED_FOR: Duration = Duration::from_secs(10);
 /// The connections the peer listener holds together: half of the 256 descriptors macOS gives a process by default, so that peers
@@ -58,7 +60,7 @@ pub struct NetConfig {
 impl NetConfig {
     /// Listen on every interface on ``port`` with the default beacon on ``beacon_port``.
     pub fn standard(port: u16, beacon_port: u16) -> NetConfig {
-        NetConfig { listen: SocketAddr::from(([0, 0, 0, 0], port)), beacon: Some(BeaconConfig::multicast(beacon_port)), sync_every: Some(Duration::from_secs(20)), project: None }
+        NetConfig { listen: SocketAddr::from(([0, 0, 0, 0], port)), beacon: Some(BeaconConfig::multicast(beacon_port)), sync_every: Some(SYNC_EVERY), project: None }
     }
 }
 
@@ -129,9 +131,12 @@ pub(crate) fn activity_error(_: crate::node::update_activity::Refusal) -> Error 
     Error::say("update_pending", "network activity waits for the node update", "none", "retry")
 }
 
+/// The address to join at: of the ones ``host`` names, an IPv4 one first, because a node on the LAN listens on IPv4 alone and a name often
+/// resolves to IPv6 first.
 fn addr_of(host: &str, port: u64) -> Result<SocketAddr> {
     let port = u16::try_from(port).ok().filter(|p| *p > 0).ok_or_else(|| Error::Invalid("port is 1 to 65535".into()))?;
-    (host, port).to_socket_addrs()?.next().ok_or_else(|| Error::Invalid("host does not resolve".into()))
+    let all: Vec<SocketAddr> = (host, port).to_socket_addrs()?.collect();
+    all.iter().find(|a| a.is_ipv4()).or(all.first()).copied().ok_or_else(|| Error::Invalid("host does not resolve".into()))
 }
 
 /// ``base`` with the keys of ``more`` added (both are objects).
@@ -379,7 +384,7 @@ impl Net {
             return Err(Error::Denied(format!("{} is not on a network this device is on; a device joins without a code only from the same network, so use a join code", addr.ip())));
         }
         let mut c = PeerClient::connect(&self.me, addr, Some(expect))?;
-        let name = tracked_node(&self.node, Source::Network)?.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default();
+        let name = tracked_node(&self.node, Source::Network)?.own_name();
         let ask = peer::hello_request(&*tracked_node(&self.node, Source::Network)?);
         let hello = c.call(&ask)?;
         tracked_node(&self.node, Source::Network)?.observe_build(&c.fingerprint, &hello);
@@ -490,7 +495,7 @@ impl Net {
         let _child=self.activity.continue_effect(effect,Source::Network,EffectFlow::Join).map_err(activity_error)?;
         let (alone, name) = {
             let n = tracked_node(&self.node, Source::Network)?;
-            (n.members.can_join_other(), n.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default())
+            (n.members.can_join_other(), n.own_name())
         };
         if !alone {
             return Err(Error::Denied("a device that is in a pool does not change pool".into()));

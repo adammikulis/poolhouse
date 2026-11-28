@@ -1,11 +1,14 @@
 //! What the node does with its pool record: admit and remove devices by the pool's acts, and write each change to the board named
 //! `pool` so it is part of the signed history.
 
+use std::io::Read;
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
 use crate::error::Result;
+use crate::gov::charter::MOST_DEVICE_NAME;
 use crate::membership::Device;
 use crate::row::Kind;
 
@@ -17,10 +20,24 @@ pub fn wall_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
-pub(crate) fn host_name() -> String {
+/// The file in the state directory that holds the name the person gave this device (`poolhouse.node_pool.name_device` writes it).
+const NAME_FILE: &str = "device-name";
+/// The most bytes read of it: more than the longest name a pool lists.
+const MOST_NAME_BYTES: u64 = 512;
+
+fn host_name() -> String {
     let name = crate::sys::hostname();
     let name: String = name.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_')).take(40).collect();
     if name.is_empty() { "device".into() } else { name }
+}
+
+/// The name the person gave the device of the state directory ``dir``, as a pool can list it; None when they gave none.
+fn typed_name(dir: &Path) -> Option<String> {
+    let mut bytes = Vec::new();
+    std::fs::File::open(dir.join(NAME_FILE)).ok()?.take(MOST_NAME_BYTES).read_to_end(&mut bytes).ok()?;
+    let text: String = String::from_utf8_lossy(&bytes).chars().filter(|c| !c.is_control()).collect();
+    let name: String = text.trim().chars().take(MOST_DEVICE_NAME).collect();
+    Some(name.trim_end().to_string()).filter(|n| !n.is_empty())
 }
 
 impl crate::node::Node {
@@ -29,11 +46,17 @@ impl crate::node::Node {
         wall_ms()
     }
 
+    /// What a pool this device founds or joins lists it as: the name the person gave it, else its host name. A pool keeps the name it was
+    /// given then.
+    pub(crate) fn own_name(&self) -> String {
+        typed_name(&self.dir).unwrap_or_else(host_name)
+    }
+
     /// List this device itself as the only member of the pool of one it has until it founds or joins a pool.
     pub fn enrol_self(&mut self) {
         if self.members.is_unfounded() {
-            let (der, now) = (self.cert.der.clone(), wall_ms());
-            self.members.list_self(&der, &host_name(), now);
+            let (der, name, now) = (self.cert.der.clone(), self.own_name(), wall_ms());
+            self.members.list_self(&der, &name, now);
         }
     }
 
@@ -73,9 +96,11 @@ impl crate::node::Node {
         let members: Vec<Value> = self.members.devices().iter().map(|d| {
             let f = self.facts.peers.get(&d.fingerprint);
             let (reach, hint) = if d.status == crate::membership::Status::Active { crate::reach::of(d.fingerprint == me, f) } else { ("none", String::new()) };
+            // a pool of one lists this device by the name it would found or join with now
+            let name = if d.fingerprint == me && self.members.is_unfounded() { self.own_name() } else { d.name.clone() };
             let mut row = json!({
                 "reach": reach, "reach_hint": hint, "network": if d.fingerprint == me { self.network.as_str() } else { f.map_or("", |f| f.network.as_str()) },
-                "fingerprint": d.fingerprint, "name": d.name, "status": d.status, "since": d.at, "by": d.by, "self": d.fingerprint == me,
+                "fingerprint": d.fingerprint, "name": name, "status": d.status, "since": d.at, "by": d.by, "self": d.fingerprint == me,
                 "connected": f.is_some_and(|f| f.sessions > 0), "addr": f.and_then(|f| f.addr.clone()),
                 "last_seen_ms": f.map_or(0, |f| f.last_seen_ms), "last_sync_ms": f.map_or(0, |f| f.last_sync_ms),
                 "last_error": f.map(|f| f.last_error.clone()).unwrap_or_default(),

@@ -27,7 +27,6 @@ from pool_check.wire import PRESENCE
 
 ROOT = dock.ROOT
 BOARD = "demo"
-SYNC_MS = "400"
 RIG = "/rig"
 STATE = "/pc/node"
 CONTAINER_NODE = "/usr/local/bin/poolhouse-node"
@@ -322,7 +321,7 @@ class LocalDevice(Device):
         shutil.rmtree(Path(self.state_text) / name, ignore_errors=True)
 
     def start_node(self, *more):
-        args = ["--listen", self.listen_text(), "--sync-ms", SYNC_MS, *PRESENCE, *self.build_args, *self.extra, *more]
+        args = ["--listen", self.listen_text(), *PRESENCE, *self.build_args, *self.extra, *more]
         flags = [f"--arg={a}" for a in args]
         return self.wire("start", "--state", self.state_text, "--binary", str(self.binary), *flags, *self.planted())["result"]
 
@@ -398,7 +397,7 @@ class ContainerDevice(Device):
         self.box.connect(world.net)
 
     def start_node(self, *more):
-        args = ["--listen", f"0.0.0.0:{self.port}", "--sync-ms", SYNC_MS, *PRESENCE, *self.build_args, *self.extra, *more]
+        args = ["--listen", f"0.0.0.0:{self.port}", *PRESENCE, *self.build_args, *self.extra, *more]
         flags = [f"--arg={a}" for a in args]
         return self.wire("start", "--state", STATE, "--binary", CONTAINER_NODE, *flags, *self.planted())["result"]
 
@@ -490,7 +489,7 @@ class WslHostedDevice(Device):
         return f"{ALL_INTERFACES}:{self.port}"
 
     def start_node(self, *more):
-        args = ["--listen", self.listen_text(), "--sync-ms", SYNC_MS, *PRESENCE, *self.build_args, *self.extra, *more]
+        args = ["--listen", self.listen_text(), *PRESENCE, *self.build_args, *self.extra, *more]
         return self.wire("start", "--state", self.state_text, "--binary", self.binary_text, *[f"--arg={a}" for a in args], *self.planted())["result"]
 
     def kill_node(self):

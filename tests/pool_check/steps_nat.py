@@ -7,7 +7,7 @@ import time
 from pool_check.device import Device
 from pool_check.report import Skip
 from pool_check.steps_tests import consent, enable_feature, send
-from pool_check.world import World, eventually, everyone_holds
+from pool_check.world import SETTLE_S, World, eventually, everyone_holds
 
 
 def _need(world: World) -> Device:
@@ -33,7 +33,7 @@ def the_nat_device_joins_and_the_board_flows_both_ways(world: World) -> str:
     bodies = [f"from {d.name}" for d in world.everyone]
     for device, body in zip(world.everyone, bodies, strict=True):
         device.post(body)
-    everyone_holds(world.everyone, bodies, seconds=60)
+    everyone_holds(world.everyone, bodies)
     return f"{len(bodies)} entries in every board in {time.monotonic() - began:.1f}s with {nat.name} dialing out only"
 
 
@@ -46,10 +46,10 @@ def a_claim_and_a_lease_agree_with_the_nat_device(world: World) -> None:
     def refused(device):
         out = device.try_call("claim", "demo", kind="branch", key="nat/branch", ttl_s=600)
         return out if not out["ok"] else None
-    out = eventually(lambda: refused(mac), 30, f"the first device to be refused a branch {nat.name} holds")
+    out = eventually(lambda: refused(mac), SETTLE_S, f"the first device to be refused a branch {nat.name} holds")
     assert nat.session in out["error"] or "@d" in out["error"] or "held by" in out["error"], out
     mac.call("claim", "demo", kind="branch", key="nat/other", ttl_s=600)
-    back = eventually(lambda: refused_other(nat), 30, f"{nat.name} to be refused a branch the first device holds")
+    back = eventually(lambda: refused_other(nat), SETTLE_S, f"{nat.name} to be refused a branch the first device holds")
     assert back
 
 
@@ -62,7 +62,7 @@ def the_mac_device_sees_the_build_of_the_nat_device(world: World) -> None:
     """The members show the NAT'd device's build (it tells the device it dials), and it shows theirs."""
     nat = _pool_with_nat(world)
     for device in world.devices:
-        eventually(lambda d=device: next(m for m in d.members() if m["fingerprint"] == nat.fingerprint)["build_state"] == "current", 30, f"{device.name} to show {nat.name}'s build")
+        eventually(lambda d=device: next(m for m in d.members() if m["fingerprint"] == nat.fingerprint)["build_state"] == "current", SETTLE_S, f"{device.name} to show {nat.name}'s build")
 
 
 def tests_on_the_nat_device_say_what_they_need(world: World) -> str:
@@ -89,9 +89,9 @@ def the_members_say_how_they_reach_the_nat_device(world: World) -> str:
 
     def row(device: Device, fingerprint: str) -> dict:
         return next(m for m in device.members() if m["fingerprint"] == fingerprint)
-    seen = eventually(lambda: row(mac, nat.fingerprint) if row(mac, nat.fingerprint)["reach"] == "channel" else None, 60, f"{mac.name} to reach {nat.name} over its channel")
+    seen = eventually(lambda: row(mac, nat.fingerprint) if row(mac, nat.fingerprint)["reach"] == "channel" else None, SETTLE_S, f"{mac.name} to reach {nat.name} over its channel")
     assert seen["network"] == "wsl-nat" and "networkingMode=mirrored" in seen["reach_hint"] and "wsl --shutdown" in seen["reach_hint"], seen
-    eventually(lambda: row(nat, mac.fingerprint)["reach"] == "direct", 60, f"{nat.name} to reach {mac.name} directly")
+    eventually(lambda: row(nat, mac.fingerprint)["reach"] == "direct", SETTLE_S, f"{nat.name} to reach {mac.name} directly")
     return f"{mac.name} -> {nat.name}: {seen['reach']} ({seen['network']}); {nat.name} -> {mac.name}: direct"
 
 
@@ -103,7 +103,7 @@ def removal_reaches_the_nat_device(world: World) -> None:
     time.sleep(4)
     for device in world.devices:
         assert "after removal" not in device.bodies(), f"{device.name} took an entry from the removed {nat.name}"
-    eventually(lambda: next(m for m in nat.members() if m["fingerprint"] == world.first.fingerprint)["last_error"], 30, f"{nat.name} to be told its dial was refused")
+    eventually(lambda: next(m for m in nat.members() if m["fingerprint"] == world.first.fingerprint)["last_error"], SETTLE_S, f"{nat.name} to be told its dial was refused")
 
 
 def the_wsl_setup_plan_names_the_nat_fixes(world: World) -> str:

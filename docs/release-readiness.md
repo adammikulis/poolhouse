@@ -113,7 +113,7 @@ Bar: no new flag, prompt or wait in the way they already work, and the same prot
 nothing else. A harness (Claude Code, Codex, any other) is started exactly as before.
 
 **D1. The library.** Design count: 7 human steps (install 2, os-prompt 2, link-phone 2, tap 1) and 3 lines of code
-(`docs/pools-and-serving.md` 3.3). Built: `ph.pool.found(name, policy, say=...)`, `ph.pool.add_device()`, `ph.pool.join(host, code)`,
+(`docs/pools-and-serving.md` 3.3). Built: `ph.pool.found(name, policy)`, `ph.pool.add_device()`, `ph.pool.join(host, code)`,
 `ph.pool.members()`, `ph.board`, `ph.leases`, `ph.test`, `ph.models`, `ph.serve` (`up`, `down`, `status`), `ph.client`, `ph.hub`.
 Not built: `ph.pool.create`, `ph.NeedsApproval`, `ph.serve.offer`, `ph.pool.join_link`.
 

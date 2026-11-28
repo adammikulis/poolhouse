@@ -7,20 +7,29 @@ code that `add_device` makes. A member is removed with `remove`. See docs/api.md
 
 from __future__ import annotations
 
+import ipaddress
 import os
+import re
+import socket
 from dataclasses import dataclass, field
+from urllib.parse import urlsplit
+
+import psutil
 
 from poolhouse import errors, hub, node_join, node_launch, node_pool
 from poolhouse.api import _node
 from poolhouse.board import founding
 from poolhouse.board.client import Client, NodeError
+from poolhouse.fleet.onboard.lan import primary_ip
 
 __all__ = ["Capacity", "Founding", "Member", "Pool", "Refusal", "add_device", "capacity", "found", "join", "leave", "listen", "members",
-           "policy", "remove", "renew", "status", "sync"]
+           "policy", "remove", "renew", "status"]
 Refusal = founding.Refusal
 """A call that could not go on: ``str`` is one sentence to pass on; ``needs`` (`approval`, `device`, `time`, `none`), ``where`` (what is missing,
 and where) and ``then`` (`wait`, `retry`, `ask-owner`, `stop`) say what happens next. A subclass of `ph.Denied`."""
 DEFAULT_PORT = 7447
+NOT_AN_ADDRESS = "That is not a device's address: type what the other device shows, like 192.168.1.20 or 192.168.1.20:7447."
+SCOPED_ADDRESS = "An address with a % in it works only on the computer that shows it: type another address the other device shows."
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,9 +160,11 @@ def listen(*, agreed: bool = False) -> Pool:
 def add_device(ttl_s: int = 300) -> dict[str, object]:
     """Make a short-lived code for another device to join this pool with (policy ``secure``).
 
-    Returns what the node answers: the code and how long it is valid. Show the code to the person at the other
-    device; it is typed there (or passed to `join`) within ``ttl_s`` seconds. The device's own session opens the window with the ticket the node
-    makes at once for exactly that window; an agent's session that is not given one needs the grant ``add_device``.
+    Returns what the node answers (the ``code``, how long it is valid, its ``port`` and ``fingerprint``) with ``addresses``, what the other
+    device types as this one's address (the one on the LAN first; empty while this device's network is off), and the pool's ``policy``. Show
+    the code and an address to the person at the other device; they are typed there (or passed to `join`) within ``ttl_s`` seconds. The
+    device's own session opens the window with the ticket the node makes at once for exactly that window; an agent's session that is not given
+    one needs the grant ``add_device``. Raises `Refusal` with the node's sentence, for one on a device that cannot let others in.
     """
     params: dict[str, object] = {"ttl_s": ttl_s}
     person = _node.person_session()
@@ -163,18 +174,82 @@ def add_device(ttl_s: int = 300) -> dict[str, object]:
     except founding.Refusal as refused:
         if person is not None or refused.needs != "none":
             raise  # a session the node makes no ticket for goes on with the grant it holds
-    return dict(_node.call("add_device", params, token=session.token))
+    try:
+        made = dict(_node.call("add_device", params, token=session.token))
+    except errors.NotRunning:
+        raise
+    except errors.Error as err:
+        raise founding.Refusal(str(err).removeprefix("denied: "), needs="none", then="ask-owner") from None
+    here = status()
+    return {**made, "addresses": _shown_addresses(here.listening), "policy": here.policy}
+
+
+def _shown_addresses(listening: str) -> list[str]:
+    """What another device types to reach the node listening on ``listening``: for a node on every interface, this computer's address on
+    each network that is up, the LAN's first; with the port when it is not the usual one. Empty while the node's network is off."""
+    host, _, port = listening.rpartition(":")
+    host = host.strip("[]")
+    if not host or not port.isdigit():
+        return []
+    if ipaddress.ip_address(host).is_unspecified:  # every interface, as a node on the LAN listens
+        up = {name for name, link in psutil.net_if_stats().items() if link.isup}
+        held = [a.address for name, many in psutil.net_if_addrs().items() if name in up for a in many if a.family == socket.AF_INET]
+        usable = [h for h in dict.fromkeys(held) if not (ip := ipaddress.ip_address(h)).is_loopback and not ip.is_link_local]
+        first = primary_ip()
+        hosts = sorted(usable, key=lambda h: h != first)
+    else:
+        hosts = [host]
+    if int(port) == DEFAULT_PORT:
+        return hosts
+    return [f"[{h}]:{port}" if ":" in h else f"{h}:{port}" for h in hosts]
+
+
+def _typed_address(text: str, port: int) -> tuple[str, int]:
+    """The host and port in what a person typed or pasted: ``host``, ``host:port``, an IPv6 address (in brackets when a port follows), or
+    a web address, whose host is taken and whose port, the web page's, is not. Raises `Error` with one sentence for anything else."""
+    said, named = text.strip(), ""
+    try:
+        if "://" in said:
+            parts = urlsplit(said)
+            said = (parts.hostname or "") if parts.scheme in ("http", "https") else ""
+        else:
+            said = said.rstrip("/")
+            if said.startswith("["):
+                said, closed, rest = said[1:].partition("]")
+                if not closed or rest[:1] not in ("", ":"):
+                    raise ValueError(text)
+                named = rest[1:]
+            elif said.count(":") == 1:
+                said, _, named = said.partition(":")
+        if "%" in said:
+            raise errors.Error(SCOPED_ADDRESS)
+        if ":" in said:
+            ipaddress.IPv6Address(said)
+        elif not re.fullmatch(r"[A-Za-z0-9._-]{1,45}", said):
+            raise ValueError(text)
+        if named:
+            if not named.isdecimal() or not 0 < int(named) < 65536:
+                raise ValueError(text)
+            if port not in (DEFAULT_PORT, int(named)):
+                raise errors.Error(f"The address names port {int(named)} and port {port} was given too: give one of them.")
+            port = int(named)
+    except ValueError:
+        raise errors.Error(NOT_AN_ADDRESS) from None
+    return said, port
 
 
 def join(host: str, code: str = "", *, port: int = DEFAULT_PORT, fingerprint: str = "") -> dict[str, object]:
     """Join the pool of the device at ``host``; this device becomes a member.
 
-    A ``secure`` pool takes the ``code`` its `add_device` made. An ``open`` pool on this device's own network takes no code, only the
-    ``fingerprint`` of the device at ``host`` (64 hex digits, from its beacon). A device already in a pool does not change pool; the grant
-    to join is signed at once by this device's key when policy allows it. Raises `Refusal`, whose message is one sentence for the person.
+    ``host`` is what the other device shows: an address or name, ``host:port`` (else ``port``), an IPv6 address, or a web address pasted
+    from its page. A ``secure`` pool takes the ``code`` its `add_device` made. An ``open`` pool on this device's own network takes no code,
+    only the ``fingerprint`` of the device at ``host`` (64 hex digits, from its beacon or its `add_device`). A device already in a pool does
+    not change pool; the grant to join is signed at once by this device's key when policy allows it. Raises `Refusal`, whose message is one
+    sentence for the person, or `Error` for what is not an address.
     """
     if not code and not fingerprint:
         raise errors.Error("give the code the other device showed, or for an open pool the fingerprint of the device that answers")
+    host, port = _typed_address(host, port)
     person = _node.person_session()
     session = person or _node.session()
     params = {"host": host, "port": port, **({"passphrase": code} if code else {"fingerprint": fingerprint})}
@@ -232,11 +307,6 @@ def renew() -> Member:
 def leave() -> dict[str, object]:
     """Leave the pool this device is in: the node forgets it and this device becomes a pool of one."""
     return dict(_node.call("pool_leave", token=_node.session().token))
-
-
-def sync() -> None:
-    """Ask the node to exchange board entries with every connected member now, rather than at its next round."""
-    _node.call("sync_now", token=_node.session().token)
 
 
 def capacity() -> Capacity:

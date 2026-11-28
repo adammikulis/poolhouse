@@ -249,8 +249,8 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `pool_draft` | | `kind`, `body` | `{act, sign_bytes, summary}`: the act this pool would take next, unsigned, the bytes a key signs and what a person is shown, for a key that signs outside the node |
 | `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; `key` is an Ed25519 key of 64 hex digits or a phone's P-256 point of 130, and the charter says which as `alg`; a key that names its level is refused) | `{charter, anchor, accept, summary, counting, card, card_why}`: the charter with this device as its `first` device (a delegate for thirty days) and blank acceptances, each key with the `claim` this device recorded for it when the key was enrolled (`phone-keystore` when a phone enrolled it, `keystore-prompt` through the computer's prompt, `keystore-typed` for a typed yes; for a key not enrolled yet, the claim the node's way of asking would record), `counting` (whether any key counts), and for each key its `alg` and the bytes it signs to accept it; `card` names the draft the person may answer at the computer's prompt (null, with `card_why`, when the one sentence it shows would be cut or changed); the rig or person signs them (a P-256 key in strict DER with `s` in the lower half of the group) and hands the charter back to `pool_found` |
 | `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it), or `charter` (the drafted one with the acceptances filled; the node makes the act) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the charter must name this device as its `first`, which is then the pool's first member with no admit |
-| `add_device` | token with the grant `add_device`, or the person's own session with the `ticket` of its yes (and `window`, the act this computer's key signed under it) | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other), `ticket`, `window` | `{code, expires_in_s, port, fingerprint}` |
-| `join_pool` | token with the grant `join_pool`, or the person's own session with the `ticket` of its yes | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`); `ticket` | `{pool, peer}` |
+| `add_device` | token with the grant `add_device`, or the person's own session with the `ticket` of its yes (and `window`, the act this computer's key signed under it) | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other), `ticket`, `window` | `{code, expires_in_s, port, fingerprint}`. A member that did not make the pool and can admit nobody is told to add the device from the computer that made it, by its name |
+| `join_pool` | token with the grant `join_pool`, or the person's own session with the `ticket` of its yes | `host, port, passphrase` (`host` is a name or an IPv4 or IPv6 address; of the addresses a name has, an IPv4 one is dialed first); without a passphrase `fingerprint` (join under `open`); `ticket` | `{pool, peer}` |
 | `sync_now` | token with the grant `sync_now` | | `{reached}` |
 | `shard_call` | token with the grant `shard_call` | `device` (name or fingerprint), `op`, `args` | the device's answer to one test-shard op (docs/test-farm.md); the node adds `op` and the session as `by`, and refuses `op`/`by` in `args` |
 | `shard_consent` | (token with the grant `shard_consent` to change) | `enabled`, `python`, `repo` | `{enabled, python, repo, by, at_ms}`; turning it on or off writes an audit entry to the pool board; shards are off until a person turns them on at that device |
@@ -841,7 +841,8 @@ listener is the one network port.
   both hold, through `sync::rows_since` and `sync::take`, so a wire row meets the checks an in-process row
   does and the same quotas (400 rows, 2 MiB, 16 origins per request). A relay's copy never marks an origin
   damaged; only the device that owns the origin can, by sending a forged copy of it.
-- **Who dials whom.** A device dials every active member whose address it holds, each cycle (`--sync-ms`), and swaps pool records and
+- **Who dials whom.** A node on a network dials every active member whose address it holds when it starts and then every 20 seconds
+  (`net::SYNC_EVERY`; `--sync-ms` sets another interval), with nobody asking, and swaps pool records and
   boards in both directions over that one connection, so a device only the others cannot dial (behind NAT, as WSL2 is) still sends and
   receives everything by dialing out. An address is learned at the join (the one the joiner dialed; for the member joined, the source
   address it saw plus the port the joiner announced) and from a beacon; addresses are not passed on, because an address is only good
@@ -874,7 +875,8 @@ listener is the one network port.
   record then arrives sealed under the exchange (in a governed pool, the founding act and the acts that stand). `open`: the device
   is admitted on its first contact from the same segment and the admit is recorded with the certificate fingerprint (`by: open`).
   A device joins only if it is alone in a pool that no admin governs (`Pool::can_join_other`); a governed pool is left by its own
-  `leave` act and never merged into another.
+  `leave` act and never merged into another. A pool lists a device by the name the person gave it, which the page writes to
+  `<state>/device-name` (`node_pool.name_device`), else by its host name; the name is fixed when the device founds or joins.
 
 `poolhouse-node run --state DIR --listen 127.0.0.1:0 --beacon-bind ADDR --beacon-send ADDR
 --advertise IP --sync-ms N` starts the network; tests use real sockets on loopback with injected

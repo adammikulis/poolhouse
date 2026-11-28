@@ -6,7 +6,7 @@ import threading
 import time
 
 from pool_check.report import Skip
-from pool_check.world import World, eventually, everyone_holds
+from pool_check.world import SETTLE_S, World, eventually, everyone_holds
 
 BRANCH = {"kind": "branch", "key": "pool-check/contested", "ttl_s": 600}
 
@@ -42,14 +42,14 @@ def a_partition_heals_and_both_sides_merge(world: World) -> None:
     finally:
         cut.heal(world)
     bodies = ["written while cut off", *(f"written by {d.name} while {cut.name} was cut off" for d in rest)]
-    everyone_holds(world.devices, bodies, seconds=60)
+    everyone_holds(world.devices, bodies)
     again = [d for d in world.devices if _holders([d])]
     def one_holder():
         held = _holders(world.devices)
         if len(held) != 1:
             raise AssertionError(f"devices holding the branch in their own lease table: {sorted(held)}")
         return held
-    holders = eventually(one_holder, 60, "exactly one device to still hold the branch pool-wide after the merge")
+    holders = eventually(one_holder, SETTLE_S, "exactly one device to still hold the branch pool-wide after the merge")
     assert len(again) >= 1 and len(holders) == 1, f"holders after the merge: {_holders(world.devices)}"
     entries = [sorted(d.bodies()) for d in world.devices]
     assert all(e == entries[0] for e in entries), "the devices hold different entries after the merge"
@@ -64,11 +64,11 @@ def a_node_killed_mid_sync_resumes(world: World) -> None:
     before = victim.message_count()
     posting = threading.Thread(target=writer.post_many, args=(total, 6000, "bulk"))
     posting.start()
-    seen = eventually(lambda: before + 50 < victim.message_count() < before + total and victim.message_count() - before, 90, f"{victim.name} to be part way through {total} entries")
+    seen = eventually(lambda: before + 50 < victim.message_count() < before + total and victim.message_count() - before, 2 * SETTLE_S, f"{victim.name} to be part way through {total} entries")
     pid = victim.kill_node()
     posting.join()
-    eventually(lambda: victim.hello()["pid"] != pid, 30, f"the supervisor to restart {victim.name}'s node (killed pid {pid} with {seen} of {total} entries in)")
-    eventually(lambda: victim.message_count() - before == total, 180, f"{victim.name} to resume and hold all {total} entries")
+    eventually(lambda: victim.hello()["pid"] != pid, SETTLE_S, f"the supervisor to restart {victim.name}'s node (killed pid {pid} with {seen} of {total} entries in)")
+    eventually(lambda: victim.message_count() - before == total, 3 * SETTLE_S, f"{victim.name} to resume and hold all {total} entries")
     for device in world.devices:
         damaged = device.call("status", "demo", device.token)["board"].get("damaged")
         assert not damaged, f"{device.name} marks a log damaged after the kill: {damaged}"
@@ -83,9 +83,9 @@ def a_lease_queues_behind_another_device(world: World) -> None:
     area = [{"type": "claim", "kind": "area", "name": "/pool-check/area"}]
     got = holder.call("lease_acquire", "demo", resources=area, ttl_s=600)
     assert got["state"] == "held", got
-    eventually(lambda: waiter.call("lease_acquire", "demo", resources=area, ttl_s=600, wait=False)["state"] == "busy", 30, f"{waiter.name} to learn that {holder.name} holds the area")
+    eventually(lambda: waiter.call("lease_acquire", "demo", resources=area, ttl_s=600, wait=False)["state"] == "busy", SETTLE_S, f"{waiter.name} to learn that {holder.name} holds the area")
     queued = waiter.call("lease_acquire", "demo", resources=area, ttl_s=600, wait=True)
     assert queued["state"] == "queued", queued
     holder.call("lease_release", "demo", id=got["id"])
-    eventually(lambda: any(lease["state"] == "held" and lease["id"] == queued["id"] for lease in waiter.call("lease_list", "demo")["leases"]), 60,
+    eventually(lambda: any(lease["state"] == "held" and lease["id"] == queued["id"] for lease in waiter.call("lease_list", "demo")["leases"]), SETTLE_S,
                f"{waiter.name}'s queued request to be granted after {holder.name} released")

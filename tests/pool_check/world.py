@@ -25,6 +25,9 @@ from pool_check.person import RigPerson
 JOIN_TTL_S = 120
 BUILD = ("fakebuild0000000000000000000000000000dead", 10)
 """The build every device runs unless a step gives one a different one: an id and its place in the order of builds."""
+SETTLE_S = 100
+"""How long a step waits for the devices to learn something from each other. The nodes run as they are shipped, so they sync every 20 seconds
+and leave a member whose dial failed alone for up to a minute: news crosses two devices in a few rounds."""
 
 
 def eventually(check: Callable[[], object], seconds: float, what: str, every: float = 0.3):
@@ -143,7 +146,7 @@ class World:
             self.join(joiner, via)
         self.converged(devices)
 
-    def converged(self, devices: list[Device], seconds: float = 30) -> None:
+    def converged(self, devices: list[Device], seconds: float = SETTLE_S) -> None:
         """Every device lists every other as an active member."""
         want = len(devices) - 1
 
@@ -173,7 +176,7 @@ class World:
         return [] if self.native else dock.swept(self.run)
 
 
-def everyone_holds(devices: list[Device], bodies: list[str], seconds: float = 30) -> None:
+def everyone_holds(devices: list[Device], bodies: list[str], seconds: float = SETTLE_S) -> None:
     """Every device's board shows every one of ``bodies``."""
     def holds():
         missing = {d.name: sorted(set(bodies) - set(d.bodies())) for d in devices}

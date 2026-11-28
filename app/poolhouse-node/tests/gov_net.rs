@@ -74,8 +74,8 @@ fn a_device_that_cannot_sign_does_not_open_a_window_and_says_so_in_one_sentence(
     let reply = b.call("add_device", "", &b.token, json!({}));
     assert_eq!(reply["ok"], false);
     let say = reply["error"]["say"].as_str().unwrap();
-    assert!(say.len() <= 160 && say.contains("OK"), "{say}");
-    assert_eq!((reply["error"]["needs"].as_str(), reply["error"]["then"].as_str()), (Some("approval"), Some("ask-owner")));
+    assert!(say.len() <= 160 && say.contains("the computer that made it") && say.contains("Add a device"), "{say}");
+    assert_eq!((reply["error"]["needs"].as_str(), reply["error"]["then"].as_str()), (Some("device"), Some("ask-owner")));
 }
 
 #[test]

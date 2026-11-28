@@ -40,17 +40,18 @@ Add a second device. Both devices run `poolhouse` once. On the first, turn the n
 
 ```python
 ph.pool.listen(agreed=True)                  # a person said yes to turning the network on
-print(ph.pool.add_device())                  # {"code": "...", "expires_in_s": 300, "port": 7447, ...}
+made = ph.pool.add_device()
+print(made["addresses"][0], made["code"])    # what the person types on the second device, e.g. 192.168.2.27 123456
 ```
 
-On the second device the person tells their agent the code, or the script passes it:
+On the second device the person tells their agent the address and the code, or the script passes them:
 
 ```python
-ph.pool.join(host="192.168.2.27", code="...")     # this device now belongs to that pool
+ph.pool.join("192.168.2.27", "...")     # this device now belongs to that pool
 ```
 
 An `open` pool (`ph.pool.found("home", "open")`) takes a device on the same network without a code, only the fingerprint of the device that
-answers: `ph.pool.join(host, fingerprint=...)`. Either way, look:
+answers: `ph.pool.join(host, fingerprint=...)`. The devices sync by themselves, every 20 seconds. Either way, look:
 
 ```python
 for m in ph.pool.members():
@@ -110,11 +111,10 @@ member can be removed.
 | `ph.pool.members(include_removed=False)` | The devices of the pool as `Member`s: name, fingerprint, `this_device`, `connected`, `address`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none`, `self` or `unknown`: how this device reaches it) and `reach_hint` (the exact fix when it is not `direct`). |
 | `ph.pool.policy()` | `"open"` or `"secure"`: how devices join. |
 | `ph.pool.listen(*, agreed=False)` | Turn this device's network on (TCP 7447, signed beacon on UDP 7448) so devices can join. `agreed=True` is required: it is a person's decision. |
-| `ph.pool.add_device(ttl_s=300)` | Make the short-lived code another device joins with (policy `secure`). A window to a pool is opened with a ticket the node makes at once for exactly that window (the pool, for ten minutes), so a pool approved by a typed yes, or a Mac whose 30 days of admitting have lapsed, still adds a device. |
-| `ph.pool.join(host, code="", *, port=7447, fingerprint="")` | Join the pool of the device at `host`: with the `code` its `add_device` made (`secure`), or, for an `open` pool on this device's own network, with the `fingerprint` of the device that answers (64 hex digits, from its beacon). A device already in a pool does not change pool. The grant to join is signed at once by this device's key when policy allows it. |
+| `ph.pool.add_device(ttl_s=300)` | Make the short-lived code another device joins with (policy `secure`). A window to a pool is opened with a ticket the node makes at once for exactly that window (the pool, for ten minutes), so a pool approved by a typed yes, or a Mac whose 30 days of admitting have lapsed, still adds a device. Returns the node's answer (`code`, `expires_in_s`, `port`, `fingerprint`) with `addresses`, what the other device types as this one's address (the LAN's first, with the port when it is not 7447; empty while the network is off), and the pool's `policy`. A device that cannot let others in raises `ph.pool.Refusal`, which names the computer that made the pool. |
+| `ph.pool.join(host, code="", *, port=7447, fingerprint="")` | Join the pool of the device at `host`: with the `code` its `add_device` made (`secure`), or, for an `open` pool on this device's own network, with the `fingerprint` of the device that answers (64 hex digits, from its beacon or its `add_device`). `host` is an address or name, `host:port` (else `port`), an IPv6 address (in brackets when a port follows) or a web address, whose host is used and whose port is not; anything else raises `ph.Error`, as does an address with a `%` zone. A device already in a pool does not change pool. The grant to join is signed at once by this device's key when policy allows it. |
 | `ph.pool.renew()` | Give this device another 30 days of admitting devices without asking (the delegate a pool starts with). It changes who governs the pool, so this computer's key signs it at once and it takes effect after the pool's wait; until then a window is opened with a ticket. Returns this device's `Member`. Raises `ph.pool.Refusal`. |
 | `ph.pool.remove(device)` | Remove a member by name or fingerprint; it stops syncing and taking work. Not this device. In a governed pool it is an act of the pool's admins, signed by a person's key; a device's word alone removes nobody. |
-| `ph.pool.sync()` | Exchange board entries with every connected member now. |
 | `ph.pool.capacity()` | `Capacity` of this device: cores, CPU slots and how many are leased, memory and what is free, accelerators and their memory, leases held and queued. |
 | `ph.pool.Pool`, `ph.pool.Member`, `ph.pool.Capacity`, `ph.pool.Founding` | The frozen dataclasses above. |
 | `ph.pool.Refusal` | Raised (a `ph.Denied`) when a pool call needs the person: `str(e)` is one sentence of at most 160 characters to pass on, `e.needs` is `approval`, `device`, `time` or `none`, `e.where` is where they tap or answer, `e.then` is `wait`, `retry`, `ask-owner` or `stop`. |

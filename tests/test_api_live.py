@@ -197,10 +197,8 @@ def test_the_returned_types_are_the_documented_dataclasses(mine):
     assert {ph.test.Device.__name__, ph.test.Result.__name__, ph.serve.Served.__name__} == {"Device", "Result", "Served"}
 
 
-def test_adding_a_device_and_syncing_need_the_network_a_person_turned_on(mine):
+def test_adding_a_device_and_joining_need_the_network_a_person_turned_on(mine):
     with pytest.raises(ph.Error, match="network"):
         ph.pool.add_device()
-    with pytest.raises(ph.Error, match="network"):
-        ph.pool.sync()
     with pytest.raises(ph.Error, match="network"):
         ph.pool.join("127.0.0.1", "a-code")

@@ -232,11 +232,17 @@ class UI:
         return found_rows
 
     def set_name(self, name: str) -> str:
-        """Set the device name through the active advertiser."""
+        """Set the device name through the active advertiser, and tell this device's node."""
         self.name = self.rename(name) if callable(self.rename) else name
         if self.settings is not None:
             self.settings.name = self.name
+        self.name_node()
         return self.name
+
+    def name_node(self) -> None:
+        """Tell this device's node the name this page shows for it, so a pool it founds or joins lists it by that name."""
+        if self.name:
+            node_pool.name_device(self.pool.state, self.name)
 
     def apply_prefs(self, req: dict[str, Any]) -> dict[str, Any]:
         """Apply the wizard's preference step. Everything takes effect now."""

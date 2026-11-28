@@ -91,7 +91,6 @@
  "pool.remove": "(device: 'str') -> 'Member'",
  "pool.renew": "() -> 'Member'",
  "pool.status": "() -> 'Pool'",
- "pool.sync": "() -> 'None'",
  "serve.Served": "(lease: 'str', model: 'str', state: 'str', base_url: 'str', port: 'int', context: 'int', parallel: 'int', adopted: 'bool' = False) -> None",
  "serve.down": "(target: 'str') -> 'list[str]'",
  "serve.status": "() -> 'list[Served]'",

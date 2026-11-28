@@ -9,7 +9,7 @@ pub(crate) const ASK_FOR_MS: u64 = 120_000;
 
 /// The text of a prompt as the system shows it: plain, short, with nothing in it a script could be written through.
 pub(crate) fn plain(what: &str) -> String {
-    what.chars().filter(|c| c.is_ascii_alphanumeric() || " .,_-/()".contains(*c)).take(super::card::MOST_SENTENCE).collect()
+    what.chars().filter(|c| c.is_ascii_alphanumeric() || " .,_-/():".contains(*c)).take(super::card::MOST_SENTENCE).collect()
 }
 
 /// Whether ``state`` is the device's own node directory of the account this process runs as (`~/.poolhouse/node`, the account's home from

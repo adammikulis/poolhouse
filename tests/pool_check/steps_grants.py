@@ -10,7 +10,7 @@ from __future__ import annotations
 from pool_check.device import Device, Refused
 from pool_check.person import POOL, Holder
 from pool_check.report import Skip
-from pool_check.world import World, eventually
+from pool_check.world import SETTLE_S, World, eventually
 
 from poolhouse.board import grants
 from poolhouse.fleet.onboard.manifest import Signer
@@ -60,7 +60,7 @@ def a_session_with_no_grant_is_refused_until_a_person_signs_one(world: World) ->
     assert not asked["ok"] and MISSING not in asked["error"] and "OK" in asked["error"], f"a granted removal was not left to the person's signature: {asked}"
     assert victim.fingerprint in {m["fingerprint"] for m in first.others()}, "a granted session with no signature of a person removed a member"
     world.remove(first, victim)
-    eventually(lambda: victim.fingerprint not in {m["fingerprint"] for m in first.others()}, 30, f"{first.name} to list {victim.name} as removed after the person's signed removal")
+    eventually(lambda: victim.fingerprint not in {m["fingerprint"] for m in first.others()}, SETTLE_S, f"{first.name} to list {victim.name} as removed after the person's signed removal")
     return (f"{first.name}: three actions refused with no grant, the join policy refused to move, and a grant signed by a key the node does not hold refused; add_device used under a one-use grant "
             f"(then refused) and under a standing grant (then revoked); member_remove granted for {victim.name} still asks for the person's signature, and the signed removal takes effect")
 

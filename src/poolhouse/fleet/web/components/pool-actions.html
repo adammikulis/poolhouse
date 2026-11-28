@@ -3,13 +3,31 @@
   const M = window.fleetModel;
   const el = M.el;
 
+  /** What the other device is told to type: this device's address and the code, and for an open pool the fingerprint that does instead of a code. */
+  function invitation(got) {
+    const [address, ...others] = got.addresses || [];
+    return [
+      el("div", { class: "hint" }, "On the other device, choose Join another pool and type these within a few minutes:"),
+      address ? el("div", {}, "Address: ", el("code", { id: "pool-join-address" }, address))
+        : el("div", { class: "err" }, "This device's network is off, so another device cannot reach it."),
+      others.length ? el("div", { class: "hint" }, `If that address does not answer, try ${others.join(" or ")}.`) : null,
+      el("div", {}, "Code: ", el("code", { id: "pool-join-code" }, String(got.code))),
+      got.policy === "open" ? el("div", { class: "hint" }, "On the same network it can give this fingerprint instead of a code: ",
+        el("code", { id: "pool-join-fingerprint" }, String(got.fingerprint))) : null];
+  }
+
   /** What a person does to the pool this device's node is in: found it, add a device to it, join another device's pool. */
   class PoolActions extends HTMLElement {
-    setup({ onComplete, founded = false }) {
-      const done = async (got) => { await onComplete(got); };
-      const act = async (button, note, working, path, options, success) => {
+    setup({ onComplete, founded = false, before = async () => {} }) {
+      /** ``changes``: whether the action changes which pool this device is in, so the screen around the form is drawn again. */
+      const act = async (button, note, working, path, options, success, changes = true) => {
         button.disabled = true;
         note.replaceChildren(el("span", { class: "spin" }), ` ${working}`);
+        try { await before(); } catch (error) {
+          button.disabled = false;
+          note.replaceChildren(el("div", { class: "err" }, error.message));
+          return null;
+        }
         const got = await M.api(path, options);
         button.disabled = false;
         if (M.refused(got)) return null;
@@ -18,7 +36,7 @@
           return null;
         }
         note.replaceChildren(...M.kids(success(got)));
-        await done(got);
+        if (changes) await onComplete(got);
         return got;
       };
 
@@ -30,43 +48,47 @@
       const found = el("button", { class: "small" }, "Found this pool");
       found.disabled = true;
       name.oninput = () => { found.disabled = !name.value.trim(); };
-      found.onclick = () => act(found, foundNote, "Waiting for you to approve on this computer…", "/ui/pool/found",
+      found.onclick = () => act(found, foundNote, "Making the pool…", "/ui/pool/found",
         { method: "POST", body: JSON.stringify({ name: name.value.trim(), policy: policy.value }) },
         (got) => el("div", { class: "ok" }, got.say || "Pool founded."));
 
       const addNote = el("div", { role: "status", "aria-live": "polite" });
       const add = el("button", { class: "small" }, "Add a device");
       add.onclick = () => act(add, addNote, "Making a code…", "/ui/pool/add-device",
-        { method: "POST", body: JSON.stringify({}) },
-        (got) => [el("div", { class: "hint" }, "Type this on the other device, within a few minutes:"),
-                  el("code", { id: "pool-join-code" }, String(got.code))]);
+        { method: "POST", body: JSON.stringify({}) }, invitation, false);
 
       const joinNote = el("div", { role: "status", "aria-live": "polite" });
-      const host = el("input", { id: "pool-join-host", type: "text", placeholder: "Address of a device in the pool" });
+      const host = el("input", { id: "pool-join-host", type: "text", autocomplete: "off", placeholder: "Address it showed, like 192.168.1.20" });
       const code = el("input", { id: "pool-join-code-in", type: "text", autocomplete: "off", placeholder: "Code it showed" });
+      const fingerprint = el("input", { id: "pool-join-fingerprint-in", type: "text", autocomplete: "off", placeholder: "Fingerprint it showed" });
+      const print = () => fingerprint.value.replace(/[\s:]/g, "").toLowerCase();
       const join = el("button", { class: "small" }, "Join that pool");
       join.disabled = true;
-      const check = () => { join.disabled = !host.value.trim() || !code.value.trim(); };
-      host.oninput = code.oninput = check;
+      const check = () => { join.disabled = !host.value.trim() || !code.value.trim() === !print(); };
+      host.oninput = code.oninput = fingerprint.oninput = check;
       join.onclick = () => act(join, joinNote, "Joining…", "/ui/pool/join",
-        { method: "POST", body: JSON.stringify({ host: host.value.trim(), code: code.value.trim() }) },
+        { method: "POST", body: JSON.stringify({ host: host.value.trim(),
+          ...(code.value.trim() ? { code: code.value.trim() } : { fingerprint: print() }) }) },
         () => { code.value = ""; return el("div", { class: "ok" }, "Joined."); });
 
       this.replaceChildren(
         ...(founded ? [] : [el("div", { class: "group", id: "pool-found-form" },
           el("h3", {}, "Found this pool"),
-          el("div", { class: "hint" }, "A pool is founded by a person's key; you will be asked to approve it on this computer."),
+          el("div", { class: "hint" }, "Makes a pool on this computer, so other devices can join it."),
           el("label", { for: "pool-found-name" }, "Pool name"), name,
           el("label", { for: "pool-found-policy" }, "How devices join"), policy, found, foundNote)]),
         el("div", { class: "group", id: "pool-add-form" },
           el("h3", {}, "Add a device"),
-          el("div", { class: "hint" }, "Makes a short-lived code for another device to join this pool with."),
+          el("div", { class: "hint" }, "Shows this device's address and a short-lived code for another device to join this pool with."),
           add, addNote),
         el("div", { class: "group", id: "pool-join-form" },
           el("h3", {}, "Join another pool"),
           el("div", { class: "hint" }, "Use the address and code a device in that pool showed."),
           el("label", { for: "pool-join-host" }, "Address"), host,
-          el("label", { for: "pool-join-code-in" }, "Code"), code, join, joinNote));
+          el("label", { for: "pool-join-code-in" }, "Code"), code,
+          el("details", { id: "pool-join-open" }, el("summary", {}, "Join an open pool without a code"),
+            el("label", { for: "pool-join-fingerprint-in" }, "Fingerprint (instead of a code, on the same network)"), fingerprint),
+          join, joinNote));
     }
   }
   customElements.define("pool-actions", PoolActions);

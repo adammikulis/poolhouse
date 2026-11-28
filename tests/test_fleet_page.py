@@ -19,6 +19,7 @@ pw = optional("playwright.sync_api")
 pytestmark = [pytest.mark.slow, pytest.mark.needs("playwright.sync_api", reason="poolhouse[scrape]")]
 pytest_plugins = ("testfarm_kit", "extras")  # the `node_binary` fixture the founded-pool tests use
 
+from computers_kit import computers  # noqa: E402
 from launch_support import hand_typed, sign_in  # noqa: E402
 from test_fleet_ui import Serving  # noqa: E402
 from test_fleet_ui_founded import (  # noqa: E402, F401  (founded_node and governed are fixtures)
@@ -197,6 +198,67 @@ class TestFirstRun:
         assert join.is_enabled()
         assert not errors
 
+    def test_an_open_pool_is_joined_with_a_fingerprint_instead_of_a_code(self, daemon, open_page):
+        page, errors = open_page(daemon)
+        page.get_by_text("Join another pool", exact=True).click()
+        page.fill("#pool-join-host", "192.0.2.7")
+        page.get_by_text("Join an open pool without a code", exact=True).click()
+        join = page.get_by_role("button", name="Join that pool", exact=True)
+        page.fill("#pool-join-fingerprint-in", "AB" * 32)
+        assert join.is_enabled()
+        page.fill("#pool-join-code-in", "a code")
+        assert join.is_disabled(), "a code or a fingerprint, not both"
+        page.fill("#pool-join-code-in", "")
+        page.route("**/ui/pool/join", lambda route: route.fulfill(status=400, json={"error": "Fixture stops before joining"}))
+        with page.expect_request("**/ui/pool/join") as sent:
+            join.click()
+        assert sent.value.post_data_json == {"host": "192.0.2.7", "fingerprint": "ab" * 32}
+        assert not errors
+
+    def test_a_pool_made_on_the_first_screen_is_shown_with_a_code_and_an_address(self, node_binary, monkeypatch, tmp_path, open_page):
+        with computers(node_binary, monkeypatch, "127.0.0.1") as (a,):
+            a.use()
+            served = gated(Serving(tmp_path))  # as the app: a founded pool asks for the session the window holds
+            try:
+                page, errors = open_page(served)
+                page.fill("#setup-device-name", "the desk computer")
+                page.get_by_text("Join another pool", exact=True).click()
+                page.fill("#pool-found-name", "home")
+                page.get_by_role("button", name="Found this pool", exact=True).click()
+                page.locator("#first-run").get_by_text("Connected to home.", exact=True).wait_for()
+                assert page.locator("#pool-found-form").count() == 0
+                page.get_by_role("button", name="Add a device", exact=True).click()
+                page.wait_for_selector("#pool-join-code")
+                assert page.locator("#pool-join-address").inner_text() == f"127.0.0.1:{a.port}"
+                assert "approve" not in page.locator("#first-run").inner_text().lower()
+                assert a.names() == {"the desk computer"}
+                assert not errors
+            finally:
+                served.close()
+
+    def test_a_pool_joined_on_the_first_screen_is_shown_at_once(self, node_binary, monkeypatch, tmp_path, open_page):
+        from poolhouse import api
+
+        with computers(node_binary, monkeypatch, "127.0.0.1", "127.0.0.1") as (a, b):
+            a.use()
+            api.pool.found("home")
+            made = api.pool.add_device()
+            b.use()
+            served = gated(Serving(tmp_path))  # as the app: a founded pool asks for the session the window holds
+            try:
+                page, errors = open_page(served)
+                page.fill("#setup-device-name", "the travel laptop")
+                page.get_by_text("Join another pool", exact=True).click()
+                page.fill("#pool-join-host", made["addresses"][0])
+                page.fill("#pool-join-code-in", made["code"])
+                page.get_by_role("button", name="Join that pool", exact=True).click()
+                page.locator("#first-run").get_by_text("Connected to home.", exact=True).wait_for()
+                assert "starts its own private pool" not in page.locator("#first-run").inner_text()
+                assert "the travel laptop" in a.names()
+                assert not errors
+            finally:
+                served.close()
+
     @pytest.mark.parametrize("accelerator", [False, True])
     def test_setup_uses_actual_capabilities_without_a_train_prepare_choice(self, daemon, open_page, accelerator):
         report = daemon.ui.report
@@ -315,6 +377,33 @@ class TestThePoolView:
         assert page.locator("#pool-joined button:has-text('Leave')").count() == 1
         assert page.locator("#pool-found-form").count() == 0, "a founded pool is not founded again"
         assert not errors
+
+    def test_a_code_on_show_stays_while_the_screen_draws_the_pool_again(self, node_binary, monkeypatch, tmp_path, open_page):
+        from poolhouse import api
+
+        with computers(node_binary, monkeypatch, "127.0.0.1") as (a,):
+            a.use()
+            api.pool.found("home")
+            served = gated(Serving(tmp_path))
+            try:
+                served.cookie = sign_in(served)
+                served.ui.setup_finished()
+                page, errors = open_page(served, cookie=served.cookie)
+                connections(page)
+                page.fill("#pool-join-host", "192.0.2.7")
+                page.get_by_role("button", name="Add a device", exact=True).click()
+                page.wait_for_selector("#pool-join-code")
+                shown = page.locator("#pool-join-code").inner_text()
+                for _ in range(2):  # the screen reads the pool every few seconds, and the open window changes what it reads
+                    with page.expect_response(lambda r: r.url.endswith("/ui/pool"), timeout=15_000):
+                        pass
+                page.wait_for_timeout(500)
+                assert page.locator("#pool-join-code").inner_text() == shown
+                assert page.locator("#pool-join-address").inner_text() == f"127.0.0.1:{a.port}"
+                assert page.locator("#pool-join-host").input_value() == "192.0.2.7"
+                assert not errors
+            finally:
+                served.close()
 
     def test_benchmark_options_are_explicit_and_no_command_is_shown(self, joined, open_page):
         page, errors = open_page(joined, cookie=joined.cookie)

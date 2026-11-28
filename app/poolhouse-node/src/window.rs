@@ -66,8 +66,9 @@ pub fn describe(op: &str, pool: &str, name: &str, args: &Map<String, Value>) -> 
         "join_pool" => {
             only(args, &["host", "port", "passphrase", "fingerprint"])?;
             let host = text(args, "host");
-            if host.is_empty() || host.chars().count() > MOST_HOST {
-                return Err(Error::Invalid("A pool is joined at a host of at most 45 letters, digits, dots and dashes.".into()));
+            // a colon is an IPv6 address's alone: a port is its own param
+            if host.is_empty() || host.chars().count() > MOST_HOST || (host.contains(':') && host.parse::<std::net::Ipv6Addr>().is_err()) {
+                return Err(Error::Invalid("A pool is joined at a name of at most 45 letters, digits, dots and dashes, or an IP address.".into()));
             }
             let body = json!({"op": op, "host": host, "port": args.get("port").and_then(Value::as_u64).unwrap_or(0), "passphrase": digest(text(args, "passphrase")),
                               "fingerprint": text(args, "fingerprint")});

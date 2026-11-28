@@ -91,9 +91,10 @@ class PoolRoutes:
         policy = req.get("policy", "secure")
         if policy not in POLICIES:
             raise _Refused("policy must be secure or open")
-        said: list[str] = []
-        made = self.ui.pool_actions.found(_text(req, "name", most=64), policy, say=said.append)
-        return {"pool": asdict(made.pool), "already": made.already, "say": made.say, "asked": said}
+        name = _text(req, "name", most=64)
+        self.ui.name_node()
+        made = self.ui.pool_actions.found(name, policy)
+        return {"pool": asdict(made.pool), "already": made.already, "say": made.say}
 
     def _add_device(self) -> dict[str, Any]:
         return dict(self.ui.pool_actions.add_device(_whole(self.body(), "ttl_s", 300, 30, 3600)))
@@ -104,8 +105,9 @@ class PoolRoutes:
         fingerprint = _text(req, "fingerprint", most=64, required=False)
         if bool(code) == bool(fingerprint) or (fingerprint and not FINGERPRINT.match(fingerprint)):
             raise _Refused("give the code the other device showed, or for an open pool its 64 hex digit fingerprint")
-        return {"joined": self.ui.pool_actions.join(_text(req, "host"), code, port=_whole(req, "port", self.ui.pool_actions.DEFAULT_PORT, 1, 65535),
-                                        fingerprint=fingerprint)}
+        host, port = _text(req, "host"), _whole(req, "port", self.ui.pool_actions.DEFAULT_PORT, 1, 65535)
+        self.ui.name_node()
+        return {"joined": self.ui.pool_actions.join(host, code, port=port, fingerprint=fingerprint)}
 
     def _remove(self) -> dict[str, Any]:
         return {"removed": asdict(self.ui.pool_actions.remove(_text(self.body(), "device", most=128)))}

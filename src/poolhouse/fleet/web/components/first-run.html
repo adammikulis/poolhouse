@@ -100,8 +100,9 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
       if (!result.ok) throw Error('The device name could not be saved.');
       this.setup = result;
     }
-    deviceStep() {
+    deviceStep(changed = '') {
       const note = this.note(), input = el('input', {id:'setup-device-name', type:'text', value:this.name || '', autocomplete:'off'});
+      note.textContent = changed;
       input.oninput = () => { this.name = input.value; };
       const connect = el('details', {class:'wizard-section'}, el('summary', {}, 'Join another pool'));
       connect.ontoggle = async () => {
@@ -109,8 +110,9 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
         connect.loaded = true;
         try {
           if (!connect.isConnected) return;
-          connect.append(M.poolForm({founded:this.setup.in_pool, onComplete:async () => {
-              this.setup = await this.request('/ui/setup'); note.textContent = 'Pool updated.';
+          // the typed name is saved first, so a pool made or joined from here lists this device by it
+          connect.append(M.poolForm({founded:this.setup.in_pool, before:() => this.saveDevice(), onComplete:async (got) => {
+              this.setup = await this.request('/ui/setup'); this.deviceStep(got.say || (got.joined ? 'Joined.' : 'Pool updated.'));
             }}));
         } catch (error) { connect.loaded = false; note.textContent = error.message; }
       };
@@ -122,6 +124,7 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
         el('p', {class:'hint'}, this.setup.in_pool ? `Connected to ${this.setup.group || 'your pool'}.`
           : 'This device starts its own private pool. You can connect other devices later.'), connect,
         this.actions(next), note);
+      connect.open = !!changed;
     }
     async modelStep() {
       const epoch = this.epoch, session = M.sessionContext(), loading = this.note();

@@ -1,6 +1,6 @@
 """Run on a Linux device: make this device follow a local origin that has a newer commit, then run the real updater once.
 
-    python updater.py --state DIR --binary PATH --listen ADDR --sync-ms N --target-id ID --target-seq N
+    python updater.py --state DIR --binary PATH --listen ADDR --target-id ID --target-seq N
 
 The git side is real: a bare origin and a checkout of its development branch in the device's own folder, one commit behind. The
 updater's own `fast_forward` fetches and merges it. Only the build is replaced (nothing is compiled here): the replacement selects the
@@ -71,7 +71,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--state", required=True)
     ap.add_argument("--binary", required=True)
     ap.add_argument("--listen", required=True)
-    ap.add_argument("--sync-ms", required=True)
     ap.add_argument("--target-id", required=True)
     ap.add_argument("--target-seq", required=True)
     args = ap.parse_args(argv)
@@ -86,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     def ensure(_checkout: Path) -> tuple[int, str]:
         selected.write_text(json.dumps({"commit": new}))
         wire.node_launch.stop_node(state)
-        wire.start(state, Path(args.binary), ["--listen", args.listen, "--sync-ms", args.sync_ms, "--build-id", args.target_id, "--build-seq", args.target_seq])
+        wire.start(state, Path(args.binary), ["--listen", args.listen, "--build-id", args.target_id, "--build-seq", args.target_seq])
         return 0, f"node moved onto {args.target_id[:12]}"
 
     steps = Steps(fetch=build_update.fast_forward, ensure=ensure, rollback=lambda commit: (0, ""), release=lambda: {"ok": False, "error": "release path not used"},

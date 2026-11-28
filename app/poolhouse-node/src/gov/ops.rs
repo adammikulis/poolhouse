@@ -48,6 +48,11 @@ fn declined(why: &str) -> Error {
     Error::say("denied", why, "none", "stop")
 }
 
+/// What a member that did not make the pool says when asked to let a device in: where that is done, by the maker's name.
+fn made_elsewhere(maker: &str) -> Error {
+    Error::say("denied", &format!("This computer cannot add devices to the pool. Open Poolhouse on {}, the computer that made it, and choose Add a device.", quoted(maker)), "device", "ask-owner")
+}
+
 /// How many signers an act of ``kind`` needs: a class, or one key at the sensitive floor (`None`).
 pub(super) fn class_of(kind: &str) -> Result<Option<Class>> {
     match kind {
@@ -196,9 +201,9 @@ impl Node {
         self.persons.claim_of(public).unwrap_or_else(|| self.firsts.pool_key_claim())
     }
 
-    /// The first device a charter this device makes names: this device, called by its host name.
+    /// The first device a charter this device makes names: this device, called what the person called it.
     fn first_device(&self) -> First {
-        First::of(&self.cert.der, &crate::poolops::host_name())
+        First::of(&self.cert.der, &self.own_name())
     }
 
     /// A charter of ``admins`` that this device drafts. Where a key above a typed yes is listed the floors are `Computer` and the first computer
@@ -325,9 +330,11 @@ impl Node {
         if self.window_signs(g, window) || (self.keystore_keyed() && g.state().roster.delegates.contains_key(&me)) {
             return Ok(());
         }
+        let charter = &g.state().chain.latest().charter;
         match &self.signer {
+            None if charter.first.cert != hex(&self.cert.der) => Err(made_elsewhere(&charter.first.name)),
             None => Err(no_signer()),
-            Some(s) if keys_for(s.as_ref(), &g.state().chain.latest().charter, floor_class("admit"), 1, &[]).is_empty() => Err(not_admin()),
+            Some(s) if keys_for(s.as_ref(), charter, floor_class("admit"), 1, &[]).is_empty() => Err(not_admin()),
             Some(_) => Ok(()),
         }
     }

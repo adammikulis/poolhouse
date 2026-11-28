@@ -1,7 +1,8 @@
 # Pools without a phone
 
 Design, built in part. Slices 1 to 3, the join and remove parts of slice 5 and the Windows prompt of slice 7 are built on `feat/phone-free-pools` (section 8 says
-what differs from the text and what is left); slices 4, 6 and 8 and the live check of 2.9 are not. Section 1 is code and document reading at `29d9f78f7` (`0.3dev`): no test was run and no screen was driven.
+what differs from the text and what is left); slices 4, 6 and 8 and the live check of 2.9 are not. Section 1 says what the code does with no phone: its founding and
+add-device rows are from tests against real nodes (`tests/test_pool_join_code.py`); the rest is older reading at `29d9f78f7` (`0.3dev`) and is marked so.
 A non-author review (section 7) is applied: the verdict was accept with edits.
 `docs/design-pool-keys-and-custody.md` (the keys document) owns the keys: one admin key for each pool, the claim that says how a key is held, and the
 level a key counts at, computed by every member. Where this document differs, that one follows.
@@ -12,9 +13,8 @@ taps and plain sentences, and the pool must say honestly how much weaker a compu
 
 ## 0. In short
 
-- **Today a computer-only person cannot found a pool, add a device, remove a member or recover an admin key.** Only approving a grant works,
-  by a typed `yes` at a terminal. The cause is one rule and two gaps: only a key a phone enrolled counts as strong (`Node::key_strength`), no
-  production `Signer` exists for any key, and a delegate device cannot sign because `Node::key_binding` is `File` everywhere.
+- **A computer-only person can found a pool and add a device** (1.2): the computer makes its own key and founds at once, and a device joins with a
+  code the founding computer shows. Where this design began, neither worked.
 - **The idea.** A key is listed with a claim of how it is held (`phone-keystore`, `helper`, `keystore-prompt`, `keystore-typed`, `file`), and every member
   computes the level it counts at from that claim. Only two levels count: `computer` (the computer's own prompt, or a phone or protected helper whose
   claim no member can check) and `weak` (a typed yes or a file, which counts toward nothing but ending a delegate). No member can verify a phone's
@@ -42,10 +42,10 @@ Paths are under `app/poolhouse-node/src/` unless they start with `app/`, `src/`,
 
 ### 1.1 The words
 
+Read at `29d9f78f7`, not checked since, except that the node's levels are now `Level` computed from a key's claim (`gov/keys.rs`), as 2.1 says.
+
 HANDOFF names **Native** and **AndroidStrong**. Neither word is in the node, the library or the phone app, and none carries an assurance field;
-the only assurance wording is the inactive Swift card's `trusted-native` (`app/native-approval/Card.swift:65`). The only levels in use are
-`Strength::{Strong, Weak}` (`gov/keys.rs:30-33`), and a key is strong only when its row in `persons.json` says `phone: true`
-(`grants/person.rs:197-199`), which only a phone's own enrolment writes (`phone/enrol.rs:198`, `phone/mod.rs:212`). The Native foundations are
+the only assurance wording is the inactive Swift card's `trusted-native` (`app/native-approval/Card.swift:65`). The Native foundations are
 `app/native-approval` (a Swift approval window using `LAContext`) and `app/poolhouse-authority` (a root-owned request and compare-and-swap core
 with a macOS authorization backend). Both state that they are inactive: no installer, no IPC server, no key registry
 (`app/poolhouse-authority/SOURCES.md:3`, `app/native-approval/ADMISSION.md`). The phone's attestation checks (`phone/attest/`,
@@ -53,13 +53,16 @@ with a macOS authorization backend). Both state that they are inactive: no insta
 
 ### 1.2 Operation by operation
 
-| Operation | With only a computer's key | Why, with the line |
+The first two rows are checked against running nodes. The last three are the reading at `29d9f78f7`: they are older than the computer's own pool key
+(`src/poolhouse/board/computer_key.py`) and the automatic approval of grants (`src/poolhouse/board/autoapprove.py`), and nobody has checked them since.
+
+| Operation | With only a computer's key | Why |
 |---|---|---|
-| **Found a pool** | **Refused.** The library stops first: `default_admin` always raises (`src/poolhouse/board/founding.py:202-207`) and a draft with no strong key raises `NEEDS_PHONE` (`:191-192`, text `:29`). The node refuses as well. | `Node::key_strength` is strong only for a phone's key (`gov/ops.rs:157-159`); `founding_of` and `pool_create` both require one (`ops.rs:172-177`, `:283-285`). The charter rules would take an all-weak charter (`gov/charter.rs:217-219`, `:306`), so the block is in the entry points, and two tests pin it (`app/poolhouse-node/tests/gov_strength.rs:44`, `tests/test_pool_found.py:116`). |
-| **Add a second device** (join code and approval) | **Refused at the admit.** The join-code exchange itself needs no key (`net.rs:350-402`). The admit after it (`net.rs:338` into `ops.rs:299-340`) is signed by a delegate device or by a strong admin key's signer; with neither the answer is "I need your OK for that, and nothing here can ask you yet." (`ops.rs:41-43`, `:322-326`). `add_device` refuses first for the same reason (`net.rs:357-359`, `ops.rs:258-268`). | The delegate never signs: `Node::key_binding` is `File` on every device (`node.rs:164`; the only setter is the rig's, `ops.rs:190-192`), though the node already knows its key's custody (`node.rs:61`, `:152`; `device.rs:28-34`). An `admit` signed elsewhere and submitted (`presigned`, `ops.rs:397-404`) is used only by the pool check. An `open` pool admits by a member's own device key with no person (`ops.rs:314-318`), but an open pool cannot be founded either. |
-| **Approve a grant** | **Works, by a terminal.** In a pool a grant that reaches beyond the device counts only from an approval a strong admin key of the charter signed; on a device in no pool any enrolled person key counts (`docs/node.md`, "Standing grants"). The first key needs the operating system's prompt (`presence/mod.rs:210-228`: macOS, Linux with `pkexec`; Windows refused, `:224`). Each grant then needs a typed `yes` on `/dev/tty` (`src/poolhouse/board/person_key.py:1-11`). | A terminal step is forbidden by the onboarding rule, and the screen that would replace it is not built (`docs/node.md:1091-1094`; no approval view in `app/src-tauri` or the web UI). An agent's approval request is decided by an admin key of the pool the device knows as a phone's, in a pool (`approvals/decide.rs:178-188`), but the Python side can only request, wait and cancel (`src/poolhouse/board/approval.py`): nothing on a computer decides. |
-| **Remove a member** | **Refused.** `gov_remove` asks a signer for one strong key (`ops.rs:141`, `:343-356`). A weak key signs only `delegate_end` (`gov/pool.rs:361-367`), so the answer is "None of the keys I can ask is an admin of this pool." (`ops.rs:45-47`). | There is no signer to ask (`node.rs:164`: `signer: None`; `set_signer`, `ops.rs:185`, is called only from tests and rigs). A device **leaving** needs no person and works (`ops.rs:359-368`). |
-| **Recover an admin key** | **Not built, for anyone.** There is no `recover`, `recover_cancel`, `recovery_replace` or `endorse` act (`gov/body.rs:173-222`; GOV-5, `docs/release-readiness.md:193`). | A recovery-role key can be listed (`gov/keys.rs:38-41`) but `pool_draft_found` makes only admin keys (`ops.rs:469`) and a recovery key signs nothing (`gov/pool.rs:365`). `docs/node.md:479-481` resets a node's grant keys, not a pool's admin key. A pool that loses its only strong key keeps working and can never change (`docs/pools-and-serving.md:19-21`, `:336-342`). |
+| **Found a pool** | **Works**, from the page, `poolhouse-pool found` and `ph.pool.found`, with nothing to answer. | The node drafts the charter with a key it makes for this computer, which signs it at once (`founding.found_on_computer`). |
+| **Add a second device** (join code) | **Works** on the computer that made the pool while its keys are the keystore's: it shows its address and a six-digit code, and the other device joins with the two. An `open` pool also takes a device on its network by the fingerprint. A member that did not make the pool is told to add the device from the one that did. | The window carries an act this computer's pool key signs, which lets the device sign the one admit of whoever proves the code (`ops.rs`, `window_signs`). |
+| **Approve a grant** (older reading) | **Works, by a terminal.** In a pool a grant that reaches beyond the device counts only from an approval a strong admin key of the charter signed; on a device in no pool any enrolled person key counts (`docs/node.md`, "Standing grants"). The first key needs the operating system's prompt (`presence/mod.rs:210-228`: macOS, Linux with `pkexec`; Windows refused, `:224`). Each grant then needs a typed `yes` on `/dev/tty` (`src/poolhouse/board/person_key.py:1-11`). | A terminal step is forbidden by the onboarding rule, and the screen that would replace it is not built (`docs/node.md:1091-1094`; no approval view in `app/src-tauri` or the web UI). An agent's approval request is decided by an admin key of the pool the device knows as a phone's, in a pool (`approvals/decide.rs:178-188`), but the Python side can only request, wait and cancel (`src/poolhouse/board/approval.py`): nothing on a computer decides. |
+| **Remove a member** (older reading) | **Refused.** `gov_remove` asks a signer for one strong key (`ops.rs:141`, `:343-356`). A weak key signs only `delegate_end` (`gov/pool.rs:361-367`), so the answer is "None of the keys I can ask is an admin of this pool." (`ops.rs:45-47`). | There is no signer to ask (`node.rs:164`: `signer: None`; `set_signer`, `ops.rs:185`, is called only from tests and rigs). A device **leaving** needs no person and works (`ops.rs:359-368`). |
+| **Recover an admin key** (older reading) | **Not built, for anyone.** There is no `recover`, `recover_cancel`, `recovery_replace` or `endorse` act (`gov/body.rs:173-222`; GOV-5, `docs/release-readiness.md:193`). | A recovery-role key can be listed (`gov/keys.rs:38-41`) but `pool_draft_found` makes only admin keys (`ops.rs:469`) and a recovery key signs nothing (`gov/pool.rs:365`). `docs/node.md:479-481` resets a node's grant keys, not a pool's admin key. A pool that loses its only strong key keeps working and can never change (`docs/pools-and-serving.md:19-21`, `:336-342`). |
 
 **A phone does not do them either.** The phone's signer and approval transport are protocol classes only
 (`docs/notes/2026-10-14-phone-founding-protocol.md`, `HANDOFF.md:46-47`), so every row above is also "not built" with a phone. What the order
@@ -67,7 +70,7 @@ asks is that the computer need not wait for it.
 
 ### 1.3 What the pool check proves
 
-Nothing about a computer-only pool.
+Read at `29d9f78f7`: nothing about a computer-only pool. `tests/test_pool_join_code.py` now founds one, joins it by code and watches it sync.
 
 - `found-by-api` says "the admin key the node holds as a phone's" signs (`tests/pool_check/steps_pool.py:64`); `docs/pool-check.md:97` says "the
   key the rig's person typed yes for" signs. The code agrees with the first. `World.fresh` gives every device the person's key

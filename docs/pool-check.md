@@ -33,7 +33,8 @@ step that passes may print what it measured. The exit status is 1 when any step 
 
 Every node runs under the real supervisor (`node_launch`), is asked through its real local socket, and joins through the real join path
 (`add_device` and `join_pool`, which `poolhouse pool add-device` and `poolhouse pool join` call) with an explicit address: Docker Desktop cannot carry
-multicast to the machine it runs on, so discovery by beacon is not exercised.
+multicast to the machine it runs on, so discovery by beacon is not exercised. Each node is started as a device starts its own, with `--listen`
+in place of `--lan` and no sync interval, so it syncs at the node's own 20 seconds and the steps wait for that (`world.SETTLE_S`).
 
 ### The rig is the person of its pool
 
