@@ -9,6 +9,9 @@ import shlex
 import shutil
 import subprocess
 import sys
+import threading
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -115,14 +118,16 @@ class Scene:
                  "tool_input": {"command": command, "description": "a step"}, **({"agent_id": agent} if agent else {}), **event}
         return self.hook("claude-bash-guard", asked)
 
-    def allow(self, agent: str, command: str, cwd: Path | None = None, tool: str = "Bash") -> None:
-        guard = self.asked(agent, command, cwd, tool_name=tool)
+    def allow(self, agent: str, command: str, cwd: Path | None = None, tool: str = "Bash", **event: str) -> None:
+        guard = self.asked(agent, command, cwd, tool_name=tool, **event)
         assert guard.returncode == 0 and not guard.stdout.strip(), (guard.stdout, guard.stderr)
 
-    def shell(self, command: str, cwd: Path | None = None, program: str = "/bin/bash",
-              session: str = "sess1") -> subprocess.CompletedProcess:
-        """Run ``command`` unchanged in a shell the lead's session ``session`` starts, wrapped as the harness wraps it."""
-        text = wrapped((self.exports.parents[1] / session / self.exports.name).read_text(), command, self.tmp / "claude-0a1b-cwd")
+    def shell(self, command: str, cwd: Path | None = None, program: str = "/bin/bash", session: str = "sess1",
+              lines: str = "") -> subprocess.CompletedProcess:
+        """Run ``command`` unchanged in a shell the lead's session ``session`` starts, wrapped as the harness wraps it; ``lines``
+        replaces what the session's environment file holds."""
+        lines = lines or (self.exports.parents[1] / session / self.exports.name).read_text()
+        text = wrapped(lines, command, self.tmp / "claude-0a1b-cwd")
         return subprocess.run([program, "-c", text], cwd=cwd or self.world.proj.root,
                               env={**self.inherited(), "CLAUDE_CODE_SESSION_ID": session},
                               text=True, capture_output=True, timeout=120, check=False)
@@ -142,6 +147,7 @@ class Scene:
 def scene(tmp_path, workspace_node, monkeypatch):
     made = Scene(tmp_path, workspace_node, monkeypatch)
     made.session_start()
+    made.shell("true")   # the session's first command: its shell runs the line
     return made
 
 
@@ -389,6 +395,7 @@ def test_a_command_with_quotes_pipes_lines_and_a_heredoc_finds_its_caller(scene,
 def test_a_resumed_session_that_holds_the_loader_twice_still_runs_a_subagent_as_itself(scene):
     scene.session_start()
     assert scene.exports.read_text().count("_poolhouse_caller=") == 2
+    assert scene.shell("true").returncode == 0
     scene.start("rev1")
     assert who(scene.run("rev1", ASK)) == scene.name("rev1")
     assert who(scene.lead_runs(ASK)) == scene.lead.name
@@ -430,8 +437,30 @@ RECORDS_A_VERDICT = [
     "gh pr review 12 --request-changes -b no",
     f"gh api -X POST repos/o/r/statuses/{SHA} -f state=success",
     "gh api repos/o/r/pulls/12/reviews -f event=APPROVE",
+    "poolhouse-workspace task-review T1 '{}'",
+    "poolhouse workspace task-review T1 -",
+    f"nice scripts/lead-review 12 {SHA} --verdict accept --note ok",
+    f"nice -n 5 scripts/lead-review 12 {SHA} --verdict accept --note ok",
+    f"uv run scripts/lead-review 12 {SHA} --verdict accept --note ok",
+    f"time -p scripts/lead-review 12 {SHA} --verdict accept --note ok",
+    f"! scripts/lead-review 12 {SHA} --verdict accept --note ok",
+    f"{{ scripts/lead-review 12 {SHA} --verdict accept --note ok; }}",
+    f"if true; then :; else scripts/lead-review 12 {SHA} --verdict accept --note ok; fi",
+    f"echo 12 | xargs -I N scripts/lead-review N {SHA} --verdict accept --note ok",
+    f"R=scripts/lead-review; $R 12 {SHA} --verdict accept --note ok",
+    f"bash <<<'scripts/lead-review 12 {SHA} --verdict accept --note ok'",
+    f"poolhouse-workspace \\\n  land-review fix/x {SHA}",
+    "gh pr review 12 --approve=true",
+    f"gh api repos/o/r/statuses/{SHA} \\\n  -f state=success",
+    "gh api graphql -f query='mutation{addPullRequestReview(input:{event:APPROVE}){clientMutationId}}'",
 ]
 RECORDS_NO_VERDICT = [
+    "gh pr create --title t --body 'then lead-review runs'",
+    "gh pr comment 1 --body 'ask (lead-review) next'",
+    "printf '%s\\n' 'x; poolhouse-delegate grade is next'",
+    "gh pr comment 1 --body 'run `scripts/lead-review` next'",
+    "gh api graphql -f query='mutation{addPullRequestReviewThreadReply(input:{}){clientMutationId}}'",
+    "ruff check scripts/lead-review",
     "cat scripts/lead-review",
     "grep -n verdict scripts/lead-review",
     "rg 'land-review' docs",
@@ -484,6 +513,154 @@ def test_a_session_whose_shells_read_the_line_anew_counts_it_at_once(scene, sour
     scene.session_start(source, "sess2")
     allowed = scene.asked("rev1", RECORDS_A_VERDICT[0], session_id="sess2")
     assert allowed.returncode == 0, allowed.stderr
+
+
+def test_a_compacted_session_that_had_run_the_line_stays_counted(scene):
+    scene.start("rev1")
+    scene.session_start("compact")
+    allowed = scene.asked("rev1", RECORDS_A_VERDICT[0])
+    assert allowed.returncode == 0, allowed.stderr
+
+
+@pytest.mark.redteam
+def test_the_first_shell_to_run_the_line_names_its_caller(scene):
+    scene.start("rev1")
+    scene.session_start("compact", "sess2")
+    first = scene.asked("rev1", ASK, session_id="sess2")
+    assert first.returncode == 0, first.stderr
+    assert who(scene.shell(ASK, session="sess2")) == scene.name("rev1")
+
+
+@pytest.mark.redteam
+def test_a_review_is_still_seen_when_the_shell_rules_cannot_be_loaded(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / "scripts/hooks"))
+    import review_verdicts
+
+    for command in (f"scripts/lead-review 12 {SHA} --verdict accept --note ok", "gh pr review 12 --approve",
+                    f"gh api repos/o/r/statuses/{SHA} -f state=success", "poolhouse-delegate grade quick-fix accept"):
+        assert review_verdicts.records_a_verdict(command, None), command
+    assert not review_verdicts.records_a_verdict("ls docs", None)
+
+
+def result(transcript: Path, call: str, failed: bool, ago: float) -> None:
+    """Add the result of the tool call ``call`` to ``transcript``, ``ago`` seconds old: a canned line with the shape of Claude
+    Code's transcript, of which the program reads only that shape."""
+    at = (datetime.now(UTC) - timedelta(seconds=ago)).isoformat().replace("+00:00", "Z")
+    part = {"type": "tool_result", "tool_use_id": call, "is_error": failed, "content": "synthetic"}
+    transcript.parent.mkdir(parents=True, exist_ok=True)
+    with transcript.open("a") as held:
+        held.write(json.dumps({"type": "user", "timestamp": at, "message": {"role": "user", "content": [part]}}) + "\n")
+
+
+@pytest.mark.redteam
+@pytest.mark.parametrize(("failed", "ago", "over"), [(True, 0, True), (False, 600, True), (False, 0, False), (None, 0, False)],
+                         ids=["refused", "long-finished", "just-answered", "no-result"])
+def test_a_call_whose_shell_never_runs_stops_counting_once_its_result_shows_it_is_over(scene, tmp_path, failed, ago, over):
+    scene.start("rev1")
+    main = tmp_path / "projects" / "sess1.jsonl"
+    scene.allow("rev1", ASK, tool_use_id="toolu_never", transcript_path=str(main))   # refused after this hook: no shell runs it
+    if failed is not None:
+        result(main.with_suffix("") / "subagents" / "agent-rev1.jsonl", "toolu_never", failed, ago)
+    typed = scene.shell("echo typed")
+    assert ("no workspace identity" in typed.stderr) is not over, typed.stderr
+    for attempt in range(3):
+        scene.allow(LEAD, ASK, tool_use_id=f"toolu_lead{attempt}", transcript_path=str(main))
+        done = scene.shell(ASK)
+        if over:
+            assert who(done) == scene.lead.name
+        else:
+            nobody(done, scene.lead.name, "two callers issued this same command")
+
+
+@pytest.mark.redteam
+def test_a_shell_that_starts_after_its_record_expired_names_nobody_and_a_retry_names_its_caller(scene, tmp_path):
+    scene.start("rev1")
+    scene.allow("rev1", ASK)
+    [path] = (tmp_path / "hookstate" / "shell").glob("*/call-*.json")
+    held = json.loads(path.read_text())
+    path.write_text(json.dumps({**held, "at": held["at"] - 3601}))
+    nobody(scene.shell(ASK), scene.lead.name, "older than an hour")
+    assert who(scene.run("rev1", ASK)) == scene.name("rev1")
+
+
+@pytest.mark.redteam
+def test_a_shell_waits_while_another_takes_its_record(scene, tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(scene.hooks))
+    import shell_identity
+
+    scene.start("rev1")
+    scene.allow(LEAD, ASK)
+    scene.allow("rev1", ASK)
+    state, text = tmp_path / "hookstate", wrapped("", ASK, tmp_path / "claude-0a1b-cwd")
+    here, read, seen = str(scene.world.proj.root), Path.read_text, {}
+
+    def resolve() -> str:
+        return shell_identity.resolve(state, "sess1", text, here)
+
+    def interleaved(path: Path, *args: object, **named: object) -> str:
+        value = read(path, *args, **named)
+        if path.name.startswith("call-") and "other" not in seen:
+            seen["other"] = threading.Thread(target=lambda: seen.setdefault("middle", resolve()))
+            seen["other"].start()
+            seen["other"].join(1.0)
+            seen["waited"] = seen["other"].is_alive()
+        return value
+
+    monkeypatch.setattr(Path, "read_text", interleaved)
+    first = resolve()
+    seen["other"].join(30)
+    assert seen["waited"], "the second shell read the records while the first held them"
+    assert (first, seen["middle"]) == (shell_identity.NOBODY, shell_identity.NOBODY)
+
+
+@pytest.mark.redteam
+def test_a_line_left_for_another_state_folder_does_not_decide_who_a_shell_is(scene, tmp_path, monkeypatch):
+    monkeypatch.syspath_prepend(str(scene.hooks))
+    import shell_identity
+
+    scene.start("rev1")
+    lines = shell_identity.loader(tmp_path / "earlier-state") + "\n" + scene.exports.read_text()
+    scene.allow("rev1", ASK)
+    assert who(scene.shell(ASK, lines=lines)) == scene.name("rev1")
+
+
+def test_a_shell_that_cannot_name_its_caller_says_so(scene):
+    held = scene.exports.read_text()
+    gone = scene.shell("true", lines=held.replace("shell_identity.py", "shell_identity_gone.py"))
+    assert gone.returncode == 0 and "is missing" in gone.stderr, gone.stderr
+    unnamed = scene.shell("true", lines=held, session="")
+    assert unnamed.returncode == 0 and "names no Claude Code session" in unnamed.stderr, unnamed.stderr
+
+
+def test_the_line_costs_each_shell_little_whatever_waits(scene, tmp_path):
+    scene.start("rev1")
+    main = tmp_path / "projects" / "sess1.jsonl"
+    own = main.with_suffix("") / "subagents" / "agent-rev1.jsonl"
+    for number in range(20):
+        scene.allow("rev1", ASK, tool_use_id=f"toolu_{number}", transcript_path=str(main))
+        result(own, f"toolu_{number}", True, 0)
+    with own.open("a") as held:
+        held.write((json.dumps({"type": "assistant", "text": "x" * 4000}) + "\n") * 2000)
+    scene.allow(LEAD, "true")
+    took = []
+    for _ in range(5):
+        begun = time.monotonic()
+        assert scene.shell("true").returncode == 0
+        took.append(time.monotonic() - begun)
+    assert min(took) < 1.0 and max(took) < 10.0, took
+
+
+def test_the_note_says_how_a_helper_acts_as_itself_where_no_shell_names_it(scene):
+    context = scene.start("rev1")
+    child = scene.name("rev1")
+    assert "runs as the session that started you" in context, context
+    said = json.loads(scene.asked("rev1", ASK, session_id="an-earlier-session").stdout)["hookSpecificOutput"]
+    assert f"--agent {child}" in said["additionalContext"], said
+    own = f"{ASK} --agent {child}"
+    assert scene.asked("rev1", own, session_id="an-earlier-session").returncode == 0
+    ran = subprocess.run(["/bin/sh", "-c", own], cwd=scene.world.proj.root, env=scene.inherited(), text=True,
+                         capture_output=True, timeout=120, check=False)
+    assert who(ran) == child
 
 
 @pytest.mark.redteam

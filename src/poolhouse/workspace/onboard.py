@@ -71,7 +71,8 @@ IDENTITY_PASTED = (
     "for example `poolhouse-workspace inbox --agent {name}`.")
 IDENTITY_GIVEN = (
     "The harness registered you under this name and runs every workspace command you type as you, with no token: "
-    "`poolhouse-workspace inbox`. Add `--agent {name}` only to a command that is refused for lacking it.")
+    "`poolhouse-workspace inbox`. Add `--agent {name}` only to a command that is refused for lacking it, or when a hook "
+    "note says a command runs as the session that started you.")
 BRIEF_REGISTERED = (
     "Your registration and model are recorded for you; the harness shows when you start and stop, so nothing posts it, and your done reaches the sessions subscribed to you as board state. `announce milestone|blocked "
     "TEXT` is only for news others act on (a commit landed, a shared resource changed, a decision needed, a block), never "

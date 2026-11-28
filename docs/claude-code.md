@@ -33,20 +33,26 @@ and never limits (docs/claude-subagents.md, "Tool-call milestones").
   the subagent's board name and native id there and removes the names by which the harness names the session that started it
   (`CLAUDE_CODE_SESSION_ID`, `POOLHOUSE_SESSION_ID`, `POOLHOUSE_SESSION_HARNESS`, `CODEX_THREAD_ID`), so a program that drops the
   subagent's own marker has no identity instead of the lead's. A shell whose caller cannot be told (two callers issued the same
-  command in the same folder at once, or the shell's text matches no record while a subagent's call waits) names nobody and says
-  so: a workspace command in it is refused. A record waits an hour for its shell and holds a digest of the command, not its text.
+  command in the same folder at once, the shell's text matches no record while a subagent's call waits, or a subagent's record
+  is over an hour old) names nobody and says so: a workspace command in it is refused, and the same command sent again is judged
+  afresh. A record holds a digest of the command, not its text. A call refused after the hook ran leaves a record no shell
+  takes: where such a record would leave a caller in doubt, the result Claude Code wrote in the caller's transcript shows the
+  call is over (an error at once, any other result after a minute) and the record is dropped. Shells take records one at a time.
 - A command of a subagent that sets one of those names to a value, another session's name or a token is refused (an empty value,
   and the name inside an argument such as a `grep` pattern, are not an assignment).
 - **A session whose shells hold no such line** (it began before the line was added, or the harness offered no environment file)
-  refuses a subagent one kind of command only: one that records a review verdict (`scripts/lead-review`, `land-review`,
-  `poolhouse-delegate grade`, `gh pr review --approve` or `--request-changes`, a status or review written with `gh api`), since it
-  would be recorded as the session that started it and the author check could not tell the two apart. Every other command runs,
-  as the session that started it: what it writes or claims is recorded under that session, and the hook says so beside it. A
-  session's shells read the line when it starts, resumes or is cleared, which also lifts the refusal. Compacting is not enough:
-  Claude Code 2.1.332 keeps the shell environment it read before, so a line added then counts only once a shell has run it. The
-  refusal reads the command's text, so a review recorded through a program the subagent writes, the Python library or an MCP tool
-  is past it; an MCP tool acts as the session in every case. On Windows, an environment file holding this line gives PowerShell
-  commands none of the file's variables; Bash commands receive them.
+  refuses a subagent one kind of command only: one that records a review verdict
+  (`scripts/lead-review`, `land-review`, `task-review`, `poolhouse-delegate grade`, `gh pr review --approve` or
+  `--request-changes`, a status or review written with `gh api`), since it would be recorded as the session that started it and
+  the author check could not tell the two apart. Every other command runs, as the session that started it: what it writes or
+  claims is recorded under that session, and the hook says so beside it, with the `--agent` flag that makes a
+  `poolhouse-workspace` command the subagent's own. A session's shells read the line when it starts, resumes or is cleared, which
+  lifts the refusal. Compacting is not enough: Claude Code 2.1.332 keeps the shell environment it read before, so a line added
+  then counts only once a shell has run it.
+- The refusal reads the command's text (`scripts/hooks/review_verdicts.py`), so a review recorded through a program the subagent
+  writes, the Python library or an MCP tool is past it; an MCP tool acts as the session in every case. A shell that finds the
+  line's program gone, or has no Claude Code session id, prints that it runs as the session. On Windows, an environment file
+  holding this line gives PowerShell commands none of the file's variables; Bash commands receive them.
 - The guards leave alone what harms nothing outside the worktree: `git checkout` and `git restore` there, `git apply --check`, a
   subagent stopping a task, `gh workflow run` of a workflow that only checks, and code that merely names git's settings.
 - The guards read the text of a command, so they stop the forms their tests list and no more: expansions, `eval`, base64, heredocs

@@ -6,12 +6,14 @@ standard input: it finds the record of the command that shell is about to run an
 cannot be told apart from a subagent's names nobody, never the session that started the subagent.
 
 A record holds a digest of the command, not its text, and names only: the lines a shell runs are made here, each value quoted, so a
-record cannot put other code in a shell. It runs in the shell of the command, so it imports the standard library only and is given the
+record cannot put other code in a shell. A call refused after the hook ran leaves a record no shell takes; the transcript Claude Code
+writes shows that its call is over. It runs in the shell of the command, so it imports the standard library only and is given the
 directory of the records.
 """
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -19,6 +21,8 @@ import re
 import shlex
 import sys
 import time
+from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 
 LEAD_SELECTORS = ("CLAUDE_CODE_SESSION_ID", "POOLHOUSE_SESSION_ID", "POOLHOUSE_SESSION_HARNESS", "CODEX_THREAD_ID")
@@ -26,11 +30,20 @@ LEAD_SELECTORS = ("CLAUDE_CODE_SESSION_ID", "POOLHOUSE_SESSION_ID", "POOLHOUSE_S
 that drops its own marker finds no identity to fall back on, and not the lead's."""
 
 KEPT_S = 3600
-"""How long a record waits for its shell: a call refused after the hook ran leaves one behind."""
+"""How long a record names its caller. A shell that starts later names nobody."""
+
+FORGOTTEN_S = 7 * 24 * 3600
+"""How long a record no shell took stays at all."""
+
+SETTLED_S = 60
+"""How long after a call's result its shell has surely started, a background one too."""
 
 READ_ANEW = ("startup", "resume", "clear", "fork")
 """The sources of a session start after which Claude Code reads the shell environment file anew. A compacted session keeps what it read
 before (seen with 2.1.332), so a line added then counts only once a shell has run it."""
+
+TRANSCRIPT_TAIL = 8 * 1024 * 1024
+"""How much of the end of a transcript is searched for the result of a call."""
 
 
 def exports(native: str, name: str = "", board: str = "") -> str:
@@ -52,8 +65,8 @@ def folder(root: Path, session: str) -> Path:
 
 
 def installed(root: Path, session: str) -> bool:
-    """Whether the shells of ``session`` run the `loader` line, so that a record made for it reaches the command: a shell has run it,
-    or the session read it anew (`READ_ANEW`)."""
+    """Whether the shells of ``session`` run the `loader` line, so that a record reaches its command: a shell has run it, or the
+    session read it anew (`READ_ANEW`)."""
     return bool(session) and (folder(root, session) / "installed").is_file()
 
 
@@ -65,11 +78,16 @@ def mark_installed(root: Path, session: str) -> None:
 
 def loader(root: Path) -> str:
     """The one line the file of a session's shell environment holds. A session that resumed holds it several times, between repeats of its
-    own exports, so the first run keeps its answer in a shell variable and each later one applies it again."""
-    program = shlex.quote(str(Path(__file__).resolve()))
-    asked = f"{shlex.quote(sys.executable)} -I {program} {shlex.quote(str(root.resolve()))}"
-    return (f'if [ -f {program} ]; then _poolhouse_caller="${{_poolhouse_caller-$(printf %s "${{ZSH_EXECUTION_STRING-'
-            f'${{BASH_EXECUTION_STRING-}}}}" | {asked} || printf %s {shlex.quote(NOBODY)})}}"; eval "$_poolhouse_caller"; fi')
+    own exports, so the first run keeps its answer in a shell variable and each later one applies it again. The variable is the line's
+    own: a line left by another checkout, interpreter or state folder keeps its answer to itself."""
+    program = str(Path(__file__).resolve())
+    asked = f"{shlex.quote(sys.executable)} -I {shlex.quote(program)} {shlex.quote(str(root.resolve()))}"
+    kept = f"_h{hashlib.sha256(asked.encode()).hexdigest()[:8]}_poolhouse_caller"
+    gone = shlex.quote(f"poolhouse: {program} is missing, so a helper's command in this shell runs as the session that started it; "
+                       "restart or clear the session.")
+    return (f'if [ -f {shlex.quote(program)} ]; then {kept}="${{{kept}-$(printf %s "${{ZSH_EXECUTION_STRING-'
+            f'${{BASH_EXECUTION_STRING-}}}}" | {asked} || printf %s {shlex.quote(NOBODY)})}}"; eval "${kept}"; '
+            f'elif [ -z "${{POOLHOUSE_SUBAGENT-}}" ]; then printf \'%s\\n\' {gone} >&2; fi')
 
 
 def digest(command: str) -> str:
@@ -95,30 +113,43 @@ def keep(path: Path, held: dict) -> None:
     temporary.replace(path)
 
 
-def record(root: Path, session: str, command: str, cwd: str, caller: tuple[str, str, str]) -> None:
-    """Keep who issued ``command``: ``caller`` is the harness id, board name and board of a subagent, all empty for the session itself.
-    A part that is not text raises, since no shell could be named by it."""
+def transcript_of(event: dict) -> str:
+    """The file in which Claude Code writes the result of the call of the hook event ``event``: the session's transcript, or for a
+    subagent the one it keeps beside it; an empty string when the event names none."""
+    main, agent = str(event.get("transcript_path") or ""), str(event.get("agent_id") or "")
+    if not main or not agent:
+        return main
+    return str(event.get("agent_transcript_path") or Path(main).with_suffix("") / "subagents" / f"agent-{agent}.jsonl")
+
+
+def record(root: Path, session: str, event: dict, caller: tuple[str, str, str]) -> None:
+    """Keep who issued the shell command of the hook event ``event``: ``caller`` is the harness id, board name and board of a subagent,
+    all empty for the session itself. A part that is not text raises, since no shell could be named by it."""
     if not all(isinstance(part, str) for part in caller):
         raise TypeError("a caller is named by text")
     agent, name, board = caller
-    mark_installed(root, session)
-    keep(folder(root, session) / f"call-{time.time_ns()}-{os.getpid()}.json",
-         {"agent": agent, "name": name, "board": board, "command": digest(command), "cwd": cwd, "at": time.time()})
+    where = folder(root, session)
+    where.mkdir(parents=True, exist_ok=True, mode=0o700)
+    for old in where.glob("call-*.json"):
+        with contextlib.suppress(FileNotFoundError):   # a shell took it just now
+            if time.time() - old.stat().st_mtime > FORGOTTEN_S:
+                drop(old)
+    keep(where / f"call-{time.time_ns()}-{os.getpid()}.json",
+         {"agent": agent, "name": name, "board": board, "command": digest(str(event["tool_input"]["command"])),
+          "cwd": str(event.get("cwd") or ""), "at": time.time(), "call": str(event.get("tool_use_id") or ""),
+          "transcript": transcript_of(event)})
 
 
 def waiting(where: Path) -> list[tuple[Path, dict]]:
-    """The records no shell has taken yet, oldest first; one older than `KEPT_S` is dropped."""
+    """The records no shell has taken yet, oldest first."""
     out = []
     for path in sorted(where.glob("call-*.json")):
         try:
             held = json.loads(path.read_text())
-            old = time.time() - float(held["at"]) > KEPT_S
+            held["at"] = float(held["at"])
         except (OSError, ValueError, KeyError, TypeError):
             continue
-        if old:
-            drop(path)
-        else:
-            out.append((path, held))
+        out.append((path, held))
     return out
 
 
@@ -129,24 +160,93 @@ def drop(path: Path) -> None:
         print(f"poolhouse: the record of a command stays ({type(error).__name__})", file=sys.stderr)
 
 
+def results(transcript: str) -> list[bytes]:
+    """The lines near the end of ``transcript`` that hold the result of a tool call; none when it cannot be read."""
+    try:
+        with Path(transcript).open("rb") as held:
+            held.seek(max(0, os.fstat(held.fileno()).st_size - TRANSCRIPT_TAIL))
+            return [line for line in held.read().split(b"\n") if b'"tool_result"' in line]
+    except (OSError, ValueError):
+        return []
+
+
+def over(call: str, lines: list[bytes]) -> bool:
+    """Whether ``lines`` show that the tool call ``call`` is over, so that no shell of it is still to start: its result is an error
+    (refused or denied, it never ran), or it was answered longer ago than a shell takes to start."""
+    for line in (line for line in reversed(lines) if call.encode() in line):
+        try:
+            entry = json.loads(line)
+            answered = [part for part in entry["message"]["content"]
+                        if part.get("type") == "tool_result" and part.get("tool_use_id") == call]
+            if answered:
+                return bool(answered[0].get("is_error")) or (
+                    time.time() - datetime.fromisoformat(str(entry["timestamp"]).replace("Z", "+00:00")).timestamp() > SETTLED_S)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            continue
+    return False
+
+
+def still_to_run(records: list[tuple[Path, dict]]) -> list[tuple[Path, dict]]:
+    """``records`` without those whose call is over, which are dropped; each transcript is read once."""
+    read: dict[str, list[bytes]] = {}
+    left = []
+    for path, held in records:
+        call, transcript = str(held.get("call") or ""), str(held.get("transcript") or "")
+        if call and transcript not in read:
+            read[transcript] = results(transcript)
+        if call and over(call, read[transcript]):
+            drop(path)
+        else:
+            left.append((path, held))
+    return left
+
+
 def nobody(why: str) -> str:
     print(f"poolhouse: this shell has no workspace identity ({why}), so a workspace command in it is refused.", file=sys.stderr)
     return NOBODY
 
 
-def resolve(root: Path, session: str, shell_text: str, cwd: str) -> str:
-    """The lines that name the caller of the command in ``shell_text``: empty for the session itself, `NOBODY` when records of two callers
-    match it, or none does while a subagent's command is still waiting for its shell.
+@contextlib.contextmanager
+def locked(where: Path) -> Iterator[None]:
+    """One shell of a session at a time reads its records and takes one."""
+    where.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (where / "lock").open("a+b") as held:
+        if os.name == "nt":
+            import msvcrt
+            held.seek(0)
+            msvcrt.locking(held.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                yield
+            finally:
+                held.seek(0)
+                msvcrt.locking(held.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(held, fcntl.LOCK_EX)
+            yield
 
-    Each shell takes one record. Where two callers match, the newest is taken and the others are marked, so every shell of that overlap
-    names nobody and none of them is given what is left of another's."""
-    records = waiting(folder(root, session))
-    wanted = asked_for(shell_text)
-    found = [(path, held) for path, held in records if held.get("command") in wanted]
-    if not found:
-        if any(held.get("agent") for _, held in records):
-            return nobody("no record of its caller matches this command while a helper's command is waiting")
-        return ""
+
+def expired(held: dict) -> bool:
+    return time.time() - held["at"] > KEPT_S
+
+
+def matching(where: Path, wanted: set[str]) -> list[tuple[Path, dict]]:
+    """The records that match one of the digests ``wanted``. Where they leave the caller in doubt, those whose call is over are
+    dropped first."""
+    found = [(path, held) for path, held in waiting(where) if held.get("command") in wanted]
+    doubt = (len({held.get("agent") for _, held in found}) > 1
+             or any(held.get("mixed") or expired(held) for _, held in found))
+    return still_to_run(found) if doubt else found
+
+
+def helper_waits(where: Path) -> bool:
+    """Whether a subagent's command is still waiting for its shell."""
+    return bool(still_to_run([(path, held) for path, held in waiting(where) if held.get("agent") and not expired(held)]))
+
+
+def taken(found: list[tuple[Path, dict]], cwd: str) -> str:
+    """The lines for the shell that takes one of the records ``found``. Where two callers match, the newest is taken and the others
+    are marked, so every shell of that overlap names nobody and none of them is given what is left of another's."""
     if len({held.get("agent") for _, held in found}) > 1:
         here = [(path, held) for path, held in found if os.path.realpath(str(held.get("cwd"))) == os.path.realpath(cwd)]
         found = here if len({held.get("agent") for _, held in here}) == 1 else found
@@ -159,6 +259,25 @@ def resolve(root: Path, session: str, shell_text: str, cwd: str) -> str:
     drop(path)
     agent = str(held.get("agent") or "")
     return exports(agent, str(held.get("name") or ""), str(held.get("board") or "")) if agent else ""
+
+
+def resolve(root: Path, session: str, shell_text: str, cwd: str) -> str:
+    """The lines that name the caller of the command in ``shell_text``: empty for the session itself, `NOBODY` when records of two callers
+    match it, when a subagent's matching record is older than `KEPT_S`, or when none matches while a subagent's command is still
+    waiting for its shell. Each shell takes one record."""
+    where = folder(root, session)
+    with locked(where):
+        found = matching(where, asked_for(shell_text))
+        late = [(path, held) for path, held in found if expired(held)]
+        for path, _ in late:
+            drop(path)
+        if any(held.get("agent") for _, held in late):
+            return nobody("the record of its caller is older than an hour; run the command again")
+        if found := [one for one in found if one not in late]:
+            return taken(found, cwd)
+        if helper_waits(where):
+            return nobody("no record of its caller matches this command while a helper's command is waiting")
+        return ""
 
 
 def ran_here(root: Path, session: str) -> None:
@@ -175,6 +294,9 @@ def main(argv: list[str]) -> int:
     if session:
         print(resolve(Path(argv[0]), session, sys.stdin.read(), str(Path.cwd())))
         ran_here(Path(argv[0]), session)
+    elif not os.environ.get("POOLHOUSE_SUBAGENT"):
+        print("poolhouse: this shell names no Claude Code session, so a helper's command in it runs as the session that started it.",
+              file=sys.stderr)
     return 0
 
 
