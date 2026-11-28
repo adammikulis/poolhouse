@@ -66,7 +66,7 @@ Historical observations remain in `connection-discovery.json` (`2026-10-23T19:25
 | Legacy raw Ed25519-key SHA-256 | `aa547af9b1e1b768dbce6b4e5844b0fb4240f1e26c325fd918e2f9619b925e5c`; not canonical DeviceId |
 | Certificate DER SHA-256 | `524934712872c289dbdc5043e486a4d6fa442f0a15fb2212bacee9910a4a32ca` |
 | Proposed canonical DeviceId | Unverified: public certificate/key bytes were not retained; hashes cannot reconstruct them |
-| Observed LAN endpoints | `en1`, IPv4 `192.168.2.27`; TCP `*:7447`, UDP `*:7448`; `en0` returned no IPv4 |
+| Observed LAN endpoints | `en1`, IPv4 `192.0.2.27`; TCP `*:7447`, UDP `*:7448`; `en0` returned no IPv4 |
 | Observed pool state | Secure, unfounded; empty legacy pool ID, no admins, one self member, zero others; beacon enabled, all recorded counters zero; join code closed |
 | Mac agent addressing | Observer `chatgpt-9013e2`; parent coordinator `chatgpt-269ad4`, native session `01a1694e-0d2b-7ab0-9353-0b84b7744906` |
 

@@ -13,7 +13,7 @@ not endpoint trust, membership, installation approval or accepted H/K/P/I proof.
 | Proposed domain-separated DeviceId | `64bff7041153e5b6771a3ab5506d435466c7e5a44f26cc1684fb427e148a44bb` |
 | Kernel socket observation | PID `17181`, TCP `0.0.0.0:7447`, UDP `0.0.0.0:7448` |
 | Observed process credentials | Real/effective/saved/filesystem UID and GID all `1000` |
-| Local IPv4 interface observations | `eth0`: `192.168.2.59/24`; `eth4`: `192.168.2.25/24` |
+| Local IPv4 interface observations | `eth0`: `192.0.2.59/24`; `eth4`: `192.0.2.25/24` |
 | Pool state reported | Secure, unfounded, one active self member, no connected other member |
 
 The public certificate was parsed as Ed25519 without reading or exporting a
