@@ -394,6 +394,10 @@ def stop(args: argparse.Namespace) -> int:
     elif rec.workdir != rec.source:
         shutil.rmtree(rec.workdir, ignore_errors=True)
     say(f"stopped {rec.name}")
+    if row := store.result(rec.name):   # what the run came to: its turns and tokens, and where its changes are kept
+        came = (f"{row.get('state')}: {row.get('turns')} turn(s), {row.get('input_tokens')} read, {row.get('output_tokens')} written; "
+                f"{row.get('detail') or 'nothing was kept'}")
+        say(nudge_fence.clean(came).replace("\n", " "))
     return 0
 
 

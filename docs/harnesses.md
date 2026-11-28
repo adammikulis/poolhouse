@@ -377,8 +377,8 @@ about a quarter of an hour. Every harness that points at a local model keeps to 
   quarter of the machine and never under llama-server's 8192 MiB (`harnessing.prompt_cache_mb`): one conversation of Qwen3.8-Flash-Next is about
   7 GiB at 166,000 tokens, so with 8192 MiB one other request pushed it out. A server already up keeps its own setting.
 - **A rewrite is said.** The model bridge compares each prompt with those before it (`isolation.prompt_watch`) and says one that makes the server
-  read much of a conversation again, naming where it differs; a delegate records it and tells its lead, and a step that read most of a long
-  prompt without the cache is told too. A run in place talks to the server itself and is not compared.
+  read much of a conversation again, naming where it differs; a delegate records it and tells its lead, and a step that read much of its
+  conversation again without the cache is told too. A run in place talks to the server itself and is not compared.
 - **Hybrid models.** Qwen3.8-Flash-Next keeps recurrent state, so llama-server cannot cut its cache at any token: it goes back to a saved context
   checkpoint before the difference, or to the start when it has none there (32 a slot, its default, saved near the end of each prompt).
 
@@ -445,7 +445,7 @@ Besides the question a delegate asks and the message that its run ended, `poolho
 `delegate notice: ...`, when: an attempt is broken off from outside, or a review fails (an error that ends the run is the last message); a restart
 begins; the preflight in the box fails; a test run in the box fails for what looks like setup (a command that cannot start, a runner that cannot
 collect, a module, a permission or a connection the box lacks), once for each such line; a request rewrote history the model server had read, or a
-step after the first read 32,000 tokens or more of its prompt without the cache and more than it reused ("Prompt reuse"); and nothing has happened
+step read 32,000 tokens or more without the cache while reusing less than half of the conversation before it ("Prompt reuse"); and nothing has happened
 for 10 minutes, again after 20, 40 and so on. A run sends at most 30. Nothing waits for an answer to one.
 
 ### Self-check before delivery

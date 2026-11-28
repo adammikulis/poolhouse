@@ -427,15 +427,17 @@ def work_pass(rec: store.Delegate) -> delegate_review.Pass:
     return delegate_review.Pass("work", 0, rec.message(), brief_of(rec), tools_of(rec.edit), tier(rec), rec.max_turns)
 
 
-def renderer(rec: store.Delegate, binary: str, served: tuple[str, str, int],
-             ask: delegate_review.Pass | None = None) -> Callable[[isolation.Context], isolation.Rendering]:
+def renderer(rec: store.Delegate, binary: str, served: tuple[str, str, int], ask: delegate_review.Pass | None = None,
+             earlier: list[list[str]] | None = None) -> Callable[[isolation.Context], isolation.Rendering]:
     """What OpenCode needs written in its home before it starts, and its command line: a config whose one agent has the prompt and the tools of the
-    pass ``ask`` (by default the work's), the plugin (which offers the model no other tool, keeps what differs from launch to launch, the stage and the
-    home, out of the prompt, and ends each shell command at its timeout) and, for one with a shell, the program that ends them. It prints one JSON
-    line per event."""
+    pass ``ask`` (by default the work's), the plugin (which offers the model no other tool, keeps the paths that differ from box to box out of the
+    prompt (`opencode.lasting`), those of the ``earlier`` boxes a continued conversation still names among them, and ends each shell command at its
+    timeout) and, for one with a shell, the program that ends them. This box's paths are added to ``earlier``. It prints one JSON line per event."""
     def render(context: isolation.Context) -> isolation.Rendering:
         made = ask or work_pass(rec)
-        settings: dict[str, Any] = {"tools": list(made.tools), "fixed": [[context.stage, "."], [str(context.home), "$HOME"]]}
+        before = earlier if earlier is not None else []
+        settings: dict[str, Any] = {"tools": list(made.tools), "fixed": [*opencode.lasting(context), *before]}
+        before.extend(opencode.lasting(context))
         files: dict[str, str] = {}
         if "shell" in made.tools:
             files["session/bounded.py"] = BOUNDED
@@ -518,6 +520,8 @@ class _Boxed:
     tried: bool = False
     box: isolation.Confinement | None = None
     """The work's confinement, which holds the change."""
+    paths: list[list[str]] = field(default_factory=list)
+    """The `opencode.lasting` replacements of every box made so far: a conversation taken up in a later one still names the paths of where it was held."""
 
     @property
     def window(self) -> int:
@@ -550,7 +554,7 @@ class _Boxed:
         served = (url, alias, self.model.window)
         how = harnessing.Harness("opencode", self.binary, served, say, lead=lambda _helper: reach, conversation="", observe=hooks.heard)
         run = harnessing.Session(helper, Path(args.project), ask.brief)
-        with harnessing.confined(args, run, how, renderer(rec, self.binary, served, ask)) as box:
+        with harnessing.confined(args, run, how, renderer(rec, self.binary, served, ask, self.paths)) as box:
             stream.record.boxed(box)
 
             def go(before: Callable[[], None] = lambda: None) -> delegate_review.Ran:

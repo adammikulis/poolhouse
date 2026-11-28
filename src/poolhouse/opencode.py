@@ -262,16 +262,24 @@ def argv_of(binary: str, alias: str, extra: Sequence[str], directory: str, throu
             "--format", "json", "--model", f"{PROVIDER}/{alias}", *extra)
 
 
+def lasting(context: isolation.Context) -> list[list[str]]:
+    """The plugin's ``fixed`` replacements of one box: each of its paths that differs from box to box, with what the prompt says in its place, so every box
+    asks with the same prompt and the server reuses what it has read."""
+    temporary = [[context.temp, "$TMPDIR"]] if context.temp else []
+    return [[context.stage, "."], [str(context.home), "$HOME"], *temporary]
+
+
 def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], settings: Mapping[str, Any],
               files: Mapping[str, str]) -> isolation.Rendering:
     """What a run of ``command`` (the binary and ``run``'s own words) needs written in its home: the config of ``setup`` (its bridge's URL, token,
-    plugin and lead server are this launch's), the plugin with ``settings`` over the client command and the stage, and ``files``."""
+    plugin and lead server are this launch's), the plugin with ``settings`` over the client command, the stage and the box's `lasting` replacements, and
+    ``files``."""
     binary, *extra = command
     alias, server = setup.served[1], context.lead_server()
     made = Setup((context.base_url, alias, setup.served[2]), context.token, str(context.file(PLUGIN)),
                  [server["command"], *server["args"]], families.for_model_id(alias).think_kwargs(False), setup.brief, setup.agent)
     written = {f".opencode-config/{CONFIG}": config(made),
-               f"{PLUGIN}/{ENTRY}": plugin({"hook": context.client_argv("hook"), "root": context.stage, **settings}), **files}
+               f"{PLUGIN}/{ENTRY}": plugin({"hook": context.client_argv("hook"), "root": context.stage, "fixed": lasting(context), **settings}), **files}
     through = ("", "")
     if context.server_socket:
         written[SOCKET_PRELOAD] = through_socket(context.server_socket)

@@ -133,7 +133,7 @@ def test_the_bridge_says_what_it_saw_and_how_far_the_server_is_while_a_request_i
             server.canned = canned.Canned(answer=slow)
             http.request_json(url, payload=asked(*GROWN, said("user", SUMMARIZE), tools=("opencode_x",)), options=options)
             [during] = looks
-            after = bridge.look()
+            after = until(lambda: (look := bridge.look()) and not look.compacting and look)   # the answer arrives before the bridge is done
         finally:
             bridge.stop()
         assert during.compacting and during.progress.read == 4096 and not during.waiting, during
@@ -189,6 +189,8 @@ def test_a_rewritten_history_and_a_history_read_again_are_recorded_and_told_to_t
     going = delegate_recorder.of(name).of_pass(WORK)
     finished(going, 30_000, 0, 100)   # the first step reads all of its prompt, as every first one does
     finished(going, 200, 30_000, 100)
+    finished(going, 40_000, 30_300, 100)   # a long new tool result is read once, with everything before it still reused
+    finished(going, 100, 70_400, 100)
     going.beat(True, look(10, rewrites=["PLUMBING: differs at tool 2"]))
     going.beat(True, look(20, rewrites=["PLUMBING: differs at tool 2"]))
     finished(going, 160_000, 4_000, 100)

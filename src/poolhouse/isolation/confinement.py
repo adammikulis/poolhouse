@@ -86,6 +86,8 @@ class Context:
     server_socket: str = ""
     """Where a harness's own server listens on macOS, whose box binds no address: a Unix socket in a private folder of this launch, granted to a
     rendering that says it `Rendering.serves`. Empty where the box has a loopback of its own (Linux)."""
+    temp: str = ""
+    """The launch's own temporary folder, the box's ``TMPDIR``; empty where the agent home's holds the temporary files (Linux)."""
 
     def client_argv(self, *words: str) -> list[str]:
         """The command a confined process runs to reach the session bridge: ``words`` are the client's own (`hook pre`, `workspace inbox`, `mcp`)."""
@@ -502,7 +504,7 @@ def prepare(plan: Plan) -> Confinement:
         temp = _temporary(parts)
         context =Context(agent_home, agent_home / HARNESS_DIRECTORIES[plan.harness], stage, os.path.realpath(sys.executable), str(client), bridge.path,
                           os.getpid(), f"http://127.0.0.1:{model.port}", plan.lease.alias, plan.lease.window, model.token,
-                          f"{server}/server" if server else "")
+                          f"{server}/server" if server else "", temp)
         rendering = plan.render(context)
         window = _window(plan, parts, (model.port,))
         shims: tuple[str, ...] = ()

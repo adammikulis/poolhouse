@@ -83,8 +83,8 @@ class Teller:
         elif kind == "rewrite":
             self._tell("history rewritten", str(event.get("why")), once=f"rewrite {event.get('why')}")
         elif kind == "reread":
-            self._tell("prompt read again", f"step {event.get('turn')} read {int(event.get('input_tokens') or 0):,} tokens of its prompt again, "
-                       f"more than the {int(event.get('cache_read_tokens') or 0):,} the server's cache held")
+            self._tell("prompt read again", f"step {event.get('turn')} read {int(event.get('input_tokens') or 0):,} tokens of its prompt again; "
+                       f"only {int(event.get('cache_read_tokens') or 0):,} came from the server's cache")
         elif kind == "test" and event.get("setup"):
             self._tell("test setup", f"a test run in the box failed and it looks like setup, not the work: command {event.get('command')!r}, "
                        f"{delegate_record.counts(event)}: {event['setup']}", once=f"setup {event['setup']}")

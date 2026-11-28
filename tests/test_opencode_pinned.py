@@ -230,6 +230,20 @@ def test_a_delegate_broken_off_on_the_pinned_release_takes_its_conversation_up_i
     if words:
         assert (delegated.project / "made.py").read_text() == "x = 1\n", "a file the continued conversation wrote by its relative path is published"
     assert any("interrupted from outside the task" in str(each["content"]) for each in last), last[-3:]
+    assert rewritten(offered(served)[0]) == [], "the next box asks with the prompt the first one did, so the server reads only what is new"
+
+
+def rewritten(requests):
+    """The requests that are not the one before with more at its end: ``(number, first thing that differs)``, what a server would read again."""
+    found = []
+    for number in range(1, len(requests)):
+        before, after = requests[number - 1], requests[number]
+        if after["tools"] != before["tools"]:
+            found.append((number, tools_in(before), tools_in(after)))
+        elif after["messages"][: len(before["messages"])] != before["messages"]:
+            said = [*after["messages"], *[None] * len(before["messages"])]
+            found.append((number, next((one, two) for one, two in zip(before["messages"], said, strict=False) if one != two)))
+    return found
 
 
 def test_a_delegate_broken_off_twice_on_the_pinned_release_keeps_one_conversation(delegated, served, monkeypatch):
@@ -255,6 +269,7 @@ def test_a_delegate_broken_off_twice_on_the_pinned_release_keeps_one_conversatio
     assert ran.status == 0 and ran.row["state"] == "done", (ran.row, ran.log[-4000:])
     assert "Location not found" not in ran.log and "DirectoryAccessDenied" not in ran.log, ran.log[-4000:]
     assert [each["role"] for each in offered(served)[0][-1]["messages"]].count("tool") == 2, "both earlier calls are in the one conversation"
+    assert rewritten(offered(served)[0]) == [], "each box asks with the prompt the first one did"
 
 
 def test_the_pinned_release_gives_up_on_a_replys_head_only_where_the_config_names_a_time(delegated, served, monkeypatch):

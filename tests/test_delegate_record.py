@@ -230,6 +230,18 @@ def test_follow_prints_a_finished_run_in_full_with_what_the_box_said_fenced_as_d
     assert delegate.main(["follow", "nobody"]) == 2
 
 
+def test_stop_says_what_the_run_came_to_and_where_its_changes_are_kept(lead_node, detached, capsys):
+    node, lead, _project = lead_node
+    started("--task", "run the tests")
+    [name] = agent_names(node, lead)
+    store.save_result(name, {"state": "stopped", "turns": 91, "input_tokens": 600, "output_tokens": 42, "text": "", "error": "stopped by the lead",
+                             "detail": "kept patches: /PLUMBING/kept.patch"})
+    store.set_status(name, "stopped", "stopped by the lead")
+    capsys.readouterr()
+    assert delegate.main(["stop", name]) == 0
+    assert "stopped: 91 turn(s), 600 read, 42 written; kept patches: /PLUMBING/kept.patch" in said(capsys)
+
+
 def posted(node, lead, name):
     return [(e.fields.get("subject"), e.text) for e in node.session(lead).read(inbox=True, limit=100).entries if e.sender == name]
 

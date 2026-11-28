@@ -28,7 +28,7 @@ COMPACTION = ("You MUST summarize the conversation above into a structured summa
               "Update the existing checkpoint in the conversation above into one consolidated summary")
 """How the pinned OpenCode (`opencode_install.VERSION`) begins the message that asks for a compaction's summary; tests/test_opencode_pinned.py runs
 that release into one."""
-BILLING = re.compile(r"(x-anthropic-billing-header:[^\n]*?cch=)[0-9a-f]{5};")
+BILLING = re.compile(r"\A(x-anthropic-billing-header:[^\n]{0,200}?cch=)[0-9a-f]{5};")
 """A stamp Claude Code puts at the head of its system prompt that differs on every request; llama-server sets it to a constant before it reads it."""
 NAME = re.compile(r"[A-Za-z0-9_.:-]{1,80}")
 

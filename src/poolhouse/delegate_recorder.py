@@ -24,8 +24,8 @@ FILES = ("file_path", "path", "filePath")
 ABOUT = ("pattern", "question", "text")
 """The argument that says what a call is about, of a tool that has no command and no file."""
 REREAD = 32_000
-"""The tokens of a prompt that a step after the first may read without the server's cache, past which, when they are also more than it reused, the
-history was read again."""
+"""The tokens a step may read without the server's cache, past which, when it also reused less than half of the conversation the step before left,
+the history was read again."""
 
 
 def _never_ends_a_run(method: Callable[..., None]) -> Callable[..., None]:
@@ -214,8 +214,8 @@ class Pass:
                          cache_read_tokens=reused, reuse_percent=round(100 * reused / prompt) if prompt else None, model_seconds=seconds,
                          tokens_per_second=round(wrote / seconds, 1) if wrote and seconds >= 0.5 else None)
         self.recorder.spend(input_tokens=read, output_tokens=wrote, cache_read_tokens=reused, model_seconds=seconds)
-        self._context = prompt + wrote
-        if self.turn > 1 and read >= REREAD and read > reused:
+        before, self._context = self._context, prompt + wrote
+        if read >= REREAD and reused < before // 2:
             self.recorder.add("reread", turn=self.turn, input_tokens=read, cache_read_tokens=reused)
 
     def _show(self) -> None:
