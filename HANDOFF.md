@@ -34,7 +34,7 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | Windows runs natively, without WSL | Pull request, green Windows installer check, install over an older release, then confinement of the model server and agents | branch `worktree-agent-adc2b4ba43534d41d`, #112 |
 | Phone linking to a computer, including native Windows | Attack pass of the Windows permission changes; take its Windows fixes into the native branch | #111 |
 | Android app | Join or found a pool from the app, guest and device-uses screens, then a test on a phone | #114, branch `feat/android-node-mode` |
-| Approvals in the app, with a person deciding, for the actions that person chooses; protections stay automatic | Keep the node's approval protocol. #114 removes the old approval app and its native library, so the new app needs the approval screens. Settle which actions can ask and what happens with no answer, and state it in the rule of `AGENTS.md` that nothing waits for a person | `docs/phone-approval.md`, `app/poolhouse-node/src/gov/`, #114 |
+| Approvals in the app for the actions a person chooses (the rule is in `AGENTS.md`) | Build it in the new app: choices all start off, a request shows exactly what will happen, no answer means no action. Keep the node's approval protocol; #114 removes the old approval app and its native library | `docs/phone-approval.md`, `app/poolhouse-node/src/gov/`, #114 |
 | Phone node runs no code from other devices | Wire the node module into the app | branch `backup/phone-node` |
 | VM prototype for the phone, not wired in | Review and land as a prototype | #119 |
 
