@@ -4,7 +4,6 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
-import os
 import shutil
 import stat
 import subprocess
@@ -94,7 +93,7 @@ def ensure(root, *, admit=contextlib.nullcontext, say=lambda text: None):
             temporary = Path(work)
             isolated = temporary / 'home'
             isolated.mkdir()
-            environment = {name: value for name, value in os.environ.items()
+            environment = {name: value for name, value in testnode.account_environment().items()
                            if not name.startswith(('CARGO_', 'RUSTFLAGS', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER'))}
             account = testnode.account()
             environment.update(HOME=str(isolated), TMPDIR=str(temporary), POOLHOUSE_HOME=str(temporary / 'state'),
