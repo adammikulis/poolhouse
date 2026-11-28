@@ -158,6 +158,18 @@ later tests of that process are listed the same way without waiting again. It is
 nothing failed ends with status 75, and a failure keeps status 1. A test that runs past its timeout fails with `test timed out after N s
 running (the test timeout)`, followed by the seconds it waited for its permit.
 
+A run names what it is on (`testhang.py`, registered by `testslots_pytest.py`): a test its timeout fails is printed at once as
+`test: TIMED OUT in <phase>: <test>`, and every 60 seconds (`DEV_TEST_STILL_S`) each test that has run that long is printed as
+`test: still running after N s: <test>`. `pytest-timeout` raises in a test once, so a test that swallows it or hangs while it
+is torn down is bounded separately: a test still running 120 seconds (`DEV_TEST_HANG_GRACE_S`) past its own timeout, counted
+from its setup, is printed as `test: HUNG: <test>` with every thread's stack, the processes its test process started are ended,
+and that process exits, which fails the test as a worker's crash while the run goes on. A timeout on the function alone adds
+the native build's deadline to the bound.
+
+On Apple Silicon a run that reads `POOLHOUSE_PRISM_ARCHIVE` is given the pinned Bonsai runtime archive: the runner fetches it
+once into `~/.cache/test-archives` (`DEV_TEST_ARCHIVE_DIR` names another folder), checks its SHA-256 on every use, and ends the
+run when it cannot be had, except in a coding sandbox. A run of plain `pytest` fetches nothing.
+
 Admission is one pass over the directory under its mutex, and a pass grants every request that fits, in
 grant order. A request runs a pass when it arrives (unless the last pass left every worker busy), when it
 releases its permit, and when it waits and no pass has run for 0.3 to 0.6 s (holders that died, aged
