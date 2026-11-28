@@ -171,7 +171,8 @@ def test_the_bridge_says_what_it_saw_and_how_far_the_server_is_while_a_request_i
 def bridged(server, watch=None):
     """A bridge on the canned ``server``, comparing with ``watch`` where one is given, and ``ask(body)`` through it."""
     bridge = ModelBridge(server.base_url, Lease.of(canned.CANNED_MODEL_ID, 262_144, 1), key=server.api_key)
-    bridge.watch = watch or bridge.watch
+    if watch is not None:
+        bridge.watch = watch
     try:
         url = f"http://127.0.0.1:{bridge.start()}{CHAT}"
         options = http.Options(headers={"Authorization": f"Bearer {bridge.token}"}, timeout=30)
