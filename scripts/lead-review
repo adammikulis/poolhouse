@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Review a pull request into the development branch: record the verdict on the board, comment on the pull request and set the
-`lead-review` status on the commit that was reviewed (docs/landing.md).
+"""Review a pull request into the development branch or main: record the verdict on the board, comment on the pull request and set
+the `lead-review` status on the commit that was reviewed (docs/landing.md).
 
-    scripts/lead-review PR SHA --verdict accept|reject --note TEXT
+    scripts/lead-review PR SHA --show
+    scripts/lead-review PR SHA --verdict accept|reject --note TEXT [--attack] [--finding "SEVERITY: TEXT"]... [--resolves SHA]...
 
 SHA is the commit that was read; a pull request whose head has moved since is refused, since a new commit needs a new review.
+--show prints which review the change needs and why, what it weakens in guard tests and which rejects stand, and records nothing.
+A critical, high or medium finding blocks: a verdict with one is a reject, and a reject names one. Low findings are follow-ups.
 The agents the pull request names in `Author-agent: NAME` lines do not accept it, nor does an agent such a subagent started;
-a subagent's pull request is accepted by an agent above it or by a main session. An accept is refused, and the status set to
-failed, while another reviewer's reject of any commit the pull request would merge stands on the board; a board or a commit
-that cannot be read refuses it too. All agents use one GitHub sign-in, so the status records the process and is not a security
-boundary. After an accept, the one merge command is printed.
+a subagent's pull request is accepted by an agent above it or by a main session. --attack records the attack verdict instead, from
+any agent that is no author and that no author started; a change that needs an attack review is accepted only
+once another agent's attack accept of SHA stands. An accept is refused, and the status set to failed, while another reviewer's
+reject of any commit the pull request would merge stands on the board; --resolves SHA answers the reject of an earlier commit
+whose reviewer's session has ended. A board or a commit that cannot be read refuses an accept. All agents use one GitHub sign-in,
+so the status records the process and is not a security boundary. After an accept, the next command is printed.
 """
 from __future__ import annotations
 
@@ -22,20 +27,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
-sys.path.append(str(ROOT / "scripts"))
-
-import sealed_git  # noqa: E402
 
 from poolhouse import board, devbranch  # noqa: E402
-from poolhouse.workspace import landing, release_check  # noqa: E402
+from poolhouse.workspace import landing, merge_review, release_check, review_depth  # noqa: E402
+from poolhouse.workspace.merge_review import Refused  # noqa: E402
 
-AUTHOR = re.compile(r"^[ \t]*Author-agent:[ \t]*([A-Za-z0-9][A-Za-z0-9_.-]*)[ \t\r]*$", re.M | re.I)
 SHA = re.compile(r"[0-9a-f]{7,40}")
 WORDS = {"accept": ("success", "passed"), "reject": ("failure", "failed")}
-
-
-class Refused(RuntimeError):
-    pass
+BODY_CHARACTERS = 65_536
+"""The longest comment GitHub takes."""
 
 
 def gh(*args: str, given: str) -> None:
@@ -46,10 +46,11 @@ def gh(*args: str, given: str) -> None:
 
 
 def reviewed(number: str, sha: str, found: dict) -> str:
-    """The full head commit of the pull request ``found``, which is open, targets development and is still at ``sha``."""
+    """The full head commit of the pull request ``found``, which is open, targets development or main and is still at ``sha``."""
     dev = devbranch.development_branch(Path.cwd())
-    if found.get("baseRefName") != dev:
-        raise Refused(f"pull request {number} targets {found.get('baseRefName')}; this reviews pull requests into the development branch {dev}")
+    if found.get("baseRefName") not in (dev, "main"):
+        raise Refused(f"pull request {number} targets {found.get('baseRefName')}; this reviews pull requests into the development "
+                      f"branch {dev} and into main")
     if found.get("state") != "OPEN":
         raise Refused(f"pull request {number} is {str(found.get('state')).lower()}")
     head = str(found.get("headRefOid"))
@@ -58,100 +59,164 @@ def reviewed(number: str, sha: str, found: dict) -> str:
     return head
 
 
-def spawners(name: str, parents: dict[str, str]) -> list[str]:
-    """The sessions that started ``name``, the nearest first."""
-    above: list[str] = []
-    while (name := parents.get(name, "")) and name not in above:
-        above.append(name)
-    return above
-
-
-def independent(reviewer: str, parents: dict[str, str], authors: list[str]) -> None:
-    """Raise unless ``reviewer`` may accept work of ``authors``; ``parents`` maps each session of the board to the one that started it
-    (empty for a main session)."""
-    for author in authors:
-        if reviewer == author:
-            raise Refused(f"{reviewer} is an author of this pull request and does not accept its own work")
-        above = spawners(author, parents)
-        if author in parents and not above:
-            continue    # a main session's work: any other agent may have read it, one it started too
-        if author in spawners(reviewer, parents):
-            raise Refused(f"{reviewer} was started by its author {author}, so its accept is not independent")
-        if parents.get(reviewer) and reviewer not in above:
-            raise Refused(f"{author} is reviewed by the agent that spawned it ({', '.join(above) or 'unknown to this board'}) "
-                          "or by a main session")
-
-
-def merged_commits(number: str, base: str, head: str) -> list[str]:
-    """The commits pull request ``number`` would put into ``base``: ``head`` first, then every other commit of it that origin's ``base``,
-    fetched now, does not hold."""
-    root = Path.cwd()
-    sealed_git.git(root, "fetch", "--quiet", "--no-tags", "origin", f"refs/heads/{base}")
-    held = sealed_git.out(root, "rev-parse", "FETCH_HEAD")
-    if not sealed_git.commit_id(root, head):
-        sealed_git.git(root, "fetch", "--quiet", "--no-tags", "origin", f"refs/pull/{number}/head")
-    if not sealed_git.commit_id(root, head):
-        raise Refused(f"the commits of pull request {number} cannot be read: {head} is not in this repository")
-    found = sealed_git.sealed(root, "rev-list", head, f"^{held}").stdout.split()
-    return [head, *(sha for sha in found if sha != head)]
-
-
-def standing_rejects(session: board.session.Session, commits: list[str]) -> dict[str, list[str]]:
-    """The commits of ``commits`` that carry a standing reject of a reviewer other than ``session``, each with who rejected it."""
-    found = {sha: landing.rejecters(session, landing.accepts(session, sha)) for sha in commits}
-    return {sha: who for sha, who in found.items() if who}
-
-
 def set_status(head: str, state: str, description: str) -> None:
     """Set the `lead-review` status of the commit ``head``."""
     status = {"state": state, "context": release_check.REVIEW_STATUS, "description": description[:140]}
     gh("api", "-X", "POST", "repos/{owner}/{repo}/statuses/" + head, "--input", "-", given=json.dumps(status))
 
 
+def listed(title: str, lines: list[str]) -> str:
+    """``title`` over a list of ``lines``, or an empty string when there are none."""
+    return "".join([f"\n{title}\n", *(f"- {line}\n" for line in lines)]) if lines else ""
+
+
+def change(number: str, found: dict, head: str) -> tuple[list[str], str, list[str]]:
+    """Why the pull request needs an attack review (empty for the lighter one), what its reviewer is shown about that, and the
+    commits that merging ``head`` adds."""
+    root = Path.cwd()
+    held = review_depth.fetched(root, number, str(found.get("baseRefName")), head)
+    commits = review_depth.commits(root, held, head)
+    if not review_depth.tiered(root, held):
+        return [], "", commits
+    reasons = review_depth.attack_reasons(root, held, head)
+    shown = (f"This change needs {'an attack review' if reasons else 'the lighter review'}.\n"
+             + listed("Paths that ask for an attack review:", reasons)
+             + listed("Guard, authority and red-team tests it weakens, as `weakened-assertions` reads them:",
+                      review_depth.weakened(root, held, head)))
+    return reasons, shown, commits
+
+
+def connected() -> board.session.Session:
+    return board.session.connect(cwd=Path.cwd(), client=board.client.Client(autostart=False))
+
+
+def show(args: argparse.Namespace, found: dict, head: str) -> str:
+    """What a reviewer is shown before deciding; nothing is recorded."""
+    _, shown, commits = change(args.number, found, head)
+    standing = merge_review.rejects(connected(), commits, merge_review.authors(str(found.get("body") or "")))
+    return shown + listed("Rejects that stand:", [f"{sha[:12]} by {', '.join(who)}" for sha, who in standing.items()])
+
+
+def permitted(args: argparse.Namespace, session, found: dict, head: str, reasons: list[str]) -> None:
+    """Raise unless this session may accept the pull request in the review it names."""
+    me = session.whoami()
+    names = merge_review.authors(str(found.get("body") or ""))
+    if not names and not (found.get("author") or {}).get("is_bot"):
+        raise Refused("the pull request names no author: its description needs an `Author-agent: NAME` line")
+    above = merge_review.parents(session)
+    if args.attack:
+        if not merge_review.independent_attacker(me.name, above, names):
+            raise Refused(f"{me.name} is an author of this pull request or an author started it, so its attack accept is not independent")
+        return
+    merge_review.independent(me.name, above, names)
+    if reasons and not merge_review.attackers(session, head, str(found.get("headRefName")), names):
+        raise Refused(f"this change needs an attack review ({reasons[0]}; {len(reasons)} such paths) and no other agent's attack "
+                      f"accept of {head[:12]} stands: an agent that is not you, is no author and that no author started records one "
+                      f"with `scripts/lead-review {args.number} {head} --attack --verdict accept --note TEXT`; then run this again")
+
+
+def answered(args: argparse.Namespace, session, commits: list[str]) -> list[str]:
+    """The full ids of the earlier commits whose rejects this accept answers (``--resolves``)."""
+    out = []
+    for given in args.resolves:
+        named = [sha for sha in commits[1:] if SHA.fullmatch(given.lower()) and sha.startswith(given.lower())]
+        if len(named) != 1:
+            raise Refused(f"--resolves names an earlier commit of this pull request, not {given}: a rejected head is answered by "
+                          "a new commit")
+        merge_review.answerable(session, named[0], args.attack)
+        out.append(named[0])
+    return out
+
+
+def unrejected(session, found: dict, head: str, commits: list[str], answering: list[str]) -> None:
+    """Raise, and set the status to failed, while a reject of a commit the merge would add stands."""
+    standing = merge_review.rejects(session, commits, merge_review.authors(str(found.get("body") or "")), answering)
+    if not standing:
+        return
+    said = "; ".join(f"{sha[:12]} by {', '.join(who)}" for sha, who in standing.items())
+    # over any earlier success on this commit, so that the merge fails
+    set_status(head, WORDS["reject"][0], f"standing reject of {said}")
+    raise Refused(f"a reject stands on {said}: the merge is held until that reviewer accepts the commit with "
+                  "`poolhouse-workspace land-review BRANCH SHA --verdict accept`, or, once its session has ended, another reviewer "
+                  "answers it with --resolves SHA")
+
+
+def after(args: argparse.Namespace, found: dict, head: str) -> str:
+    """What to run after this accept."""
+    if args.attack:
+        return ("The merge also needs the ordinary accept, from another agent (the one that spawned the author):\n"
+                f"    scripts/lead-review {args.number} {head} --verdict accept --note TEXT")
+    flags = "--merge" if found.get("baseRefName") == "main" else "--merge --delete-branch"
+    return ("When the required checks pass, run this as the whole command:\n"
+            f"    gh pr merge {args.number} {flags} --match-head-commit {head}")
+
+
 def review(args: argparse.Namespace) -> str:
     """Record the review and return what to print."""
     note = args.note.strip()
-    if not note:
-        raise Refused("--note says what was read and why the verdict is that")
+    given: list[dict[str, str]] = []
+    if not args.show:
+        if not args.verdict or not note:
+            raise Refused("a review gives --verdict, and --note says what was read and why the verdict is that")
+        given = merge_review.findings(args.finding)
+        merge_review.check(args.verdict, given)
+        if args.resolves and args.verdict != "accept":
+            raise Refused("--resolves goes with an accept")
     found = release_check.pull_request(".", args.number, "number", "state", "baseRefName", "headRefName", "headRefOid", "body", "author")
     head = reviewed(args.number, args.sha.lower(), found)
-    session = board.session.connect(cwd=Path.cwd(), client=board.client.Client(autostart=False))
+    if args.show:
+        return show(args, found, head)
+    session = connected()
     me = session.whoami()
+    answering: list[str] = []
     if args.verdict == "accept":
-        authors = AUTHOR.findall(str(found.get("body") or ""))
-        if not authors and not (found.get("author") or {}).get("is_bot"):
-            raise Refused("the pull request names no author: its description needs an `Author-agent: NAME` line")
-        independent(me.name, {a.name: a.parent for a in session.agents(retired=True)}, authors)
-        if rejects := standing_rejects(session, merged_commits(args.number, str(found.get("baseRefName")), head)):
-            said = "; ".join(f"{sha[:12]} by {', '.join(who)}" for sha, who in rejects.items())
-            # over any earlier success on this commit, so that the merge fails
-            set_status(head, WORDS["reject"][0], f"standing reject of {said}")
-            raise Refused(f"a reject stands on {said}: the merge is held until that reviewer accepts the commit with "
-                          "`poolhouse-workspace land-review BRANCH SHA --verdict accept`")
-    landing.review(session, str(found.get("headRefName")), head, args.verdict)
+        reasons, shown, commits = change(args.number, found, head)
+        permitted(args, session, found, head, reasons)
+        answering = answered(args, session, commits)
+        if not args.attack:
+            unrejected(session, found, head, commits, answering)
+    else:
+        try:
+            reasons, shown, _ = change(args.number, found, head)
+        except review_depth.Unreadable as error:    # a reject is recorded whatever can be read
+            reasons, shown = [], f"What the change holds could not be read: {error}\n"
+    branch = str(found.get("headRefName"))
+    for sha in answering:
+        landing.review(session, merge_review.label(branch, merge_review.RESOLVED), sha, "accept")
+    landing.review(session, merge_review.label(branch, merge_review.ATTACK if args.attack else ""), head, args.verdict)
     state, word = WORDS[args.verdict]
-    gh("pr", "comment", args.number, "--body-file", "-",
-       given=f"{release_check.REVIEW_STATUS} {word} for {head}, by {me.name} ({me.model}).\n\n{note}")
-    set_status(head, state, f"{word} by {me.name}")
+    kind = "attack review" if args.attack else release_check.REVIEW_STATUS
+    record = {"v": 1, "pr": int(args.number), "head": head, "attack": args.attack, "needs_attack": bool(reasons),
+              "verdict": args.verdict, "reviewer": me.name, "model": me.model, "findings": given, "resolves": answering}
+    text = (f"{kind} {word} for {head}, by {me.name} ({me.model}).\n\n{note}\n"
+            + listed("Findings:", [f"{one['severity']}: {one['text']}" for one in given])
+            + listed("Rejects answered:", answering) + (f"\n{shown}" if shown else ""))
+    gh("pr", "comment", args.number, "--body-file", "-", given=merge_review.comment(record, text)[:BODY_CHARACTERS])
+    if not args.attack or args.verdict == "reject":
+        set_status(head, state, f"{word} by {me.name}")
     # "recorded" first: a bare "failed" reads as the command failing, when it is the review that was recorded
-    said = f"review recorded for pull request {args.number} at {head[:12]}: {word}"
-    if args.verdict == "reject":
-        return said
-    return f"{said}\nWhen the required checks pass, run this as the whole command:\n    gh pr merge {args.number} --merge --delete-branch --match-head-commit {head}"
+    said = f"{shown}review recorded for pull request {args.number} at {head[:12]}: {kind} {word}"
+    return said if args.verdict == "reject" else f"{said}\n{after(args, found, head)}"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="lead-review", description=__doc__.split("\n\n")[0])
     parser.add_argument("number", help="the pull request's number")
     parser.add_argument("sha", help="the head commit that was reviewed (7 to 40 hexadecimal characters)")
-    parser.add_argument("--verdict", choices=tuple(WORDS), required=True)
-    parser.add_argument("--note", required=True, help="posted on the pull request, which may be public")
+    parser.add_argument("--show", action="store_true", help="print what the change needs and record nothing")
+    parser.add_argument("--verdict", choices=tuple(WORDS))
+    parser.add_argument("--note", default="", help="posted on the pull request, which may be public")
+    parser.add_argument("--attack", action="store_true", help="record the attack review")
+    parser.add_argument("--finding", action="append", default=[], metavar="'SEVERITY: TEXT'",
+                        help=f"one finding ({', '.join(merge_review.SEVERITIES)}), posted on the pull request")
+    parser.add_argument("--resolves", action="append", default=[], metavar="SHA",
+                        help="an earlier commit whose reject, by a reviewer whose session ended, this accept answers")
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     if not args.number.isdigit():
         parser.error("a pull request is named by its number")
     try:
         print(review(args))
-    except (Refused, OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError, board.client.NodeError) as exc:
+    except (OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError, board.client.NodeError) as exc:
         print(f"lead-review: {exc}", file=sys.stderr)
         return 1
     return 0

@@ -80,6 +80,6 @@ while [ -L "$self" ]; do
     esac
 done
 here=$(cd "$(dirname "$self")" && pwd)
-# a guard, authority or red-team test may not lose strength without a Reviewed-by-second: line
+# a guard, authority or red-team test that loses strength is named; on main and the development branch it needs a signed line
 "$PY" "$here/weakened-assertions" --staged --message "$MSG" || exit 1
 exit 0

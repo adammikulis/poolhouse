@@ -76,7 +76,10 @@ if [ -n "$GH_NOAUTH" ]; then
 fi
 if [ "$1" = repo ]; then echo "$GH_REPO"; exit 0; fi
 if [ "$1" = pr ]; then
-    if [ "$2" = view ]; then
+    if [ "$2" = list ]; then
+        printf 'GET pr/list %s\\n' "$(printf '%s ' "$@")" >> "$GH_LOG"
+        cat "$GH_REPLIES/pr_list.json"; exit 0
+    elif [ "$2" = view ]; then
         printf 'GET pr/%s\\n' "$3" >> "$GH_LOG"
         [ -f "$GH_REPLIES/pr_$3.json" ] && { cat "$GH_REPLIES/pr_$3.json"; exit 0; }
     elif [ "$2" = create ]; then

@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""What reviewing the merged pull requests cost and missed: rejects per merged change, defects found after merge, reverts and
+review time.
+
+    scripts/review-report [--base BRANCH] [--limit N] [--json]
+
+It reads the merged pull requests into BRANCH with `gh pr list` (each review round is a comment `scripts/lead-review` posted) and
+the commits of origin/BRANCH as last fetched; it writes nothing. A commit that fixes a defect traced to a merge carries the trailer
+`Fixes-merge: REF`; a revert is git's own `This reverts commit SHA` line or the trailer `Reverts-merge: REF`. REF is `#N`, the
+merge commit of pull request N or a commit that merge brought in.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import statistics
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+
+from poolhouse import devbranch  # noqa: E402
+from poolhouse.workspace import merge_review  # noqa: E402
+
+LIMIT = 100
+"""How many merged pull requests are read unless --limit says otherwise: one page of GitHub's API."""
+FIELDS = "number,title,createdAt,mergedAt,mergeCommit,comments"
+TRAILERS = {"defects": re.compile(r"^Fixes-merge:[ \t]*(\S+)", re.M | re.I),
+            "reverts": re.compile(r"^(?:Reverts-merge:[ \t]*|[ \t]*This reverts commit )(#?[0-9a-f]+)", re.M | re.I)}
+
+
+def run(*command: str) -> str:
+    done = subprocess.run(command, capture_output=True, text=True, errors="replace", timeout=120, check=False)
+    if done.returncode:
+        raise RuntimeError(f"{' '.join(command[:3])} failed: {(done.stderr.strip() or 'no reason given').splitlines()[0]}")
+    return done.stdout
+
+
+def hours(start: str, end: str) -> float:
+    return round((datetime.fromisoformat(end.replace("Z", "+00:00")) - datetime.fromisoformat(start.replace("Z", "+00:00")))
+                 .total_seconds() / 3600, 2)
+
+
+def change(found: dict) -> dict:
+    """One merged pull request as the report holds it."""
+    rounds = [{**record, "at": comment["createdAt"]} for comment in found.get("comments") or []
+              if (record := merge_review.read_record(str(comment.get("body") or "")))]
+    accepts = [one["at"] for one in rounds if one["verdict"] == "accept"]
+    return {"number": found["number"], "title": found["title"], "merge": (found.get("mergeCommit") or {}).get("oid") or "",
+            "rounds": len(rounds), "rejects": sum(one["verdict"] == "reject" for one in rounds),
+            "attack_rounds": sum(bool(one.get("attack")) for one in rounds),
+            "hours_to_first_review": hours(found["createdAt"], min(one["at"] for one in rounds)) if rounds else None,
+            "hours_to_accept": hours(found["createdAt"], max(accepts)) if accepts else None,
+            "hours_to_merge": hours(found["createdAt"], found["mergedAt"]),
+            "follow_ups": [finding.get("text", "") for one in rounds for finding in one.get("findings") or []
+                           if finding.get("severity") not in merge_review.BLOCKING],
+            "defects": [], "reverts": []}
+
+
+class Merges:
+    """Which merged pull request a reference or a commit belongs to."""
+
+    def __init__(self, changes: list[dict]) -> None:
+        self.changes = changes
+        self._brought: dict[str, dict] = {}
+
+    def brought(self) -> dict[str, dict]:
+        """Every commit a merge added to the branch, with its pull request."""
+        if not self._brought:
+            for one in self.changes:
+                if merge := one["merge"]:
+                    try:
+                        added = run("git", "rev-list", f"{merge}^1..{merge}").split()
+                    except RuntimeError:
+                        added = []
+                    self._brought.update({sha: one for sha in [merge, *added]})
+        return self._brought
+
+    def named(self, ref: str) -> dict | None:
+        if ref.startswith("#"):
+            return next((one for one in self.changes if str(one["number"]) == ref[1:]), None)
+        if len(ref) < 7:
+            return None
+        found = {one["number"]: one for sha, one in self.brought().items() if sha.startswith(ref.lower())}
+        return next(iter(found.values())) if len(found) == 1 else None
+
+
+def trace(merges: Merges, base: str) -> list[str]:
+    """Put each fix and revert commit of origin/``base`` under the merge it names; the references that name none."""
+    unresolved = []
+    for entry in run("git", "log", "--format=%H%x01%B%x00", f"refs/remotes/origin/{base}").split("\0"):
+        sha, _, message = entry.strip().partition("\x01")
+        for kind, pattern in TRAILERS.items():
+            for ref in dict.fromkeys(pattern.findall(message)):
+                named = merges.named(ref)
+                if named is None:
+                    unresolved.append(f"{sha[:12]} names {ref}, which is none of the merges read")
+                elif merges.brought().get(sha) is not named and sha[:12] not in named[kind]:
+                    named[kind].append(sha[:12])
+    return unresolved
+
+
+def report(base: str, limit: int) -> dict:
+    listed = json.loads(run("gh", "pr", "list", "--state", "merged", "--base", base, "--limit", str(limit), "--json", FIELDS))
+    changes = sorted((change(found) for found in listed), key=lambda one: one["number"])
+    unresolved = trace(Merges(changes), base)
+    reviewed = [one for one in changes if one["rounds"]]
+
+    def median(key: str) -> float | None:
+        values = [one[key] for one in changes if one[key] is not None]
+        return statistics.median(values) if values else None
+
+    return {"base": base, "merged": len(changes), "with_recorded_review": len(reviewed),
+            "rejects": sum(one["rejects"] for one in changes),
+            "rejects_per_reviewed_change": round(sum(one["rejects"] for one in changes) / len(reviewed), 2) if reviewed else None,
+            "defects_found_after_merge": sum(len(one["defects"]) for one in changes),
+            "reverts": sum(len(one["reverts"]) for one in changes),
+            "median_hours_to_first_review": median("hours_to_first_review"), "median_hours_to_accept": median("hours_to_accept"),
+            "median_hours_to_merge": median("hours_to_merge"), "unresolved": unresolved, "changes": changes}
+
+
+def said(found: dict) -> str:
+    """The report as lines for a reader."""
+    def value(key: str) -> str:
+        return "none recorded" if found[key] is None else str(found[key])
+
+    lines = [f"{found['merged']} merged pull requests into {found['base']}, {found['with_recorded_review']} with a recorded review",
+             f"rejects per reviewed change: {value('rejects_per_reviewed_change')} ({found['rejects']} rejects)",
+             f"defects found after merge: {found['defects_found_after_merge']}", f"reverts: {found['reverts']}",
+             f"median hours from opening: first review {value('median_hours_to_first_review')}, accept "
+             f"{value('median_hours_to_accept')}, merge {value('median_hours_to_merge')}"]
+    for one in found["changes"]:
+        if one["rounds"] or one["defects"] or one["reverts"]:
+            lines.append(f"#{one['number']} {one['title']}: {one['rounds']} rounds ({one['attack_rounds']} attack), {one['rejects']} "
+                         f"rejects, merged after {one['hours_to_merge']} h")
+            lines += [f"    fixed after merge by {sha}" for sha in one["defects"]]
+            lines += [f"    reverted by {sha}" for sha in one["reverts"]]
+            lines += [f"    follow-up: {text}" for text in one["follow_ups"]]
+    return "\n".join(lines + [f"unresolved: {line}" for line in found["unresolved"]])
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="review-report", description=__doc__.split("\n\n")[0])
+    parser.add_argument("--base", default="", help="the branch merged into (default: the development branch)")
+    parser.add_argument("--limit", type=int, default=LIMIT, help=f"how many merged pull requests to read (default {LIMIT})")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    try:
+        found = report(args.base or devbranch.development_branch(Path.cwd()), args.limit)
+    except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
+        print(f"review-report: {error}", file=sys.stderr)
+        return 1
+    print(json.dumps(found, indent=2) if args.json else said(found))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -2,11 +2,13 @@
 """Report a diff that weakens a guard, authority or red-team test, unless a second reviewer signed.
 
     weakened-assertions --staged --message FILE   the staged diff (commit-msg)
-    weakened-assertions --against REV             REV..HEAD and its messages (CI)
+    weakened-assertions --against REV [--report]  REV..HEAD and its messages (CI)
 
 Covers tests/ files named test_redteam_*, test_*guard* or test_*auth*, and files that use the
 redteam marker. Weakening is fewer assertions than before, a removed test function, or an added
 skip, skipif or xfail. A `Reviewed-by-second:` or `Owner-order:` line in the commit message accepts the diff.
+A pull request that changes such a test merges only with an attack review (docs/landing.md), so on a branch that is neither main
+nor the primary checkout's, and with --report, what is weaker is printed and nothing is refused.
 Every diff is read as text, whatever attributes and diff settings the repository carries.
 """
 
@@ -298,11 +300,21 @@ def weakened(diff: str, read) -> list[str]:
     return out
 
 
+def judged_at_merge() -> bool:
+    """Whether the commit being made reaches a released branch only through a pull request: it is on a branch that is neither main
+    nor the one the primary checkout is on, which is the development branch."""
+    branch = merge_history.output("symbolic-ref", "--short", "-q", "HEAD").stdout.strip()
+    first = merge_history.output("worktree", "list", "--porcelain").stdout.split("\n\n")[0].split("\n")
+    primary = next((line[len("branch refs/heads/"):] for line in first if line.startswith("branch refs/heads/")), "")
+    return bool(branch and primary) and branch not in ("main", "master", primary)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--staged", action="store_true")
     parser.add_argument("--message", default="")
     parser.add_argument("--against", default="")
+    parser.add_argument("--report", action="store_true", help="print what is weaker and exit 0: a pull request's merge judges it")
     args = parser.parse_args(argv)
     if args.against:
         diff, base = range_changes(args.against)
@@ -318,6 +330,10 @@ def main(argv: list[str] | None = None) -> int:
     print("weakened-assertions: a guard, authority or red-team test lost strength", file=sys.stderr)
     for line in found:
         print(f"  {line}", file=sys.stderr)
+    if args.report or (not args.against and judged_at_merge()):
+        print("  reported, not refused: the merge of the pull request takes an attack review, which is shown this list "
+              "(scripts/lead-review).", file=sys.stderr)
+        return 0
     print("  add a `Reviewed-by-second: <name>` line once a second reviewer has read it, or an "
           "`Owner-order: <what the owner said>` line.", file=sys.stderr)
     return 1

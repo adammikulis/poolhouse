@@ -18,6 +18,7 @@ must not block every Bash call.
 """
 
 import json
+import os
 import re
 import shlex
 import sys
@@ -249,6 +250,10 @@ def judge(event: dict, switched: bool, rules) -> str:
     """The text that refuses the shell command of ``event``, or an empty string when it may run."""
     raw = (event.get("tool_input") or {}).get("command") or ""
     why = ""
+    if agent := str(event.get("agent_id") or ""):
+        # the release check runs as this hook's session, so it is told which subagent would be merging (release_check.MERGER)
+        import subagent_records
+        os.environ["POOLHOUSE_MERGER"] = str(subagent_records.load(agent).get("name") or "")
     if rules:
         check = rules.hard_bash_refusal if switched else rules.bash_refusal
         why = check(raw, event.get("cwd") or "") or subagent_naming_another(event, raw, rules)

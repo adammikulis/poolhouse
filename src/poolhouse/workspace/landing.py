@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from poolhouse.board.session import Session
 
-__all__ = ["accepts", "rejected", "rejecters", "review", "standing", "trust"]
+__all__ = ["accepts", "live", "rejected", "rejecters", "review", "standing", "trust"]
 
 CAUSES = ("revoked", "forged")
 
@@ -47,16 +47,16 @@ def _ended_for_cause(s: Session) -> dict[str, str]:
     return {a.name: a.retired_reason for a in s.agents(retired=True) if a.retired and a.retired_reason in CAUSES}
 
 
-def _live(s: Session, found: dict[str, Any]) -> dict[str, str]:
-    """The verdict of each reviewer in ``found`` who was not retired as revoked or forged."""
+def live(s: Session, found: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """The review of each reviewer in ``found`` (from `accepts`) who was not retired as revoked or forged, by reviewer."""
     cause = _ended_for_cause(s)
-    live = {}
+    standing_by = {}
     for found_review in found["reviews"]:
         who = found_review["by"]
         seen = _stamped(found_review, who)
         if seen and who not in cause:
-            live[who] = found_review["verdict"]
-    return live
+            standing_by[who] = found_review
+    return standing_by
 
 
 def rejecters(s: Session, found: dict[str, Any]) -> list[str]:
@@ -65,7 +65,7 @@ def rejecters(s: Session, found: dict[str, Any]) -> list[str]:
     The node stamped each reviewer's name and model on its review, so a reviewer that ended normally still counts;
     one retired as ``revoked`` or ``forged`` after it reviewed no longer does.
     """
-    return sorted(who for who, verdict in _live(s, found).items() if verdict == "reject")
+    return sorted(who for who, entry in live(s, found).items() if entry["verdict"] == "reject")
 
 
 def rejected(s: Session, found: dict[str, Any]) -> bool:
@@ -75,7 +75,7 @@ def rejected(s: Session, found: dict[str, Any]) -> bool:
 
 def standing(s: Session, found: dict[str, Any]) -> str:
     """Why the reviews in ``found`` (from `accepts`) are not a standing accept, or an empty string."""
-    live = _live(s, found).values()
-    if "reject" in live:
+    verdicts = [entry["verdict"] for entry in live(s, found).values()]
+    if "reject" in verdicts:
         return "an independent reviewer rejected it"
-    return "" if "accept" in live else "needs review: no independent accept that still stands"
+    return "" if "accept" in verdicts else "needs review: no independent accept that still stands"

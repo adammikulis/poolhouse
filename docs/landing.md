@@ -15,43 +15,67 @@ one the primary checkout is on (`POOLHOUSE_DEV_BRANCH` overrides it) and never `
 ## Review of a pull request
 
 The agent that spawned the author reviews the change; a main agent's own pull request is reviewed by an agent that did
-not write it. The owner is never required. One command records the verdict on the exact commit that was read, and it is the only way an agent posts the
-`lead-review` status:
+not write it. The owner is never required. One command records every verdict on the exact commit that was read, and it
+is the only way an agent posts the `lead-review` status:
 
 ```sh
-scripts/lead-review <PR> <SHA> --verdict accept|reject --note "what was read and why"
+scripts/lead-review <PR> <SHA> --show
+scripts/lead-review <PR> <SHA> --verdict accept|reject --note "what was read and why" [--finding "SEVERITY: what"]...
 ```
 
-It refuses a pull request that is not open into the development branch, or whose head is no longer `<SHA>`. It accepts
-nothing for an author the description names, for an agent that a subagent author started, or from a subagent that is not
-above a subagent author (a main session may review any subagent's work); a pull request that names no author is accepted
-only when a bot opened it. It then records the `land-review` verdict on the board, posts the note as a comment on the pull
-request (the repository is public) and sets the `lead-review` commit status on that commit. After an accept it prints:
+It reviews a pull request into the development branch or `main`. A `critical`, `high` or `medium` finding blocks: a
+verdict with one is a reject, and a reject names one. A `low` finding is a follow-up, recorded with an accept. It
+accepts nothing for an author the description names, for an agent that a subagent author started, or from a subagent
+that is not above a subagent author (a main session may review any subagent's work); a pull request that names no author
+is accepted only when a bot opened it. It records the `land-review` verdict on the board, posts the note, the findings
+and what the change needs as a comment on the pull request (the repository is public) and sets the `lead-review` commit
+status. After an accept it prints the one merge command, `gh pr merge <PR> --merge ... --match-head-commit <SHA>`.
+
+### Which review a change needs
+
+`poolhouse.workspace.review_depth` holds the one map from changed files to the review they need, and `--show` prints
+the answer with its reasons and what the change weakens in guard tests. A change that needs an attack review is
+accepted, and merged or pushed to `main`, only with an accepting attack verdict on its exact head:
 
 ```sh
-gh pr merge <PR> --merge --delete-branch --match-head-commit <SHA>
+scripts/lead-review <PR> <SHA> --attack --verdict accept|reject --note "what was tried" [--finding "SEVERITY: what"]...
 ```
 
-**A standing reject holds the merge.** Before an accept, the command fetches the development branch and asks the board
-about every commit the pull request would merge (those of `<SHA>` that the branch does not hold). While another reviewer's
-reject of any of them stands, it records no accept, sets `lead-review` to failed on `<SHA>` and names the commit and the
-reviewer; a board or a commit it cannot read refuses the accept as well. The reviewer who rejected clears it with
-`poolhouse-workspace land-review BRANCH COMMIT --verdict accept`, or, when it is the one accepting the new head, by that
-accept. A reject posted with `land-review` after the accept changes no status by itself: post it with
-`scripts/lead-review ... --verdict reject`, which sets the status to failed.
+The attack reviewer is no author of the change, no agent an author started and not the one that merges. Its accept sets
+no status: the ordinary accept above follows it, from another agent. An attack review never blocks a push, a fix or a
+test (docs/agent-policy.md, "Attack first").
+
+### Standing rejects
+
+An accept is refused, and `lead-review` set to failed, while another reviewer's reject of any commit the pull request
+would merge stands; a board or a commit that cannot be read refuses it too. The reviewer who rejected clears it by
+accepting that commit (`poolhouse-workspace land-review BRANCH COMMIT --verdict accept`), or, when it is the one
+accepting the new head, by that accept. Once its session has ended, another reviewer answers the reject of an earlier
+commit by naming it with `--resolves COMMIT` (an attack reject: with `--attack`). A rejected head is answered by a new
+commit.
+
+### The merge
 
 The guard (`poolhouse.workspace.release_check`) allows an agent that exact command, alone on its line, when the pull
-request targets the development branch, its head is `<SHA>` and the `lead-review` status there passed. No agent skips a
-required check: `gh pr merge --admin` and a write to the merge API are refused. Any other
-`gh pr merge`, a pull request into another branch and one `gh` cannot read keep the rule for `main`: a standing
-independent `land-review` accept of the checkout's commit and a clean checkout. If `gh` reports that it could not delete
-the local branch because a worktree holds it, the merge is done: run `scripts/worktrees sweep`, then the same command again.
+request targets the development branch, its head is `<SHA>`, the `lead-review` status there passed, no reject of that
+head stands and any attack verdict it needs is recorded; into `main`, `<SHA>` also needs a standing `land-review` accept
+in a clean checkout. Every other form of `gh pr merge` is refused here, as is a pull request `gh` cannot read. No agent
+skips a required check: `gh pr merge --admin` and a write to the merge API are refused. If `gh` reports that it could
+not delete the local branch because a worktree holds it, the merge is done: run `scripts/worktrees sweep`, then the same
+command again. These rules hold in a repository whose base branch carries `scripts/hooks/primary-only`; elsewhere a
+merge needs a passed `lead-review` status into development, and a standing accept of the checkout's commit otherwise.
 
 **What the status is not.** Every agent uses the owner's GitHub sign-in, so GitHub cannot take a formal approval and
 nothing there stops an agent from setting a status by hand, which the process forbids; the authors are the names the
-description gives. `lead-review` records the process. It is
-not a security boundary. The attack pass (docs/agent-policy.md, "Attack first") stays advice, and an author still runs its
-own checks.
+description gives. `lead-review` records the process. It is not a security boundary, and an author still runs its own
+checks.
+
+## After a merge
+
+A commit that fixes a defect traced to a merge carries the trailer `Fixes-merge: #N` (or a commit of that merge); a
+revert keeps git's `This reverts commit SHA` line, or carries `Reverts-merge: #N`. `scripts/review-report` reads the
+review comments of merged pull requests and those trailers and reports rejects per merged change, defects found after
+merge, reverts and review time.
 
 ## The push hook
 
@@ -65,7 +89,7 @@ The hook does not run tests, builds, Python/data scans, board review queries, wo
 tests for the change separately; CI runs the quick checks on pull requests into development and broader suites on pull
 requests into main, main and nightly schedules. The required `gates` job of a pull request fails on a changed Python
 file that does not parse (`scripts/sealed_git_parse.py`) and on a data or weight file (`scripts/hooks/no-data-files`);
-`scripts/lead-review` holds a standing reject ("Review of a pull request").
+`scripts/lead-review` holds a standing reject ("Standing rejects").
 
 `python scripts/hooks/affected_push.py` remains an explicit affected-test check when useful. It is not invoked by
 Git's push hook; the CI job `affected` runs it on a pull request into development. Existing pre-commit checks and the

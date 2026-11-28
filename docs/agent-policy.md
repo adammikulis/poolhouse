@@ -28,8 +28,9 @@ primary checkout is on; `main` is never it); promotion to `main`, tags, releases
   guard decides at once. An agent may merge into `main` (`gh pr merge`) or push it only when the commit it would
   publish has a standing independent land-review accept on the board (`poolhouse-workspace land-review`) and the checkout is clean
   (`poolhouse.workspace.release_check`, called by `scripts/hooks/claude-bash-guard` and `poolhouse.worktreerules`); otherwise the
-  command is refused immediately with the reason. A merge into the development branch is judged by the pull request's own
-  head commit instead (section 4, "Landing"). Pushing a work branch needs no accept.
+  command is refused immediately with the reason. A change that needs an attack review also takes its attack verdict
+  (section 1, "Review scope"). A merge into the development branch is judged by the pull request's own head commit
+  instead (section 4, "Landing"). Pushing a work branch needs no accept.
 - Two commands change what protects the repository and the release: `scripts/release-key` and
   `scripts/github-protection-apply --apply`. They are refused to an agent at once, with the reason (`caller.refuse_agent`: any
   agent marker in the environment); a terminal of your own runs them with no question asked. A person typing `! cmd` inside Claude
@@ -113,8 +114,8 @@ dot in a handle, a missing surname), never its content.
 ### Attack first
 
 Every security-adjacent design and change (identity, membership, grants, approvals, serving, sharing, anything that moves
-trust or compute) gets an attack pass, which is advice and never holds up a push, a fix or a test (it is not the pull request review below): an agent other than the author is told to
-break it and answers in writing for each of a copied or cloned pool or device, replay, a forged or below-threshold
+trust or compute) gets an attack review, which never holds up a push, a fix or a test (the merge of a change that needs one
+waits for its verdict, "Review scope" below): an agent other than the author is told to break it and answers in writing for each of a copied or cloned pool or device, replay, a forged or below-threshold
 signature, a compromised or malicious member, a stolen phone or key, a malicious agent, an agent that is compromised
 without knowing it (an injected instruction in a board message, tool result, page or file that it takes for an ordinary
 order), a downgrade (secure to open), approval fatigue (repeated requests until the person accepts from exhaustion), and
@@ -129,23 +130,18 @@ capabilities, not only the feature.
 
 ### Review scope
 
-**Every change to the development branch is reviewed on its pull request.** The agent that spawned the author reviews it,
-comments on the pull request and marks that exact commit passed or failed (`scripts/lead-review`, section 4, "Landing"); a
-new commit needs a new review. A main agent's own pull request is reviewed by an agent that did not write it. No agent
-accepts its own work, and the owner is never required. All agents use the owner's GitHub sign-in, so GitHub cannot record a
-formal approval: the required `lead-review` commit status records the process and is not a security boundary.
-
-Any other review is advice: an agent may post `poolhouse-workspace land-review BRANCH SHA --verdict accept` or
-`--verdict reject`, and a standing reject is a reason not to publish that commit. An author's own checks (section 5) and
-the attack pass above, which advises and does not gate, stay as they are.
-The keystore, privileged OS settings, release gates and release checks remain separate automatic rules.
+**Every change to the development branch is reviewed on its pull request.** `scripts/lead-review` records each verdict
+on the exact commit and holds who may give it, which findings block, which changes need an attack review besides the
+spawning agent's, and what a standing reject stops (docs/landing.md, "Review of a pull request"); the merge guard applies
+the same rules. No agent accepts its own work, and the owner is never required. All agents use the owner's GitHub
+sign-in, so GitHub cannot record a formal approval: the required `lead-review` commit status records the process and is
+not a security boundary. The keystore, privileged OS settings, release gates and release checks remain separate
+automatic rules.
 
 - **Every review tries to break what it checks.** A read-through finds only what the author already saw. A reviewer
   names the attacker's goal, runs probe inputs, a mutation that should turn the tests red and the new tests against the
-  parent commit, accepts only when nothing at medium or above survives, and reports what it ran.
-- **An independent agent review is advice for changes that touch security or access** (authority, grants, guards, hooks,
-  identity, keystore, sandbox, trust); it is required, and must have accepted, only before `main` or a release. Every other
-  branch lands after its author's affected tests and the gate, with no reviewer agent. A reviewer runs one effort step below its author (docs/claude-subagents.md, "Subagent effort").
+  parent commit, and reports what it ran, with each finding's severity. A reviewer runs one effort step below its author
+  (docs/claude-subagents.md, "Subagent effort").
 
 ### System settings and the authority registry
 
@@ -610,8 +606,8 @@ Create worktrees beside the primary checkout, never inside it (including `.workt
 2. **Open a pull request.** `git push origin HEAD` (your own branch), then `gh pr create --base <dev>` with an
    `Author-agent: <your name>` line in the description. Never merge your own. The pre-push hook guards refs only.
 3. **Review.** The agent that spawned the author reads the diff and records its verdict on that commit:
-   `scripts/lead-review <PR> <SHA> --verdict accept|reject --note TEXT` (section 1, "Review scope"). A later commit is
-   reviewed again.
+   `scripts/lead-review <PR> <SHA> --verdict accept|reject --note TEXT` (section 1, "Review scope"; `--show` says whether
+   an attack review comes first). A later commit is reviewed again.
 4. **Merge.** Once the review passed and the required checks pass, the reviewer runs the command `scripts/lead-review`
    printed, `gh pr merge <PR> --merge --delete-branch --match-head-commit <SHA>`, as the whole command. GitHub CI is
    otherwise a signal: the `affected` job and the workflows of a pull request into `main` hold nothing here.
@@ -665,9 +661,10 @@ Create worktrees beside the primary checkout, never inside it (including `.workt
   acknowledgement before it is built. A "superseded" verdict names the development-branch commit that replaces each
   behaviour it drops. A feature is not landed until a person can reach it in the interface.
 - A conflict resolution does not weaken an authority, locality or verification check by accident; a weakening the owner
-  ordered is made on purpose and named in the commit message. A diff removing or weakening an assertion in a red-team, guard or
-  authority test is refused by `scripts/hooks/weakened-assertions` (commit-msg hook and CI) unless the commit message
-  carries a `Reviewed-by-second:` line.
+  ordered is made on purpose and named in the commit message. A change to a red-team, guard or authority test merges
+  only with an attack review, which is shown what got weaker. `scripts/hooks/weakened-assertions` names it on a work
+  branch and in CI, and refuses a commit on the development branch or `main` that removes or weakens an assertion without
+  a `Reviewed-by-second:` line.
 - Code on the default path of `scripts/test` or a hook has a measured fixed cost and a test that bounds it.
 
 ### Cleanup

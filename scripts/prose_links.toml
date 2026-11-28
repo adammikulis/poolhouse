@@ -23,7 +23,7 @@ note = "discarding local work to get a clean sync is not covered"
 [[link]]
 match = "never merge your own"
 verdict = "partly"
-evidence = ["scripts/lead-review::does not accept its own work", "scripts/dev-branch-rule::\"lead-review\")"]
+evidence = ["src/poolhouse/workspace/merge_review.py::does not accept its own work", "scripts/dev-branch-rule::\"lead-review\")"]
 note = "an author's accept is refused and the status is required; the shared admin sign-in can still bypass the rule"
 
 [[link]]
@@ -58,7 +58,7 @@ note = "the tool guard reads that tool name; other ways to drive the browser are
 [[link]]
 match = "never review or merge your own pull request"
 verdict = "partly"
-evidence = ["scripts/lead-review::does not accept its own work", "scripts/dev-branch-rule::\"lead-review\")"]
+evidence = ["src/poolhouse/workspace/merge_review.py::does not accept its own work", "scripts/dev-branch-rule::\"lead-review\")"]
 note = "an author's accept is refused and the status is required; the shared admin sign-in can still bypass the rule"
 
 [[link]]

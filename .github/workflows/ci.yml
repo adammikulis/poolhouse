@@ -466,12 +466,15 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
 
-      - name: no guard test weakened without a second reviewer
+      # The merge takes an attack review of a change to such a test (scripts/lead-review); this names what got weaker.
+      - name: weakened guard tests are named
         if: github.event_name == 'pull_request'
         run: |
           # The base commit's hooks are in place; the first pull request that adds the check has none to run.
           [ -f scripts/hooks/weakened-assertions ] || { echo "the base commit has no weakened-assertions check"; exit 0; }
-          python scripts/hooks/weakened-assertions --against "$BASE"
+          report=()
+          if grep -q -- '"--report"' scripts/hooks/weakened-assertions; then report=(--report); fi
+          python scripts/hooks/weakened-assertions --against "$BASE" "${report[@]}"
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
 

@@ -56,7 +56,8 @@ def env(world, who):
 def run(world, who, verdict="accept", **given):
     """The script as ``who`` over pull request 12; ``given`` may hold the commit it names (``sha``) and its ``note``."""
     note = given.get("note", "Read the diff; the tests it names pass.")
-    argv = [sys.executable, str(SCRIPT), "12", given.get("sha", world.head), "--verdict", verdict, "--note", note]
+    blocking = ["--finding", "high: it breaks the merge"] if verdict == "reject" else []
+    argv = [sys.executable, str(SCRIPT), "12", given.get("sha", world.head), "--verdict", verdict, "--note", note, *blocking]
     return subprocess.run(argv, cwd=world.project.root, env=env(world, who), capture_output=True, text=True, timeout=120, check=False)
 
 
@@ -164,8 +165,8 @@ def test_a_head_that_moved_since_the_review_needs_a_new_review(world):
     assert json.loads(last[2])["state"] == "success" and last[1].endswith(world.head)
 
 
-@pytest.mark.parametrize("change,why", [({"base": "main"}, "development branch"), ({"state": "MERGED"}, "is merged")])
-def test_only_an_open_pull_request_into_the_development_branch_is_reviewed(world, change, why):
+@pytest.mark.parametrize("change,why", [({"base": "work/stacked"}, "development branch"), ({"state": "MERGED"}, "is merged")])
+def test_only_an_open_pull_request_into_development_or_main_is_reviewed(world, change, why):
     world.answers(author_agent=world.author.name, **change)
     refused(world, run(world, world.lead), why)
 
