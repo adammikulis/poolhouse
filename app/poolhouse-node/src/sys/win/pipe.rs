@@ -94,10 +94,8 @@ impl Stream {
         at.hEvent = (event.0).0;
         let mut done = 0u32;
         if start(&mut at) == 0 {
-            match last() {
-                ERROR_BROKEN_PIPE => return Ok(0),
-                ERROR_IO_PENDING => {}
-                _ => return Err(std::io::Error::last_os_error()),
+            if last() != ERROR_IO_PENDING {
+                return Err(std::io::Error::last_os_error());
             }
             let ms = timeout.map_or(u32::MAX, |t| t.as_millis().min(u32::MAX as u128 - 1) as u32);
             // SAFETY: the event belongs to this call.
@@ -112,7 +110,7 @@ impl Stream {
         }
         // SAFETY: the transfer has completed, so this only collects its size.
         if unsafe { GetOverlappedResult(self.handle.0, &at, &mut done, 1) } == 0 {
-            return if last() == ERROR_BROKEN_PIPE { Ok(0) } else { Err(std::io::Error::last_os_error()) };
+            return Err(std::io::Error::last_os_error());
         }
         Ok(done as usize)
     }
@@ -122,7 +120,12 @@ impl Read for Stream {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let (handle, len) = (self.handle.0, buf.len().min(u32::MAX as usize) as u32);
         // SAFETY: `buf` stays valid until `transfer` returns, which waits out or cancels the read.
-        self.transfer(self.read_timeout.get(), |at| unsafe { ReadFile(handle, buf.as_mut_ptr().cast(), len, std::ptr::null_mut(), at) })
+        let read = self.transfer(self.read_timeout.get(), |at| unsafe { ReadFile(handle, buf.as_mut_ptr().cast(), len, std::ptr::null_mut(), at) });
+        // A pipe whose other end closed is at its end for a reader, and a failure for a writer.
+        match read {
+            Err(e) if e.raw_os_error() == Some(ERROR_BROKEN_PIPE as i32) => Ok(0),
+            other => other,
+        }
     }
 }
 

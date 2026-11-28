@@ -7,8 +7,9 @@
 //! request check enforces on every request.
 
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{Shutdown, TcpStream};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::{ring, verify_tls13_signature, CryptoProvider};
@@ -19,6 +20,10 @@ use rustls::{ClientConfig, ClientConnection, DigitallySignedStruct, Distinguishe
 use crate::cert::{board_fingerprint, cert_fingerprint, Identity};
 use crate::error::{Error, Result};
 use crate::membership::Standing;
+
+/// How long a refused connection stays open for the other end to read why and close: the 5 s a dial is given to connect
+/// (`peer::PeerClient`), far under the 30 s an unfinished handshake may already hold a connection.
+const ALERT_LINGER: Duration = Duration::from_secs(5);
 
 /// What the pool says of a certificate fingerprint, asked at every handshake.
 pub type StandingFn = Arc<dyn Fn(&str) -> Standing + Send + Sync>;
@@ -156,11 +161,26 @@ fn io_tls(e: std::io::Error) -> Error {
     Error::Denied(format!("the handshake failed: {e}"))
 }
 
+/// Close a connection whose handshake was refused so that the alert is read: say no more is coming, then take what the other end
+/// sends until it closes. A socket closed with bytes unread, or sent bytes after it closed, is reset, and a reset can discard the
+/// alert before the other end reads it (Windows does).
+fn close_after_alert(mut tcp: TcpStream) {
+    if tcp.shutdown(Shutdown::Write).is_err() || tcp.set_read_timeout(Some(ALERT_LINGER)).is_err() {
+        return;
+    }
+    let until = Instant::now() + ALERT_LINGER;
+    let mut rest = [0u8; 4096];
+    while Instant::now() < until && matches!(tcp.read(&mut rest), Ok(n) if n > 0) {}
+}
+
 /// Accept a client: run the handshake and return the stream and the client's certificate.
 pub fn accept(config: Arc<ServerConfig>, mut tcp: TcpStream) -> Result<Secured<ServerConnection>> {
     let mut conn = ServerConnection::new(config).map_err(tls_error)?;
     while conn.is_handshaking() {
-        conn.complete_io(&mut tcp).map_err(io_tls)?;
+        if let Err(e) = conn.complete_io(&mut tcp) {
+            close_after_alert(tcp);
+            return Err(io_tls(e));
+        }
     }
     let peer = conn.peer_certificates().and_then(|c| c.first()).map(|c| c.to_vec()).ok_or_else(|| Error::Denied("no certificate was shown".into()))?;
     Ok(Secured { stream: StreamOwned::new(conn, tcp), peer })
