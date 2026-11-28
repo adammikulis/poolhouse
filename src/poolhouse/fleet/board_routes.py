@@ -1,8 +1,11 @@
 """Local human controls for the board."""
 
 import re
+from pathlib import Path
 
 from .extension_routes import load
+from .project_source import ProjectError
+from .projects import AppFolder, own_worktree
 from .session import parse_cookie
 
 
@@ -26,11 +29,23 @@ class BoardRoutes:
                 self.send(403, {"error": "board changes come from this page"})
                 return True
             project = projects.get(match[1])
+
+            def joinable():
+                """The folder the node may take if the person joins it now, else why it may not."""
+                try:
+                    return projects.joinable(match[1]), ""
+                except ProjectError as exc:
+                    return None, str(exc)
+
+            try:
+                folder = AppFolder(Path(project.root), own_worktree(Path(project.root)), joinable)
+            except ProjectError as exc:
+                self.send(403, {"error": str(exc)})
+                return True
             if match[2] == "tasks":
-                return load("tasks")(self, prefix=self.path, root=project.root,
-                                         project={"key": match[1], "name": project.name})
+                return load("tasks")(self, prefix=self.path, app=folder, project={"key": match[1], "name": project.name})
             opened = self.ui.sessions.get(parse_cookie(self.cookie))
-            return load("board")(self, root=project.root, prefix=f"/ui/projects/{match[1]}/board/",
+            return load("board")(self, app=folder, prefix=f"/ui/projects/{match[1]}/board/",
                                       audit=lambda name: self.ui.record("person.connect", actor=name, project=match[1],
                                                                         origin=getattr(opened, "origin", "")))
         except (PermissionError, ValueError, TypeError, KeyError) as exc:

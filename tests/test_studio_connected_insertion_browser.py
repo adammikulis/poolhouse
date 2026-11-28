@@ -38,7 +38,9 @@ def build_existing(page, title='Mixer'):
     add(page, 'Report')
     page.locator('.studio-inspector').get_by_label('Connect text', exact=True).select_option(label=title + ' · out')
     page.locator('studio-view').evaluate('''(editor,id) => {
-      editor.graph.layout.nodes[id]={x:40,y:300};editor.canvas.paint();}''', node['id'])
+      editor.graph.layout.nodes[id]={x:40,y:300};
+      editor.graph.layout.nodes[editor.graph.nodes.at(-1).id]={x:420,y:300};   // beside it, never over its header
+      editor.canvas.paint();}''', node['id'])
     return node['id']
 
 

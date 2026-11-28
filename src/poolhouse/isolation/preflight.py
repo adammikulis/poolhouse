@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import shlex
+import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -30,6 +31,10 @@ SNAPSHOT = ('t=$(mktemp -d "${TMPDIR:-/tmp}/snapshot.XXXXXX") && git init -q --b
 working copy does: every object the index names must be there (`isolation.history`). Neither status nor diff reads them all."""
 BARE = "/usr/bin/env -i PATH=/usr/bin:/bin git --version >/dev/null"
 """git as a program of the project may run it: with no variable of the box's and only the system's `PATH`, which on macOS finds Apple's shim."""
+WARM = "{ /usr/bin/xcrun --find git; /usr/bin/xcrun --find python3; } >/dev/null 2>&1 || true"
+"""The two shims of `/usr/bin` a shell runs most, asked of the system's selector (`xcrun`) once, on macOS, before the model starts: its first
+look for a tool in a box takes seconds and writes to standard error, and it keeps the answer in the box's ``TMPDIR``, so it answers at once
+and in silence after."""
 SAID = 300
 """The characters of a failed check's own last words a finding repeats."""
 
@@ -97,7 +102,9 @@ def _failed(profile: Profile, command: str) -> str:
 
 def run(profile: Profile, committed: bool) -> Findings:
     """Run the preflight in ``profile``'s box, with ``committed`` saying that the project has a history. A stage the session cannot write is
-    checked for git alone."""
+    checked for git alone. On macOS the developer tools are looked for first (`WARM`)."""
+    if sys.platform == "darwin":
+        _failed(profile, WARM)
     stage = Path(profile.stage)
     untested = [] if profile.read_only else [why for _, command in checks(stage) if (why := _failed(profile, command))]
     git = [why for command in (HISTORY if committed else GIT, SNAPSHOT, BARE) if (why := _failed(profile, command))]

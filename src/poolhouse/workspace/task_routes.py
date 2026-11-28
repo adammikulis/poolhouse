@@ -37,8 +37,9 @@ def _post(session, body, project):
     raise ValueError('tasks accept create, independent review, resume or recovery requests')
 
 
-def route(request, *, prefix="/ui/tasks", root=None, project=None) -> bool:
-    """Answer one request of the Tasks page for the board of the project at ``root`` (the working directory when none)."""
+def route(request, *, prefix="/ui/tasks", project=None, app=None) -> bool:
+    """Answer one request of the Tasks page for the board of the app's folder ``app`` (`fleet.projects.AppFolder`; the
+    working directory's project when none); it registers no project (`person.app_project`)."""
     if request.path != prefix:
         return False
     if request.method not in ('GET', 'POST'):
@@ -50,13 +51,15 @@ def route(request, *, prefix="/ui/tasks", root=None, project=None) -> bool:
         request.send(refused[0], json.loads(refused[2]))
         return True
     try:
-        session = person.session(Path(root) if root else Path.cwd())
+        session = person.app_project(app.root, app.tree, app.joinable) if app else person.session(Path.cwd())
         if request.method == 'GET':
             ident = request.asked('id', '')
             result = Tasks(session).get(ident) if ident else Tasks(session).list()
         else:
             result = _post(session, object_body(request), project)
         request.send(200, result)
+    except person.Unjoined:
+        request.send(403, {'error': person.UNJOINED, 'person_setup_required': True})
     except client.Denied as error:
         request.send(403, {'error': str(error)})
     except (ValueError, UnicodeError, client.Invalid) as error:

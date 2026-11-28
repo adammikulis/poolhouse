@@ -18,11 +18,16 @@ from poolhouse.board import credentials, person_key, place, session as sessions
 from poolhouse.board.client import Client, Denied
 from poolhouse.board.terminal import terminal_id
 
-__all__ = ["HARNESS", "acting", "native_id", "on", "session"]
+__all__ = ["HARNESS", "UNJOINED", "Unjoined", "acting", "app_project", "native_id", "on", "session"]
 
 HARNESS = "poolhouse-ui"
 MODEL = "person"
 NATIVE_ID = "person"
+UNJOINED = "Join this workspace as person to use conversations and tasks."
+
+
+class Unjoined(Denied):
+    """The node holds no project at a folder the person may join: the page offers that."""
 
 
 def native_id() -> str:
@@ -35,9 +40,36 @@ def session(root: str | Path, client: Client | None = None, board: str = "") -> 
 
     `Denied` when ``root`` is not part of a project the node can place.
     """
-    state = node_launch.default_state()
-    node = client or Client(state, person=person_key.provider(state))
+    node = client or _node()
     return on(node, place.existing(node, Path(root), board))
+
+
+def app_project(root: str | Path, tree: Path, joinable: Callable[[], tuple[Path | None, str]], *,
+                join: bool = False) -> sessions.Session:
+    """The person's session on the board of the project the app holds at ``root``, whose main working tree is ``tree``.
+
+    Nothing is registered unless ``join`` says this request is the person joining it. ``joinable()`` answers the folder the
+    node may take, or None and why not. `Unjoined` when the node holds no project there and the person may join it. A board
+    registered at any other folder than ``tree`` is `Denied`, on a read as on a join.
+    """
+    node = _node()
+    try:
+        board = place.at_path(node, Path(root))
+    except Denied as unknown:
+        folder, why = joinable()
+        if folder is None:
+            raise Denied("denied", why) from unknown
+        if not join:
+            raise Unjoined("denied", UNJOINED) from unknown
+        board = place.take(node, folder, tree)
+    else:
+        place.require(node, board, tree)
+    return on(node, board)
+
+
+def _node() -> Client:
+    state = node_launch.default_state()
+    return Client(state, person=person_key.provider(state))
 
 
 def acting(state: Path) -> Callable[[str], tuple[str, str]]:

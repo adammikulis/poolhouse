@@ -82,8 +82,12 @@ def rig(tmp_path, monkeypatch):
 
 
 def hostile(rig: Rig, tmp_path: Path) -> Path:
-    """The attacker's program: it writes a plain file, a CI workflow, a build file and a git hook; reads the person's key; reaches the loopback
-    listener that is not the bridge and the bridge; and prints what each did. NOT A MODEL, NOT A HARNESS."""
+    """The attacker's program: it writes a plain file, a CI workflow, a build file and a git hook; reads the person's key; reaches the model
+    server's own port and a host beyond this machine, and the bridge; and prints what each did. NOT A MODEL, NOT A HARNESS.
+
+    Owner-order: "so if your sandbox stops things like gpu tests, browser tests, etc, it is not useful", "No agent should be inhibited from doing
+    their work that is given them." Another loopback service is therefore reached on macOS; the model server's port and every host beyond this
+    machine are not."""
     script = tmp_path / "hostile-NOT-A-HARNESS.sh"
     python = os.path.realpath(sys.executable)
     script.write_text(textwrap.dedent(f"""\
@@ -97,7 +101,14 @@ def hostile(rig: Rig, tmp_path: Path) -> Path:
         cat '{rig.person}/.ssh/id_ed25519' > /dev/null 2>&1 && echo "KEY READ" || echo "key refused"
         {python} -I - 2>/dev/null <<'PY' && echo "NETWORK REACHED" || echo "network refused"
         import socket
-        socket.create_connection(("127.0.0.1", {rig.bystander.getsockname()[1]}), 2)
+        for target in (("127.0.0.1", {rig.port}), ("192.0.2.1", 443)):
+            try:
+                socket.create_connection(target, 2)
+                break
+            except PermissionError:
+                continue
+        else:
+            raise SystemExit(1)
         PY
         {python} -I - 2>/dev/null <<'PY' | sed 's/^/bridge /'
         import os, socket
@@ -177,11 +188,11 @@ def test_a_computer_that_cannot_confine_refuses_before_a_stage_a_service_or_a_ha
 
 
 class Open(Seatbelt):
-    """The real backend with the default turned to allow: a profile that holds nothing."""
+    """The real backend with every private folder of the account made readable again: a profile that holds nothing private."""
 
     def wrap(self, argv, policy, **kept):
         made = super().wrap(argv, policy, **kept)
-        made.argv[2] = made.argv[2].replace("(deny default", "(allow default", 1)
+        made.argv[2] += '(allow file-read* (subpath "/private/var") (subpath "/Users"))\n'
         return made
 
 
