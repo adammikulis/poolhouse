@@ -25,6 +25,7 @@ use serde_json::{json, Value};
 use crate::board::Tip;
 use crate::cert::{board_fingerprint, cert_fingerprint, Identity};
 use crate::error::{Error, Result};
+use crate::gate::Permit;
 use crate::membership::{Policy, Standing};
 use crate::net::Net;
 use crate::node::Node;
@@ -34,6 +35,9 @@ use crate::tls::{self, Secured};
 use crate::wire::{read_frame_max, write_frame_max, MAX_PEER_FRAME};
 
 pub const IO_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long the connection of a device the pool does not list lasts: it says `hello` or joins and goes, and gets for all of it
+/// what one read of a member's gets.
+pub const STRANGER_FOR: Duration = IO_TIMEOUT;
 
 fn text<'a>(req: &'a Value, key: &str) -> Result<&'a str> {
     req.get(key).and_then(Value::as_str).ok_or_else(|| Error::Invalid(format!("{key} is text")))
@@ -224,21 +228,38 @@ pub enum Ended {
     Attached,
 }
 
-/// Serve one accepted connection until the peer closes it or is refused; a member that sends `attach` hands the connection over to
-/// `Net::register_reverse`, which uses it to send that member requests.
-pub fn serve(net: &Net, tcp: TcpStream) -> Result<()> {
+/// Serve one accepted connection, which holds ``place`` on the listener, until the peer closes it or is refused; a member that sends
+/// `attach` hands the connection over to `Net::register_reverse`, which uses it to send that member requests. A member's address
+/// is vouched for and each of its reads may take `IO_TIMEOUT`; the whole connection of any other device has `STRANGER_FOR`.
+pub fn serve(net: &Net, tcp: TcpStream, place: Permit) -> Result<()> {
     let handshake=net.activity.maintenance(crate::node::update_activity::Source::Peer).map_err(crate::net::activity_error)?;
-    tcp.set_read_timeout(Some(IO_TIMEOUT))?;
-    tcp.set_write_timeout(Some(IO_TIMEOUT))?;
     let ip = tcp.peer_addr()?.ip();
-    let mut s = tls::accept(net.server_config.clone(), tcp)?;
+    let mut s = match tls::accept(net.server_config.clone(), tcp) {
+        Ok(s) => s,
+        Err(unfinished) => {
+            drop(handshake); // A refused connection being drained is neither a handshake nor work.
+            if let Some(tcp) = unfinished.alerted {
+                if let Some(_lingering) = net.lingering.enter(ip) {
+                    tls::close_after_alert(tcp);
+                }
+            }
+            return Err(unfinished.why);
+        }
+    };
     let der = s.peer.clone();
     let fp = cert_fingerprint(&der);
+    if net.is_member(&fp) {
+        place.vouch();
+        s.stream.sock.disarm(IO_TIMEOUT)?;
+    } else {
+        s.stream.sock.arm(STRANGER_FOR);
+    }
     net.session_opened(&fp);
     drop(handshake); // A waiting connection is not an in-flight handshake or storage writer.
     let result = serve_requests(net, &mut s, &der, ip, true);
-    if matches!(result, Ok(Ended::Attached)) {
-        net.register_reverse(PeerClient::accepted(s)?);
+    // A channel has no deadline, also when the device became a member while this connection was a stranger's.
+    if matches!(result, Ok(Ended::Attached)) && s.stream.sock.disarm(IO_TIMEOUT).is_ok() {
+        net.register_reverse(PeerClient::accepted(s, place)?);
         return Ok(());
     }
     net.session_closed(&fp);
@@ -287,6 +308,8 @@ pub struct PeerClient {
     pub board_fingerprint: String,
     pub der: Vec<u8>,
     closer: Option<TcpStream>,
+    /// The place on the listener an accepted connection holds until it is dropped.
+    _place: Option<Permit>,
 }
 
 impl PeerClient {
@@ -300,7 +323,7 @@ impl PeerClient {
         tcp.set_nodelay(true)?;
         let secured = tls::connect(tls::client_config(me, expect)?, tcp)?;
         let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer: None })
+        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer: None, _place: None })
     }
 
     /// Like `connect`, for a connection that stays open for hours: no read timeout (the other end speaks when it has something) and TCP
@@ -313,7 +336,7 @@ impl PeerClient {
         let closer = tcp.try_clone().ok();
         let secured = tls::connect(tls::client_config(me, expect)?, tcp)?;
         let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer })
+        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer, _place: None })
     }
 
     /// A second handle on the socket of a connection made with `connect_long`: `sys::hang_up` on it from another thread ends the
@@ -322,10 +345,10 @@ impl PeerClient {
         self.closer.as_ref().and_then(|t| t.try_clone().ok())
     }
 
-    /// A connection a member opened to this device, to send that member requests over it.
-    pub fn accepted(secured: Secured<rustls::ServerConnection>) -> Result<PeerClient> {
+    /// A connection a member opened to this device, to send that member requests over it; it keeps its ``place`` on the listener.
+    pub fn accepted(secured: Secured<rustls::ServerConnection>, place: Permit) -> Result<PeerClient> {
         let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer: None })
+        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer: None, _place: Some(place) })
     }
 
     /// Answer the requests that come down this connection (the other end holds the channel), until it closes.
