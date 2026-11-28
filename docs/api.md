@@ -46,7 +46,7 @@ print(ph.pool.add_device())                  # {"code": "...", "expires_in_s": 3
 On the second device the person tells their agent the code, or the script passes it:
 
 ```python
-ph.pool.join(host="192.168.2.27", code="...")     # this device now belongs to that pool
+ph.pool.join(host="192.0.2.27", code="...")     # this device now belongs to that pool
 ```
 
 An `open` pool (`ph.pool.found("home", "open")`) takes a device on the same network without a code, only the fingerprint of the device that
