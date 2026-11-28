@@ -129,7 +129,7 @@ def test_a_command_in_a_tool_no_guard_knows_meets_the_shell_rules():
         assert hook(TOOLS, asked).returncode == 2, command
     assert hook(TOOLS, {"tool_name": UNKNOWN, "cwd": str(ROOT), "tool_input": {"command": "git status"}}).returncode == 0
     subagent = {"tool_name": UNKNOWN, "agent_id": "a1", "cwd": str(ROOT), "tool_input": {"command": "git status"}}
-    assert hook(TOOLS, subagent).returncode == 2, "a subagent's command in an unknown tool cannot be stamped as the subagent"
+    assert hook(TOOLS, subagent).returncode == 2, "a subagent's command in an unknown tool cannot be run as the subagent"
 
 
 def test_a_path_in_a_tool_no_guard_knows_is_checked_like_the_read_tool():
@@ -197,26 +197,32 @@ def test_a_command_the_rules_cannot_read_in_bounded_work_is_refused_and_not_expa
     assert bash("echo " + "x" * 300_000).returncode == 2
 
 
-def test_a_subagent_command_in_the_monitor_tool_is_stamped_as_the_subagent(monkeypatch, capsys):
+def lines_for(call: tuple[str, str], record: dict, tmp_path: Path, monkeypatch, capsys) -> list[str]:
+    """Run the guard on a subagent's ``call`` (tool and command) in a session whose shells name their caller; the lines that call's
+    shell then runs. The guard allows the call and prints nothing, so the input stays as written."""
+    tool, command = call
+    monkeypatch.setenv("POOLHOUSE_HOOK_STATE", str(tmp_path))
     guard = load_bash_guard()
+    import shell_identity
     import subagent_records
-    monkeypatch.setattr(subagent_records, "load", lambda *_args, **_kwargs: {"name": "claude-aaaaaa", "board": "demo"})
-    event = {"tool_name": "Monitor", "cwd": str(ROOT), "agent_id": "a1",
-             "tool_input": {"command": "tail -f x", "description": "x", "timeout_ms": 1000}}
+    monkeypatch.setattr(subagent_records, "load", lambda *_args, **_kwargs: record)
+    shell_identity.mark_installed(tmp_path, "s1")
+    event = {"tool_name": tool, "cwd": str(ROOT), "agent_id": "a1", "session_id": "s1",
+             "tool_input": {"command": command, "description": "x", "timeout_ms": 1000}}
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(event)))
     assert guard.main() == 0
-    stamped = json.loads(capsys.readouterr().out)["hookSpecificOutput"]["updatedInput"]
-    assert stamped["command"].endswith("\ntail -f x") and "POOLHOUSE_WORKSPACE_AGENT=claude-aaaaaa" in stamped["command"]
-    assert stamped["timeout_ms"] == 1000
+    assert capsys.readouterr().out == ""
+    wrapped = f"true && eval '{command}' < /dev/null && pwd -P >| /tmp/claude-0a1b-cwd"
+    return shell_identity.resolve(tmp_path, "s1", wrapped, str(ROOT)).split("; ")
 
 
-def test_the_stamp_takes_the_leads_native_session_out_of_a_subagent_s_shell(monkeypatch, capsys):
-    guard = load_bash_guard()
-    import subagent_records
-    monkeypatch.setattr(subagent_records, "load", lambda *_args, **_kwargs: {"name": "claude-aaaaaa"})
-    event = {"tool_name": "Bash", "cwd": str(ROOT), "agent_id": "a1", "tool_input": {"command": "env"}}
-    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(event)))
-    assert guard.main() == 0
-    stamp = json.loads(capsys.readouterr().out)["hookSpecificOutput"]["updatedInput"]["command"].splitlines()
+def test_a_subagent_command_in_the_monitor_tool_is_given_the_subagent_without_being_changed(tmp_path, monkeypatch, capsys):
+    record = {"name": "claude-aaaaaa", "board": "demo"}
+    lines = lines_for(("Monitor", "tail -f x"), record, tmp_path, monkeypatch, capsys)
+    assert "export POOLHOUSE_WORKSPACE_AGENT=claude-aaaaaa" in lines and "export POOLHOUSE_BOARD=demo" in lines
+
+
+def test_the_stamp_takes_the_leads_native_session_out_of_a_subagent_s_shell(tmp_path, monkeypatch, capsys):
+    lines = lines_for(("Bash", "env"), {"name": "claude-aaaaaa"}, tmp_path, monkeypatch, capsys)
     for name in ("CLAUDE_CODE_SESSION_ID", "POOLHOUSE_SESSION_ID", "POOLHOUSE_SESSION_HARNESS", "CODEX_THREAD_ID"):
-        assert f"unset {name}" in stamp, name
+        assert f"unset {name}" in lines, name

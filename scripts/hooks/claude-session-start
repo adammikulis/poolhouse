@@ -17,14 +17,16 @@ def main() -> int:
     workspace_hook.bind_harness(event, "SessionStart")
     environment = workspace_hook.session_environment(event, "SessionStart")
     if environment is None:
+        workspace_hook.persist_session({}, event)
         return 0
     model = event.get("model") or os.environ.get("ANTHROPIC_MODEL", "")
     if isinstance(model, dict):
         model = model.get("id", "")
     if not event.get("agent_id") and not workspace_hook.name_session(
             environment, model if isinstance(model, str) else "", event):
+        workspace_hook.persist_session({}, event)
         return 0
-    workspace_hook.persist_session(environment)
+    workspace_hook.persist_session(environment, event)
     command = ["poolhouse-workspace", "whoami"]
     if isinstance(model, str) and model and len(model) <= 256 and model.isprintable():
         command.extend(["--model", model])

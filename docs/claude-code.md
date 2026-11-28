@@ -25,14 +25,34 @@ and never limits (docs/claude-subagents.md, "Tool-call milestones").
 - The edit guard reports, beside the edit as it is made, what docs/agent-policy.md, section 5, "The gates" lists, and lets the
   edit through. It reads the two limits from the checkers. It refuses a write of a protected path, of the person folder, and of a
   file on `main`, judged by the path as named and by the path a link resolves to.
-- A subagent's Bash and Monitor commands are stamped in the hook: its own board name and native id are set, and the names by
-  which the harness names the session that started it (`CLAUDE_CODE_SESSION_ID`, `POOLHOUSE_SESSION_ID`,
-  `POOLHOUSE_SESSION_HARNESS`, `CODEX_THREAD_ID`) are removed, so a program that drops the subagent's own marker has no
-  identity instead of the lead's. A command of a subagent that sets one of those names to a value, another session's name or a
-  token is refused (an empty value, and the name inside an argument such as a `grep` pattern, are not an assignment). In the
-  auto permission mode, which refuses a command a hook changed, only a command that runs a poolhouse program or module, names a
-  `POOLHOUSE_` variable, commits or pushes, or names `lead-review` is stamped; any other runs as sent. A stamped command refused
-  that way runs when it is sent again exactly as the refusal shows it.
+- No hook changes the input of a tool call: a call is allowed as written or refused with the reason. Claude Code reviews the input
+  the model wrote, so in the auto permission mode it can deny a call a hook changed and ask for the changed text to be sent
+  instead ("PreToolUse `updatedInput` in auto mode" in its hook reference).
+- A subagent's Bash and Monitor commands run as the subagent. The Bash hook records who issued each call, and one line that the
+  `SessionStart` hook appends to `CLAUDE_ENV_FILE` runs `scripts/hooks/shell_identity.py` in the shell before the command: it sets
+  the subagent's board name and native id there and removes the names by which the harness names the session that started it
+  (`CLAUDE_CODE_SESSION_ID`, `POOLHOUSE_SESSION_ID`, `POOLHOUSE_SESSION_HARNESS`, `CODEX_THREAD_ID`), so a program that drops the
+  subagent's own marker has no identity instead of the lead's. A shell whose caller cannot be told (two callers issued the same
+  command in the same folder at once, the shell's text matches no record while a subagent's call waits, or a subagent's record
+  is over an hour old) names nobody and says so: a workspace command in it is refused, and the same command sent again is judged
+  afresh. A record holds a digest of the command, not its text. A call refused after the hook ran leaves a record no shell
+  takes: where such a record would leave a caller in doubt, the result Claude Code wrote in the caller's transcript shows the
+  call is over (an error at once, any other result after a minute) and the record is dropped. Shells take records one at a time.
+- A command of a subagent that sets one of those names to a value, another session's name or a token is refused (an empty value,
+  and the name inside an argument such as a `grep` pattern, are not an assignment).
+- **A session whose shells hold no such line** (it began before the line was added, or the harness offered no environment file)
+  refuses a subagent one kind of command only: one that records a review verdict
+  (`scripts/lead-review`, `land-review`, `task-review`, `poolhouse-delegate grade`, `gh pr review --approve` or
+  `--request-changes`, a status or review written with `gh api`), since it would be recorded as the session that started it and
+  the author check could not tell the two apart. Every other command runs, as the session that started it: what it writes or
+  claims is recorded under that session, and the hook says so beside it, with the `--agent` flag that makes a
+  `poolhouse-workspace` command the subagent's own. A session's shells read the line when it starts, resumes or is cleared, which
+  lifts the refusal. Compacting is not enough: Claude Code 2.1.332 keeps the shell environment it read before, so a line added
+  then counts only once a shell has run it.
+- The refusal reads the command's text (`scripts/hooks/review_verdicts.py`), so a review recorded through a program the subagent
+  writes, the Python library or an MCP tool is past it; an MCP tool acts as the session in every case. A shell that finds the
+  line's program gone, or has no Claude Code session id, prints that it runs as the session. On Windows, an environment file
+  holding this line gives PowerShell commands none of the file's variables; Bash commands receive them.
 - The guards leave alone what harms nothing outside the worktree: `git checkout` and `git restore` there, `git apply --check`, a
   subagent stopping a task, `gh workflow run` of a workflow that only checks, and code that merely names git's settings.
 - The guards read the text of a command, so they stop the forms their tests list and no more: expansions, `eval`, base64, heredocs

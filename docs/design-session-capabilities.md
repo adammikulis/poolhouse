@@ -64,7 +64,7 @@ delivers either to a session's commands.
 | Child | How it is registered | How its commands find the secret |
 |---|---|---|
 | Claude Code main session | SessionStart hook: `session.register` writes the token file; `persist_session` exports `POOLHOUSE_WORKSPACE_AGENT=<name>` through `CLAUDE_ENV_FILE` | `connect()` loads the file named by that variable |
-| Claude Code subagent | SubagentStart hook runs `spawn` as the spawner's session (`workspace_hook.parent_environment`); the child's token file is written beside the others | the Bash guard's PreToolUse rewrite exports `POOLHOUSE_SUBAGENT`, `POOLHOUSE_WORKSPACE_AGENT` and unsets `POOLHOUSE_WORKSPACE_TOKEN`; `connect()` loads the file of the name the node gives that native id |
+| Claude Code subagent | SubagentStart hook runs `spawn` as the spawner's session (`workspace_hook.parent_environment`); the child's token file is written beside the others | the line `persist_session` appends to `CLAUDE_ENV_FILE` (`scripts/hooks/shell_identity.py`) exports `POOLHOUSE_SUBAGENT`, `POOLHOUSE_WORKSPACE_AGENT` and unsets `POOLHOUSE_WORKSPACE_TOKEN` in the call's shell; `connect()` loads the file of the name the node gives that native id |
 | Codex main and subagent | `codex-hook` registers; parentage is read from the Codex session header (`codex_native.parent`) | the hook tells the model `--agent NAME`; `connect(agent=name)` loads the file |
 | Local model, `poolhouse-claude`, `poolhouse-codex` | `harnessid.invite`: the launching session registers a child with its own token | the child process passes `--agent NAME` and loads the file |
 | Program, the person's CLI and app | `register` with no token; one session per terminal, named from `terminal_id()` (a `psutil` walk to the terminal's shell) | the file of that name |
@@ -210,7 +210,8 @@ by custody `file`.
 | `hook` | Claude Code main and subagents | `<state>/hooks/<opaque id>.cap` (0600, outside `client/`, in S0's `denyRead` and `denyWrite`); read by hooks | a ticket in `POOLHOUSE_WORKSPACE_TOKEN`, put there by the PreToolUse hook for that command | the ticket's rights and ends | a ticket: `act` and `spend` as that session until 15 minutes pass without use; no `spawn`; no secrecy until P2 passes, since a same-user process reads another's environment |
 | `file` | Codex, any harness with a start hook and no per-command hook, the person's CLI | the same custody file, read by the workspace command itself, chosen by the harness's own session variable (`CODEX_THREAD_ID`) | the CLI reads it | the token's ends; `act`, and `spend` for grants naming that session only | the session's `act` and its named grants until it ends; no `spawn`, no `launch`, no class grant |
 
-**Claude Code commands.** The PreToolUse Bash hook (`claude-bash-guard`, already wired and already rewriting a subagent's command)
+**Claude Code commands.** The delivery below is by `CLAUDE_ENV_FILE` (`scripts/hooks/shell_identity.py`), never by changing a
+command: auto mode can deny a call a hook changed. The PreToolUse Bash hook (`claude-bash-guard`, already wired)
 loads the session's token from hook custody by the event's `session_id` or, for a subagent, its `agent_id`; asks `ticket`;
 and delivers it as `POOLHOUSE_WORKSPACE_TOKEN=<ticket>`, replacing today's `POOLHOUSE_SUBAGENT` and `unset
 POOLHOUSE_WORKSPACE_TOKEN` lines. It does this for the main session too, which today relies on `CLAUDE_ENV_FILE`. A subagent
@@ -219,11 +220,10 @@ never falls back to the parent's ticket. The hook's cost is one node call; a tes
 section 4). A hook that cannot reach the node, or finds no custody, sends the command on with no ticket: the command is refused
 for want of a session, and says so.
 
-**Delivery.** A ticket prefixed to the command text is in `argv` and in `ps` for the command's life if the harness runs the
-rewritten command as `bash -c`, and for hours for a background command. **Probe P6** decides the form: how the harness runs the
-rewritten command and whether the text is visible to a same-user process; if it is argv, the hook delivers the ticket by
-`CLAUDE_ENV_FILE` or a descriptor and never in the command text. **Probe P1:** whether the transcript or the harness's log keeps
-the rewritten command; if it does, the ticket's idle end is what limits a leak. S4 starts only after P2 and P6 have run.
+**Delivery.** The ticket is never in the command text. Claude Code runs the lines of `CLAUDE_ENV_FILE` as part of the shell's
+`-c` text, so a ticket written there would be in `argv` and in `ps` for the command's life, and for hours for a background command:
+the program the line runs reads it from the record and sets it in the shell. **Probe P6** checks that it is not visible to a
+same-user process that way. S4 starts only after P2 and P6 have run.
 `docs/agent-sandbox.md` says that a ticket narrows rights and time and gives no secrecy on a device without S0, and says so
 again where it describes the environment.
 

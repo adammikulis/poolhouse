@@ -38,8 +38,8 @@ MENTION = re.compile(r"\.git/hooks|" + KEPT.pattern, re.I)
 git's settings or a guard's file runs (a test or a document does); writing those by redirect, copy, edit in place or `git config` is refused."""
 
 NATIVE_SESSION = frozenset({"POOLHOUSE_SESSION_ID", "POOLHOUSE_SESSION_HARNESS", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID"})
-"""The variables by which a harness names the main session a shell belongs to. The stamp takes them out of a subagent's shell, so
-a subagent that drops its own marker has no identity; a command that sets one would put the lead's back."""
+"""The variables by which a harness names the main session a shell belongs to. `scripts/hooks/shell_identity.py` takes them out of a
+subagent's shell, so a subagent that drops its own marker has no identity; a command that sets one would put the lead's back."""
 
 WRAPPERS = frozenset({"sudo", "doas", "command", "exec", "nohup", "time", "nice", "ionice", "env", "setsid", "caffeinate",
                       "stdbuf", "unbuffer", "builtin", "timeout", "xargs"})
