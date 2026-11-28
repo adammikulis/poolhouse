@@ -149,7 +149,6 @@ def test_a_card_starts_on_a_branch_bound_to_the_releasing_lead_with_memory_and_o
     given = dict(pairwise(words))
     assert (given["--as"], given["--card"], given["--model"]) == ("lead-two", "junk-card", MODEL) and "--edit" in words and "--memory" in words
     assert "--project" not in words and store.load("run-1").source == str(root.resolve()), "the default reach, from the project's own folder"
-    assert "--project" not in words and store.load("run-1").source == str(root.resolve()), "the default reach, from the project's own folder"
     assert "--in-place" not in words and "--no-review" not in words and "Your lead is lead-two" in given["--task"]
     assert cards_run.step(root, computer.host())[0] == "running" and len(computer.asked) == 1
     assert states(root)["junk-card"] == "running"
@@ -162,7 +161,6 @@ def test_a_card_starts_on_a_branch_bound_to_the_releasing_lead_with_memory_and_o
     ({"processing": None}, "answering a request"),
     ({"waiting": 1}, "answering a request"),
     ({"queue": [{"pid": 77, "label": "poolhouse-chat"}]}, "waited for by poolhouse-chat"),
-    ({"queue": [{"pid": 77, "label": "poolhouse-serve up Qwen3.8-27B.gguf"}]}, "waited for by poolhouse-serve up"),
     ({"queue": [{"pid": 77, "label": "poolhouse-serve up Qwen3.8-27B.gguf"}]}, "waited for by poolhouse-serve up"),
     ({"claim_waiters": [{"pid": 78, "name": "gpu-training", "info": {"purpose": "a benchmark"}}]}, "a benchmark"),
     ({"requests": {"gpu": [{"pid": 77, "running": False}]}}, "waits for the gpu"),
