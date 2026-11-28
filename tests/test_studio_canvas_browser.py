@@ -1,6 +1,7 @@
 """Studio graph editing and durable run controls through the application."""
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import re
@@ -10,9 +11,15 @@ import pytest
 from browser_expect import expect
 from studio_commands import studio_command, workflow_picker
 from test_fleet_ui import Serving
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: a real daemon reads this test's own node)
+    alone,
+    unfounded_node,
+)
+from web_assets import SimulatedDaemon, canned
 
-from poolhouse.fleet import studio_service
+from poolhouse.fleet import studio_service, tls
 
+pytest_plugins = ('testfarm_kit',)  # the `node_binary` fixture
 pytestmark = pytest.mark.slow
 
 SPECS = [
@@ -44,59 +51,94 @@ def studio_browser(browser_owner):
     return browser_owner.pages
 
 
-@pytest.fixture
-def studio_page(tmp_path, studio_browser):
-    pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
+def canned_studio(state):
+    """The route answering ``/ui/studio/**`` from ``state`` with made-up records; it keeps what the page saved and submitted."""
+    def route(request):
+        path = request.request.url.split('/ui/studio', 1)[1]
+        data = request.request.post_data_json if request.request.method != 'GET' else None
+        if path == '/nodes':
+            result = {'nodes': SPECS}
+        elif path == '/templates':
+            result = {'templates': []}
+        elif path == '/workflows' and data is None:
+            result = {'workflows': state['workflows']}
+        elif path.startswith('/workflows'):
+            if state.get('save_error'):
+                canned(request, {'error': state['save_error']}, 503)
+                return
+            workflow = {'id': 'workflow-1', 'revision': len(state['saved']) + 1, **data}
+            workflow['revision'] = len(state['saved']) + 1
+            state['saved'].append(workflow)
+            state['workflows'] = [workflow]
+            result = {'workflow': workflow}
+        elif path == '/validate':
+            result = {'valid': True, 'errors': []}
+        elif path == '/runs' and data is not None:
+            state['submissions'].append(data)
+            run = {'id': 'run-1', 'workflow_id': data['workflow_id'], 'revision': data['revision'],
+                   'state': 'done', 'nodes': {}}
+            state['runs'] = [run]
+            if state.pop('disconnect_next', False):
+                request.abort()
+                return
+            result = {'run': run}
+        elif path == '/runs':
+            result = {'runs': state['runs']}
+        elif path == '/runs/run-1':
+            result = {'run': state['runs'][0]}
+        else:
+            result = {}
+        canned(request, result)
+    return route
+
+
+@contextlib.contextmanager
+def studio_journey(studio_browser, url, daemon=None):
+    """One page opened on Studio at ``url`` with `canned_studio` answering its Studio routes: ``(page, state, errors)``."""
     state = {'workflows': [], 'runs': [], 'submissions': [], 'saved': []}
     with studio_browser() as page:
         page.set_viewport_size({'width': 1440, 'height': 1000})
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
-        def route(request):
-            path = request.request.url.split('/ui/studio', 1)[1]
-            data = request.request.post_data_json if request.request.method != 'GET' else None
-            if path == '/nodes':
-                result = {'nodes': SPECS}
-            elif path == '/templates':
-                result = {'templates': []}
-            elif path == '/workflows' and data is None:
-                result = {'workflows': state['workflows']}
-            elif path.startswith('/workflows'):
-                if state.get('save_error'):
-                    request.fulfill(status=503, json={'error': state['save_error']})
-                    return
-                workflow = {'id': 'workflow-1', 'revision': len(state['saved']) + 1, **data}
-                workflow['revision'] = len(state['saved']) + 1
-                state['saved'].append(workflow)
-                state['workflows'] = [workflow]
-                result = {'workflow': workflow}
-            elif path == '/validate':
-                result = {'valid': True, 'errors': []}
-            elif path == '/runs' and data is not None:
-                state['submissions'].append(data)
-                run = {'id': 'run-1', 'workflow_id': data['workflow_id'], 'revision': data['revision'],
-                       'state': 'done', 'nodes': {}}
-                state['runs'] = [run]
-                if state.pop('disconnect_next', False):
-                    request.abort()
-                    return
-                result = {'run': run}
-            elif path == '/runs':
-                result = {'runs': state['runs']}
-            elif path == '/runs/run-1':
-                result = {'run': state['runs'][0]}
-            else:
-                result = {}
-            request.fulfill(json=result)
-        page.route('**/ui/studio/**', route)
-        try:
-            page.goto(f'http://127.0.0.1:{served.port}/ui/')
-            expect(page.locator('studio-view > section')).to_be_visible()
-            yield page, state, errors
-        finally:
-            served.close()
+        if daemon is not None:
+            daemon.attach(page)
+        page.route('**/ui/studio/**', canned_studio(state))
+        page.goto(url)
+        expect(page.locator('studio-view > section')).to_be_visible()
+        yield page, state, errors
+
+
+@pytest.fixture
+def studio_page(studio_browser):
+    """Studio on a daemon simulated in the browser: the real page and files, CANNED answers, no server."""
+    pytest.importorskip('playwright.sync_api')
+    daemon = SimulatedDaemon()
+    with studio_journey(studio_browser, daemon.url, daemon) as journey:
+        yield journey
+
+
+@pytest.fixture
+def saving_studio_page(tmp_path, studio_browser):
+    """`studio_page` served by a real daemon, for a journey that saves preferences; only the Studio routes are CANNED."""
+    pytest.importorskip('playwright.sync_api')
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    try:
+        with studio_journey(studio_browser, f'http://127.0.0.1:{served.port}/ui/') as journey:
+            yield journey
+    finally:
+        served.close()
+
+
+def studio_daemon(tmp_path):
+    """A real daemon, for a journey that tests the page and the server together, with a service identity under the test's folder
+    (a node's state under /tmp is reached through a link on macOS, which an identity is refused through)."""
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    served.ui.root = tmp_path / 'traind'
+    identity = tls.identity(tmp_path / 'tls-studio', 'studio')
+    served.ui.studio_identity = lambda: identity
+    return served
 
 
 def add(page, title):
@@ -228,11 +270,9 @@ def make_prompt_group(page):
     page.locator('.studio-group-back').click()
 
 
-def test_actual_catalogue_template_run_and_package_round_trip(tmp_path, studio_browser):
+def test_actual_catalogue_template_run_and_package_round_trip(tmp_path, studio_browser, alone):  # noqa: F811
     pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     served.files.joinpath('examples.jsonl').write_text('{"prompt":"Example","response":"Answer"}\n')
     try:
         with studio_browser() as page:
@@ -286,11 +326,9 @@ def hold_next_save(page):
     return pending, hold
 
 
-def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path, studio_browser):
+def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path, studio_browser, alone):  # noqa: F811
     pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     try:
         with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
@@ -331,11 +369,9 @@ def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path, studio_
         served.close()
 
 
-def test_actual_new_waits_for_pending_workflow_save(tmp_path, studio_browser):
+def test_actual_new_waits_for_pending_workflow_save(tmp_path, studio_browser, alone):  # noqa: F811
     pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     try:
         with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
@@ -399,11 +435,9 @@ def test_subtype_port_suggestions_and_inspector_connections(studio_page):
     assert not errors
 
 
-def test_actual_sweep_controls_save_typed_choices(tmp_path, studio_browser):
+def test_actual_sweep_controls_save_typed_choices(tmp_path, studio_browser, alone):  # noqa: F811
     pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     try:
         with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
@@ -444,11 +478,9 @@ def seed_report_artifact(served, source_id):
     })
 
 
-def test_actual_run_logs_and_declared_artifact_download(tmp_path, studio_browser):
+def test_actual_run_logs_and_declared_artifact_download(tmp_path, studio_browser, alone):  # noqa: F811
     pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     try:
         with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
