@@ -254,6 +254,7 @@ def test_a_reject_by_a_reviewer_that_ended_is_answered_by_name_and_never_by_a_ne
     refused(review(tiers, tiers.lead), "a reject stands", first[:12], gone.name)
     refused(attack(tiers, tiers.sibling, "accept", "--resolves", first), "is still here")
     tiers.node.session(tiers.lead).retire(gone.name)
+    landing.review(tiers.node.session(tiers.author), merge_review.label(BRANCH, merge_review.RESOLVED), first, "accept")
     refused(review(tiers, tiers.lead), "a reject stands", gone.name)
     refused(review(tiers, tiers.lead, "accept", "--resolves", first), "an attack review answers it")
     refused(attack(tiers, tiers.sibling, "accept", "--resolves", head), "answered by a new commit")

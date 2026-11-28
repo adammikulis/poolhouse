@@ -1396,6 +1396,14 @@ tests = ["tests/test_release_check.py::test_a_checkout_with_uncommitted_changes_
 note = "fixed git argument vectors with a timeout read the commit and the dirtiness a merge into a protected branch is judged on; a failure to read is a refusal"
 
 [[group]]
+match = ["spawn:workspace/review_depth.py:_git"]
+status = "covered"
+count = 1
+tests = ["tests/test_review_depth.py::test_a_replace_ref_does_not_hide_a_change",
+         "tests/test_review_depth.py::test_a_commit_that_is_not_there_is_an_error_and_not_a_lighter_review"]
+note = "fixed git argument vectors with a timeout read a change as stored, with replace refs and grafts off; a failure to read is an error that refuses the merge"
+
+[[group]]
 match = ["spawn:*"]
 status = "partial"
 tests = ["tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"]

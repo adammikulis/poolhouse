@@ -160,8 +160,10 @@ def tiered(root: str | Path, *revisions: str) -> bool:
 
 def fetched(root: str | Path, number: str, base: str, head: str) -> str:
     """Origin's ``base``, fetched now, as a commit id; ``head`` of pull request ``number`` is in the repository afterwards."""
-    _git(root, "fetch", "--quiet", "--no-tags", "origin", f"refs/heads/{base}", stored=False)
-    held = _text(root, "rev-parse", "--verify", "FETCH_HEAD^{commit}")
+    tracked = f"refs/remotes/origin/{base}"
+    # into the branch's own ref: FETCH_HEAD is one file that any other fetch in this checkout rewrites
+    _git(root, "fetch", "--quiet", "--no-tags", "origin", f"+refs/heads/{base}:{tracked}", stored=False)
+    held = _text(root, "rev-parse", "--verify", f"{tracked}^{{commit}}")
     have = ("cat-file", "-e", f"{head}^{{commit}}")
     try:
         _git(root, *have)

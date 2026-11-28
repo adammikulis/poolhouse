@@ -1,7 +1,7 @@
 {
- "surfaces": 898,
+ "surfaces": 900,
  "by_status": {
-  "covered": 569,
+  "covered": 571,
   "partial": 189,
   "uncovered": 51,
   "n/a": 89,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 89,
+   "covered": 90,
    "partial": 0,
    "uncovered": 47,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 103,
+   "covered": 104,
    "partial": 69,
    "uncovered": 0,
    "n/a": 3,
@@ -7613,6 +7613,18 @@
    "note": "start and stop require the person's session, a loopback origin and JSON; malformed own-Chat requests are refused and own-Chat pause/resume retains queued tasks; native coding is unavailable and repeated starts or saved native workers, including those labeled chat, refuse before model lookup, registration, leases or execution; injections gain nothing beyond the role"
   },
   {
+   "id": "parser:workspace/merge_review.py",
+   "kind": "parser",
+   "source": "workspace/merge_review.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_workspace_rules.py"
+   ],
+   "note": ""
+  },
+  {
    "id": "parser:workspace/notes_cli.py",
    "kind": "parser",
    "source": "workspace/notes_cli.py",
@@ -12728,6 +12740,19 @@
     "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
    ],
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
+   "id": "spawn:workspace/review_depth.py:_git",
+   "kind": "spawn",
+   "source": "workspace/review_depth.py:_git",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_review_depth.py::test_a_replace_ref_does_not_hide_a_change",
+    "tests/test_review_depth.py::test_a_commit_that_is_not_there_is_an_error_and_not_a_lighter_review"
+   ],
+   "note": "fixed git argument vectors with a timeout read a change as stored, with replace refs and grafts off; a failure to read is an error that refuses the merge"
   },
   {
    "id": "spawn:worktreerules.py:_blob",
