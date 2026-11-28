@@ -19,7 +19,7 @@ use crate::beacon::{self, Advert, Beacon, BeaconConfig, BeaconStats, Hooks};
 use crate::cert::{board_fingerprint, Identity};
 use crate::error::{Error, Result};
 use crate::fsutil::{sha256_hex, unhex};
-use crate::gate::{unhurried, Gate};
+use crate::gate::{unhurried, Gate, Permit};
 use crate::lineage::Peer;
 use crate::membership::{Device, Standing};
 use crate::netsync::sync_all_admitted;
@@ -415,8 +415,9 @@ impl Net {
     }
 
     // -- join code ----------------------------------------------------------
-    /// The server half of the join-code exchange, run under the node lock by `peer::dispatch`.
-    pub fn join_code_step(&self, node: &mut Node, der: &[u8], op: &str, req: &Value) -> Result<Value> {
+    /// The server half of the join-code exchange, run under the node lock by `peer::dispatch`; ``place`` is the one the asking
+    /// connection holds on the listener.
+    pub fn join_code_step(&self, node: &mut Node, der: &[u8], op: &str, req: &Value, place: Option<&Permit>) -> Result<Value> {
         let fp = crate::cert::cert_fingerprint(der);
         let mut window = locked(&self.window)?;
         let w = window.as_mut().filter(|w| w.open(wall_ms())).ok_or_else(|| Error::Denied("this device is not accepting a join code".into()))?;
@@ -444,6 +445,7 @@ impl Net {
             return Err(Error::Denied(if left { "wrong code".into() } else { "wrong code; the join-code window is closed".into() }));
         }
         peer::record_json(node, "")?;
+        peer::hold(place)?;
         node.enrol_device(der, &name, "join-code", w.by_yes)?;
         let mut grant = peer::record_json(node, &fp)?;
         grant["v"] = json!(1);

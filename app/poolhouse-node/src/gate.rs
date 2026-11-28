@@ -2,7 +2,8 @@
 //! connections and says nothing must not be able to use them all: one address holds a few, the last few connections are kept for
 //! addresses that a device the node knows has recently answered from (`Gate`), and a connection has a deadline (`Timed`). Such a
 //! device may share its address with anyone (a router, a VPN, another program of its computer), so a connection from that address
-//! that finds no place takes the place of the oldest one that has shown no known device's certificate.
+//! that finds no place takes the place of the oldest one that has not kept its own (`Permit::keep`). A known device's connection has
+//! not until its handshake is over and its certificate checked, and may be hung up before that like any other.
 
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -46,15 +47,20 @@ impl Counts {
         }
     }
 
-    /// Take the place of the oldest connection that yields, of the address ``of`` or else of the address that holds the most; the
-    /// connection to hang up, or none when no place can be made.
+    /// Take the place of the oldest connection that yields, of the address ``of`` or else of the address with the most that yield;
+    /// the connection to hang up, or none when no place can be made.
     fn make_room(&mut self, of: Option<IpAddr>) -> Option<Arc<TcpStream>> {
         if self.leaving.len() >= MOST_LEAVING {
             return None;
         }
         let from = match of {
             Some(address) => address,
-            None => self.yielding.values().map(|(a, _)| *a).max_by_key(|a| self.by_address.get(a))?,
+            None => {
+                // Connections that kept their places give nobody up, so they do not count against their address.
+                let mut yield_at = BTreeMap::<IpAddr, usize>::new();
+                self.yielding.values().for_each(|(a, _)| *yield_at.entry(*a).or_default() += 1);
+                yield_at.into_iter().max_by_key(|(_, n)| *n)?.0
+            }
         };
         let oldest = *self.yielding.iter().find(|(_, (a, _))| *a == from)?.0;
         let (_, tcp) = self.yielding.remove(&oldest)?;
@@ -168,9 +174,12 @@ impl Gate {
 }
 
 impl Permit {
-    /// A known device showed its certificate on this connection: it is not hung up to make room for another.
-    pub fn keep(&self) {
-        self.gate.counts.lock().unwrap_or_else(PoisonError::into_inner).yielding.remove(&self.number);
+    /// Keep the place from here on: the connection is not hung up to make room for another. False when it has been hung up already,
+    /// so a caller that is about to do for the device what cannot be asked twice does not.
+    pub fn keep(&self) -> bool {
+        let mut c = self.gate.counts.lock().unwrap_or_else(PoisonError::into_inner);
+        c.yielding.remove(&self.number);
+        !c.leaving.contains(&self.number)
     }
 
     /// The known device ``device`` answered from this address (`Gate::vouch`).
@@ -406,11 +415,39 @@ mod tests {
         let mut most: Vec<_> = (0..2).map(|_| yielding(&gate, at(2)).unwrap()).collect();
         let mut fewer = yielding(&gate, at(3)).unwrap();
         let reserved: Vec<_> = (0..2).map(|_| yielding(&gate, at(1)).unwrap()).collect();
-        reserved.iter().for_each(|r| r.0.keep());
+        reserved.iter().for_each(|r| assert!(r.0.keep()));
         assert!(yielding(&gate, at(4)).is_none(), "a stranger has no claim");
         let _more = yielding(&gate, at(1)).expect("a known address is not refused for the others");
         assert!(hung_up(&mut most[0].1), "the address that holds the most gives up its oldest");
         assert!(!hung_up(&mut most[1].1) && !hung_up(&mut fewer.1));
+    }
+
+    #[test]
+    fn a_connection_that_was_hung_up_to_make_room_cannot_keep_its_place() {
+        let gate = Gate::new(10, 2, 0);
+        let first = yielding(&gate, at(1)).unwrap();
+        first.0.vouch("b");
+        let second = yielding(&gate, at(1)).unwrap();
+        let _third = yielding(&gate, at(1)).expect("room is made");
+        assert!(!first.0.keep(), "the oldest was hung up");
+        assert!(second.0.keep() && second.0.keep(), "one that still has its place keeps it, however often it asks");
+    }
+
+    #[test]
+    fn the_address_that_gives_up_a_place_is_the_one_with_the_most_that_may_be_taken() {
+        let gate = Gate::new(6, 6, 0);
+        let known = yielding(&gate, at(1)).unwrap();
+        known.0.keep();
+        known.0.vouch("b");
+        let channels: Vec<_> = (0..2).map(|_| yielding(&gate, at(2)).unwrap()).collect();
+        channels.iter().for_each(|c| {
+            c.0.keep();
+        });
+        let mut one = yielding(&gate, at(2)).unwrap();
+        let mut two: Vec<_> = (0..2).map(|_| yielding(&gate, at(3)).unwrap()).collect();
+        let _more = yielding(&gate, at(1)).expect("a known address makes room");
+        assert!(hung_up(&mut two[0].1), "the address with the most that may be taken gives up its oldest");
+        assert!(!hung_up(&mut one.1) && !hung_up(&mut two[1].1), "the address that holds the most in all, of which one may be taken, does not");
     }
 
     #[test]

@@ -10,10 +10,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use kit::netkit::*;
+use poolhouse_node::join_code::{context_for, Session};
 use poolhouse_node::net::Net;
 use poolhouse_node::peer::PeerClient;
 use poolhouse_node::tls::HANDSHAKE_FOR;
-use serde_json::json;
+use serde_json::{json, Value};
 
 fn dial(port: u16) -> TcpStream {
     TcpStream::connect(("127.0.0.1", port)).unwrap()
@@ -212,6 +213,102 @@ fn a_peer_is_not_late_for_the_time_the_node_was_busy() {
     wait.recv().unwrap();
     served(&b, &a).expect("the wait for the node is not the peer's");
     busy.join().unwrap();
+}
+
+/// ``joiner``'s connection to ``to`` with the exchange of ``code`` made, and the proof that asks to be admitted.
+fn exchanged(joiner: &Dev, to: &Dev, code: &str) -> (PeerClient, Value) {
+    let mut c = PeerClient::connect(&joiner.net.me, to.addr(), None).unwrap();
+    let mut s = Session::start(true, code, &context_for("a nonce"), &joiner.fp(), &c.fingerprint);
+    let reply = c.call(&json!({"op": "join_exchange", "message": s.message(), "nonce": "a nonce", "name": "joiner"})).unwrap();
+    s.receive(reply["message"].as_str().unwrap()).unwrap();
+    let proof = json!({"op": "join_confirm", "confirmation": s.confirmation().unwrap(), "port": joiner.net.port});
+    (c, proof)
+}
+
+/// A whole share of one address's connections to ``to``, silent, once the listener has taken them.
+fn later(to: &Dev) -> Vec<TcpStream> {
+    let held = (0..48).map(|_| dial(to.net.port)).collect();
+    std::thread::sleep(Duration::from_millis(500));
+    held
+}
+
+/// A pool of ``policy`` on a first device, with a member at the loopback address.
+fn pool_with_a_member_here(policy: &str) -> (Dev, Dev) {
+    let (a, b) = (device(), device());
+    kit::govnode::found(&a, kit::gov::person(kit::govnode::ANN, "ann"), policy);
+    a.join_with_code(&b);
+    served(&b, &a).unwrap();
+    (a, b)
+}
+
+fn code_of(a: &Dev) -> String {
+    a.ok("add_device", "", &a.token, json!({}))["code"].as_str().unwrap().to_string()
+}
+
+/// ``ask`` sent on ``c`` while ``to`` is busy, so that it is read and not yet answered when later connections from the same address
+/// take the place of the one it came on.
+fn cut_off_before_the_answer(mut c: PeerClient, ask: Value, to: &Dev) -> Vec<TcpStream> {
+    // answered once, so that the listener is waiting for the next request and has no other use for the node before it
+    c.call(&json!({"op": "hello"})).unwrap();
+    let busy = to.node.lock().unwrap();
+    let asking = std::thread::spawn(move || c.call(&ask).map_err(|e| e.to_string()));
+    std::thread::sleep(Duration::from_millis(500));
+    let held = later(to);
+    let answer = asking.join().unwrap();
+    assert!(answer.is_err(), "the later connections take its place: {answer:?}");
+    drop(busy);
+    // the node now works through the request it had read
+    std::thread::sleep(Duration::from_secs(1));
+    held
+}
+
+#[test]
+fn a_device_admitted_by_a_code_keeps_its_connection_past_later_ones() {
+    let (a, _b) = pool_with_a_member_here("secure");
+    let joiner = device();
+    let (mut c, proof) = exchanged(&joiner, &a, &code_of(&a));
+    c.call(&proof).unwrap();
+    assert!(a.is_member(&joiner.fp()));
+    let _later = later(&a);
+    c.call(&json!({"op": "hello"})).expect("the connection of an admitted device is not hung up for another");
+}
+
+#[test]
+fn a_device_admitted_by_an_open_pool_keeps_its_connection_past_later_ones() {
+    let (a, _b) = pool_with_a_member_here("open");
+    let guest = device();
+    let mut c = connect(&guest, &a).unwrap();
+    c.call(&json!({"op": "join_open", "name": "guest", "port": guest.net.port})).unwrap();
+    assert!(a.is_member(&guest.fp()));
+    let _later = later(&a);
+    c.call(&json!({"op": "hello"})).expect("the connection of an admitted device is not hung up for another");
+}
+
+#[test]
+fn a_join_cut_off_before_the_pool_admits_leaves_the_code_to_use() {
+    let (a, _b) = pool_with_a_member_here("secure");
+    let joiner = device();
+    let code = code_of(&a);
+    let (c, proof) = exchanged(&joiner, &a, &code);
+    let _later = cut_off_before_the_answer(c, proof, &a);
+    assert!(!a.is_member(&joiner.fp()), "the pool lists a device that did not join");
+    joiner.ok("join_pool", "", &joiner.token, json!({"host": "127.0.0.1", "port": a.net.port, "passphrase": code}));
+    assert!(a.is_member(&joiner.fp()) && joiner.pool() == a.pool());
+}
+
+#[test]
+fn an_open_join_cut_off_before_the_pool_admits_admits_nobody_and_uses_up_no_ask() {
+    let (a, _b) = pool_with_a_member_here("open");
+    let guest = device();
+    let ask = json!({"op": "join_open", "name": "guest", "port": guest.net.port});
+    // as many as one address may ask in the window
+    for _ in 0..5 {
+        let c = connect(&guest, &a).unwrap();
+        drop(cut_off_before_the_answer(c, ask.clone(), &a));
+        assert!(!a.is_member(&guest.fp()), "the pool lists a device that did not join");
+    }
+    connect(&guest, &a).unwrap().call(&ask).expect("the cut asks were not counted");
+    assert!(a.is_member(&guest.fp()));
 }
 
 /// Every source of the node outside its test modules starts a thread with `thread::Builder`, which answers an error where
