@@ -135,6 +135,7 @@ class SigningKeys:
 
     def _put(self, signer: Signer) -> str:
         raw = signer.private_raw()
+        keystore.fetch_libraries()
         if self.ks.available():
             try:
                 self._wrap(raw)

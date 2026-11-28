@@ -94,7 +94,7 @@ class NodeUnits:
 
     def build_output(self, argv, work, environment):
         code, stdout, stderr = self.launch(argv, work, environment, time.monotonic() + testnode.BUILD_TIMEOUT_S)
-        assert code == 0, stderr[-4000:]
+        assert code == 0, f"{Path(argv[0]).name} exited {code}:\n{stderr[-4000:]}"
         return stdout
 
     def execute(self, argv):

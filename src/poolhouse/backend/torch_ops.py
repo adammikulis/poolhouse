@@ -5,22 +5,27 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from poolhouse import provision
+
 Tensor = Any
 
 
-def require_torch() -> tuple[Any, Any]:
-    """Import torch and torch.nn, with a clear error if they are absent."""
+def require_torch(*, install: bool = True) -> tuple[Any, Any]:
+    """Import torch and torch.nn, installing PyTorch first when it is not here (``install``: a probe passes False),
+    with a clear error when they cannot be had."""
     try:
+        if install:
+            provision.ensure("torch", "torch")
         import torch
         import torch.nn as nn
     except ImportError as exc:
-        raise RuntimeError("PyTorch is not installed. pip install torch") from exc
+        raise RuntimeError(f"PyTorch is not here: {exc}") from exc
     return torch, nn
 
 
 def resolve_torch_device(prefer: str | None = None):
-    """A ``torch.device`` for this machine."""
-    torch, _ = require_torch()
+    """A ``torch.device`` for this machine. Asking which device is no need for PyTorch, so none is installed."""
+    torch, _ = require_torch(install=False)
 
     if prefer and prefer != "auto":
         return torch.device(prefer)

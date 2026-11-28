@@ -24,12 +24,16 @@ from poolhouse import (
     coding,
     coding_policy,
     delegate_confined,
+    files,
     harnessing,
+    home,
     isolation,
     opencode,
     opencode_install,
+    provision,
 )
 from poolhouse.http import Server
+from poolhouse.net.scan import Outcome, ScanPolicy, ScanResult
 
 pytest_plugins = ["tests.confined_kit"]
 
@@ -361,7 +365,8 @@ def test_opencode_names_are_in_the_closed_records():
 
 @pytest.fixture
 def releases(monkeypatch, tmp_path):
-    """A local release feed that serves the two pinned releases (real zips with a marked file in each) with the digests the feed reports."""
+    """A local release feed that serves the two pinned releases (real zips with a marked file in each), whose digests stand in for the pins."""
+    monkeypatch.delenv(provision.SWITCH, raising=False)
     monkeypatch.setattr(opencode_install, "asset_name", lambda: "opencode-test-arm64.zip")
     monkeypatch.setattr(opencode_install, "ripgrep_asset_name", lambda: "ripgrep-test-arm64.zip")
     bodies = {}
@@ -371,6 +376,10 @@ def releases(monkeypatch, tmp_path):
             archive.writestr(member, f"#!/bin/sh\necho {said} NOT THE REAL PROGRAM\n")
         bodies[asset] = made.getvalue()
     state = {"digest": {name: hashlib.sha256(body).hexdigest() for name, body in bodies.items()}, "asked": []}
+    pins = {(tag, "opencode-test-arm64.zip"): state["digest"]["opencode-test-arm64.zip"] for tag in (opencode_install.VERSION, "v9.9.9")}
+    pins[opencode_install.RIPGREP, "ripgrep-test-arm64.zip"] = state["digest"]["ripgrep-test-arm64.zip"]
+    monkeypatch.setattr(opencode_install, "PINNED", pins)
+    state["pins"] = pins
 
     class Feed(http.server.BaseHTTPRequestHandler):
         def log_message(self, *a):
@@ -444,11 +453,56 @@ def test_a_program_still_being_copied_is_never_taken_for_the_pinned_one(releases
 
 
 @pytest.mark.usefixtures("loopback_net")
-def test_a_download_that_does_not_match_its_digest_installs_nothing(releases):
-    releases["digest"]["opencode-test-arm64.zip"] = "0" * 64
+def test_a_download_that_does_not_match_the_pinned_digest_installs_nothing_whatever_the_feed_reports(releases):
+    releases["pins"][opencode_install.VERSION, "opencode-test-arm64.zip"] = "0" * 64
     with pytest.raises(opencode_install.InstallFailed, match="digest"):
         opencode_install.ensure()
     assert opencode_install.kept() == ""
+
+
+@pytest.mark.parametrize("scanner,saved,refused", [
+    (None, "", ""), (Outcome.INFECTED, "", "infected"), (Outcome.ERROR, "", "error"),
+    (None, "refuse", "not kept unscanned"), (None, "warn", "")])
+def test_a_pinned_download_is_kept_only_where_no_scanner_exists_and_no_saved_policy_refuses_it(releases, loopback_net, scanner,
+                                                                                              saved, refused):
+    loopback_net.scanners = [Answering(scanner)] if scanner else []
+    if saved:
+        files.write_json(home.state("net", "scan-policy.json"), {"schema_version": 1, "archive": saved})
+        loopback_net.scan_policy = ScanPolicy.load()
+    if not refused:
+        assert opencode_install.ensure() == opencode_install.kept() != ""
+        return
+    with pytest.raises(opencode_install.InstallFailed, match=refused):
+        opencode_install.ensure()
+    assert opencode_install.kept() == ""
+
+
+def test_only_the_categories_somebody_set_are_saved_as_the_policy():
+    ScanPolicy(model="allow", chosen=("model",)).save()
+    assert ScanPolicy.load().chosen == ("model",) and ScanPolicy.load().archive == "refuse"
+
+
+class Answering:
+    """A virus scanner that gives one answer for every file: plumbing only, nothing is scanned."""
+
+    name = "plumbing-scanner"
+
+    def __init__(self, outcome):
+        self.outcome = outcome
+
+    def available(self):
+        return True
+
+    def scan(self, path):
+        return ScanResult(self.name, self.outcome, "PLUMBING answer", "PLUMBING answer")
+
+
+@pytest.mark.usefixtures("loopback_net")
+def test_an_asset_with_no_pinned_digest_is_not_downloaded(releases):
+    releases["pins"].clear()
+    with pytest.raises(opencode_install.InstallFailed, match="no sha256 is pinned"):
+        opencode_install.ensure()
+    assert opencode_install.kept() == "" and releases["asked"] == []
 
 
 @pytest.mark.usefixtures("confinable", "from_a_terminal")

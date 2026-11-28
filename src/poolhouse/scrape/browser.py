@@ -12,8 +12,12 @@ are paced and can be held to hours when somebody is meant to be awake.
 from __future__ import annotations
 
 import contextlib
+import importlib
 import os
 import random
+import re
+import subprocess
+import sys
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -21,11 +25,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from poolhouse.net import browserguard
+from poolhouse import home, provision, safelaunch
+from poolhouse.lock import only_one
+from poolhouse.log import warn
+from poolhouse.scrape import browserguard
+
+FETCH_S = 1800.0
+"""Seconds the browser's download, and a wait for another process's, may take."""
 
 
 class BrowserUnavailable(RuntimeError):
-    """Playwright is not installed. `pip install poolhouse[scrape]`, then `playwright install`."""
+    """Playwright or a browser is not here and could not be installed."""
 
 
 @dataclass
@@ -40,7 +50,10 @@ class Window:
     timeout_ms: int = 60_000
     position: tuple[int, int] | None = None
     guarded: bool = False
-    """Only public addresses may be requested and nothing is downloaded: for pages a model chose."""
+    """Only public addresses may be connected to and nothing is downloaded (`browserguard`): for pages a model chose."""
+    own_pages: bool = False
+    """Nothing but the project's own pages, served on this machine, is opened, so Chromium may run without its sandbox, which
+    cannot start inside another one. A guarded window keeps its sandbox whatever this says."""
 
     def args(self) -> list[str]:
         """The Chromium flags this window wants."""
@@ -61,24 +74,101 @@ def placed() -> tuple[int, int] | None:
     return x, y
 
 
+MISSING = ("Executable doesn't exist", "is not found at")
+REDIRECT = re.compile(r"(?:npm_(?:package_)?config_)?playwright_(?:\w+_)?download_host|node_tls_reject_unauthorized",
+                      re.IGNORECASE)
+"""Environment settings that would fetch the browser from somewhere else, or without checking who answers, under each
+name Playwright reads them by."""
+"""What Playwright says when the browser asked for is not on this computer."""
+EXECUTABLE = ("from playwright.sync_api import sync_playwright\n"
+              "with sync_playwright() as p:\n print(p.chromium.executable_path)")
+
+
+def bundled_chromium(run: Any = subprocess.run) -> str:
+    """The Chromium of this Playwright release kept under the state root (``tools/browsers``), downloaded by Playwright's own
+    installer the first time; one process downloads and the others use it. Which Chromium that is comes from the revision
+    table inside the installed Playwright release, itself held to the project's hashed lock; Poolhouse holds no digest of the
+    browser's own files. Playwright's settings for another download host, and for skipping certificate checks, are not
+    passed on. Raises `BrowserUnavailable` with why not."""
+    kept = home.state("tools", "browsers")
+    environment = {name: value for name, value in os.environ.items() if not REDIRECT.fullmatch(name)}
+    environment["PLAYWRIGHT_BROWSERS_PATH"] = str(kept)
+
+    def playwright(*words: str, **how: Any) -> Any:
+        """This interpreter on ``words``, started from an empty directory it takes nothing from."""
+        with safelaunch.empty_directory() as nowhere:
+            return run([safelaunch.absolute(sys.executable), "-P", *words], env=environment, cwd=nowhere, **how)
+
+    def executable() -> str:
+        said = playwright("-c", EXECUTABLE, capture_output=True, text=True, timeout=60)
+        found = said.stdout.strip() if said.returncode == 0 else ""
+        return found if found and Path(found).is_file() else ""
+
+    try:
+        if found := executable():
+            return found
+        if refused := provision.download_refusal():
+            raise BrowserUnavailable(f"no browser is on this computer, and none was downloaded: {refused}")
+        kept.mkdir(parents=True, exist_ok=True)
+        with only_one(kept / "fetch.lock", wait=True, timeout=FETCH_S, announce=warn, note="downloading Chromium"):
+            if found := executable():
+                return found
+            warn("a browser is needed for the first time: downloading Playwright's Chromium once")
+            # its progress goes to standard error, so a program reading this one's output is not fed it
+            done = playwright("-m", "playwright", "install", "chromium", timeout=FETCH_S, stdout=2)
+            if done.returncode:
+                raise BrowserUnavailable(f"Playwright's installer exited {done.returncode}; its output is above")
+        if found := executable():
+            return found
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise BrowserUnavailable(f"no browser is on this computer, and none could be downloaded: {exc}") from exc
+    raise BrowserUnavailable("Playwright's installer finished and left no Chromium")
+
+
+def _launch_errors() -> tuple[type[BaseException], ...]:
+    """What a browser launch raises: Playwright's own error where Playwright is here, and RuntimeError."""
+    try:
+        return (importlib.import_module("playwright.sync_api").Error, RuntimeError)
+    except ImportError:
+        return (RuntimeError,)
+
+
+def _context(play: Any, profile: Path, window: Window, guard: browserguard.Guard | None = None) -> Any:
+    """The persistent context of ``window``: the browser it names, else the bundled Chromium where that one is not here. A
+    guarded window is launched on ``guard``."""
+    options = {"headless": window.headless, "args": window.args(), "accept_downloads": True,
+               "viewport": {"width": window.width, "height": window.height},
+               "chromium_sandbox": window.guarded or not window.own_pages}
+    if window.guarded:
+        options.update(guard.options(window.args()))   # type: ignore[union-attr]  # without one nothing is launched
+    try:
+        return play.chromium.launch_persistent_context(str(profile), channel=window.channel, **options)
+    except _launch_errors() as exc:
+        if not any(said in str(exc) for said in MISSING):
+            raise
+    return play.chromium.launch_persistent_context(str(profile), executable_path=bundled_chromium(), **options)
+
+
 @contextlib.contextmanager
 def _paged(play: Any, window: Window) -> Iterator[Any]:
     """A page on that Playwright, over a profile directory that persists."""
     profile = Path(window.profile).expanduser()
     profile.mkdir(parents=True, exist_ok=True)
-    context = play.chromium.launch_persistent_context(
-        str(profile), headless=window.headless, channel=window.channel,
-        args=window.args(), accept_downloads=not window.guarded,
-        viewport={"width": window.width, "height": window.height})
-    if window.guarded:
-        browserguard.install(context)
-    context.set_default_timeout(window.timeout_ms)
-    page = context.pages[0] if context.pages else context.new_page()
-    try:
-        yield page
-    finally:
-        with contextlib.suppress(Exception):
-            context.close()
+    with browserguard.Guard() if window.guarded else contextlib.nullcontext() as guard:
+        context = _context(play, profile, window, guard)
+        if guard:
+            guard.install(context)
+        context.set_default_timeout(window.timeout_ms)
+        # a guarded window never uses a page that was open before the guard was installed: that one's document lacks it
+        older = list(context.pages) if window.guarded else []
+        page = context.new_page() if older or not context.pages else context.pages[0]
+        for one in older:
+            one.close()
+        try:
+            yield page
+        finally:
+            with contextlib.suppress(Exception):
+                context.close()
 
 
 @contextlib.contextmanager
@@ -94,7 +184,7 @@ def browser(window: Window, play: Any = None) -> Iterator[Any]:
             yield page
         return
     try:
-        from playwright.sync_api import sync_playwright
+        sync_playwright = provision.module("playwright.sync_api", "scrape").sync_playwright
     except ImportError as exc:  # pragma: no cover - depends on what is installed
         raise BrowserUnavailable(str(exc)) from exc
     with sync_playwright() as opened, _paged(opened, window) as page:

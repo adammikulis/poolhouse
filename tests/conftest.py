@@ -52,6 +52,8 @@ os.environ.setdefault("POOLHOUSE_GUARD_JUDGE", "off")
 sys.path.insert(0, str(REPO / "src"))
 os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["POOLHOUSE_RUNTIME_ENSURE"] = "off"
+# no test, and no command a test starts, installs a package or downloads a tool at first use (`poolhouse.provision`)
+os.environ["POOLHOUSE_INSTALL_AT_NEED"] = "off"
 sys.path.insert(0, str(REPO / "scripts"))
 
 
@@ -89,6 +91,7 @@ def pytest_sessionfinish(session, exitstatus) -> None:
 
 
 # ``src`` goes on the path above, so these cannot be imported with the rest.
+import testsecrets  # noqa: E402
 import testslots  # noqa: E402
 import walkbound  # noqa: E402
 from daemon_guard import daemons_stop_with_the_test  # noqa: E402,F401  (an autouse fixture)
@@ -735,6 +738,8 @@ def _testmon_ignores_scripts_without_a_suffix() -> None:
 
 
 def pytest_configure(config):
+    testsecrets.withhold_credentials()
+    testsecrets.hide_environment(config.option)
     _testmon_ignores_scripts_without_a_suffix()
     config.addinivalue_line(
         "markers",

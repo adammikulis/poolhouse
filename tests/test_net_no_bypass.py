@@ -77,6 +77,8 @@ ALLOWED: dict[str, str] = {
     "fleet/onboard/routes.py": "asks a member's address for its certificate; a public address "
                                "is refused first and only the pinned certificate counts "
                                "(fleet/onboard/lan.py)",
+    "scrape/browserguard.py": "the one way out of a guarded browser; it resolves each host once, refuses any address that is not "
+                              "public and connects to the address it checked",
     "redteam/scenarios/fleet.py": "the lab's own servers on 127.0.0.1",
     "redteam/scenarios/isolation.py": "the lab's own servers on 127.0.0.1",
     "redteam/tools.py": "the lab's page server and honeypot on 127.0.0.1",

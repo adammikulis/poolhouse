@@ -103,7 +103,7 @@ def test_direct_environment_callers_share_the_install_lock(tmp_path, monkeypatch
     from poolhouse.fleet.environment import Environment
     first, release, second = threading.Event(), threading.Event(), threading.Event()
     seen = []
-    def install(self, names, on_progress=None):
+    def install(self, names, on_progress=None, locked=False):
         seen.append(names)
         if len(seen) == 1:
             first.set()

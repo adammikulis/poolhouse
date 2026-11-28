@@ -12,9 +12,10 @@ import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
+from poolhouse import provision, safelaunch
 from poolhouse.serve.binary import child_env, is_windows
 
-__all__ = ["arches_from_source", "arches_in", "can_build_from_source", "cmake_flags", "copy_flat",
+__all__ = ["arches_from_source", "arches_in", "can_build_from_source", "cmake_flags", "cmake_program", "copy_flat",
            "now_iso", "server_name", "verify_libraries", "version_of", "vulkan_available"]
 
 # `LLM_ARCH_QWEN4EXP, "qwen4exp"` -- every architecture name llama.cpp's own source reads,
@@ -26,31 +27,42 @@ def server_name() -> str:
     return "llama-server.exe" if is_windows() else "llama-server"
 
 
+def cmake_program(found: str | None = None) -> str:
+    """``found`` or the ``cmake`` on PATH; with neither, the one of the ``llama-build`` extra, installed first. Raises
+    `provision.Unavailable` when none can be had."""
+    if here := found or safelaunch.which("cmake"):
+        return here
+    package = provision.module("cmake", "llama-build")
+    return str(Path(package.CMAKE_BIN_DIR) / ("cmake.exe" if is_windows() else "cmake"))
+
+
 def vulkan_available() -> bool:
-    return bool(os.environ.get("VULKAN_SDK")) or shutil.which("vulkaninfo") is not None
+    return bool(os.environ.get("VULKAN_SDK")) or safelaunch.which("vulkaninfo") is not None
 
 
 def can_build_from_source() -> bool:
     """Whether this machine has a compiler at all -- the source path needs one, the release
     path does not, and a machine with neither should not be told to try compiling."""
-    if shutil.which("cmake") is None:
+    if safelaunch.which("cmake") is None:
         return False
     if platform.system() == "Windows":
-        return any(shutil.which(c) for c in ("cl", "gcc", "clang"))
-    return any(shutil.which(c) for c in ("cc", "gcc", "clang"))
+        return any(safelaunch.which(c) for c in ("cl", "gcc", "clang"))
+    return any(safelaunch.which(c) for c in ("cc", "gcc", "clang"))
 
 
 def cmake_flags() -> list[str]:
     """Which GPU backend to build, decided the same way on every platform: a CUDA compiler
     beats a Vulkan SDK beats neither. Metal is unconditional on macOS -- every Mac since the
-    architecture this reads GGUF for has one."""
+    architecture this reads GGUF for has one. The build never downloads llama.cpp's web page:
+    upstream's step takes whatever its bucket holds then, which nothing here pins."""
+    fetched_nothing = ["-DLLAMA_USE_PREBUILT_UI=OFF"]
     if platform.system() == "Darwin":
-        return ["-DGGML_METAL=ON", "-DLLAMA_CURL=ON"]
-    if shutil.which("nvcc"):
-        return ["-DGGML_CUDA=ON"]
+        return [*fetched_nothing, "-DGGML_METAL=ON", "-DLLAMA_CURL=ON"]
+    if safelaunch.which("nvcc"):
+        return [*fetched_nothing, "-DGGML_CUDA=ON"]
     if vulkan_available():
-        return ["-DGGML_VULKAN=ON"]
-    return []
+        return [*fetched_nothing, "-DGGML_VULKAN=ON"]
+    return fetched_nothing
 
 
 def now_iso() -> str:

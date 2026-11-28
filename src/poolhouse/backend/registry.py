@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import os
+import platform
 import sys
 from collections.abc import Callable
 
+from poolhouse import provision
 from poolhouse.backend.ops import ArrayBackend
 
 _FACTORIES: dict[str, Callable[[], ArrayBackend]] = {}
@@ -75,7 +77,7 @@ def _build_torch() -> ArrayBackend:
         require_torch,
     )
 
-    torch, nn = require_torch()
+    torch, nn = require_torch(install=False)
     built = ArrayBackend(
         name="torch",
         ops=TorchArrayOps(torch),
@@ -134,6 +136,8 @@ def detect_backend() -> str:
             raise BackendUnavailable(
                 f"POOLHOUSE_BACKEND={override!r} is not one of {backends()}"
             )
+        if override in _MODULES:
+            _install(override)
         return override
 
     known = backends()
@@ -146,10 +150,22 @@ def detect_backend() -> str:
             continue
         return name
 
-    raise BackendUnavailable(
-        f"none of {backends()} could be imported. Install one: `pip install torch` "
-        "(which covers both CUDA and ROCm), or `pip install mlx` on Apple silicon."
-    )
+    # none is here: the one this computer runs on is installed
+    default = "mlx" if sys.platform == "darwin" and platform.machine() == "arm64" else "torch"
+    _install(default)
+    return default
+
+
+_MODULES = {"mlx": "mlx.core", "torch": "torch"}
+"""The built-in backends Poolhouse can install, each from the extra of its own name, and the module it brings."""
+
+
+def _install(name: str) -> None:
+    """Have the built-in backend ``name`` importable, installing it when it is not. Raises `BackendUnavailable`."""
+    try:
+        provision.ensure(name, _MODULES[name])
+    except ImportError as exc:
+        raise BackendUnavailable(f"none of {backends()} could be imported, and {name} could not be installed: {exc}") from exc
 
 
 def get_backend(name: str | None = None) -> ArrayBackend:

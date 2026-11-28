@@ -92,6 +92,7 @@ class PoolKeys:
     def sealed(self) -> bool:
         """Whether a key made here is kept under the account's keystore. Where it is not, the key is kept in a file under the passphrase of
         ``POOLHOUSE_SIGNING_PASSPHRASE``."""
+        keystore.fetch_libraries()
         return self._store().available()
 
     def check(self) -> None:

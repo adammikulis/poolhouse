@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 
+from poolhouse import provision
 from poolhouse.hub.transfer import base_folder
 from poolhouse.train.recipes.base import resolve_base
 from poolhouse.train.recipes.built import Built
@@ -59,12 +60,13 @@ def load_base(base: str, *, device: Any = None, dtype: Any = None) -> tuple[Any,
     for an 8B model.
     """
     try:
-        import torch
+        torch = provision.module("torch", "torch")
+        provision.ensure("transformers", "transformers")
         from transformers import AutoModelForCausalLM, AutoTokenizer
     except ImportError as exc:
         raise ValueError(
             "the tool-calls recipe fine-tunes a Hugging Face checkpoint and needs torch and "
-            "transformers: pip install 'poolhouse[torch]' transformers") from exc
+            f"transformers: {exc}") from exc
 
     base = base_folder(base)
     tokenizer = AutoTokenizer.from_pretrained(base)

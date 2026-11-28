@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import hashlib
 import html
 import importlib.machinery
@@ -30,17 +31,21 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-if importlib.util.find_spec("jwt") is None:
-    sys.exit(f"agent-identity: PyJWT is not installed in {sys.prefix}; run `poolhouse runtime ensure`, "
-             "which installs the github-app extra")
-
 from poolhouse import (
     caller,
     credentials,
     home,
+    provision,
     real_machine,
     runtime,
 )
+
+try:   # PyJWT, installed the first time this command runs without it, except by `check`, which only looks
+    with provision.nothing_installed() if sys.argv[1:2] == ["check"] else contextlib.nullcontext():
+        provision.ensure("github-app", "jwt")
+except ImportError as why:
+    sys.exit(f"agent-identity: PyJWT is needed and is not here: {why}")
+
 from poolhouse.command import Group, flag
 from poolhouse.fleet import runtime_wheel, updates
 from poolhouse.fleet.onboard import web
