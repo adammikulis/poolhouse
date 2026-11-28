@@ -167,6 +167,10 @@ own:
 - **The red-team lab** (`redteam/tools.py`, `redteam/scenarios/fleet.py`,
   `redteam/scenarios/isolation.py`), which only connects to servers it started on 127.0.0.1.
 
+One entry does reach public hosts: the guarded browser's proxy (`scrape/browserguard.py`). It
+holds the pipeline's own address rule (`httpguard.resolve`) on every connection of a browser a
+model drives, loopback included, and connects to the address it checked.
+
 A relative import such as `from .requests import ...` is a sibling module, not the `requests`
 library, and is not flagged. Everything that does reach a public host (the Hub, GitHub, the
 geocoder, pages, `huggingface_hub`) goes through `poolhouse.net`: the decider checkpoint and the

@@ -174,7 +174,7 @@ def _aead(key: bytes) -> Any:
     try:
         return keystore.aead(key)
     except keystore.KeystoreUnavailable as exc:
-        raise KeyUnavailable("the memory store needs `pip install cryptography`") from exc
+        raise KeyUnavailable(f"the memory store cannot encrypt: {exc}") from exc
 
 
 def _kid(key: bytes) -> bytes:

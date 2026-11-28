@@ -14,6 +14,7 @@ from poolhouse.decide.types import BackendUnavailable, DecideError
 from poolhouse.files import sha256_file, write_json
 from poolhouse.httpguard import Refused
 from poolhouse.hub import hfstore
+from poolhouse.log import warn
 from poolhouse.safenames import safe_filename
 
 
@@ -72,6 +73,7 @@ def _fetch(pin: Pin, path: Path, *, endpoint: str | None = None) -> None:
     blob = hfstore.repo_root(pin.repo) / "blobs" / pin.sha256
     want = net.Want(sha256=pin.sha256, size=pin.size, require_digest=True,
                     max_bytes=pin.size + (1 << 20), purpose="decide model")
+    warn(f"downloading {pin.repo}/{pin.filename} ({pin.size / (1 << 20):.1f} MB), needed for the first time")
     try:
         net.download(_url(pin, endpoint), blob, want, pipeline=net.default())
     except net.Blocked as exc:

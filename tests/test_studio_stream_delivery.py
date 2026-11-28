@@ -6,6 +6,7 @@ import socket
 import ssl
 from types import SimpleNamespace
 
+import psutil
 import pytest
 
 from poolhouse import httpguard
@@ -72,6 +73,19 @@ def test_any_private_dns_answer_refuses_even_with_ambient_allowlist(delivery, mo
     monkeypatch.setenv(httpguard.ALLOW_ENV, 'receiver.example')
     state.addresses.append(address)
     assert deliver(destination, envelope, authorize=lambda: True)['state'] == 'blocked'
+    assert not state.connections
+
+
+@pytest.mark.parametrize('url,address', [('https://receiver.example/records', '93.184.216.99'),
+                                         ('https://receiver.internal/records', '1.1.1.1')])
+def test_a_destination_the_fetch_would_refuse_is_refused_before_anything_is_sent(delivery, monkeypatch, url, address):
+    """PLUMBING ONLY: this machine as holding a public address, with a destination next door or named as one of its own."""
+    destination, envelope, state = delivery
+    listed = {'en0': [SimpleNamespace(family=socket.AF_INET, address='93.184.216.10', netmask='255.255.255.0')]}
+    monkeypatch.setattr(psutil, 'net_if_addrs', lambda: listed)
+    monkeypatch.setattr(socket, 'getaddrinfo', lambda *_args, **_kw: [(socket.AF_INET, socket.SOCK_STREAM, 6, '', (address, 443))])
+    destination['url'] = url
+    assert deliver(destination, envelope, authorize=lambda: True) == {'state': 'blocked', 'reason': 'preflight_refused'}
     assert not state.connections
 
 

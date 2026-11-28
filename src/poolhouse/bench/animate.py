@@ -327,7 +327,9 @@ def run(args: Any) -> int:
     try:
         import manim  # noqa: F401
     except ImportError:
-        warn("manim is not installed: pip install 'poolhouse[viz]'")
+        warn("rendering needs manim, which is not here and which Poolhouse does not install: one of its parts has no "
+             "prebuilt file the project's lock can hold to a digest, and on macOS it also needs the cairo system library. "
+             "--dry-run prints the plan without it")
         return 2
     where = render(doc, out=args.out, png=args.png, quality=args.quality,
                    seconds=args.seconds, only=only, work=args.work)

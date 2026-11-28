@@ -16,7 +16,14 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
+import sys
 from typing import TYPE_CHECKING, Any
+
+# Windows looks for a bare program name in the current directory, which may be a project somebody else wrote, unless a process
+# has this set. Every Poolhouse process imports this package first, and passes the setting to what it starts.
+if sys.platform == "win32":
+    os.environ.setdefault("NoDefaultCurrentDirectoryInExePath", "1")
 
 from poolhouse.api import NAMESPACES as _NAMESPACES
 from poolhouse.errors import Conflict, Denied, Error, NotRunning

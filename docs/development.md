@@ -204,6 +204,7 @@ integration batch before publication. The full suite runs on GitHub for pull req
 | `scripts/gaterun.py` | not a command: the library `scripts/test gate` uses to run the gate steps in parallel lanes |
 | `scripts/mutation-check-quick` | check, in a throwaway worktree, that `scripts/test quick` fails when a function in a named module is mutated; it writes into `src/` |
 | `scripts/preflight` | learn what this machine lacks for a purpose (`dev`, `gate`, `build`, `runtime`) and the command that closes the gap |
+| `scripts/prose_to_code.py` | list the agent guidance that is still prose, what enforces each sentence and what changed since the last run; the `/prose-to-code` skill runs it and judges the open ones |
 | `scripts/status` | learn whether anything is stuck: the verdict, the test broker, test jobs and GitHub runs of the development branch |
 | `scripts/sync-dev` | in a plain clone (a VS Code task, cron, a timer): fetch and fast-forward the current checkout when it is the development branch and clean |
 | `scripts/primary_sync.py` | fast-forward the primary checkout of a worktree layout to `origin/<dev>`; the push hook and `scripts/worktrees sweep` start it |

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
 
+from poolhouse import provision
 from poolhouse.decide import library, registry
 from poolhouse.decide.base import Decider, State
 from poolhouse.decide.calibrate import Calibration
@@ -91,7 +92,7 @@ def unavailable(name: str, config: Config) -> str:
         missing = [m for m in ("torch", "transformers", "peft", "safetensors")
                    if find_spec(m) is None]
         if missing:
-            return f"needs {', '.join(missing)} (pip install 'poolhouse[decide-pointer]')"
+            return f"needs {', '.join(missing)}, installed the first time the pointer backend is chosen by name"
         try:
             if config.pointer:
                 local_source(_trained(config.pointer), download=False)
@@ -105,8 +106,8 @@ def unavailable(name: str, config: Config) -> str:
     if name == "embed":
         if not (config.embed_url and config.embed_head):
             return "needs an embedding server and a trained head (embed_url, embed_head)"
-        if find_spec("numpy") is None:
-            return "needs numpy (pip install 'poolhouse[decide]')"
+        if find_spec("numpy") is None and (why := provision.refusal()):
+            return f"needs numpy, which could not be installed here: {why}"
         return _reachable(config.embed_url, config.token)
     if name == "rules":
         return "" if config.rules is not None else "no rules were given"
@@ -133,8 +134,10 @@ def build(name: str, config: Config) -> Decider:
             return held[1]
         made: Decider
         if name == "pointer":
+            # chosen by name, the pointer backend downloads its pinned files the first time; "auto" only takes what is here
+            fetch = config.download or (config.backend == "pointer" and not provision.download_refusal())
             made = PointerDecider(_trained(config.pointer) if config.pointer else STRANDS_V19,
-                                  download=config.download, calibration=config.calibration, batched=config.batched)
+                                  download=fetch, calibration=config.calibration, batched=config.batched)
         elif name == "logprob":
             made = LogprobDecider(Chat(config.chat_url, config.model, config.token),
                                   calibration=config.calibration)

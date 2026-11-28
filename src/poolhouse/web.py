@@ -42,7 +42,7 @@ from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
-from poolhouse import net
+from poolhouse import net, provision
 from poolhouse.home import cache, state
 from poolhouse.http import Refused, ServerError, check
 from poolhouse.markup import cut, extract
@@ -56,7 +56,6 @@ Engine = Callable[..., list[dict[str, Any]]]
 """``(query, limit) -> [{"title", "url", "snippet"}, ...]``; may raise SearchUnavailable.
 An engine that can page also takes ``page`` (1-based) as a third argument."""
 
-INSTALL = "pip install 'poolhouse[web]'"
 # what a plain fetch has to come back with before it counts as having read the page:
 # a script-built site serves a shell with a title and nothing else, and that shell is
 # what falls through to the browser
@@ -101,16 +100,13 @@ def ddgs_engine(query: str, limit: int, page: int = 1) -> list[dict[str, Any]]:
     ``duckduckgo,brave``). ddgs raises its own exceptions for a rate limit, a timeout and
     for "no results" alike; all of them become ``SearchUnavailable`` here, with the reason.
     """
-    try:
-        from ddgs import DDGS
-        from ddgs.exceptions import DDGSException
-    except ImportError as exc:
-        raise ImportError(f"ddgs is not installed: {INSTALL}") from exc
+    DDGS = provision.module("ddgs", "web").DDGS
+    refused = provision.module("ddgs.exceptions", "web").DDGSException
     backend = os.environ.get("DDGS_BACKEND") or "auto"
     try:
         rows = DDGS().text(query, max_results=limit, backend=backend,
                              **({"page": page} if page > 1 else {}))
-    except DDGSException as exc:
+    except refused as exc:
         raise SearchUnavailable(f"{type(exc).__name__}: {exc}") from exc
     return [{"title": r.get("title", ""), "url": r.get("href", ""), "snippet": r.get("body", "")}
             for r in rows]
@@ -314,11 +310,16 @@ def read(url: str, *, limit: int = 6000, fetch: Callable[[str], str] | None = No
             plain_error = exc
     if rendered or len(text) < THIN:
         try:
-            html = _rendered(url, browse)
+            # a page that came back thin chose this, not the caller: it uses the browser that is here and fetches none
+            with contextlib.nullcontext() if rendered else provision.nothing_installed():
+                html = _rendered(url, browse)
         except Exception as exc:
             if plain_error is not None:
                 raise plain_error from exc
             # no browser, or it failed: the plain read is what there is
+            if rendered:
+                html = fetch(url)
+                title, text, hidden = _readable(html, url)
         else:
             r_title, r_text, r_hidden = _readable(html, url)
             if r_text or not text:
@@ -543,6 +544,8 @@ def tools(*, engine: Engine | None = None, fetch: Callable[[str], str] | None = 
     raises: what went wrong comes back as ``{"none": reason}``. A URL a search returned or a
     person typed is fetched; one only fetched content mentioned needs an allow-listed or
     approved host (`poolhouse.net.untrusted.Origins`). Results are marked ``untrusted``.
+    The browser and the readers a call needs are installed the first time; a page that comes
+    back thin to a plain read is rendered only in a browser that is already here.
     """
     seen = untrusted.shared()
 
