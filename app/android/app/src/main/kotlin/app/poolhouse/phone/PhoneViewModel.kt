@@ -175,6 +175,8 @@ class PhoneViewModel(application: Application) : AndroidViewModel(application) {
         linking = Linking.Working(offer.computer.ifEmpty { offer.addresses.first().toString() })
         attempt = viewModelScope.launch {
             linking = try {
+                // A link being replaced stops lending the phone before it is forgotten.
+                pool?.worker?.setEnabled(false)
                 forget()
                 val link = linkPhone(offer, name.ifBlank { defaultName() }, KeystoreKey.create())
                 prefs.link = link

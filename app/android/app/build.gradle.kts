@@ -20,7 +20,6 @@ android {
         targetSdk = 37
         versionName = productVersion
         versionCode = versionNumbers[0] * 1_000_000 + versionNumbers[1] * 1_000 + versionNumbers[2]
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     val keystore = System.getenv("ANDROID_SIGNING_STORE")
@@ -67,10 +66,4 @@ dependencies {
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
     implementation(libs.zxing.core)
-
-    androidTestImplementation(platform(libs.compose.bom))
-    androidTestImplementation(libs.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.test.runner)
-    androidTestImplementation(libs.androidx.test.ext.junit)
-    debugImplementation(libs.compose.ui.test.manifest)
 }

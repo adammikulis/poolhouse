@@ -30,7 +30,7 @@ nothing but the linked computer.
 
 ## Build and install
 
-Needed: an Android SDK with `platforms;android-37.0` and `build-tools;36.0.0` and its licence accepted by a person, and a JDK 17
+The app runs on Android 12 or later. Needed on the computer: an Android SDK with `platforms;android-37.0` and `build-tools;36.0.0` and its licence accepted by a person, and a JDK 17
 or newer. Gradle is downloaded and checked by its SHA-256; the other libraries come from Google's and Maven Central's
 repositories.
 
