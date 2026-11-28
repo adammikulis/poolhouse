@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 import signal
 import threading
 import time
@@ -184,7 +185,7 @@ def test_a_message_the_lead_sends_during_the_task_reaches_the_model(delegated, s
 def test_both_drivers_give_the_model_the_same_prompt_and_tools_and_the_agent_takes_neither_from_the_client(delegated, served, driver, lead_node,
                                                                                                            monkeypatch):
     node, lead, project = lead_node
-    delegated.run([("glob", {"pattern": "*"})])
+    first = delegated.run([("glob", {"pattern": "*"})]).name
     today, before = served.bodies[0], len(served.bodies)
     monkeypatch.setattr(delegate_confined, "renderer", driver.trial.renderer)
     monkeypatch.setattr(delegate_confined, "follow", driver.trial.follow)
@@ -195,9 +196,11 @@ def test_both_drivers_give_the_model_the_same_prompt_and_tools_and_the_agent_tak
     assert delegate_run.run(name) == 0, store.log_file(name).read_text(errors="replace")[-4000:]
     ours = served.bodies[before]
     assert ours["tools"] == today["tools"], ("tools", today["tools"], ours["tools"])
-    first, second = known - {lead.name}, name   # the task's message names its delegate, the one difference between the two requests
-    worded = json.dumps(today["messages"]).replace(next(iter(first)), second)
-    assert json.dumps(ours["messages"]) == worded, ("messages", today["messages"], ours["messages"])
+    # Two things differ between any two delegates' requests: the task's message names its delegate, and under both drivers the system prompt names
+    # the box's own temporary folder (a finding of the trial).
+    worded = [re.sub(r"Prefer \S+ over generic", "Prefer FOLDER over generic", json.dumps(each["messages"]).replace(first, name))
+              for each in (today, ours)]
+    assert worded[0] == worded[1], ("messages", today["messages"], ours["messages"])
     capabilities = driver.trial.agent["agentCapabilities"]
     assert "systemPrompt" not in capabilities["sessionCapabilities"], "the agent takes no system prompt from the client"
 

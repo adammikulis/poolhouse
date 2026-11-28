@@ -46,12 +46,17 @@ ACP gives the client no control over either, so it does not help a delegate that
   the turn; it describes no control of history or tools.
 
 The control is in OpenCode's plugin hooks, which both drivers use: `context` (system text, messages and
-tools of each request), `compaction` and `title`. The first request of a delegate is the same under both
-drivers apart from the delegate's name in its task.
+tools of each request), `compaction` and `title`. The first requests of two delegates, one over each
+driver, differ only in the delegate's name in its task and in the temporary folder named below.
 
-A resumed delegate's system prompt differs from its first request under both drivers: `Working
-directory` and `Workspace root folder` name the first box's folder where the first request has `.`. The
-plugin replaces only the current box's folder, and the server reads the whole prompt again.
+Two parts of the system prompt change between boxes under both drivers, so the model server reads the
+prompt again from the first of them:
+
+- A resumed delegate's `Working directory` and `Workspace root folder` name the first box's folder where
+  its first request has `.`. The plugin replaces only the current box's folder.
+- The line `Prefer <folder>/opencode over generic system temporary directories` names the box's own
+  temporary folder, which the plugin does not replace, so two delegates of one lead do not share the
+  whole system prompt.
 
 ## What a passing driver needs
 
