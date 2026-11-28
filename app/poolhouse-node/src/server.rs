@@ -70,7 +70,8 @@ impl Server {
         self.node.clone()
     }
 
-    /// Serve until a `shutdown` request.
+    /// Serve until a `shutdown` request. A client that cannot be taken (no descriptor, memory or thread for it) is tried again or
+    /// closed, and the node serves on.
     pub fn serve(self) -> Result<()> {
         let stop = self.node.lock().map_err(|_| Error::Damaged("node poisoned".into()))?.stop.clone();
         while !stop.load(Ordering::SeqCst) {
@@ -79,13 +80,15 @@ impl Server {
                     let (node, who, net) = (self.node.clone(), self.allowed.clone(), self.net.clone());
                     let connection_lifetime = self.activity.connection()
                         .map_err(|_| Error::say("unavailable", "node activity registry unavailable", "none", "retry"))?;
-                    std::thread::spawn(move || {
+                    // A connection no thread can be started for is closed.
+                    let _ = std::thread::Builder::new().name("local".into()).spawn(move || {
                         let _ = connection(stream, &node, &who, net.as_deref(), connection_lifetime);
                     });
                 }
                 // `accept` itself waits a short while for a client, so a request is taken the moment it comes.
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-                Err(e) => return Err(e.into()),
+                // A client still waiting is taken once the system has room for it.
+                Err(_) => std::thread::sleep(Duration::from_millis(100)),
             }
         }
         Ok(())
