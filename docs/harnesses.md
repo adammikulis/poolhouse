@@ -236,7 +236,10 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
   reads only OpenSSL's `openssl.cnf` and public `cert.pem` (`toolchain.system_settings`). git does not read the system configuration.
 - **GPU and browsers** (macOS). A command computes on the GPU (Metal, MLX) and runs a headless Chromium, with the browser's inner
   sandbox off inside the box.
-- **git.** `.git` is read-only: `git status` and `git diff` work; `git add` and `git commit` fail.
+- **git.** A delegate with a worktree of its own commits in its copy (`git add`, `git commit`, under its own name, set in that copy's
+  configuration alone). The launcher reads the copy by its own copy of the index, taken before the model starts, so nothing the session writes
+  in `.git` decides what is published; the messages of its commits are read by git inside the box and kept in the commit on its branch. For any
+  other session `.git` is read-only: `git status` and `git diff` work; `git add` and `git commit` fail.
 - **Time and output.** A command ends at its timeout (180 s unless it asks for another, at most 600 s) with everything it left running: the
   plugin runs each one under `delegate_confined.BOUNDED`, since OpenCode itself would move a command that overruns to the background. The model
   is given at most as many bytes of a tool's output as the served window has tokens (OpenCode's `tool_output`, docs/limits.md). The delegate's
@@ -388,12 +391,15 @@ poolhouse-delegate summary [--model TEXT] [--kind WORD] [--json]
 
 `start --edit` on the root of a git project with a commit needs nothing else from the lead (`poolhouse.delegate_tree`): the launcher adds a worktree
 beside the project (`PROJECT-NAME`) on a new branch `delegate/NAME` at the project's commit, and the delegate works there. The lead's checkout and
-git configuration are not written, and its uncommitted files are not in the worktree (`start` says how many). When the run ends `done` or `partial`,
-what was applied is committed there, each file by name, as the delegate (`NAME@poolhouse.invalid`), with no repository hook and no signature, so the
-project's hooks have not run on it. The lead's notice says a review is waiting and names the branch and commit. Nothing is merged or pushed: the
-session that started the delegate reviews the branch, grades it (`grade`, an entry of its own beside the self-check's) and lands it. A run that is
-rejected, fails or is stopped keeps its patch, and its worktree and branch are removed; so is a worktree after a commit. If the runner's process is
-gone, `stop NAME` removes what it left. `--in-place` changes the project folder itself instead; a project with no commit is also changed in place.
+git configuration are not written, and its uncommitted files are not in the worktree (`start` says how many). However the run ends, what it changed
+is published into the worktree and committed there, each file by name, as the delegate (`NAME@poolhouse.invalid`), with no repository hook and no
+signature, so the project's hooks have not run on it. When the run ends `done` or `partial` the lead's notice says a review is waiting and names the
+branch and commit; the commit of a run that is rejected, fails, passes a resource bound or is stopped says it is unfinished, and so does the notice.
+Nothing is merged or pushed: the session that started the delegate reviews the branch, grades it (`grade`, an entry of its own beside the
+self-check's) and lands it. The worktree is removed once its work is committed, with a branch that got no commit; one with work git could not commit
+is left. If the runner's process is gone, `stop NAME` commits what it had published into the worktree; what stood only in the box is lost with it.
+`--in-place` changes the project folder itself instead, and a project with no commit is also changed in place: there a run that is not accepted
+publishes nothing and keeps a patch.
 
 `--wait` returns when the delegate ends (its result and exit status), asks something (status 3) or has a new notice while it goes on
 (status 4, "What the lead is told"); `wait NAME` does the same for one already started. Run either in the background and the harness that runs it is
@@ -444,8 +450,8 @@ work cannot instruct its own reviewer.
   up to `--review-rounds` reviews (default 3, at most 20). A fix pass that fails ends the loop.
 - **Publication.** The work's confinement holds the change and publishes nothing, not at a turn the box says has ended either, until a reviewer
   accepts. Each review and fix is a confinement of its own over the project, given the held change before its harness starts; a fix's changes are
-  carried back into the held stage. A change never accepted applies nothing and is kept as a patch; the run ends `rejected` with the open findings
-  in `result`, in `status` and in the lead's notice.
+  carried back into the held stage. A change never accepted applies nothing to the project: it is committed as unfinished on the delegate's own
+  branch, or, changed in place, kept as a patch. The run ends `rejected` with the open findings in `result`, in `status` and in the lead's notice.
 - **With no sandbox** the change is already in the folder and nothing can hold it back: the reviewer only reads (for a delegate that edits, a copy
   of the folder with each instruction and settings file as it was before), runs no test, and a rejected run says the changes are in the folder and
   keeps `rejected.patch` in the delegate's folder.
@@ -458,8 +464,8 @@ and an answer cut at its length are not interruptions. The files it had changed 
 plain files only) is carried into the next attempt, and the attempt starts once the model answers: the model is leased again while it does not, for
 up to 900 seconds (`ANSWER_WAIT_S`). A harness that cannot take the conversation up starts a new one told what the last said. Up to `--resumes`
 attempts (default 3, 0 for none) share the pass's limit of turns. Each broken attempt is in the record with what broke it. A run that cannot be
-continued ends `failed` (a fix: `rejected`) with the reason, applies nothing and keeps the patch. The runner's own process ending (a restart of the
-computer) is not covered.
+continued ends `failed` (a fix: `rejected`) with the reason, and its changes are kept as in any run that is not accepted. The runner's own
+process ending (a restart of the computer) is not covered.
 
 ### The grading record
 

@@ -58,8 +58,8 @@ def working(monkeypatch, *, accepted=True, fails=False):
         Path(rec.workdir, "unnamed.py").write_text("written, and in no publication\n")
         if fails:
             raise RuntimeError("PLUMBING: the run failed")
-        return harness.Answer(text=f"{CANNED} done", spent=harness.Usage(turns=1), published=Published(applied=("made.py",) if accepted else ()),
-                              review=delegate_review.Outcome(accepted, 1, 3))
+        return harness.Answer(text=f"{CANNED} done", spent=harness.Usage(turns=1), published=Published(applied=("made.py",)),
+                              review=delegate_review.Outcome(accepted, 1, 3), commits=(f"{CANNED} its own commit",))
 
     monkeypatch.setattr(delegate_run, "converse", converse)
 
@@ -95,18 +95,46 @@ def test_an_accepted_change_is_committed_by_name_to_a_branch_left_for_the_lead_a
 
 
 @pytest.mark.parametrize("how", ["rejected", "failed", "stopped"])
-def test_a_run_that_is_not_accepted_leaves_no_worktree_and_no_branch(leading, monkeypatch, how):
+def test_the_work_of_a_run_that_is_not_accepted_is_committed_to_its_branch_as_unfinished(leading, monkeypatch, capsys, how):
     node, lead, project = leading
     before = checkout(project)
     working(monkeypatch, accepted=False, fails=how == "failed")
     name, rec = run_one(node, lead, project)
-    if how == "stopped":   # the runner never ran: `stop` clears what it left
+    if how == "stopped":   # the runner was gone before it settled: `stop` commits what it left in the worktree
+        Path(rec.workdir, "made.py").write_text("x = 1\n")
         assert delegate.main(["stop", name]) == 0
+        told = said(capsys)
+        assert "unfinished work is committed" in told, told
     else:
         assert delegate_run.run(name) == 1
         row = store.result(name)
-        assert row["state"] == how and row["tree"]["commit"] == "" and "worktree and branch are removed" in row["detail"], row
-    assert not Path(rec.workdir).exists() and git(project, "branch", "--list", "delegate/*") == "" and checkout(project) == before
+        assert row["state"] == how and row["tree"]["commit"] == git(project, "rev-parse", rec.branch), row
+        assert f"its unfinished work is committed, not accepted, on branch {rec.branch}" in row["detail"], row
+    named = git(project, "diff", "--name-only", f"{before[0]}..{rec.branch}").split()
+    # a run that left no word of what it published has all that differs in its worktree, which only it was published into
+    assert named == (["made.py", "unnamed.py"] if how == "failed" else ["made.py"])
+    message = git(project, "log", "-1", "--format=%B", rec.branch)
+    assert f"UNFINISHED, the run ended {how}" in message and ("its own commit" in message) == (how == "rejected"), message
+    assert not Path(rec.workdir).exists() and checkout(project) == before and not (project.parent / "hook-ran").exists()
+
+
+def test_a_run_that_made_nothing_leaves_no_branch(leading):
+    node, lead, project = leading
+    name, rec = run_one(node, lead, project)
+    assert delegate.main(["stop", name]) == 0
+    assert not Path(rec.workdir).exists() and git(project, "branch", "--list", "delegate/*") == ""
+
+
+def test_work_git_cannot_commit_is_left_in_its_worktree(leading, monkeypatch):
+    node, lead, project = leading
+    working(monkeypatch, accepted=False)
+    name, rec = run_one(node, lead, project)
+    held = Path(git(rec.workdir, "rev-parse", "--absolute-git-dir")) / "index.lock"
+    held.write_text("PLUMBING: another git holds the index\n")
+    assert delegate_run.run(name) == 1
+    row = store.result(name)
+    assert row["tree"]["commit"] == "" and f"left in the worktree {rec.workdir}" in row["detail"], row
+    assert Path(rec.workdir, "made.py").read_text() == "x = 1\n" and git(project, "branch", "--list", rec.branch)
 
 
 def test_in_place_and_a_delegate_that_only_reads_make_no_worktree(leading):

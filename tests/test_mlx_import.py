@@ -13,6 +13,7 @@ from pathlib import Path
 
 import poolhouse
 from poolhouse import sandbox
+from poolhouse.isolation import toolchain
 from poolhouse.testing.markers import needs_mlx
 
 pytest_plugins = ["tests.sandbox_kit"]
@@ -40,7 +41,8 @@ except ImportError:
 def test_a_probe_that_could_not_import_mlx_leaves_the_process_alive_for_every_later_import(seatbelt, tmp_path):
     work = os.path.realpath(tmp_path)
     source = str(Path(poolhouse.__file__).resolve().parents[1])
-    reads = tuple(dict.fromkeys(os.path.realpath(each) for each in (sys.prefix, sys.base_prefix, *site.getsitepackages(), source)))
+    reads = tuple(dict.fromkeys(os.path.realpath(each) for each in (sys.prefix, sys.base_prefix, *site.getsitepackages(), source,
+                                                                    *toolchain.system_toolchain())))
     policy = sandbox.Policy("no-gpu", read=(*reads, work), write=(work,), exec=("/usr/bin", "/bin", *reads), gpu=False,
                             env={"PATH": "/usr/bin:/bin", "HOME": work, "TMPDIR": work, "PYTHONPATH": source, "PYTHONDONTWRITEBYTECODE": "1"})
     done = sandbox.run([os.path.realpath(sys.executable), "-c", CHILD], policy, cwd=work)

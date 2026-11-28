@@ -3,8 +3,8 @@ checkout is never written.
 
 What the run changed is committed there by name, however it ended: a run that was done, or one that failed, was stopped or whose self-check did not
 accept it, whose commit says it is unfinished. The branch is left for the session that started the delegate to review, grade and land. The worktree
-is removed once what it held is committed, and so is a branch that got no commit; a worktree whose work git could not commit is left as it is, and a
-file git would not take is kept as a patch. Nothing is merged or pushed, no hook of the repository runs and no git configuration is written.
+is removed once what it held is committed, and so is a branch that got no commit; a worktree with work git could not commit is left as it is.
+Nothing is merged or pushed, no hook of the repository runs and no git configuration is written.
 """
 
 from __future__ import annotations
@@ -73,13 +73,16 @@ def committed(folder: str, rec: store.Delegate, paths: Sequence[str], unfinished
     """Commit ``paths``, each by name, in the worktree ``folder`` as the delegate: the commit (empty when none of them differs) and the paths git
     would not take. ``unfinished`` is the state of a run that did not finish, which the message then says; ``said`` are the messages of the
     delegate's own commits, kept in it. No hook of the repository runs and nothing is signed. ValueError when git cannot commit."""
-    left = []
+    left, why = [], ""
     for path in paths:
         try:
             delegate_candidate.git(folder, "--literal-pathspecs", "add", "--", path)
-        except ValueError:
+        except ValueError as error:
             left.append(path)
+            why = str(error)
     if not delegate_candidate.git(folder, "diff", "--cached", "--name-only", "-z"):
+        if left:
+            raise ValueError(why)
         return "", left
     who = {f"GIT_{role}_{field}": value for role in ("AUTHOR", "COMMITTER")
            for field, value in (("NAME", rec.name), ("EMAIL", f"{rec.name}@{IDENTITY}"))}
@@ -92,38 +95,27 @@ def committed(folder: str, rec: store.Delegate, paths: Sequence[str], unfinished
     return _head(folder), left
 
 
-def _patched(rec: store.Delegate, names: Sequence[str]) -> str:
-    """A patch of the files ``names`` of the worktree, which git would not commit, kept in the delegate's folder; empty when there is none."""
-    if not names:
-        return ""
-    with contextlib.suppress(ValueError):
-        delegate_candidate.git(rec.workdir, "--literal-pathspecs", "add", "--force", "--intent-to-add", "--", *names)
-    patch = store.folder(rec.name) / "uncommitted.patch"
-    patch.write_bytes(delegate_candidate.git(rec.workdir, "--literal-pathspecs", "diff", "--binary", "HEAD", "--", *names))
-    return str(patch)
-
-
 def settled(rec: store.Delegate, state: str, applied: Sequence[str] | None, said: Sequence[str] = ()) -> tuple[str, str, dict[str, str]]:
-    """What becomes of the worktree of a run that ended in ``state``: ``(state, what the lead is told, the branch, commit and patch kept)``.
+    """What becomes of the worktree of a run that ended in ``state``: ``(state, what the lead is told, the branch and commit kept)``.
     ``applied`` are the paths a sandboxed run published there, None when the run left no word of them, and ``said`` the messages of the
-    delegate's own commits. What it published (with no sandbox, or no word, all that differs) is committed on its branch; a `done` or `partial`
-    run whose work cannot be committed ends `unapplied`, and the worktree of work that is not committed is left."""
-    kept = {"branch": "", "commit": "", "patch": ""}
+    delegate's own commits. What it published (with no sandbox, or no word, all that differs) is committed on its branch. A worktree with work
+    that is not committed is left, and a `done` or `partial` run none of whose work could be committed ends `unapplied`."""
+    kept = {"branch": "", "commit": ""}
     if not Path(rec.workdir).is_dir():
         return state, "", kept
     try:
         paths = list(applied) if rec.sandboxed and applied is not None else changed(rec.workdir)
         sha, left = committed(rec.workdir, rec, paths, "" if state in FINISHED else state, said) if paths else ("", [])
-        kept["patch"] = _patched(rec, left)
     except (OSError, ValueError) as error:
         told = f"its work could not be committed ({error}), so it is left in the worktree {rec.workdir} on branch {rec.branch}"
         return "unapplied" if state in FINISHED else state, told, {**kept, "branch": rec.branch}
-    removed(rec.source, rec.workdir, rec.branch, keep_branch=bool(sha))
-    patch = f"; {len(left)} file(s) git would not take are not in it, kept at {kept['patch']}" if left else ""
+    if not left:
+        removed(rec.source, rec.workdir, rec.branch, keep_branch=bool(sha))
     if not sha:
-        return state, f"nothing was committed, and its worktree and branch are removed{patch}", kept
+        return state, "nothing was committed, and its worktree and branch are removed", kept
     review = (f"a review is waiting for you: branch {rec.branch} at {sha}" if state in FINISHED else
               f"its unfinished work is committed, not accepted, on branch {rec.branch} at {sha}")
-    told = (f"{review}{patch}. Review it, grade it (`poolhouse-delegate grade {rec.name} ...`) and land it yourself: nothing was merged or "
-            "pushed, and the worktree is removed")
+    where = (f"{len(left)} file(s) git would not take are not in it and stay in the worktree {rec.workdir}" if left else
+             "the worktree is removed")
+    told = f"{review}. Review it, grade it (`poolhouse-delegate grade {rec.name} ...`) and land it yourself: nothing was merged or pushed, and {where}"
     return state, told, {**kept, "branch": rec.branch, "commit": sha}
