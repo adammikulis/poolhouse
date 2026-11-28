@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="app.poolhouse.isolation">
+    <uses-sdk android:minSdkVersion="33" android:targetSdkVersion="36" />
+    <!-- The app holds the network; the isolated service must be shown not to. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:label="poolhouse isolation" android:allowBackup="false" android:debuggable="true"
+        android:extractNativeLibs="true">
+        <!-- Only the adb shell, which holds DUMP, may start the prototype. -->
+        <activity android:name=".ProbeActivity" android:exported="true" android:launchMode="singleTop"
+            android:permission="android.permission.DUMP" />
+        <!-- Its own user id with no permission, no app files, no keystore and no new network socket. -->
+        <service android:name=".IsolatedRunner" android:isolatedProcess="true" android:exported="false"
+            android:process=":runner" />
+    </application>
+</manifest>
