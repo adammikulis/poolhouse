@@ -1,6 +1,7 @@
 //! The Unix side: modes, `flock`, `SO_PEERCRED` and the socket.
 
 use std::fs::{self, File, OpenOptions};
+use std::net::{Shutdown, TcpStream};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -51,6 +52,11 @@ pub fn owner_only(path: &Path) -> bool {
 pub fn sync_dir(path: &Path) -> Result<()> {
     File::open(path)?.sync_all()?;
     Ok(())
+}
+
+/// End ``stream`` both ways: a read another thread is waiting in returns.
+pub fn hang_up(stream: &TcpStream) -> std::io::Result<()> {
+    stream.shutdown(Shutdown::Both)
 }
 
 /// Move ``from`` over ``to`` in one step.

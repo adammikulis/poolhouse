@@ -316,7 +316,8 @@ impl PeerClient {
         Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer })
     }
 
-    /// A second handle on the socket of a connection made with `connect_long`: shutting it down from another thread ends the connection.
+    /// A second handle on the socket of a connection made with `connect_long`: `sys::hang_up` on it from another thread ends the
+    /// connection.
     pub fn closer(&self) -> Option<TcpStream> {
         self.closer.as_ref().and_then(|t| t.try_clone().ok())
     }

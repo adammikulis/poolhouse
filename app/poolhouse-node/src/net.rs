@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::{Deref, DerefMut};
 use crate::node::update_activity::{Registry, Source, Writer, AdmittedEffect, EffectFlow};
-use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
+use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 use std::time::Duration;
@@ -573,7 +573,7 @@ impl Net {
         for fp in gone {
             if let Ok(kept) = self.attaching.lock() {
                 if let Some(Some(stream)) = kept.get(&fp) {
-                    let _ = stream.shutdown(Shutdown::Both);
+                    let _ = crate::sys::hang_up(stream);
                 }
             }
             let link = self.reverse.lock().ok().and_then(|m| m.get(&fp).cloned());
