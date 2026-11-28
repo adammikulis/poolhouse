@@ -104,6 +104,8 @@ def test_cold_reading_is_the_sum_up_to_a_level_and_stops_at_a_contended_read():
     assert got[("a", "read", 200)]["cold_tps"] == [2000.0]
     assert "read_tps" not in got[("a", "read", 300)]
     assert "cold_s" not in got[("a", "read", 400)]
+    again = engines.figures([_read(100, 1000, 1000.0, cache_n=0), _read(200, 4000, 1000.0, cache_n=0)])
+    assert "cold_s" not in again[("a", "read", 200)] and again[("a", "read", 200)]["read_tps"] == [4000.0]
 
 
 def test_the_drafting_chosen_is_the_fastest_over_the_same_requests_and_ignores_contended_ones():

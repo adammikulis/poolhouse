@@ -60,15 +60,21 @@ python -m poolhouse.bench engines report
 
 A campaign file ([experiments/engines-qwen3.8-flash.json](experiments/engines-qwen3.8-flash.json)) names the model files
 and the arms of each device (`--device mac` or `windows`). `plan` prints what is here, what would be downloaded and the
-free disk. `tune` loads each arm's candidate drafters, asks each draft length per request and keeps the fastest. `run`
-leases the arms in turn through the broker, turning the order each round, and holds one session on each: a conversation
+free disk; a file marked `local` is one converted on the device (the DFlash2 drafter), and its `made_by` says how.
+`tune` loads each candidate setting of an arm on its own server (llama.cpp ignores a per-request draft length for MTP
+and DFlash2), writes four kinds of text over one conversation and keeps the fastest; a load with no draft head gives
+the undrafted figure the others are compared with. `--start HH:MM` waits for a window and `--hard-until` ends one.
+`run` leases the arms in turn through the broker, turning the order each round, and holds one session on each: a
+conversation
 that grows to 4k, 32k, 128k and 200k tokens, answering about a fact planted at each level, writing 256 tokens, running
 tool turns over the checkout's files, then recalling facts from the start, middle and end; the first round also asks
 tool-calling items and coding items graded in the sandbox. Every request is a JSON line under
 `~/.poolhouse/bench/engines/`, with its server timings and the GPU time other processes took while it ran
-(Apple's per-process counters; `nvidia-smi` on NVIDIA). A request over the limit in `poolhouse.bench.gpuwatch` is marked
-contended and left out of every figure. `cold_s` and `cold_tps` are the read turns summed up to a level: the time and
-rate of reading that much text into an empty server.
+(Apple's per-process counters; `nvidia-smi` on NVIDIA) and the share of the processor they took. A request over either
+bar in `poolhouse.bench.gpuwatch` is marked contended and left out of every figure. The agent turns add tools and
+switch thinking, which changes the system block, so the first request after either reads the whole conversation again.
+`cold_s` and `cold_tps` are the read turns summed up to a level: the time and rate of reading that much text into an
+empty server, true only for levels with no agent turns before them.
 
 ## Accuracy per generated token
 

@@ -389,7 +389,7 @@ def tune(args: Any, config: Mapping[str, Any], arms: Sequence[Arm]) -> int:
             grid = arm.tune or {}
             for load in grid.get("loads", []):
                 depths = [int(d) for d in load.get("depths", grid.get("depths", [arm.draft_n_max]))]
-                trial = replace(arm, draft_n_max=max(depths), **{k: v for k, v in load.items() if k != "depths"})
+                trial = replace(arm, **{"draft_n_max": max(depths), **{k: v for k, v in load.items() if k != "depths"}})
                 setting = {"head": trial.head, "spec_type": trial.spec_type, "draft_p_min": trial.draft_p_min,
                            "build": trial.build, "extra_args": list(trial.extra_args)}
                 if hard and time.time() >= hard:
@@ -476,7 +476,8 @@ def tuned(rows: Sequence[Mapping[str, Any]]) -> list[str]:
 
 def figures(rows: Sequence[Mapping[str, Any]]) -> dict[tuple[str, str, int], dict[str, list[float]]]:
     """``(arm, kind, level)`` to each figure's values over clean requests. ``cold_s`` and ``cold_tps`` are a session's
-    reading up to a level summed over its read turns, given only when none of them was contended or missing."""
+    reading up to a level summed over its read turns, given only when none of them was contended, missing or read
+    the earlier conversation again (a later read that reused nothing)."""
     out: dict[tuple[str, str, int], dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
     reads: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
     for row in rows:
@@ -505,7 +506,8 @@ def figures(rows: Sequence[Mapping[str, Any]]) -> dict[tuple[str, str, int], dic
     for (arm, _), got in reads.items():
         seconds = tokens = 0.0
         for row in sorted(got, key=lambda r: r["level"]):
-            if row.get("contended") or not row.get("prompt_ms"):
+            read_again = tokens and row.get("cache_n") == 0
+            if row.get("contended") or read_again or not row.get("prompt_ms"):
                 break
             seconds += row["prompt_ms"] / 1000
             tokens += row["prompt_n"]
