@@ -4,6 +4,7 @@ import app.poolhouse.core.api.PhoneJson
 import app.poolhouse.core.link.Address
 import app.poolhouse.core.link.CodeKey
 import app.poolhouse.core.link.LinkOffer
+import app.poolhouse.core.link.cleanName
 import app.poolhouse.core.link.encodeKey
 import app.poolhouse.core.link.keyWords
 import app.poolhouse.core.link.linkMessage
@@ -117,6 +118,13 @@ class ProtocolTest {
         assertEquals(409, refused.status)
         assertThrows(PhoneError.Unlinked::class.java) { resultOf(401, """{"ok":false,"error":{"code":"unlinked","message":"Removed."}}""") }
         for (bad in listOf("", "<html>", """{"result":1}""", "[]")) assertThrows(bad, PhoneError.Unreadable::class.java) { resultOf(200, bad) }
+    }
+
+    @Test
+    fun aPhonesNameIsOneTheComputerAccepts() {
+        assertEquals("Pixel 9 Pro", cleanName("  Pixel 9\tPro​\u0007 "))
+        assertEquals("Android phone", cleanName("‎ \n"))
+        assertEquals(48, cleanName("x".repeat(80)).length)
     }
 
     @Test

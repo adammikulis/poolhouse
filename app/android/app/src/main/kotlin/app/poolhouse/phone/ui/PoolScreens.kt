@@ -57,7 +57,7 @@ private fun Device.isThisPhone(phone: String): Boolean = id == "phone:$phone"
 
 @Composable
 private fun deviceState(d: Device): Pair<String, androidx.compose.ui.graphics.Color> = when {
-    !d.online -> "offline" to Pool.colors.lineStrong
+    !d.online -> "offline" to Pool.colors.muted
     d.paused -> "paused" to Pool.colors.warn
     d.busy -> "busy" to Pool.colors.busy
     else -> "online" to Pool.colors.good

@@ -9,6 +9,7 @@ import app.poolhouse.core.api.Session
 import app.poolhouse.core.store.Block
 import app.poolhouse.core.store.Delivery
 import app.poolhouse.core.store.Draft
+import app.poolhouse.core.store.Fold
 import app.poolhouse.core.store.Item
 import app.poolhouse.core.store.Phase
 import app.poolhouse.core.store.SessionFilter
@@ -105,9 +106,11 @@ class StateTest {
             session("done", 30.0, parent = "lead", state = "ended"), session("orphan", 5.0, parent = "gone"))
         val rows = sessionRows(list, list.associate { it.id to it.activeAt })
         assertEquals(listOf("lead" to 0, "child" to 1, "quiet" to 0, "orphan" to 0), rows.map { it.session.id to it.depth })
-        assertEquals(1, rows[0].foldedEnded)
+        // The finished agents' line closes the group: after the last agent still listed under the lead.
+        assertEquals(listOf(emptyList(), listOf(Fold("lead", 1, 1)), emptyList(), emptyList()), rows.map { it.folds })
         val opened = sessionRows(list, list.associate { it.id to it.activeAt }, expanded = setOf("lead"))
         assertEquals(listOf("lead", "child", "done", "quiet", "orphan"), opened.map { it.session.id })
+        assertTrue(opened.all { it.folds.isEmpty() })
     }
 
     @Test

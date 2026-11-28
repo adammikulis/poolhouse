@@ -66,10 +66,10 @@ private fun certificate(): Pair<KeyStore, String> {
  * The computer's side of docs/phone-api.md as far as these checks need it, on a real TLS 1.3 socket: it checks the code, every
  * signature, its time and its nonce as the page says, and answers the rest with canned data that says it is canned.
  */
-class SampleComputer(val code: String = "ABCDEFGHJK", var proofIsHonest: Boolean = true) : AutoCloseable {
+class SampleComputer(val code: String = "ABCDEFGHJK", var proofIsHonest: Boolean = true, listen: Int = 0) : AutoCloseable {
     private val identity = certificate()
     val pin: String = identity.second
-    private val server = HttpsServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
+    private val server = HttpsServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), listen), 0)
     val port: Int get() = server.address.port
     private val phones = ConcurrentHashMap<String, PublicKey>()
     private val nonces = ConcurrentHashMap<String, Boolean>()
@@ -81,7 +81,7 @@ class SampleComputer(val code: String = "ABCDEFGHJK", var proofIsHonest: Boolean
     /** What was received, as `METHOD path body`. */
     val received = CopyOnWriteArrayList<String>()
 
-    /** The answers of signed requests, by `METHOD path-without-query`. */
+    /** The answers of signed requests, by `METHOD path`: with its query when one is registered, else for any query. */
     val answers = ConcurrentHashMap<String, () -> Pair<Int, String>>()
 
     /** Lines to send on the open stream. */
@@ -120,7 +120,7 @@ class SampleComputer(val code: String = "ABCDEFGHJK", var proofIsHonest: Boolean
                 ok("""{"service":"poolhouse-phone","api":1,"computer":"Sample computer","now_ms":${now()},"linking":true,"canned":true}""")
             path == "/phone/v1/link" -> link(body.toString(Charsets.UTF_8))
             else -> signed(exchange, method, path, body) ?: if (path == "/phone/v1/stream") return follow(exchange) else {
-                answers["$method ${exchange.requestURI.rawPath}"]?.invoke() ?: refuse(404, "missing", "No such thing.")
+                (answers["$method $path"] ?: answers["$method ${exchange.requestURI.rawPath}"])?.invoke() ?: refuse(404, "missing", "No such thing.")
             }
         }
         val bytes = answer.second.toByteArray()

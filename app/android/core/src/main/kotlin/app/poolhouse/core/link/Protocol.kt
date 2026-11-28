@@ -64,5 +64,10 @@ fun linkMessage(pin: String, publicKey: String, name: String): String = "poolhou
 fun requestMessage(pin: String, phone: String, method: String, path: String, timeMs: Long, nonce: String, body: ByteArray): String =
     listOf("poolhouse/phone-request/v1", pin, phone, method, path, timeMs.toString(), nonce, hex(sha256(body))).joinToString("\n")
 
-/** A name the computer accepts: 1 to 48 characters, no control characters. */
-fun cleanName(name: String): String = name.filter { !it.isISOControl() }.trim().take(48).trim().ifEmpty { "Android phone" }
+private val UNPRINTABLE = setOf(
+    Character.CONTROL, Character.FORMAT, Character.PRIVATE_USE, Character.SURROGATE, Character.UNASSIGNED,
+).map { it.toInt() }
+
+/** A name the computer accepts: 1 to 48 printable characters. */
+fun cleanName(name: String): String = name.map { if (it.isWhitespace()) ' ' else it }
+    .filter { Character.getType(it) !in UNPRINTABLE }.joinToString("").trim().take(48).trim().ifEmpty { "Android phone" }

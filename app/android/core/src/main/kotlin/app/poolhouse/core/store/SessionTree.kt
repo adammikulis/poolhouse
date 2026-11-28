@@ -2,13 +2,15 @@ package app.poolhouse.core.store
 
 import app.poolhouse.core.api.Session
 
-/** One row of the session list: a session and how deep under its lead it sits. */
+/** The finished agents of `lead` that are folded away, shown as one line after the agents still listed under it. */
+data class Fold(val lead: String, val count: Int, val depth: Int)
+
+/** One row of the session list: a session, how deep under its lead it sits, and the folds that close after it. */
 data class SessionRow(
     val session: Session,
     val depth: Int,
     val unread: Boolean,
-    /** Finished agents under this one that are folded away. */
-    val foldedEnded: Int = 0,
+    val folds: List<Fold> = emptyList(),
 )
 
 enum class SessionFilter(val label: String) { ALL("All"), ACTIVE("Working"), NEEDS_YOU("Needs you") }
@@ -77,9 +79,13 @@ fun sessionRows(
         fun alive(s: Session, seenIds: MutableSet<String>): Boolean =
             seenIds.add(s.id) && (!s.ended || s.needsYou || unread(s, seen) || children[s.id].orEmpty().any { alive(it, seenIds) })
         val (kept, folded) = under.partition { open || alive(it, HashSet()) }
-        out.add(SessionRow(session, depth, unread(session, seen), folded.size))
+        out.add(SessionRow(session, depth, unread(session, seen)))
         for (child in kept.sortedWith(compareByDescending<Session> { it.needsYou }.thenBy { it.ended }.thenByDescending { it.activeAt })) {
             emit(child, minOf(depth + 1, 3), open)
+        }
+        if (folded.isNotEmpty()) {
+            val last = out.lastIndex
+            out[last] = out[last].copy(folds = out[last].folds + Fold(session.id, folded.size, minOf(depth + 1, 3)))
         }
     }
     for ((root, _) in ordered) emit(root, 0, root.id in expanded)

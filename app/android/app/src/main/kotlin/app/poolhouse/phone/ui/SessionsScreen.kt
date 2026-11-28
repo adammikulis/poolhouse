@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -139,7 +138,7 @@ fun SessionsScreen(model: PhoneViewModel, pool: PoolSession, state: PoolState) {
             }
             items(rows, key = { it.session.id }) { row ->
                 SessionRowView(row, now, onOpen = { model.open(Screen.Conversation(row.session.id)) },
-                    onUnfold = { expanded = expanded + row.session.id })
+                    onUnfold = { lead -> expanded = expanded + lead })
                 HorizontalDivider(color = Pool.colors.line, modifier = Modifier.padding(start = (46 + row.depth * 20).dp))
             }
             val note = state.sessions.value?.note.orEmpty()
@@ -166,7 +165,7 @@ private fun PhoneEntry(entry: PluginEntry) {
 }
 
 @Composable
-private fun SessionRowView(row: SessionRow, now: Double, onOpen: () -> Unit, onUnfold: () -> Unit) {
+private fun SessionRowView(row: SessionRow, now: Double, onOpen: () -> Unit, onUnfold: (String) -> Unit) {
     val s = row.session
     val line = Pool.colors.line
     val indent = row.depth * 20
@@ -221,16 +220,15 @@ private fun SessionRowView(row: SessionRow, now: Double, onOpen: () -> Unit, onU
                 }
             }
         }
-        if (row.foldedEnded > 0) {
+        for (fold in row.folds) {
             Row(
-                Modifier.fillMaxWidth().clickable(onClick = onUnfold).padding(start = (46 + indent).dp, top = 4.dp, bottom = 10.dp),
+                Modifier.fillMaxWidth().clickable { onUnfold(fold.lead) }.heightIn(min = 40.dp).padding(start = (46 + (fold.depth - 1) * 20).dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Down, contentDescription = null, tint = Pool.colors.muted, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Show ${row.foldedEnded} finished", style = MaterialTheme.typography.labelMedium, color = Pool.colors.muted)
+                Text("Show ${fold.count} finished", style = MaterialTheme.typography.labelMedium, color = Pool.colors.muted)
             }
         }
-        Spacer(Modifier.height(0.dp))
     }
 }

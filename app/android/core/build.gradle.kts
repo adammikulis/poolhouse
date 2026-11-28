@@ -21,6 +21,16 @@ dependencies {
     testImplementation(libs.coroutines.test)
 }
 
+/** Writes the classpath of the sample computer (src/test/kotlin/.../SampleDay.kt), to run it with `java` outside a build. */
+tasks.register("sampleClasspath") {
+    dependsOn(tasks.named("testClasses"))
+    val classpath = sourceSets.test.get().runtimeClasspath
+    val out = layout.buildDirectory.file("sample-classpath.txt")
+    inputs.files(classpath)
+    outputs.file(out)
+    doLast { out.get().asFile.writeText(classpath.asPath) }
+}
+
 tasks.test {
     // The contract's worked examples are read from the repository, so the app and the computer are held to one document.
     systemProperty("poolhouse.root", rootProject.projectDir.resolve("../..").canonicalPath)

@@ -4,6 +4,7 @@
     python app/android/build.py test       the protocol checks only
     python app/android/build.py lint       the checks, Android lint and the debug APK
     python app/android/build.py release    the checks and the release APK (ANDROID_SIGNING_STORE and ANDROID_SIGNING_PASSWORD)
+    python app/android/build.py sample     the classpath of the sample computer that answers canned data (core/.../SampleDay.kt)
     python app/android/build.py --home DIR ...   keep Gradle, its cache and the debug key in DIR
 
 Needed on the computer, and found automatically: an Android SDK with the packages of `PACKAGES` and its licences accepted by a
@@ -38,7 +39,8 @@ PACKAGES = {f"platforms;android-{COMPILE_SDK}.0": (f"platforms/android-{COMPILE_
             f"build-tools;{BUILD_TOOLS}": (f"build-tools/{BUILD_TOOLS}",)}
 WORKERS = 3
 TASKS = {"debug": [":core:test", ":app:assembleDebug"], "test": [":core:test"],
-         "lint": [":core:test", ":app:lintDebug", ":app:assembleDebug"], "release": [":core:test", ":app:assembleRelease"]}
+         "lint": [":core:test", ":app:lintDebug", ":app:assembleDebug"], "release": [":core:test", ":app:assembleRelease"],
+         "sample": [":core:sampleClasspath"]}
 APK = {"debug": "app/build/outputs/apk/debug/app-debug.apk", "lint": "app/build/outputs/apk/debug/app-debug.apk",
        "release": "app/build/outputs/apk/release/app-release.apk"}
 
