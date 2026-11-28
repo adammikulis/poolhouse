@@ -1,0 +1,229 @@
+//! What a host that is nobody costs the node: how long and how many connections it holds, and what the node survives when the system
+//! gives it no descriptor or no thread.
+
+mod kit;
+
+use std::io::{ErrorKind, Read, Write};
+use std::net::TcpStream;
+use std::path::Path;
+use std::time::{Duration, Instant};
+
+use kit::netkit::*;
+use poolhouse_node::peer::PeerClient;
+use serde_json::json;
+
+fn dial(port: u16) -> TcpStream {
+    TcpStream::connect(("127.0.0.1", port)).unwrap()
+}
+
+/// Whether the other end ends ``tcp`` (an end of the stream or a reset) within ``wait``; what it sends first is read and dropped.
+/// The socket is polled: Windows leaves one whose read timed out in no usable state.
+fn ends_within(tcp: &mut TcpStream, wait: Duration) -> bool {
+    let until = Instant::now() + wait;
+    let mut got = [0u8; 4096];
+    tcp.set_nonblocking(true).unwrap();
+    let ended = loop {
+        match tcp.read(&mut got) {
+            Ok(0) => break true,
+            Ok(_) => {}
+            Err(e) if e.kind() == ErrorKind::WouldBlock => {
+                if Instant::now() >= until {
+                    break false;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(_) => break true,
+        }
+    };
+    tcp.set_nonblocking(false).unwrap();
+    ended
+}
+
+/// Which of ``held`` the other end has closed altogether: the first byte sent to a closed socket draws a reset, and the next one fails.
+fn closed(held: &mut [TcpStream]) -> usize {
+    let first: Vec<bool> = held.iter_mut().map(|c| c.write_all(b"x").is_err()).collect();
+    std::thread::sleep(Duration::from_millis(300));
+    held.iter_mut().zip(first).map(|(c, failed)| failed || c.write_all(b"x").is_err()).filter(|gone| *gone).count()
+}
+
+#[test]
+fn a_connection_that_sends_a_byte_at_a_time_is_cut_off_at_the_handshake_deadline() {
+    let a = device();
+    let mut c = dial(a.net.port);
+    // the head of a long handshake record, which the bytes after it never fill
+    c.write_all(&[0x16, 0x03, 0x01, 0x40, 0x00]).unwrap();
+    let began = Instant::now();
+    while !ends_within(&mut c, Duration::from_millis(500)) {
+        assert!(began.elapsed() < Duration::from_secs(20), "the connection is still held after {:?}", began.elapsed());
+        let _ = c.write_all(&[0]);
+    }
+    assert!(began.elapsed() > Duration::from_secs(5), "closed after {:?}, before a slow peer could finish", began.elapsed());
+}
+
+#[test]
+fn an_idle_connection_is_closed_at_the_deadline_and_not_kept_to_linger() {
+    let a = device();
+    let mut held = [dial(a.net.port)];
+    assert!(ends_within(&mut held[0], Duration::from_secs(20)), "nothing ended the connection within 20 s");
+    assert_eq!(closed(&mut held), 1, "a handshake that timed out has no alert to be read, so the socket is closed");
+}
+
+#[test]
+fn only_so_many_refused_connections_linger_at_once() {
+    let a = device();
+    let mut held: Vec<TcpStream> = (0..40).map(|_| dial(a.net.port)).collect();
+    for c in &mut held {
+        c.write_all(b"GET / HTTP/1.1\r\n\r\n").unwrap();
+    }
+    for c in &mut held {
+        assert!(ends_within(c, Duration::from_secs(3)), "each is refused");
+    }
+    assert_eq!(closed(&mut held), 8, "32 linger for their alert to be read, and the rest are closed");
+}
+
+#[test]
+fn one_address_holds_so_many_connections_and_the_next_is_closed() {
+    let a = device();
+    let mut held: Vec<TcpStream> = (0..60).map(|_| dial(a.net.port)).collect();
+    std::thread::sleep(Duration::from_millis(500));
+    let gone = held.iter_mut().filter_map(|c| ends_within(c, Duration::from_millis(5)).then_some(())).count();
+    assert_eq!(gone, 12, "one address holds 48");
+    drop(held);
+    eventually("the places to be given back", 5, || {
+        let mut next = dial(a.net.port);
+        !ends_within(&mut next, Duration::from_millis(200))
+    });
+}
+
+#[test]
+fn a_stranger_is_kept_for_its_time_only_and_a_member_for_as_long_as_it_asks() {
+    let (a, b, stranger) = (device(), device(), device());
+    a.join_with_code(&b);
+    let hello = json!({"op": "hello"});
+    let mut unknown = PeerClient::connect(&stranger.net.me, a.addr(), Some(&a.fp())).unwrap();
+    let mut member = PeerClient::connect(&b.net.me, a.addr(), Some(&a.fp())).unwrap();
+    let began = Instant::now();
+    while unknown.call(&hello).is_ok() {
+        assert!(began.elapsed() < Duration::from_secs(40), "a stranger that keeps asking is still served after {:?}", began.elapsed());
+        member.call(&hello).unwrap();
+        std::thread::sleep(Duration::from_secs(2));
+    }
+    assert!(began.elapsed() > Duration::from_secs(20), "closed after {:?}", began.elapsed());
+    member.call(&hello).unwrap();
+}
+
+/// Every source of the node outside its test modules starts a thread with `thread::Builder`, which answers an error where
+/// `thread::spawn` panics, and a panic ends a release node.
+#[test]
+fn no_thread_is_started_in_a_way_that_ends_the_node_when_the_system_has_none() {
+    fn scan(dir: &Path, found: &mut Vec<String>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            if path.is_dir() {
+                scan(&path, found);
+            } else if name.ends_with(".rs") && !name.ends_with("tests.rs") {
+                let text = std::fs::read_to_string(&path).unwrap().replace('\r', "");
+                let code = text.split("#[cfg(test)]\nmod ").next().unwrap();
+                found.extend(code.lines().enumerate().filter(|(_, l)| l.contains("thread::spawn(")).map(|(n, _)| format!("{name}:{}", n + 1)));
+            }
+        }
+    }
+    let mut found = Vec::new();
+    scan(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src"), &mut found);
+    assert!(found.is_empty(), "thread::spawn in {found:?}");
+}
+
+#[cfg(unix)]
+mod process {
+    use super::*;
+    use kit::short_dir;
+    use poolhouse_node::client::Client;
+    use std::os::unix::net::UnixStream;
+    use std::os::unix::process::CommandExt;
+    use std::process::{Child, Command, Stdio};
+
+    /// A node process of the test's own state directory, killed when dropped.
+    struct Running {
+        child: Child,
+        state: tempfile::TempDir,
+    }
+
+    impl Drop for Running {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    /// Start the node with at most ``descriptors`` open files, ``more`` arguments and ``env`` over an empty environment.
+    fn start(descriptors: u64, more: &[&str], env: &[(&str, &str)]) -> Running {
+        let state = short_dir();
+        let mut command = Command::new(env!("CARGO_BIN_EXE_poolhouse-node"));
+        command.arg("run").arg("--state").arg(state.path()).args(more).env_clear().env("HOME", state.path()).envs(env.iter().copied())
+            .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        // SAFETY: setrlimit is async-signal-safe and reads the one struct it is given.
+        unsafe {
+            command.pre_exec(move || {
+                let few = libc::rlimit { rlim_cur: descriptors as libc::rlim_t, rlim_max: descriptors as libc::rlim_t };
+                if libc::setrlimit(libc::RLIMIT_NOFILE, &few) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let node = Running { child: command.spawn().unwrap(), state };
+        eventually("the node's socket", 10, || UnixStream::connect(node.state.path().join("node.sock")).is_ok());
+        node
+    }
+
+    /// Let this test process open the connections the node is flooded with.
+    fn room_to_dial() {
+        // SAFETY: both calls take the one plain-data struct they are given.
+        unsafe {
+            let mut now: libc::rlimit = std::mem::zeroed();
+            assert_eq!(libc::getrlimit(libc::RLIMIT_NOFILE, &mut now), 0);
+            now.rlim_cur = now.rlim_max.min(4096);
+            assert_eq!(libc::setrlimit(libc::RLIMIT_NOFILE, &now), 0);
+        }
+    }
+
+    fn answers(node: &Running) -> bool {
+        Client::connect(node.state.path()).and_then(|mut c| c.call("hello", "", "", json!({}))).is_ok()
+    }
+
+    #[test]
+    fn the_node_stays_up_when_local_connections_use_every_descriptor() {
+        room_to_dial();
+        let mut node = start(64, &[], &[]);
+        let held: Vec<UnixStream> = (0..100).filter_map(|_| UnixStream::connect(node.state.path().join("node.sock")).ok()).collect();
+        std::thread::sleep(Duration::from_secs(1));
+        assert_eq!(node.child.try_wait().unwrap(), None, "the node ended when it could not take a connection");
+        drop(held);
+        eventually("the node to answer again", 10, || answers(&node));
+    }
+
+    #[test]
+    fn idle_peers_neither_end_the_node_nor_keep_a_local_client_out() {
+        room_to_dial();
+        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        let listen = format!("127.0.0.1:{port}");
+        let mut node = start(256, &["--listen", &listen], &[]);
+        eventually("the peer listener", 10, || TcpStream::connect(&listen).is_ok());
+        let held: Vec<TcpStream> = (0..300).filter_map(|_| TcpStream::connect_timeout(&listen.parse().unwrap(), Duration::from_millis(200)).ok()).collect();
+        std::thread::sleep(Duration::from_secs(1));
+        assert!(answers(&node), "a local client is answered while {} peers wait", held.len());
+        assert_eq!(node.child.try_wait().unwrap(), None);
+    }
+
+    #[test]
+    fn a_node_that_can_start_no_thread_closes_the_connection_and_stays_up() {
+        // a stack larger than the address space: the system starts no thread, and a node with no network starts none until a client comes
+        let mut node = start(256, &[], &[("RUST_MIN_STACK", "281474976710656")]);
+        for _ in 0..2 {
+            assert!(!answers(&node), "no thread serves the connection, so it is closed");
+            std::thread::sleep(Duration::from_millis(300));
+            assert_eq!(node.child.try_wait().unwrap(), None, "the node ended when it could not start a thread");
+        }
+    }
+}
