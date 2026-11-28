@@ -293,6 +293,9 @@ def _others(status: dict[str, Any], mine: set[int]) -> str:
     for ask in status.get("queue") or []:
         if ask.get("pid") not in mine and not str(ask.get("label") or "").startswith(UNUSING):
             return f"a model is waited for by {ask.get('label') or ask.get('pid')}"
+    for device, turns in (status.get("requests") or {}).items():
+        if any(not turn.get("running") and turn.get("pid") not in mine for turn in turns):
+            return f"a request waits for the {device}"
     for server in status.get("servers") or []:
         if server.get("loading"):
             return "a model is loading"

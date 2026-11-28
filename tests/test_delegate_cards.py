@@ -93,7 +93,7 @@ def test_a_card_is_run_asked_about_reported_graded_and_only_then_remembered(edit
     assert "the root module is at the top" in heard and f"--facts {digest}" in heard, heard
     entry = cards_ledger.read(root)["cards"]["junk-card"]
     assert entry["state"] == "review" and entry["commit"] == row["tree"]["commit"], entry
-    assert name in cards_run.needs(root)[0] and not store.graded(name)["grades"][1:]
+    assert name in cards_run.needs(root)[0] and store.graded(name)["grades"] == [], "nothing is graded before the facts are read"
     assert "the root module is at the top" not in remembered(root)
     assert delegate.main([*accepting, "--facts", digest]) == 0
     heard = said(capsys)

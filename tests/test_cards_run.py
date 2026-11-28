@@ -40,6 +40,7 @@ class Computer:
         self.asked: list[list[str]] = []
         self.refuses = False
         self.queue: list[dict] = []
+        self.requests: dict[str, list[dict]] = {}
         self.claim_waiters: list[dict] = []
         self.measured, self.taken_up, self.no_sandbox, self.gone, self.fails = None, True, "", "", ""
         self.below: set[int] = set()
@@ -62,7 +63,7 @@ class Computer:
         return 0
 
     def status(self) -> dict:
-        return {"claims": self.claims, "claim_waiters": self.claim_waiters, "queue": self.queue,
+        return {"claims": self.claims, "claim_waiters": self.claim_waiters, "queue": self.queue, "requests": self.requests,
                 "servers": [{"port": 8080, "pid": 900, "holders": self.holders}]}
 
     def recheck(self, _root: Path, found: cards.Card, commit: str, _name: str, _log: Path) -> str:
@@ -152,6 +153,7 @@ def test_a_card_starts_on_a_branch_bound_to_the_releasing_lead_with_memory_and_o
     ({"queue": [{"pid": 77, "label": "poolhouse-chat"}]}, "waited for by poolhouse-chat"),
     ({"claim_waiters": [{"pid": 78, "name": "gpu-training", "info": {"purpose": "a benchmark"}}]}, "a benchmark"),
     ({"measured": object()}, "a measurement"),
+    ({"requests": {"gpu": [{"pid": 77, "running": False}]}}, "waits for the gpu"),
     ({"taken_up": False}, "never starts another"),
     ({"servers": {}}, "never loads a model"),
     ({"servers": {8080: {**SERVER, "context": 131_072}}}, "never loads a model"),
