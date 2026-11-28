@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""A SessionStart, UserPromptSubmit and PostToolUse hook: tells the agent which hooks failed since it was last told.
+
+The lead hears of every hook failure of its session, its subagents' included; a subagent hears of its own (`hook_failures`). It
+never blocks and ends itself before the harness would: when it cannot do its work, or not in time, it says so in the agent's
+context, so a failing hook cannot go unreported without a word.
+
+Wire it in `.claude/settings.json` with a limit above its own deadline:
+
+    {"type": "command", "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/claude-hook-failures", "timeout": 10}
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import threading
+import time
+from pathlib import Path
+
+DEADLINE_S = 5.0
+REPEAT_S = 600.0
+"""How often it says again that it cannot do its work."""
+ONCE = threading.Lock()
+
+
+def say(name: str, text: str) -> None:
+    """Add ``text`` to the agent's context; only the first of two callers writes."""
+    if ONCE.acquire(blocking=False):
+        sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": name, "additionalContext": text}}) + "\n")
+        sys.stdout.flush()
+
+
+def broken(event: dict, why: str) -> None:
+    """Say that the reader of hook failures did not do its work, at most once per `REPEAT_S` where that can be remembered."""
+    try:
+        import hook_state
+        session = "".join(c for c in str(event.get("session_id") or "none") if c.isalnum() or c == "-")[:80]
+        marker = hook_state.state_dir() / f"hook-failures-broken-{session}{event.get('agent_id') and '-sub' or ''}"
+        if marker.exists() and time.time() - marker.stat().st_mtime < REPEAT_S:
+            return
+        marker.write_text(why, encoding="utf-8")
+    except Exception:  # not remembering means saying it again, never saying nothing
+        pass
+    say(str(event.get("hook_event_name") or "PostToolUse"),
+        f"Hook failures: the reader of hook failures did not do its work ({why}), so a failing hook may go unreported. "
+        "Fix scripts/hooks/claude-hook-failures or scripts/hooks/hook_failures.py, or report it.")
+
+
+def main() -> int:
+    event: dict = {}
+
+    def expired() -> None:
+        broken(event, f"not finished within {limit:g} s")
+        sys.stdout.flush()
+        os._exit(0)
+
+    limit = DEADLINE_S
+    try:
+        limit = float(os.environ.get("POOLHOUSE_HOOK_FAILURES_DEADLINE_S") or DEADLINE_S)
+    except ValueError:
+        pass
+    timer = threading.Timer(limit, expired)
+    timer.daemon = True
+    timer.start()
+    try:
+        read = json.loads(sys.stdin.buffer.read())
+        if not isinstance(read, dict):
+            raise ValueError("the hook event is not an object")
+        event.update(read)
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import hook_failures
+        import hook_state
+        name = str(event.get("hook_event_name") or "PostToolUse")
+        hook_failures.deliver(event, hook_state.state_dir(), lambda text: say(name, text))
+    except BaseException as error:  # whatever stops it is said, since nothing else would report this hook
+        trace = error.__traceback__
+        while trace is not None and trace.tb_next is not None:
+            trace = trace.tb_next
+        where = f" at {Path(trace.tb_frame.f_code.co_filename).name}:{trace.tb_lineno}" if trace else ""
+        broken(event, f"{type(error).__name__}{where}")
+    finally:
+        timer.cancel()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

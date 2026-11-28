@@ -43,6 +43,13 @@ and never limits (docs/claude-subagents.md, "Tool-call milestones").
 - Claude Code sets `CLAUDECODE` for every command it runs. `--allow-increase` on the budgets and the `pre-push` hook's agent
   restrictions key on it; a terminal sets nothing.
 
+## Hook failures
+
+Claude Code shows a hook's crash, timeout or bad output to the person only. `claude-hook-failures` (SessionStart,
+UserPromptSubmit and PostToolUse) puts them in the context of the agent: the lead hears of all of its session's, a subagent of its
+own; `scripts/status` lists the last day's. A hook added to `.claude/settings.json` also gets a case in `tests/test_hook_entries.py`,
+which runs it end to end.
+
 ## Commit attribution
 
 End git commit messages with the attribution trailer the session's system reminder gives, and end pull request descriptions with the

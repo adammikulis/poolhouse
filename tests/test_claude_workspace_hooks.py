@@ -55,7 +55,10 @@ print('Authenticated parent brief: hello-model; claims and independent review re
     shutil.copytree(ROOT / 'scripts/hooks', tree / 'scripts/hooks')
     (tree / 'src').symlink_to(ROOT / 'src')
     monkeypatch.setitem(globals(), 'HOOKS', tree / 'scripts/hooks')
-    monkeypatch.chdir(tmp_path)  # outside any checkout, so the hooks report no worktrees of the real one
+    # Outside any checkout, so the hooks report no worktrees of the real one; beside the commands' folder, since a program is
+    # never looked up below the folder a process stands in.
+    (tmp_path / 'work').mkdir()
+    monkeypatch.chdir(tmp_path / 'work')
     monkeypatch.setenv('PATH', str(directory))
     monkeypatch.setenv('HOOK_CALLS', str(calls))
     monkeypatch.setenv('POOLHOUSE_HOOK_STATE', str(tmp_path / 'hookstate'))
@@ -163,6 +166,19 @@ def test_an_attention_event_with_no_check_due_loads_no_board_client(tmp_path, mo
     loaded = {line.rsplit('|', 1)[-1].strip() for line in done.stderr.splitlines() if line.startswith('import time:')}
     assert 'workspace_hook' in loaded
     assert not loaded & {'poolhouse.board', 'poolhouse.board.client', 'poolhouse.guard.secrets'}
+
+
+def test_a_tool_result_longer_than_64_kib_does_not_stop_the_lead_being_told(tmp_path, monkeypatch):
+    monkeypatch.setenv('POOLHOUSE_HOOK_STATE', str(tmp_path))
+    held = tmp_path / 'attention'
+    held.mkdir()
+    (held / 'large').write_text(str(time.time()))  # no check is due: the hook only shows what is held
+    (held / 'large.text').write_text('a question waits for you')
+    done = subprocess.run([sys.executable, str(HOOKS / 'claude-lead-attention')], text=True, capture_output=True, timeout=60,
+                          check=False, input=json.dumps({'hook_event_name': 'PostToolUse', 'session_id': 'large',
+                                                         'tool_response': {'output': 'x' * 300_000}}))
+    assert done.returncode == 0 and not done.stderr, done.stderr
+    assert json.loads(done.stdout)['hookSpecificOutput']['additionalContext'] == 'a question waits for you'
 
 
 @pytest.mark.parametrize('stage', ['SessionStart', 'SubagentStart'])

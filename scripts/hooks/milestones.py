@@ -17,6 +17,8 @@ import tool_count
 FIRST = 100
 EVERY = 50
 TRIES = 3
+POST_S = 6.0
+"""Under the 15 s the settings give the hook, with room for the board lookups before the post."""
 SETTING = "POOLHOUSE_TOOL_MILESTONE_EVERY"
 
 
@@ -59,7 +61,7 @@ def tell(event: dict, count: int) -> str:
         return "the board has not named this subagent"
     command = ["poolhouse-workspace", "board", "post", "#general", notice(event, environment["POOLHOUSE_WORKSPACE_AGENT"], count),
                "--type", "status", "--subject", "milestone"]
-    done = workspace_hook.attempt(command, "PostToolUse", environment=environment, timeout=10)
+    done = workspace_hook.attempt(command, "PostToolUse", environment=environment, timeout=POST_S)
     if done is None:
         return "the board did not answer"
     if done.returncode:
