@@ -324,7 +324,19 @@ jobs:
         with:
           python-version: "3.13"
 
+      # Linked phones (docs/phone-api.md) on native Windows: linking and signed requests over the real listener, the session
+      # hooks as real processes, the settings written into a project and the Phones routes.
+      - name: phone linking tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install pytest pytest-timeout pytest-xdist numpy psutil keyring cryptography pyyaml pywin32
+          $env:PYTHONPATH = "src"
+          python -m pytest tests/test_phone_platform.py tests/test_phone_mailbox.py tests/test_phone_hook.py tests/test_phone_service.py tests/test_phone_sessions.py tests/test_phone_model.py tests/test_phone_screen.py -q -n 0 -p no:cacheprovider
+          if ($LASTEXITCODE -ne 0) { throw "the phone linking tests failed" }
+
       - name: build the wheel install.ps1 installs
+        if: ${{ !cancelled() }}
         run: |
           python -m pip install --upgrade pip build
           python packaging/build.py
@@ -334,6 +346,7 @@ jobs:
       # owner-only by ACL. The crate's own tests run here, then the launcher starts the real
       # binary under its supervisor and stops it by the stop events (tests/test_node_windows.py).
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+        if: ${{ !cancelled() }}
       # Every test binary runs, also after one fails. The dependencies are optimized, as the tests sign, verify and encrypt thousands
       # of times, and no debug symbols are written; debug assertions and overflow checks stay on.
       - name: crate tests of poolhouse-node

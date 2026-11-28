@@ -12,16 +12,25 @@ if TYPE_CHECKING or sys.platform == "win32":
     import win32con
     import win32security
 
-def _user():
+def _token(kind):
     token = win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32con.TOKEN_QUERY)
     try:
-        return win32security.GetTokenInformation(token, win32security.TokenUser)[0]
+        return win32security.GetTokenInformation(token, kind)
     finally:
         token.Close()
 
 
+def _user():
+    return _token(win32security.TokenUser)[0]
+
+
+def _creates_as():
+    """The owner Windows gives what this process creates: the account, or the Administrators group for an elevated process."""
+    return _token(win32security.TokenOwner)
+
+
 def validate(path: Path) -> None:
-    """Require a plain path owned by this account before creating or restricting it."""
+    """Require a plain path owned by this account, or by what this process creates things as, before creating or restricting it."""
     path = Path.cwd() / path
     existing = None
     for candidate in (path, *path.parents):
@@ -41,12 +50,12 @@ def validate(path: Path) -> None:
             str(existing), win32security.SE_FILE_OBJECT, win32security.OWNER_SECURITY_INFORMATION)
     except pywintypes.error as error:
         raise ValueError("private storage ownership could not be verified") from error
-    if descriptor.GetSecurityDescriptorOwner() != _user():
+    if descriptor.GetSecurityDescriptorOwner() not in (_user(), _creates_as()):
         raise ValueError(f"private storage {existing} belongs to another user")
 
 
 def restrict(path: Path) -> None:
-    """Grant this process's account exclusive access to its own file or directory."""
+    """Make this process's account the owner of its own file or directory and the only one with access to it."""
     validate(path)
     user = _user()
     acl = win32security.ACL()
@@ -56,8 +65,8 @@ def restrict(path: Path) -> None:
                             ntsecuritycon.FILE_ALL_ACCESS, user)
     win32security.SetNamedSecurityInfo(
         str(path), win32security.SE_FILE_OBJECT,
-        win32security.DACL_SECURITY_INFORMATION
-        | win32security.PROTECTED_DACL_SECURITY_INFORMATION, None, None, acl, None)
+        win32security.OWNER_SECURITY_INFORMATION | win32security.DACL_SECURITY_INFORMATION
+        | win32security.PROTECTED_DACL_SECURITY_INFORMATION, user, None, acl, None)
 
 
 def problem(path: Path) -> str:

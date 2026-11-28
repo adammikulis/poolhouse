@@ -68,6 +68,7 @@ from .framing import (
 from .jobs import DaemonError, JobRunner
 from .measuring import BenchHost, Job as BenchJob, Refused
 from .models import Models
+from .phone import relay as phone_relay
 from .service_guard import ServiceGuard
 from .service_pool import Pool, default as default_pool
 from .serving import Hosting, NoRoom, ServeSettings, Serving
@@ -268,6 +269,8 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return True
             parsed = urllib.parse.urlparse(rest)
             model = urllib.parse.parse_qs(parsed.query).get("poolhouse_model", [""])[0]
+            if model.startswith(phone_relay.PREFIX):
+                return phone_relay.answer(self, getattr(ui, "phones", None), route, model, body or b"")
             port = serving.port_for(model)
             if port is None:
                 self._send(503, {"error": "no model server is running on this machine"})

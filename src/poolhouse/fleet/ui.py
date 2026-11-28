@@ -101,6 +101,8 @@ class UI:
         which is most of them -- the Telemetry view is then pointed at a page that does."""
         self.pool_actions: Any = None
         """`poolhouse.api.pool`, handed in by the command that starts the daemon (this layer may not import it); None on a page that serves alone."""
+        self.phones: Any = None
+        """The daemon's linked phones (`fleet.phone.PhoneService`); None on a page that serves alone."""
         self.rename: Any = None
         """``(str) -> str``: renames this machine now. Set by the daemon that owns it."""
         self.name = name

@@ -1,0 +1,108 @@
+<style>
+phones-view { display:contents; }
+phones-view .phones-heading { margin-bottom:18px; }
+phones-view .phones-heading h1 { margin:0 0 8px; } phones-view .phones-heading p { margin:0; }
+phones-view .phones-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; align-items:start; }
+phones-view .phone-code { display:grid; gap:12px; justify-items:start; }
+phones-view .phone-qr { width:min(280px,100%); height:auto; border-radius:12px; border:1px solid var(--line); background:#fff; }
+phones-view .phone-typed { font-size:1.714rem; font-weight:700; letter-spacing:0.08em; font-variant-numeric:tabular-nums; user-select:all; }
+phones-view .phone-row { display:grid; gap:6px; border-top:1px solid var(--line); padding:12px 0; }
+phones-view .phone-top { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; }
+phones-view .phone-row small { color:var(--muted); overflow-wrap:anywhere; }
+phones-view .phone-words { font-family:monospace; }
+phones-view .phone-state { font-size:0.786rem; padding:2px 8px; border-radius:20px; border:1px solid var(--line); background:var(--bg-sunken); }
+phones-view .phone-state[data-live=true] { background:var(--poolhouse-yellow); color:var(--poolhouse-yellow-ink,var(--poolhouse-navy)); border-color:transparent; }
+phones-view .phone-switch { display:flex; gap:8px; align-items:center; margin:0; }
+phones-view .phone-project { display:flex; gap:10px; justify-content:space-between; align-items:center; border-top:1px solid var(--line); padding:9px 0; overflow-wrap:anywhere; }
+@media(max-width:900px) { phones-view .phones-layout { grid-template-columns:1fr; } }
+</style>
+<template>
+<section class="workspace page-shell" hidden>
+  <header class="phones-heading page-heading"><div><h1>Phones</h1><p class="intro">Link a phone to talk to your agents and run this pool from it. Only you can link one: a linked phone speaks as you.</p></div></header>
+  <p class="status" id="phones-status" role="status">Loading linked phones…</p>
+  <div class="phones-layout">
+    <article class="workspace-card" aria-label="Link a phone">
+      <h2>Link a phone</h2>
+      <p id="phone-hint">Open the Poolhouse app on your phone, then show a code here and scan it.</p>
+      <div class="workspace-actions"><button type="button" id="phone-offer">Show a code</button><button type="button" class="ghost" id="phone-cancel" hidden>Hide the code</button></div>
+      <div class="phone-code" id="phone-code" hidden>
+        <img class="phone-qr" id="phone-qr" alt="QR code to scan with the Poolhouse app">
+        <div>Or type this code in the app:</div>
+        <div class="phone-typed" id="phone-typed"></div>
+        <div>at the address <strong id="phone-address"></strong></div>
+        <small id="phone-expires"></small>
+      </div>
+    </article>
+    <article class="workspace-card" aria-label="Linked phones">
+      <h2>Linked phones</h2>
+      <p id="phone-none" hidden>No phone is linked yet.</p>
+      <div id="phone-list"></div>
+    </article>
+    <article class="workspace-card" aria-label="Projects phones can talk to">
+      <h2>Claude sessions</h2>
+      <p>A connected project lets your phone talk to its Claude Code sessions. This writes hooks into that project's own settings file only.</p>
+      <div id="phone-projects"></div>
+      <label for="phone-folder">Connect another project folder</label>
+      <input id="phone-folder" type="text" autocomplete="off" size="40" placeholder="/path/to/project">
+      <div class="workspace-actions"><button type="button" id="phone-connect">Connect</button></div>
+    </article>
+  </div>
+</section>
+</template>
+<script>
+(function(){
+ const M=window.fleetModel,W=window.workspaceModel,E=M.el;
+ const when=at=>at?new Date(at*1000).toLocaleString():'never';
+ class PhonesView extends HTMLElement {
+  connectedCallback(){
+   if(this.wired)return;this.wired=true;
+   const find=id=>this.querySelector('#'+id);
+   this.host=this.querySelector('section');this.note=find('phones-status');this.list=find('phone-list');this.none=find('phone-none');
+   this.code=find('phone-code');this.qr=find('phone-qr');this.typed=find('phone-typed');this.address=find('phone-address');this.expires=find('phone-expires');
+   this.cancel=find('phone-cancel');this.projects=find('phone-projects');this.folder=find('phone-folder');this.offer=null;this.known=null;
+   find('phone-offer').onclick=()=>this.act(async()=>{this.offer=await W.post('/ui/phones/offer',{});this.paintOffer();return W.api('/ui/phones');});
+   this.cancel.onclick=()=>this.act(()=>{this.offer=null;this.paintOffer();return W.api('/ui/phones/offer',{method:'DELETE'});});
+   find('phone-connect').onclick=()=>this.act(async()=>{const got=await W.post('/ui/phones/projects',{path:this.folder.value,connected:true});this.folder.value='';return got;});
+   W.route(this.host,'phones',()=>this.load());
+   this.timer=setInterval(()=>{if(!this.host.hidden&&!document.hidden)this.load();},3000);
+  }
+  disconnectedCallback(){clearInterval(this.timer);}
+  async act(work){try{this.paint(await work());}catch(error){W.status(this.note,error);}}
+  load(){return this.act(()=>W.api('/ui/phones'));}
+  paintOffer(){
+   const offer=this.offer;this.code.hidden=!offer;this.cancel.hidden=!offer;
+   if(!offer){this.qr.removeAttribute('src');return;}
+   this.qr.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(offer.qr_svg);
+   this.typed.textContent=offer.code;this.address.textContent=offer.endpoints.join(' or ');
+  }
+  paint(held){
+   if(!held||!held.phones)return;
+   if(this.known&&held.phones.some(p=>!this.known.has(p.id))){
+    const added=held.phones.filter(p=>!this.known.has(p.id));
+    this.note.textContent=`Linked ${added.map(p=>p.name).join(', ')}. Check the app shows the same key: ${added[0].words}.`;
+   }else if(!this.note.textContent.startsWith('Linked '))this.note.textContent='';
+   this.known=new Set(held.phones.map(p=>p.id));
+   if(this.offer&&(!held.offer||held.offer.code!==this.offer.code)){this.offer=null;this.paintOffer();}
+   if(this.offer){const left=Math.max(0,Math.round(this.offer.expires-Date.now()/1000));this.expires.textContent=`Links one phone. Ends in ${Math.floor(left/60)}m ${left%60}s.`;}
+   const key=JSON.stringify([held.phones,held.projects]);if(key===this.key)return;this.key=key;
+   this.none.hidden=!!held.phones.length;
+   this.list.replaceChildren(...held.phones.map(phone=>this.row(phone)));
+   this.projects.replaceChildren(...held.projects.map(project=>E('div',{class:'phone-project'},E('span',{},project.path),
+    W.button(project.connected?'Disconnect':'Connect',()=>this.act(()=>W.post('/ui/phones/projects',{path:project.path,connected:!project.connected}))))));
+  }
+  row(phone){
+   const toggle=E('input',{type:'checkbox'});toggle.checked=phone.pool_use;
+   toggle.onchange=()=>this.act(()=>W.post(`/ui/phones/${phone.id}/pool-use`,{enabled:toggle.checked}));
+   const offered=phone.model?`Offers ${phone.model.name}${phone.blocked?' · '+phone.blocked:''}`:phone.pool_use?(phone.blocked||'Offering no model now'):'The pool sends this phone nothing';
+   return E('div',{class:'phone-row'},
+    E('div',{class:'phone-top'},E('strong',{},phone.name),E('span',{class:'phone-state','data-live':String(phone.online)},phone.online?'online':'offline')),
+    E('small',{},`Linked ${when(phone.linked_at)} · last seen ${when(phone.seen_at)}`),
+    E('small',{class:'phone-words'},`Key ${phone.words}`),
+    E('label',{class:'phone-switch'},toggle,'Use this phone in the pool'),
+    E('small',{},offered),
+    E('div',{class:'workspace-actions'},W.button('Remove',()=>this.act(()=>W.api(`/ui/phones/${phone.id}`,{method:'DELETE'})))));
+  }
+ }
+ customElements.define('phones-view',PhonesView);
+})();
+</script>

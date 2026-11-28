@@ -53,6 +53,7 @@ HELP: dict[str, str] = {
     "doctor": "The checkouts, the bench store and the managed llama.cpp, with a fix for each.",
     "device": "Pause or resume one device, and manage its working hours.",
     "device-setup": "Set this device up to join a pool in one command: firewall rules by port, the node, the join check.",
+    "phone": "Link a phone, list and remove linked phones, and connect projects to them.",
     "pool": "Found or join a pool, inspect members, and manage membership through the node.",
     "features": "Experimental features: list them with their stage and risk, turn one on or off.",
     "graph": "A rendered graph page, served with a model behind it.",

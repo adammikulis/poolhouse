@@ -11,13 +11,15 @@ import json
 import os
 import re
 import shlex
+import sys
 import tomllib
+from collections.abc import Sequence
 from pathlib import Path
 
-from poolhouse import home
+from poolhouse import home, runtime
 from poolhouse.files import write_text
 
-__all__ = ["AGENTS", "codex_hooks", "install", "targets"]
+__all__ = ["AGENTS", "codex_hooks", "install", "phone", "phone_command", "targets"]
 
 AGENTS = ("claude-code", "codex")
 FILES = {"claude-code": (".claude", "settings.local.json"), "codex": (".codex", "config.toml")}
@@ -145,6 +147,73 @@ def _codex_text(text: str) -> str:
     new = (base + "\n\n" if base else "") + codex_hooks(True, with_features)
     tomllib.loads(new)
     return new
+
+
+PHONE_MODULE = "poolhouse.cli.phone"
+PHONE_HOOKS: tuple[tuple[str, str, tuple[tuple[str, int, bool], ...]], ...] = (
+    ("SessionStart", "", (("session-start", 15, False), ("listen", 604860, True))),
+    ("UserPromptSubmit", "", (("prompt", 15, False),)),
+    ("PreToolUse", "AskUserQuestion", (("ask", 660, False),)),
+    ("PostToolUse", "*", (("tool", 15, False),)),
+    ("Stop", "", (("stop", 15, False), ("listen", 604860, True))),
+    ("SubagentStart", "", (("subagent-start", 15, False),)),
+    ("SubagentStop", "", (("subagent-stop", 15, False),)),
+    ("Notification", "permission_prompt", (("notification", 15, False),)),
+    ("SessionEnd", "", (("session-end", 15, False),)),
+)
+"""The phone hooks of a connected project (`poolhouse.phone_hook`): event, matcher, and each hook with its timeout in seconds and whether
+it runs in the background and wakes the session (``asyncRewake``)."""
+
+
+def phone_command() -> list[str]:
+    """The command a phone hook runs, as program and arguments: this installation's own interpreter by its full path, since a harness
+    may find no ``poolhouse`` on its ``PATH`` (the desktop apps) and Windows needs no shell this way, with the project's folder left
+    off the import path."""
+    chosen = runtime.available()
+    if chosen is not None:
+        return [str(chosen.python), "-I", "-m", PHONE_MODULE]
+    flags = [] if getattr(sys, "frozen", False) else ["-P"]
+    return [sys.executable, *flags, "-m", PHONE_MODULE]
+
+
+def _phone_own(hook: dict) -> bool:
+    args = hook.get("args")
+    return isinstance(args, list) and args[-3:-1] == [PHONE_MODULE, "hook"]
+
+
+def _phone_text(text: str, run: Sequence[str] | None) -> str:
+    """Claude Code settings ``text`` with earlier phone hooks removed and, when ``run`` names the command, the phone hooks added."""
+    data = json.loads(text) if text else {}
+    hooks = data.setdefault("hooks", {})
+    for event in list(hooks):
+        groups = []
+        for group in hooks[event]:
+            kept = [h for h in group.get("hooks", []) if not _phone_own(h)]
+            if kept:
+                groups.append({**group, "hooks": kept})
+        hooks[event] = groups
+        if not groups:
+            del hooks[event]
+    for event, matcher, entries in PHONE_HOOKS if run else ():
+        made = [{"type": "command", "command": run[0], "args": [*run[1:], "hook", name], "timeout": timeout,
+                 **({"asyncRewake": True} if wakes else {})} for name, timeout, wakes in entries]
+        hooks.setdefault(event, []).append({**({"matcher": matcher} if matcher else {}), "hooks": made})
+    if not hooks:
+        del data["hooks"]
+    return json.dumps(data, indent=2) + "\n"
+
+
+def phone(project: Path, connect: bool = True, run: Sequence[str] = ()) -> Path:
+    """Connect ``project`` to linked phones, or disconnect it, in its own ``.claude/settings.local.json``; the file written. ``run``
+    is the command its hooks run, `phone_command` unless given."""
+    path = targets(project, ("claude-code",))["claude-code"]
+    old = path.read_text(encoding="utf-8") if path.exists() else ""
+    if not connect and not old:
+        return path
+    new = _phone_text(old, (run or phone_command()) if connect else None)
+    if new != old:
+        write_text(path, new)
+    return path
 
 
 def install(project: Path, only: tuple[str, ...] = AGENTS) -> dict[str, tuple[Path, list[str]]]:

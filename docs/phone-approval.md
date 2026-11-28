@@ -1,5 +1,8 @@
 # Approving from a phone
 
+> **Directing the computer from a phone is a different, current feature:** [phone-api.md](phone-api.md) and
+> [phone-sessions.md](phone-sessions.md). This page is the node's approval protocol, which nothing calls.
+
 > **Current model.** A phone is an optional notification and remote-control channel; nothing requires one. Grants are issued
 > automatically by policy (`poolhouse.board.autoapprove`, `poolhouse.board.person_key`): `poolhouse-workspace approval request`
 > is decided at once, signed with this device's own key, which is made and enrolled the first time it is needed. A process
