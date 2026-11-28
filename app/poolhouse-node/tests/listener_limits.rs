@@ -6,10 +6,13 @@ mod kit;
 use std::io::{ErrorKind, Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use kit::netkit::*;
+use poolhouse_node::net::Net;
 use poolhouse_node::peer::PeerClient;
+use poolhouse_node::tls::HANDSHAKE_FOR;
 use serde_json::json;
 
 fn dial(port: u16) -> TcpStream {
@@ -110,6 +113,105 @@ fn a_stranger_is_kept_for_its_time_only_and_a_member_for_as_long_as_it_asks() {
     }
     assert!(began.elapsed() > Duration::from_secs(20), "closed after {:?}", began.elapsed());
     member.call(&hello).unwrap();
+}
+
+fn connect(from: &Dev, to: &Dev) -> poolhouse_node::error::Result<PeerClient> {
+    PeerClient::connect(&from.net.me, to.addr(), Some(&to.fp()))
+}
+
+/// Whether ``from`` dials ``to`` and is answered as a member.
+fn served(from: &Dev, to: &Dev) -> poolhouse_node::error::Result<serde_json::Value> {
+    connect(from, to).and_then(|mut c| c.call(&json!({"op": "boards"})))
+}
+
+/// The connections of ``tries`` that ``from``, which no pool lists, was let open to ``to``, oldest first.
+fn crowd(from: &Dev, to: &Dev, tries: usize) -> Vec<PeerClient> {
+    (0..tries).filter_map(|_| connect(from, to).ok().and_then(|mut c| c.call(&json!({"op": "hello"})).ok().map(|_| c))).collect()
+}
+
+/// How many of ``held`` still answer.
+fn answering(held: &mut [PeerClient]) -> usize {
+    held.iter_mut().filter_map(|c| c.call(&json!({"op": "hello"})).ok()).count()
+}
+
+#[test]
+fn a_member_gets_in_past_strangers_at_its_own_address() {
+    let (a, b, stranger) = (device(), device(), device());
+    a.join_with_code(&b);
+    b.net.sync_once(true).unwrap();
+    eventually("a to hold the channel b opened", 10, || a.member(&b.fp()).unwrap()["reach"] == "channel");
+    let mut strangers = crowd(&stranger, &a, 60);
+    for dial in 0..20 {
+        if let Err(e) = served(&b, &a) {
+            panic!("dial {dial} of the member, whose address {} strangers hold: {e}", strangers.len());
+        }
+    }
+    let left = answering(&mut strangers);
+    assert!((27..=47).contains(&left), "one stranger at most goes for each dial, and with the channel they are 48 at most: {left} answer");
+    a.net.call_member(&b.fp(), None, &json!({"op": "boards"})).expect("the channel is not taken from the member");
+}
+
+#[test]
+fn a_member_this_device_reached_is_vouched_for_at_its_address() {
+    let (a, b, stranger) = (device(), device(), device());
+    a.join_with_code(&b);
+    assert_eq!(a.net.sync_once(true).unwrap(), 1, "a dials b, which never dialed a as a member");
+    let _strangers = crowd(&stranger, &a, 60);
+    served(&b, &a).expect("the address a reached b at is known to a");
+}
+
+#[test]
+fn the_address_a_member_was_recorded_at_is_vouched_for_after_a_restart() {
+    let (a, b, stranger) = (device(), device(), device());
+    a.join_with_code(&b);
+    let fp = a.fp();
+    let dir = a.stop();
+    let node = Arc::new(Mutex::new(kit::node(dir.path())));
+    let net = Net::start(node.clone(), config(None)).unwrap();
+    let a = Dev { dir, node, net, token: String::new() };
+    assert_eq!(a.fp(), fp);
+    let _strangers = crowd(&stranger, &a, 60);
+    served(&b, &a).expect("a knows the address it recorded for b before it restarted");
+}
+
+#[test]
+fn removing_the_last_member_at_an_address_forgets_the_address() {
+    let (a, b, c, stranger) = (device(), device(), device(), device());
+    a.join_with_code(&b);
+    a.join_with_code(&c);
+    served(&b, &a).unwrap();
+    served(&c, &a).unwrap();
+    let remove = |who: &Dev| a.ok("member_remove", "", &a.token, json!({"fingerprint": who.fp()}));
+
+    remove(&b);
+    let strangers = crowd(&stranger, &a, 60);
+    served(&c, &a).expect("c is still a member at the address");
+    drop(strangers);
+
+    remove(&c);
+    let mut strangers = Vec::new();
+    eventually("the places the first strangers held to be given back", 10, || {
+        strangers = crowd(&stranger, &a, 60);
+        strangers.len() >= 48
+    });
+    assert_eq!(strangers.len(), 48, "an address no member is at is refused past its share");
+    assert_eq!(answering(&mut strangers), 48, "and takes no place from the connections it holds");
+}
+
+#[test]
+fn a_peer_is_not_late_for_the_time_the_node_was_busy() {
+    let (a, b) = (device(), device());
+    a.join_with_code(&b);
+    let node = a.node.clone();
+    let (locked, wait) = std::sync::mpsc::channel();
+    let busy = std::thread::spawn(move || {
+        let _held = node.lock().unwrap();
+        locked.send(()).unwrap();
+        std::thread::sleep(HANDSHAKE_FOR + Duration::from_secs(2));
+    });
+    wait.recv().unwrap();
+    served(&b, &a).expect("the wait for the node is not the peer's");
+    busy.join().unwrap();
 }
 
 /// Every source of the node outside its test modules starts a thread with `thread::Builder`, which answers an error where

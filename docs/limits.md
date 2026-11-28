@@ -165,12 +165,13 @@ names its end to the agent. The owner's orders: "I should never silently have th
 | `SKEW_MS` | 5 * 60 * 1000 | `app/poolhouse-node/src/grants/spec.rs:25` | clock difference tolerated when a grant is checked | the owner, in source; a security floor no agent loosens |
 | `SKEW_MAX_MS` | 300_000 | `app/poolhouse-node/src/rules.rs:12` | clock difference tolerated for a foreign row | the owner, in source |
 | `MAX_AGE_MS` | 60_000 | `app/poolhouse-node/src/beacon.rs:29` | age of a beacon that is still believed | the owner, in source |
-| `JOIN_BYTES` | 256 * 1024 | `app/poolhouse-node/src/peer.rs:73` | bytes of a join request | the owner, in source |
-| `HANDSHAKE_FOR` | 10 s | `app/poolhouse-node/src/tls.rs:26` | a peer's whole handshake: a host that stalls or trickles it does not keep a connection | the owner, in source |
-| `STRANGER_FOR` | 30 s | `app/poolhouse-node/src/peer.rs:40` | the whole connection of a device the pool does not list, after its handshake | the owner, in source |
+| `JOIN_BYTES` | 256 * 1024 | `app/poolhouse-node/src/peer.rs:74` | bytes of a join request | the owner, in source |
+| `HANDSHAKE_FOR` | 10 s | `app/poolhouse-node/src/tls.rs:26` | a peer's whole handshake: a host that stalls or trickles it does not keep a connection; the node's own wait for its lock is not counted | the owner, in source |
+| `STRANGER_FOR` | 30 s | `app/poolhouse-node/src/peer.rs:41` | the whole connection of a device the pool does not list, after its handshake | the owner, in source |
 | `MOST_PEER_CONNECTIONS` | 128 | `app/poolhouse-node/src/net.rs:38` | connections the peer listener holds together: descriptors | the owner, in source |
-| `MOST_PEER_PER_ADDRESS` | 48 | `app/poolhouse-node/src/net.rs:40` | connections one address holds on the peer listener | the owner, in source |
-| `PEER_RESERVED` | 32 | `app/poolhouse-node/src/net.rs:42` | the last peer connections, for addresses a member connected from in the last hour | the owner, in source |
+| `MOST_PEER_PER_ADDRESS` | 48 | `app/poolhouse-node/src/net.rs:40` | connections one address holds on the peer listener; at a member's address a new one then takes the place of the oldest that showed no member's certificate | the owner, in source |
+| `PEER_RESERVED` | 32 | `app/poolhouse-node/src/net.rs:42` | the last peer connections, for members' addresses: one a member connected from, or was reached or recorded at, in the last hour (a recorded one counts from the node's start), forgotten when the last member there is removed | the owner, in source |
+| `MOST_LEAVING` | 16 | `app/poolhouse-node/src/gate.rs:19` | connections hung up to make room that have yet to end: the most a listener passes its total by | the owner, in source |
 | `ALERT_LINGER` | 5 s | `app/poolhouse-node/src/tls.rs:29` | how long a refused connection is drained so the other end reads why | the owner, in source |
 | `MOST_DRAINED` | 64 * 1024 | `app/poolhouse-node/src/tls.rs:31` | bytes drained from one refused connection | the owner, in source |
 | `MOST_LINGERING` | 32 | `app/poolhouse-node/src/net.rs:44` | refused connections drained at once; one past it is closed straight away | the owner, in source |
@@ -182,9 +183,9 @@ names its end to the agent. The owner's orders: "I should never silently have th
 | `GRACE_S` | 120 | `app/poolhouse-node/src/shard/host.rs:38` | seconds a shard gets to stop before it is killed | the owner, in source |
 | `KILL_AFTER` | Duration::from_secs(45) | `app/poolhouse-node/src/shard/host.rs:39` | seconds after a stop request that a shard is killed | the owner, in source |
 | `MOST_KEYS (rates)` | 1024 | `app/poolhouse-node/src/limits.rs:10` | keys the in-memory rate table holds; a new key past it drops the least recently used | the owner, in source |
-| `OPEN_JOINS_PER_SOURCE` | 5 | `app/poolhouse-node/src/peer.rs:86` | open-pool joins from one address in `OPEN_JOIN_WINDOW`: a flood of strangers asking to join | the owner, in source; a security floor no agent loosens |
-| `OPEN_JOINS_PER_POOL` | 10 | `app/poolhouse-node/src/peer.rs:87` | open-pool joins in all in `OPEN_JOIN_WINDOW` | the owner, in source; a security floor no agent loosens |
-| `OPEN_JOIN_WINDOW` | 600 s | `app/poolhouse-node/src/peer.rs:88` | the window of the two open join limits | the owner, in source; a security floor no agent loosens |
+| `OPEN_JOINS_PER_SOURCE` | 5 | `app/poolhouse-node/src/peer.rs:87` | open-pool joins from one address in `OPEN_JOIN_WINDOW`: a flood of strangers asking to join | the owner, in source; a security floor no agent loosens |
+| `OPEN_JOINS_PER_POOL` | 10 | `app/poolhouse-node/src/peer.rs:88` | open-pool joins in all in `OPEN_JOIN_WINDOW` | the owner, in source; a security floor no agent loosens |
+| `OPEN_JOIN_WINDOW` | 600 s | `app/poolhouse-node/src/peer.rs:89` | the window of the two open join limits | the owner, in source; a security floor no agent loosens |
 | `WRONG_CODES` | 10 | `app/poolhouse-node/src/phone/enrol.rs:34` | wrong phone codes from one address in `WRONG_WINDOW`: guessing a code | the owner, in source; a security floor no agent loosens |
 | `WRONG_WINDOW` | 600 s | `app/poolhouse-node/src/phone/enrol.rs:35` | the window of the wrong code limit | the owner, in source; a security floor no agent loosens |
 | `OFFER_TTL_MS` | 10 * 60 * 1000 | `app/poolhouse-node/src/phone/enrol.rs:31` | how long a phone code lives | the owner, in source; a security floor no agent loosens |

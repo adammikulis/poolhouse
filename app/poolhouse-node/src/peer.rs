@@ -18,6 +18,7 @@
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpStream};
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -230,8 +231,9 @@ pub enum Ended {
 
 /// Serve one accepted connection, which holds ``place`` on the listener, until the peer closes it or is refused; a member that sends
 /// `attach` hands the connection over to `Net::register_reverse`, which uses it to send that member requests. A member's address
-/// is vouched for and each of its reads may take `IO_TIMEOUT`; the whole connection of any other device has `STRANGER_FOR`.
-pub fn serve(net: &Net, tcp: TcpStream, place: Permit) -> Result<()> {
+/// is vouched for, its connection keeps its place and each of its reads may take `IO_TIMEOUT`; the whole connection of any other
+/// device has `STRANGER_FOR`.
+pub fn serve(net: &Net, tcp: Arc<TcpStream>, place: Permit) -> Result<()> {
     let handshake=net.activity.maintenance(crate::node::update_activity::Source::Peer).map_err(crate::net::activity_error)?;
     let ip = tcp.peer_addr()?.ip();
     let mut s = match tls::accept(net.server_config.clone(), tcp) {
@@ -248,8 +250,8 @@ pub fn serve(net: &Net, tcp: TcpStream, place: Permit) -> Result<()> {
     };
     let der = s.peer.clone();
     let fp = cert_fingerprint(&der);
-    if net.is_member(&fp) {
-        place.vouch();
+    if net.vouch_member(&fp, ip) {
+        place.keep();
         s.stream.sock.disarm(IO_TIMEOUT)?;
     } else {
         s.stream.sock.arm(STRANGER_FOR);
@@ -259,6 +261,7 @@ pub fn serve(net: &Net, tcp: TcpStream, place: Permit) -> Result<()> {
     let result = serve_requests(net, &mut s, &der, ip, true);
     // A channel has no deadline, also when the device became a member while this connection was a stranger's.
     if matches!(result, Ok(Ended::Attached)) && s.stream.sock.disarm(IO_TIMEOUT).is_ok() {
+        place.keep();
         net.register_reverse(PeerClient::accepted(s, place)?);
         return Ok(());
     }
