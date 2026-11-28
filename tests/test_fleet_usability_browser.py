@@ -114,12 +114,12 @@ def test_settings_failure_is_visible_and_only_selected_libraries_install(usabili
 def _assert_workspace_pages(page, primary, expect):
     headings = {'Models': ('models-view', 'Models'), 'Training': ('training-view', 'Fine-tuning'),
                 'Gym': ('gym-view', 'Reinforcement learning'), 'Evaluation': ('benchmarks-view', 'Benchmarks'),
-                'Delegates': ('delegates-view', 'Delegates'), 'Phones': ('phones-view', 'Phones'),'Projects': ('projects-view', 'Projects'),
+                'Delegates': ('delegates-view', 'Delegates'), 'Phones': ('phones-view', 'Phones'), 'Projects': ('projects-view', 'Projects'),
                 'Tools': ('tools-view', 'Tools'), 'Graph': ('knowledge-view', 'Graph inspector'),
                 'Activity': ('history-view', 'Activity'), 'Devices': ('pool-view', 'Devices')}
     for group, titles in [('Studio', ['Canvas', 'Training', 'Gym', 'Evaluation', 'Datasets']),
                           ('Work', ['Tasks', 'Delegates', 'Projects', 'Tools', 'Graph', 'Activity']),
-                          ('Pool', ['Devices', 'Capacity'])]:
+                          ('Pool', ['Devices', 'Phones', 'Capacity'])]:
         primary.get_by_role('link', name=group, exact=True).click()
         context = page.get_by_role('navigation', name='Workspace pages')
         assert context.locator('a').all_text_contents() == titles

@@ -6,6 +6,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import http.client
 import json
 import threading
 
@@ -84,6 +85,22 @@ def test_phones_are_managed_only_with_the_persons_own_session(page):
     held = _call(base, "GET", "/ui/phones", session=cookie)
     assert held["offer"]["code"] == offer["code"] and held["listening"]["addresses"] == ["127.0.0.1"] and held["phones"] == []
     assert _call(base, "DELETE", "/ui/phones/offer", session=cookie)["offer"] is None
+
+
+def test_the_pages_one_connection_survives_a_code_request_and_a_refusal(page):
+    """The window reuses its connection, so a body a route leaves unread would garble the request after it."""
+    ui, base = page
+    link = http.client.HTTPConnection("127.0.0.1", int(base.rsplit(":", 1)[-1]), timeout=20)
+    try:
+        for cookie, expected in ((_person(ui), 200), ("", 403)):
+            for method, body in (("POST", b"{}"), ("GET", None)):
+                link.request(method, "/ui/phones/offer" if body else "/ui/phones", body=body,
+                             headers={"X-Poolhouse-UI": "1", "Cookie": cookie})
+                answer = link.getresponse()
+                answer.read()
+                assert answer.status == expected, (method, expected)
+    finally:
+        link.close()
 
 
 def test_the_screen_lists_switches_and_removes_a_phone(page):

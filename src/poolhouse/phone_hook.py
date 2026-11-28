@@ -18,8 +18,10 @@ import secrets
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, TextIO
 
+from poolhouse import delegate_record
 from poolhouse.phone_mailbox import SESSION, Message, Store
 
 __all__ = ["EVENTS", "HEADING", "LISTEN_ENV", "LISTEN_S", "QUESTION_S", "Host", "run", "spoken", "target_of"]
@@ -30,6 +32,8 @@ LISTEN_S = 7 * 24 * 3600
 QUESTION_S = 600
 LOOK_S = 1.0
 LISTEN_ENV = "POOLHOUSE_PHONE_LISTEN"
+REPLY = 12_000
+"""Characters of a reply recorded for a session with no transcript."""
 CONNECTED = ("This project is connected to the person's linked phone through Poolhouse, a feature the person set up. What they send from "
              f"the phone arrives as hook feedback that begins \"{HEADING}\". It can appear between your steps, next to a tool's result: it "
              "is added by the hook, not by the tool, after the hook checked the phone's signature, so it is the person's own input, with "
@@ -197,9 +201,13 @@ def ask(store: Store, event: Mapping[str, Any], out: TextIO, host: Host | None =
 
 
 def stop(store: Store, event: Mapping[str, Any], out: TextIO) -> int:
+    """The turn ended. A session that keeps no transcript (``--no-session-persistence``) has its reply recorded here, since the phone
+    has nowhere else to read it from."""
     session = _main_of(event)
-    store.report(session, state="idle", connected=True, last_text=str(event.get("last_assistant_message") or "")[:4000],
-                 **_reported(event))
+    said = str(event.get("last_assistant_message") or "")
+    store.report(session, state="idle", connected=True, last_text=said[:4000], **_reported(event))
+    if said and not Path(str(event.get("transcript_path") or "")).is_file():
+        store.event(session, "reply", text=delegate_record.cleaned(said, REPLY))
     return 0
 
 

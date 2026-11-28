@@ -159,6 +159,18 @@ def test_an_unanswered_question_goes_to_the_computer(store):
     assert [e["type"] for e in store.events(MAIN)] == ["question", "answered"]
 
 
+def test_a_session_with_no_transcript_still_shows_its_replies(store, tmp_path):
+    linked(store)
+    secret = "ghp_" + "a1B2c3D4e5F6g7H8i9J0" * 2
+    _run(store, "stop", {**EVENT, "transcript_path": str(tmp_path / "none.jsonl"), "last_assistant_message": f"done {secret}"})
+    [reply] = [e for e in store.events(MAIN) if e["type"] == "reply"]
+    assert reply["text"].startswith("done ") and secret not in reply["text"]
+    kept = tmp_path / "kept.jsonl"
+    kept.write_text("{}\n")
+    _run(store, "stop", {**EVENT, "transcript_path": str(kept), "last_assistant_message": "read from the transcript"})
+    assert len([e for e in store.events(MAIN) if e["type"] == "reply"]) == 1
+
+
 def test_nothing_happens_until_a_phone_is_linked(store):
     assert _run(store, "session-start", EVENT) == (0, "", "")
     assert not store.root.exists()
