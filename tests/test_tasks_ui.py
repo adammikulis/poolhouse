@@ -181,6 +181,7 @@ def node_tasks(tmp_path, monkeypatch, workspace_node):
     from types import SimpleNamespace
 
     from poolhouse import node_launch
+    from poolhouse.board import place
     from poolhouse.fleet import extension_routes, project_client
     from poolhouse.fleet.projects import ProjectRegistry, identity
     from poolhouse.net import git
@@ -196,6 +197,7 @@ def node_tasks(tmp_path, monkeypatch, workspace_node):
     git.run(['init'], cwd=checkout)
     git.run(['remote', 'add', 'origin', 'https://code.example.invalid/team/tasks.git'], cwd=checkout)
     monkeypatch.setattr(project_client, 'members', lambda ui: [])
+    place.add(workspace_node.client, checkout)   # a launch registers its project with the node; reading its page never does
     server = Serving(tmp_path / 'ui')
     server.ui.settings.setup_done = True
     server.ui.projects = ProjectRegistry(tmp_path / 'registry', 'fixture-device', (checkout,))

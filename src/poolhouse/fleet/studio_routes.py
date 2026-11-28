@@ -21,6 +21,14 @@ from .studio_service import initialize, scope as _binding
 from .studio_stream_routes import route as stream_route
 
 
+def _accepted(route):
+    """The Studio engine and the request's principal, once the engine accepts that principal."""
+    engine, principal = route._service()
+    if not engine.authorize(principal, None, {}):
+        raise PermissionError("Sign in again to use Studio.")
+    return engine, principal
+
+
 class StudioRoutes:
     """Studio API routes called after the UI authorization guard."""
 
@@ -58,18 +66,11 @@ class StudioRoutes:
         ui._studio_origins[principal["id"]] = lambda: (ui.sessions.get(sid).origin if ui.sessions.get(sid) else "")
         return ui.studio, principal
 
-    def _authorized(self):
-        """The Studio engine and this request's principal, once the engine accepts the principal."""
-        engine, principal = self._service()
-        if not engine.authorize(principal, None, {}):
-            raise PermissionError("Sign in again to use Studio.")
-        return engine, principal
-
     def _studio(self) -> bool:
         if self.path == "/ui/studio/nodes" and self.method == "GET":
             nodes = node_catalog()
             if self.ui.runner is not None and self.ui.root:
-                engine, _ = self._authorized()
+                engine, _ = _accepted(self)
                 availability = getattr(engine.adapters, "availability", lambda nodes: {})(nodes)
                 nodes = [{**node, "requirements": availability.get(node["type"], [])} for node in nodes]
             self.send(200, {"nodes": nodes})
@@ -78,7 +79,7 @@ class StudioRoutes:
             self.send(200, {"templates": templates()})
             return True
         if self.path == "/ui/studio/validate" and self.method == "POST":
-            engine, principal = self._authorized()
+            engine, principal = _accepted(self)
             checked = validate_graph(field(object_body(self), "graph", dict, {}))
             if checked["valid"]:
                 remote = [node for node in checked["graph"]["nodes"] if engine._remote(node)]
@@ -88,7 +89,7 @@ class StudioRoutes:
                 checked["valid"] = not checked["errors"]
             self.send(200, checked)
             return True
-        engine, principal = self._authorized()
+        engine, principal = _accepted(self)
         store, scope = engine.store, principal["scope"]
         if (self.path.startswith(("/ui/studio/sources", "/ui/studio/subscriptions", "/ui/studio/destinations", "/ui/studio/deliveries"))
                 and stream_route(self, self.ui.studio_streams, principal)):
