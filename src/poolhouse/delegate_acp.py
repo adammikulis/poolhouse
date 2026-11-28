@@ -335,8 +335,10 @@ class Driver:
         """The conversation each box takes up, by the box's folder."""
         self.agent: dict[str, Any] = {}
 
-    def renderer(self, rec: Any, binary: str, served: tuple[str, str, int], ask: Any = None) -> Callable[[isolation.Context], isolation.Rendering]:
-        plain = self._rendered(rec, binary, served, ask)
+    def renderer(self, rec: Any, binary: str, served: tuple[str, str, int], ask: Any = None,
+                 *more: Any) -> Callable[[isolation.Context], isolation.Rendering]:
+        """The runner's renderer, whatever else it is given passed on, with this driver's command line, preload and title."""
+        plain = self._rendered(rec, binary, served, ask, *more)
         session = (ask or delegate_confined.work_pass(rec)).session
 
         def render(context: isolation.Context) -> isolation.Rendering:
