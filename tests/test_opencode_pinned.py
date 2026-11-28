@@ -274,7 +274,7 @@ def test_a_box_that_finds_something_else_than_the_first_one_did_keeps_the_prompt
     served.refused_once = False
     monkeypatch.setattr(delegate_confined.Hooks, "heard", broken)
     monkeypatch.setattr(delegate_resume, "waited", mended)
-    monkeypatch.setattr(preflight.Found, "words", found)
+    monkeypatch.setattr(preflight.Findings, "words", found)
     monkeypatch.setattr(prompt_watch.Watch, "sent", seen_by)
     ran = delegated.run([("glob", {"pattern": "**/*"})], resumes=1)
     assert ran.status == 0 and len(boxes) == 2, (ran.row, ran.log[-4000:])
