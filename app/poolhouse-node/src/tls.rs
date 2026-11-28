@@ -170,7 +170,7 @@ fn io_tls(e: std::io::Error) -> Error {
 /// (`close_after_alert`).
 pub struct Unfinished {
     pub why: Error,
-    pub alerted: Option<TcpStream>,
+    pub alerted: Option<Arc<TcpStream>>,
 }
 
 impl From<Error> for Unfinished {
@@ -182,7 +182,7 @@ impl From<Error> for Unfinished {
 /// Close a connection whose handshake was refused so that the alert is read: say no more is coming, then take what the other end
 /// sends until it closes, for `ALERT_LINGER` and `MOST_DRAINED` bytes at most. A socket closed with bytes unread, or sent bytes
 /// after it closed, is reset, and a reset can discard the alert before the other end reads it (Windows does).
-pub fn close_after_alert(tcp: TcpStream) {
+pub fn close_after_alert(tcp: Arc<TcpStream>) {
     if tcp.shutdown(Shutdown::Write).is_err() {
         return;
     }
@@ -198,7 +198,7 @@ pub fn close_after_alert(tcp: TcpStream) {
 
 /// Accept a client: run the handshake within `HANDSHAKE_FOR` and return the stream, still under that deadline, and the client's
 /// certificate.
-pub fn accept(config: Arc<ServerConfig>, tcp: TcpStream) -> std::result::Result<Secured<ServerConnection>, Unfinished> {
+pub fn accept(config: Arc<ServerConfig>, tcp: Arc<TcpStream>) -> std::result::Result<Secured<ServerConnection>, Unfinished> {
     let mut conn = ServerConnection::new(config).map_err(tls_error)?;
     let mut tcp = Timed::within(tcp, HANDSHAKE_FOR);
     while conn.is_handshaking() {
@@ -233,7 +233,7 @@ mod linger_tests {
             client
         });
         let began = Instant::now();
-        close_after_alert(server);
+        close_after_alert(Arc::new(server));
         let took = began.elapsed();
         drop(sender.join().unwrap());
         assert!(took < ALERT_LINGER + Duration::from_secs(2), "{took:?}");
@@ -247,7 +247,7 @@ mod linger_tests {
             while Instant::now() < until && client.write_all(&block).is_ok() {}
         });
         let began = Instant::now();
-        close_after_alert(server);
+        close_after_alert(Arc::new(server));
         assert!(began.elapsed() < Duration::from_secs(2), "{:?}", began.elapsed());
         sender.join().unwrap();
     }
