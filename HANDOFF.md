@@ -4,9 +4,11 @@ The backlog, highest priority first. Take work from the numbered tiers top down;
 
 A branch named below without a pull request is on GitHub and unmerged, except one called local. Every item needs an accepting review of its exact commit before it lands; security items also need an attack pass.
 
+A row's sessions for the local model are cards in [docs/cards](docs/cards/README.md), worked by `poolhouse-delegate cards`; a card has no place or state of its own.
+
 ## 1. Speed of the local model (active)
 
-The local delegate takes no work until every row here is landed and installed, or measured and dropped.
+The local delegate takes no work until rows 1 to 4 here are landed and installed, or measured and dropped.
 
 | Order | Item | Next | Where |
 |---|---|---|---|
@@ -15,6 +17,7 @@ The local delegate takes no work until every row here is landed and installed, o
 | 3 | Strata engine | Attack pass, merge, install; no Strata server has ever been started. Run `poolhouse-serve strata-proof` on a free GPU on the Apple silicon computer, with MTP and with DFlash2, beside llama.cpp, then on a Windows computer with a 24 GB card and 64 GB of memory. ISTA-DASLab and the DFlash2 repository are admitted by that computer's allow file only; whether Poolhouse knows them everywhere is the owner's | #116, `docs/strata.md` |
 | 4 | Faster serving settings the measurements show, then the 27B quant comparisons | Scheduled jobs first need three failing tests settled and an attack pass | #107, `docs/examples/qwen3.8-27b-quants.queue` |
 | 5 | Delegate work resumes, one small testable task at a time | The two runtime selection tests that fail on development, the test-node build test that needs `cargo`, and `scripts/test quick --explain` running tests | `tests/test_runtime_selection.py`, `tests/test_testnode.py`, `scripts/test` |
+| 6 | One agent toolbox for every harness: send and ask any agent by name, read and reply, notes, project memory and cards, one implementation behind command and tools, replacing the lead-only server | Design, build and attack pass, by a lead: confinement and access rules | `src/poolhouse/lead_bridge.py`, `src/poolhouse/isolation/session_verbs.py` |
 
 ## 2. Security of pool membership (active)
 
@@ -45,6 +48,7 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | Private compute-only guest access with a one-scan join | Coverage rows, pull request, attack pass, app screens; then the llama.cpp change that lets one shared server keep each person's context apart in memory | branch `worktree-agent-afb66e817d395794c` |
 | Tailscale inside Poolhouse | Compile the helper, daemon control, sign-in and share screens | #115 (draft) |
 | Screens saying what each device can do | Show only what works across devices | #117 |
+| Poolhouse runs its own commands later, when the device is free | Settle three failing tests, attack pass, merge | #107 |
 
 ## 5. Landing, checks and friction (paused)
 
@@ -95,6 +99,10 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | Canned node replies in tests | `test_fleet_plan.py`, `test_setup.py`, `test_fleet_tls.py`, `test_node_health_deadline.py`, `test_node_service_pool.py`, `test_fleet_pausing.py` and `test_fleet_roster.py` answer for the node; replacing them with `two_nodes` needs node-side service unbind | `tests/` |
 | `node_key.migrate` passphrase branch | Reported unreachable (the `elif passphrase` arm), not proved. Delete it with its test once confirmed | `src/poolhouse/node_key.py` |
 | `bench` builds a `telemetry.Call` itself | `Call.from_reply(reply, 0.0)` in the backend instead of the client's own record | `src/poolhouse/bench/backends.py` |
+| A test helper and two screenshots that nothing uses | Delete them | `tests/replica_server.py`, `docs/images/` |
+| Five functions that nothing calls (`reset_cache`, `raw_rows`, `byte_range`, `default_path`, `load_or_build`) | Delete them | `src/poolhouse` |
+| Three functions over 80 statements in the world and CSV import code (`consistency`, `_buckets`, `imported`) | Split each where it changes subject, behaviour unchanged | `src/poolhouse/world`, `src/poolhouse/ingest` |
+| A delegate's sandbox cannot run a test that opens a graph store (its full-text extension is downloaded at first use and the box has no network), nor the node contract tests (the box leaves out `contracts/node/domains/credentials.toml`) | Give the box the installed extension and that source file, then card the `absorb` and `tidy` splits | `src/poolhouse/graph/store.py`, `src/poolhouse/isolation` |
 | `contracts/node/retained-features.json` | Mostly paths of deleted code; no script, source or test reads it, but other files in `contracts/` cite it with a sha256, so deleting it means rewriting those pins | `contracts/node/` |
 | `scripts/sync-dev` | Its own shell fast-forward beside `scripts/primary_sync.py`; merging them changes messages `tests/test_sync_dev.py` asserts and adds a Python dependency to a script for a plain clone | `scripts/sync-dev` |
 

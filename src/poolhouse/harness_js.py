@@ -13,7 +13,8 @@ from typing import Any
 __all__ = ["NAMES", "prelude"]
 
 NAMES = {"bash": "Bash", "shell": "Bash", "powershell": "PowerShell", "read": "Read", "edit": "Edit", "write": "Write", "grep": "Grep", "find": "Glob",
-         "glob": "Glob", "ls": "LS", "list": "LS", "webfetch": "WebFetch", "lead_ask": "mcp__lead__ask", "lead_note": "mcp__lead__note"}
+         "glob": "Glob", "ls": "LS", "list": "LS", "webfetch": "WebFetch", "lead_ask": "mcp__lead__ask", "lead_note": "mcp__lead__note",
+         "lead_recall": "mcp__lead__recall", "lead_remember": "mcp__lead__remember"}
 
 
 def prelude(settings: dict[str, Any]) -> str:

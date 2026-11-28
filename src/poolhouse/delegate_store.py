@@ -55,6 +55,12 @@ class Delegate:
     """The attempts to continue a pass that something outside its task broke off (`delegate_resume`); 0 is none, which an older record holds."""
     branch: str = ""
     """The branch of the worktree it edits, which is then ``workdir`` (`delegate_tree`); empty for one that edits no worktree of its own."""
+    card: str = ""
+    """The session card it works (`poolhouse.cards`); empty for a delegate of no card."""
+    memory: bool = False
+    """Whether it has its project's memory: the `recall` and `remember` tools of a sandboxed one (`delegate_memory`)."""
+    recalled: str = ""
+    """What its project's memory said at its start, fenced as data and part of its first message; empty when nothing matched."""
 
     def key(self) -> str:
         """The same lead asking the same thing of the same folder, in the same tier, is the same delegate."""
@@ -64,7 +70,7 @@ class Delegate:
     def message(self) -> str:
         """What the model is told first: who it is and what is asked. Its system prompt names neither, so every delegate of one lead
         starts with the same prompt and a server's prompt cache holds the part they share."""
-        return f"You are {self.name}.\nTask from {self.lead}:\n{self.task}"
+        return f"You are {self.name}.\nTask from {self.lead}:\n{self.task}" + (f"\n\n{self.recalled}" if self.recalled else "")
 
 
 def folder(name: str) -> Path:

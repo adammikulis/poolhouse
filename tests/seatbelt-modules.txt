@@ -58,6 +58,7 @@ test_coding_admission.py
 test_pi_harness.py
 test_opencode_harness.py
 test_delegate_confined.py
+test_delegate_cards.py
 test_delegate_review.py
 test_delegate_record_boxed.py
 test_delegate_record_pinned.py

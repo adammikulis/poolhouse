@@ -1,7 +1,7 @@
 {
- "surfaces": 898,
+ "surfaces": 899,
  "by_status": {
-  "covered": 569,
+  "covered": 570,
   "partial": 189,
   "uncovered": 51,
   "n/a": 89,
@@ -51,7 +51,7 @@
    "unmapped": 0
   },
   "human": {
-   "covered": 56,
+   "covered": 57,
    "partial": 0,
    "uncovered": 0,
    "n/a": 1,
@@ -1477,9 +1477,9 @@
    "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
   },
   {
-   "id": "egress:client/counters.py:read_speculative",
+   "id": "egress:client/counters.py:metrics_text",
    "kind": "egress",
-   "source": "client/counters.py:read_speculative",
+   "source": "client/counters.py:metrics_text",
    "trust": "addresses and redirects named by pages, repositories and members",
    "attacker": "a redirect or address sends the request somewhere the person did not choose",
    "status": "partial",
@@ -3683,6 +3683,21 @@
    "id": "human:caller.py:refuse_agent",
    "kind": "human",
    "source": "caller.py:refuse_agent",
+   "trust": "an agent process or a member",
+   "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_automatic_floor.py::test_a_protected_command_refuses_an_agent_at_once_with_a_reason_and_changes_nothing",
+    "tests/test_redteam_automatic_floor.py::test_a_gate_held_back_from_agents_refuses_an_agent_at_once_and_runs_for_everyone_else",
+    "tests/test_sentinel_redteam.py::test_a_permit_cannot_be_forged_and_an_agent_cannot_mint_one",
+    "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
+   ],
+   "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:cards_cli.py:_leads",
+   "kind": "human",
+   "source": "cards_cli.py:_leads",
    "trust": "an agent process or a member",
    "attacker": "an agent takes an action that is refused to agents, or a forged permit lets it",
    "status": "covered",

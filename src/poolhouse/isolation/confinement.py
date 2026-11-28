@@ -33,7 +33,14 @@ from urllib.parse import urlsplit
 import psutil
 
 from poolhouse import activity, coding_policy, home as state_home, loopback_window
-from poolhouse.isolation import client as client_module, history, preflight, prompt_watch, toolchain
+from poolhouse.isolation import (
+    client as client_module,
+    history,
+    preflight,
+    prompt_watch,
+    session_verbs,
+    toolchain,
+)
 from poolhouse.isolation.attestation import attest
 from poolhouse.isolation.bounds import Bounds, Watch, derive
 from poolhouse.isolation.capability import require_capable
@@ -150,6 +157,8 @@ class Plan:
     interactive: bool = False
     bounds: Bounds | None = None
     """What the session may take (`isolation.bounds`); ``None`` derives each from the machine at launch."""
+    verbs: Mapping[str, session_verbs.Verb] = field(default_factory=lambda: session_verbs.LEAD)
+    """The tools ``workspace`` answers, which are all the session bridge offers."""
     watch: prompt_watch.Watch | None = None
     """What compares the session's prompts (`ModelBridge`); a caller's own for a conversation that goes on from an earlier box."""
 
@@ -420,7 +429,8 @@ def _services(plan: Plan, session: Session, parts: Parts) -> tuple[ModelBridge, 
     answer = plan.decide(str(session.stage.physical))
     root = tempfile.mkdtemp(prefix="pp-", dir="/tmp")
     parts.scratch.append(root)
-    bridge = SessionBridge(Handlers(decide, plan.workspace, activity.record, _events), Terms(plan.lease.window), root=root, admit=parts.admission)
+    bridge = SessionBridge(Handlers(decide, plan.workspace, activity.record, _events, plan.verbs), Terms(plan.lease.window), root=root,
+                           admit=parts.admission)
     bridge.start()
     parts.stack.append(bridge)
     return model, bridge

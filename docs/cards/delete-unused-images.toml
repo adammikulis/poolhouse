@@ -1,0 +1,13 @@
+title = "Delete the two screenshots no page shows"
+row = "A test helper and two screenshots that nothing uses"
+task = """
+docs/images/closing.jpg and docs/images/pool.jpg are shown by no page. Confirm with `git grep -n -e closing.jpg -e pool.jpg -- . ':!docs/cards'`
+(it prints nothing), then delete the two files. Never read them: they are binary. Keep setup.jpg and settings.jpg, which docs/install.md shows, and
+leave contracts/glossary-allowlist.toml as it is, since its pattern still covers those two.
+"""
+read = ["docs/install.md:116-124"]
+write = ["docs/images/closing.jpg", "docs/images/pool.jpg"]
+check = "test ! -e docs/images/closing.jpg && test ! -e docs/images/pool.jpg"
+step = 2
+closes = true
+memory = false

@@ -10,11 +10,11 @@ from poolhouse.memory.entities import parse
 from poolhouse.memory.facts import KINDS, SOURCES, Refused, check
 from poolhouse.memory.recall import Embed, render, retrieve
 from poolhouse.memory.store import Store, Tampered
-from poolhouse.memory.union import Memory, words
+from poolhouse.memory.union import Memory, Merged, words
 from poolhouse.memory.vault import KeyUnavailable
 from poolhouse.tool_schema import schema_of
 
-__all__ = ["ACTING", "GUIDE", "READ", "SESSION_WRITES", "guidance", "propose", "tools"]
+__all__ = ["ACTING", "GUIDE", "READ", "SESSION_WRITES", "guidance", "lookup", "propose", "tools"]
 
 READ = frozenset({"recall"})
 """Tool names that only look."""
@@ -66,6 +66,12 @@ def propose(fact: str, kind: str = "note", source: str = "agent-observed",
         return {"ok": False, "reason": str(exc)}
 
 
+def lookup(store: Store | Merged, query: str, embed: Embed | None = None) -> tuple[str, list[str]]:
+    """What ``recall`` finds in ``store`` for ``query``: the facts fenced as data (empty when none matches and the store was read) and their ids."""
+    found = retrieve(store, str(query)[:300], embed=embed)
+    return render(store, found), [fact.id for fact in found]
+
+
 def _question(offer: dict[str, Any], store: Store) -> str:
     where = ", ".join(f"{k} {v}" for k, v in store.scope().items() if v)
     about = "; about " + ", ".join(offer["entities"]) if offer["entities"] else ""
@@ -87,8 +93,7 @@ def tools(*, confirm: Confirm, store: Store | None = None, project: Store | None
     written: list[float] = []
 
     def recall(query: str = "") -> str:
-        found = retrieve(mine.merged(), str(query)[:300], embed=embed)
-        return render(mine.merged(), found) or "Nothing remembered matches."
+        return lookup(mine.merged(), query, embed)[0] or "Nothing remembered matches."
 
     def remember(fact: str, scope: str, kind: str = "note", source: str = "agent-observed",
                  entities: list[str] | None = None) -> dict[str, Any]:

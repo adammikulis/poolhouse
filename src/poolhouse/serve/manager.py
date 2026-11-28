@@ -129,7 +129,7 @@ class Starting:
     """How a lease may be satisfied: ``roam`` lets it be served on another port, ``escalate``
     lets a server with too few slots be grown, ``anyway`` starts it during a measurement,
     ``iq`` is the IQ-quantisation mode (``off``, ``warn``, ``block``), ``who`` names the asker,
-    and the rest are the checks the start runs."""
+    ``adopt_only`` takes a server already up and starts none, and the rest are the checks the start runs."""
 
     roam: bool = True
     check_flags: bool = True
@@ -139,6 +139,7 @@ class Starting:
     anyway: bool = False
     iq: str = ""
     who: str = ""
+    adopt_only: bool = False
 
     def checks(self) -> dict[str, bool]:
         """The checks a start runs, as the keyword arguments a backend takes."""
@@ -208,7 +209,7 @@ class ServerManager(Admitting):
               roam: bool = True, check_flags: bool = True, preflight: bool = True,
               warmup_request: bool = True, escalate: bool = False, anyway: bool = False,
               iq: str = "", on_event: Event | None = None,
-              say: Callable[[str], None] | None = None, reason: str = "") -> ServerInfo:
+              say: Callable[[str], None] | None = None, reason: str = "", adopt_only: bool = False) -> ServerInfo:
         """A healthy server for ``spec``, from the broker: one already up that fits, else a
         new one when the machine has the memory for it. The broker waits for memory and
         refuses with `AdmissionRefused` when none comes free. ``reason`` is why, in one line.
@@ -221,7 +222,7 @@ class ServerManager(Admitting):
         wanted = quant_guard.mode(iq or self.iq)
         if wanted == "block":
             quant_guard.enforce(spec.model, gpu_layers=spec.n_gpu_layers, asked=wanted)
-        how = Starting(roam, check_flags, preflight, warmup_request, escalate, anyway, wanted)
+        how = Starting(roam, check_flags, preflight, warmup_request, escalate, anyway, wanted, adopt_only=adopt_only)
         info = self.broker.start(spec, Caller(on_event=on_event, say=say or self.say,
                                               claim=provenance.asked(reason)),
                                  timeout=timeout, options=asdict(how))
@@ -254,6 +255,8 @@ class ServerManager(Admitting):
             (told if drafting.worth_saying else logger.info)(f"port {spec.port}: {drafting.note}")
         resolved_timeout = (
             timeout if timeout is not None else scaled_timeout(weight_of(spec.model)))
+        if how.adopt_only:
+            return self._already_up(spec, on_event=on_event)
 
         self._sweep_orphans(spec.port, told)
         with self._port_lock(spec.port):
@@ -821,11 +824,12 @@ def serve(
     on_event: Event | None = None,
     say: Callable[[str], None] | None = None,
     reason: str = "",
+    adopt_only: bool = False,
     **spec_kwargs: object,
 ) -> Iterator[ServerInfo]:
     """Run a server for the duration of the block, yielding its ``ServerInfo``.
 
-    ``roam``, ``escalate``, ``anyway``, ``iq``, ``on_event``, ``say`` and ``reason`` go to
+    ``roam``, ``escalate``, ``anyway``, ``iq``, ``on_event``, ``say``, ``reason`` and ``adopt_only`` go to
     :meth:`ServerManager.lease`. The keyword ``keep=True`` (not a spec field) leaves a server this block started up when it
     ends, recorded under its own pid as `poolhouse-serve up` leaves one, so the next caller takes it warm; `poolhouse-serve down` ends it.
     """
@@ -838,7 +842,7 @@ def serve(
         **spec_kwargs,  # type: ignore[arg-type]
     )
     info = manager.lease(spec, timeout=timeout, roam=roam, escalate=escalate,
-                         anyway=anyway, iq=iq, on_event=on_event, say=say, reason=reason)
+                         anyway=anyway, iq=iq, on_event=on_event, say=say, reason=reason, adopt_only=adopt_only)
     try:
         yield info
     finally:

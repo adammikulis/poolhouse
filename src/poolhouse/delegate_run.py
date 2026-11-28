@@ -94,8 +94,9 @@ def _outcome(answer: harness.Answer | None, why: str, began: float) -> dict[str,
             "seconds": round(time.time() - began, 2), "subtype": spent.subtype}
 
 
-def _tell(bridge: lead_bridge.Bridge, state: str, row: dict[str, Any]) -> None:
-    """The lead's notice that the delegate ended: the start of the result, and the command that prints all of it."""
+def _tell(bridge: lead_bridge.Bridge, state: str, row: dict[str, Any], kind: str = "status") -> None:
+    """The lead's notice that the delegate ended: the start of the result, and the command that prints all of it. A card's work is a `handoff`, a
+    kind the lead's hooks put in front of it at once."""
     said = str(row["text"] or row["error"])
     short = said if len(said) <= nudge_fence.MESSAGE_CHARS // 2 else said[: nudge_fence.MESSAGE_CHARS // 2] + "..."
     review = row.get("review") or {}
@@ -105,7 +106,7 @@ def _tell(bridge: lead_bridge.Bridge, state: str, row: dict[str, Any]) -> None:
     body = "\n".join(each for each in parts if each)
     waiting = " (review waiting)" if (row.get("tree") or {}).get("commit") else ""
     try:
-        bridge.post("status", f"{state}: {body}\nall of it: poolhouse-delegate result {bridge.name}", subject=f"delegate {state}{waiting}")
+        bridge.post(kind, f"{state}: {body}\nall of it: poolhouse-delegate result {bridge.name}", subject=f"delegate {state}{waiting}")
     except ValueError as why:
         say(f"the lead was not told: {why}")
 
@@ -158,7 +159,7 @@ def run(name: str) -> int:
     record.add("end", state=state, seconds=row["seconds"], turns=row["turns"],
                detail="\n".join(each for each in (why, row["detail"]) if each))
     say(f"{state}: {row['turns']} turn(s), {row['seconds']}s")
-    _tell(bridge, state, row)
+    _tell(bridge, state, row, "handoff" if rec.card else "status")
     mine.revoke()
     if rec.workdir != rec.source and not rec.branch:
         shutil.rmtree(rec.workdir, ignore_errors=True)

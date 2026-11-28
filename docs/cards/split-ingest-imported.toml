@@ -1,0 +1,17 @@
+title = "Split the CSV import into functions of at most 80 statements"
+row = "Three functions over 80 statements"
+task = """
+`imported` in src/poolhouse/ingest/imports.py has over 80 statements, with several functions nested in it. Split it into private functions of the
+module (a small class or dataclass may hold what the nested ones share), so that no function is over 80 statements, no signature you add has over 8
+parameters and the file stays under 900 lines. `imported` keeps its signature, and what it returns, in order, stays the same. Change no test. Confirm
+the gate no longer lists the file:
+`python3 -c "import sys; sys.path.insert(0, 'scripts'); from pathlib import Path; from gates import long_functions as a; print([(f.path, f.line) for f in a.find(Path('.')) if 'ingest/imports' in str(f.path)])"`
+prints []. A pure refactor: report it as exempt from fail first. The tests of that file that write a graph store cannot run in your sandbox and are
+not in your check: say so in your report, and your lead runs them.
+"""
+read = []
+write = ["src/poolhouse/ingest/imports.py"]
+check = "scripts/test all tests/test_ingest_import.py::test_a_flipped_predicate_is_written_with_its_ends_the_other_way tests/test_ingest_import.py::test_a_specific_predicate_outside_the_core_verbs_is_written_as_it_stands tests/test_ingest_import.py::test_a_vague_predicate_is_counted_by_name_and_not_carried_across tests/test_ingest_import.py::test_keep_vague_takes_them_anyway_and_marks_every_edge tests/test_ingest_import.py::test_core_only_leaves_the_predicates_outside_those_verbs tests/test_ingest_import.py::test_core_only_wins_over_keep_vague tests/test_ingest_import.py::test_the_confidence_filter_leaves_the_rows_under_it tests/test_ingest_import.py::test_no_provisional_leaves_the_rows_their_extractor_left_provisional tests/test_ingest_import.py::test_a_malformed_row_is_refused_by_name tests/test_ingest_import.py::test_a_dry_run_says_what_it_would_write_and_writes_nothing"
+step = 3
+closes = true
+memory = false
