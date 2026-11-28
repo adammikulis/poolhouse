@@ -369,19 +369,24 @@ def test_the_speech_findings_name_the_engine_and_the_one_that_would_be_used(monk
     assert not heard.fix, "nothing to install when one already works"
 
 
-def test_a_machine_with_no_speech_engine_is_told_what_would_add_one(monkeypatch):
+@pytest.mark.parametrize("refused", ["", "this Python takes no installs"])
+def test_a_machine_with_no_speech_engine_is_told_what_first_use_installs_and_never_what_to_install(monkeypatch, refused):
+    from poolhouse import provision
     from poolhouse.speech import ProviderHealth
 
+    monkeypatch.setattr(provision, "refusal", lambda: refused)
     _speech(monkeypatch,
             asr=[("faster-whisper", ProviderHealth.missing("faster-whisper is not installed"))],
             tts=[("system", ProviderHealth.missing("no system speech binary"))],
             vad=[("energy", ProviderHealth.ok("energy"))])
     found = {f.name: f for f in look()}
-    assert not found["speech recognition"].good
-    assert found["speech recognition"].fix == ["pip", "install", "poolhouse[speech]"]
-    assert "faster-whisper is not installed" in found["speech recognition"].note
+    heard = found["speech recognition"]
+    assert heard.good is not bool(refused) and heard.fix == []
+    assert ("installed the first time" in heard.said) is not bool(refused)
+    assert "faster-whisper is not installed" in heard.note and refused in heard.note
     assert not found["speech synthesis"].good
     assert found["voice activity"].good, "the energy detector needs nothing installed"
+    assert not any("pip" in part for finding in found.values() if finding.name.startswith("speech") for part in finding.fix)
 
 
 def test_the_speech_findings_are_printed_with_the_rest(monkeypatch, capsys):

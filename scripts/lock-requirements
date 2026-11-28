@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""Write ``src/poolhouse/requirements.lock``: the hashed lock first-use installs are held to (`poolhouse.pinned`).
+
+    scripts/lock-requirements              resolve again, keeping the versions the lock holds where they still fit
+    scripts/lock-requirements --upgrade    take the newest version every range allows
+
+Needs ``uv``. It resolves for every system and Python the project supports, from prebuilt wheels only, and asks the
+package index for metadata; it installs nothing. Review the diff: it decides what is fetched and run on a device.
+"""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "src"))
+
+from poolhouse.pinned import EXTRAS, FILE  # noqa: E402
+
+
+def command(upgrade: bool = False) -> list[str]:
+    """The resolver's argument list."""
+    return ["uv", "pip", "compile", "pyproject.toml", "--universal", "--generate-hashes", "--no-config", "--only-binary", ":all:",
+            *(word for extra in EXTRAS for word in ("--extra", extra)), *(["--upgrade"] if upgrade else []),
+            "--custom-compile-command", "scripts/lock-requirements", "--quiet", "--output-file", str(FILE.relative_to(ROOT))]
+
+
+if __name__ == "__main__":
+    raise SystemExit(subprocess.run(command("--upgrade" in sys.argv[1:]), cwd=ROOT, check=False).returncode)

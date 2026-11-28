@@ -82,7 +82,7 @@ class GymRoutes:
                     self.send(405, {"error": "Use GET, POST or DELETE."})
                 return True
         except ImportError as exc:
-            self.send(501, {"error": f"Install poolhouse Gym dependencies: {exc}"})
+            self.send(501, {"error": f"The Gym libraries are not available: {exc}"})
             return True
         except (DaemonError, KeyError, ValueError, RuntimeError, OSError) as exc:
             self.send(400, {"error": str(exc)})

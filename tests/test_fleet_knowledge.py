@@ -82,7 +82,7 @@ def test_graph_browser_navigation_search_and_neighbor(daemon, tmp_path, playwrig
     from poolhouse.scrape.browser import Window, browser
 
     daemon.ui.settings.setup_done = True
-    with browser(Window(profile=tmp_path / 'browser', headless=True), play=playwright) as page:
+    with browser(Window(profile=tmp_path / 'browser', headless=True, own_pages=True), play=playwright) as page:
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(f'http://127.0.0.1:{daemon.port}/ui')

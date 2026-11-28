@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, net
+from poolhouse import home, net, provision
 from poolhouse.decide.cases import Case
 from poolhouse.decide.eval import brier, ece, percentile, top_of
 from poolhouse.decide.rules import RulesDecider
@@ -123,7 +123,8 @@ def read_part(path: Path | str, tier: str) -> list[Case]:
 def load(tiers: Iterable[str] = (), *, download: bool = False) -> list[Case]:
     """The public items (all tiers, or the ones named) from the pinned files."""
     chosen = [p for p in PARTS if not tiers or p.tier in set(tiers)]
-    return [c for p in chosen for c in read_part(locate(p, download=download), p.tier)]
+    fetch = download or not provision.download_refusal()   # a run that needs a part downloads it the first time
+    return [c for p in chosen for c in read_part(locate(p, download=fetch), p.tier)]
 
 
 # -- running and scoring ------------------------------------------------------------------

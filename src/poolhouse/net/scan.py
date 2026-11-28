@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterable, Sequence
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
@@ -118,20 +118,25 @@ class ScanPolicy:
     model: str = "warn"
     data: str = "warn"
     scan_models: bool = False
+    chosen: tuple[str, ...] = ()
+    """The categories somebody set, in the saved policy or the environment; the others hold their defaults."""
 
     @classmethod
     def load(cls) -> ScanPolicy:
         """The policy a person saved with `save`, with the environment applied over it."""
         saved = files.read_json(home.state("net", "scan-policy.json"), {})
-        base = cls(**{k: v for k, v in saved.items()
-                      if k in ("executable", "archive", "model", "data", "scan_models")
-                      and (isinstance(v, bool) if k == "scan_models" else v in ACTIONS)})
-        return base.from_env()
+        values = {k: v for k, v in saved.items()
+                  if k in ("executable", "archive", "model", "data", "scan_models")
+                  and (isinstance(v, bool) if k == "scan_models" else v in ACTIONS)}
+        return cls(**values, chosen=tuple(k for k in CATEGORIES if k in values)).from_env()
 
     def save(self) -> None:
-        """Keep this policy for every later run."""
+        """Keep this policy for every later run: the categories somebody set, and any that differ from the default."""
+        default = ScanPolicy()
+        kept = {name: getattr(self, name) for name in CATEGORIES
+                if name in self.chosen or getattr(self, name) != getattr(default, name)}
         files.write_json(home.state("net", "scan-policy.json"),
-                         files.versioned(asdict(self), 1))
+                         files.versioned({**kept, "scan_models": self.scan_models}, 1))
 
     def from_env(self) -> ScanPolicy:
         """This policy with ``POOLHOUSE_NET_UNSCANNED=archive:warn,model:allow`` applied."""
@@ -141,9 +146,10 @@ class ScanPolicy:
             name, action = name.strip(), action.strip()
             if name in CATEGORIES and action in ACTIONS:
                 values[name] = action
+        chosen = tuple(dict.fromkeys((*self.chosen, *(name for name in values if name in CATEGORIES))))
         if os.environ.get(SCAN_MODELS_ENV) == "1":
             values["scan_models"] = True
-        return replace(self, **values)
+        return replace(self, **values, chosen=chosen)
 
     def scan(self, path: Path, kind: str, scanners: Sequence[Scanner]) -> Summary:
         """The scan of ``path``; model weights are skipped unless ``scan_models``."""
@@ -155,14 +161,16 @@ class ScanPolicy:
         """The policy for a file of ``kind``."""
         return str(getattr(self, category(kind)))
 
-    def decide(self, kind: str, summary: Summary, *, allow_unscanned: bool = False
+    def decide(self, kind: str, summary: Summary, *, allow_unscanned: bool = False, pinned: bool = False
                ) -> tuple[bool, str]:
-        """``(keep, why)`` for a file of ``kind`` that scanned as ``summary``."""
+        """``(keep, why)`` for a file of ``kind`` that scanned as ``summary``. ``pinned`` bytes are also kept where there
+        is no scanner at all and nobody set this category, never where a scanner failed."""
         if summary.outcome == Outcome.INFECTED:
             return False, summary.line
         if summary.outcome in (Outcome.CLEAN, Outcome.SKIPPED):
             return True, summary.line
-        action = "allow" if allow_unscanned else self.action(kind)
+        unset = pinned and summary.outcome == Outcome.NO_SCANNER and category(kind) not in self.chosen
+        action = "allow" if allow_unscanned or unset else self.action(kind)
         if action == "refuse":
             return False, (f"{summary.line}; {category(kind)} files are not kept unscanned "
                            f"(install ClamAV, or `poolhouse-security scan-policy {category(kind)} warn`)")

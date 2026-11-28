@@ -18,13 +18,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx_lm.models.cache import KVCache
 
-try:
-    from mlx_lm.models.qwen3_5 import DecoderLayer
-except ModuleNotFoundError as exc:  # pragma: no cover - depends on the install
-    raise ModuleNotFoundError(
-        "mlx_lm.models.qwen3_5 arrived in mlx-lm 0.31.3: "
-        "pip install 'poolhouse[spec]'") from exc
-
+from poolhouse import provision
 from poolhouse.spec.attention import attend
 from poolhouse.spec.drafters import Budget
 from poolhouse.spec.drafters.vocab import sub_head
@@ -32,6 +26,9 @@ from poolhouse.spec.layout import Layout
 from poolhouse.spec.tree import Candidates, Tree, budgeted
 
 __all__ = ["Beam", "Head", "MtpDrafter", "MtpHead", "load_head"]
+
+#: arrived in mlx-lm 0.31.3: an older one is brought up to the ``spec`` extra's first
+DecoderLayer = provision.module("mlx_lm.models.qwen3_5", "spec").DecoderLayer
 
 NORMS = (".input_layernorm.weight", ".post_attention_layernorm.weight", ".q_norm.weight",
          ".k_norm.weight", "norm.weight", "pre_fc_norm_embedding.weight",

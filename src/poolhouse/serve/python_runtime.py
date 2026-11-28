@@ -5,7 +5,7 @@ import subprocess
 import sys
 
 from poolhouse import maintenance
-from poolhouse.fleet.environment import Environment
+from poolhouse.fleet.environment import Environment, provide
 from poolhouse.fleet.managed_compute import process_environment
 from poolhouse.fleet.runtime_paths import default_root
 from poolhouse.paths import source_checkout
@@ -16,6 +16,9 @@ _MODULES = {
     'vllm': ('vllm.entrypoints.openai.api_server', ('vllm',)),
     'sglang': ('sglang.launch_server', ('sglang',)),
 }
+_LIBRARIES = {'mlx-tree': 'serve-mlx'}
+"""The engines with a managed library, installed the first time one starts. vLLM and SGLang have none: they run on
+Linux with NVIDIA or AMD cards, which this build does not install for."""
 _PROBE = """import importlib.util,json,sys
 assert all(importlib.util.find_spec(n) is not None for n in json.loads(sys.argv[1]))
 if sys.argv[2]=='mlx-tree':
@@ -33,16 +36,22 @@ def command(engine: str) -> list[str]:
     if source_checkout():
         return [sys.executable, '-m', module]
     environment = Environment(default_root())
-    try:
+
+    def ready() -> None:
         if not environment.exists:
-            raise OSError('Install Training essentials in Libraries before starting a model')
+            raise OSError(f'The libraries {engine} runs on have no environment yet')
         environment.require_current_runtime()
         environment.require_compute()
         done = subprocess.run([str(environment.python), '-B', '-I', '-c', _PROBE, json.dumps(required), engine],
                               capture_output=True, text=True, timeout=20, env=environment_for_child())
         if done.returncode:
-            raise OSError('Install MLX model serving in Libraries before starting this model' if engine == 'mlx-tree'
-                          else f'Install the {engine} libraries in Libraries before starting this model')
+            raise OSError(f'The {engine} libraries are not in the managed environment')
+
+    try:
+        if engine in _LIBRARIES:
+            provide(environment, ['core', _LIBRARIES[engine]], ready)
+        else:
+            ready()
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         raise ServerFailed(str(exc)) from exc
     return [str(environment.python), '-B', '-I', '-m', module]

@@ -9,7 +9,7 @@ terminal, and the handle (log path and pid) comes back at once. ``bench_status``
 ``bench_history`` read the same files ``python -m poolhouse.bench status|history`` read.
 
 The protocol is spoken two ways, chosen at startup: the ``mcp`` SDK's ``FastMCP`` when it
-is installed (``pip install 'poolhouse[mcp]'``), and otherwise a small JSON-RPC loop over
+is here (the ``mcp`` extra), and otherwise a small JSON-RPC loop over
 newline-delimited stdio that answers ``initialize``, ``tools/list``, ``tools/call`` and
 ``ping`` -- the four an MCP client needs to list and call tools. The tool table and the
 functions are shared, so the two differ only in transport; ``--builtin`` forces the loop.
@@ -595,7 +595,7 @@ def sdk_available() -> bool:
 
 def build_sdk_server() -> Any:
     """An ``MCPServer`` carrying the same tools, with their behaviour hints and structured
-    results; needs ``pip install 'poolhouse[mcp]'`` (mcp 2.3 or later)."""
+    results; needs the ``mcp`` extra (mcp 2.3 or later), without which the built-in loop serves the same tools."""
     from mcp.server.mcpserver import MCPServer
     from mcp_types import ToolAnnotations
 
