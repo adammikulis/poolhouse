@@ -93,8 +93,8 @@ def shape(job: Job, made: Prepared) -> Shape:
 
 
 def _metal(job: Job, made: Prepared, profile: Path) -> Shape:
-    chosen, context, memory = job.chosen, job.context, job.memory
-    streams = mapped_bytes(chosen) + MAC_OVERHEAD > mac_budget_bytes(memory)
+    chosen, memory = job.chosen, job.memory
+    streams =mapped_bytes(chosen) + MAC_OVERHEAD > mac_budget_bytes(memory)
     notes = []
     args = ["--pack", str(made.pack), "--native", str(made.native), "--ple-gguf", str(made.ngram)]
     if made.repacked:
@@ -112,8 +112,8 @@ def _metal(job: Job, made: Prepared, profile: Path) -> Shape:
             notes.append("Strata measured a Mac under 96 GB faster without its draft layer when streaming")
     if mtp:
         args += ["--mtp", str(made.data / "mtp" / "rt")]
-    args += ["--max-context", str(context), "--mmap-experts"]
-    if context > 32768:
+    args += ["--max-context", str(job.each), "--mmap-experts"]
+    if job.each > 32768:
         notes.append("Strata has measured the quality of long contexts on a Mac only to 32,768 tokens")
     return Shape(tuple(args), {"STRATA_METAL_STREAM": "1" if streams else "0"}, False, tuple(notes))
 
@@ -125,10 +125,10 @@ def _cuda(job: Job, made: Prepared, profile: Path) -> Shape:
     notes: list[str] = []
     args = ["--pack", str(made.pack), "--native", str(made.native), *(["--ple-gguf", str(made.ngram)] if len(files) <= 2 else []),
             "--expert-profile", str(profile), "--expert-cache", "auto", "--prefill", "auto", "--spec", "4", "--spec-min-p", "0.5",
-            "--mtp", str(made.data / "mtp" / "rt"), "--max-context", str(context)]
-    if context > 8192:
+            "--mtp", str(made.data / "mtp" / "rt"), "--max-context", str(job.each)]
+    if job.each > 8192:
         args += ["--kv", "int8"]
-    streamed = context >= 65536 and ram >= _pc_stream_need(chosen, context)
+    streamed = job.each >= 65536 and ram >= _pc_stream_need(chosen, context)
     experts_file = False
     if ram < experts + PC_BESIDE_GIB:
         if chosen.unsloth:
@@ -142,6 +142,6 @@ def _cuda(job: Job, made: Prepared, profile: Path) -> Shape:
             notes.append("this PC's RAM does not hold the experts: they are read from the model folder as needed")
     if streamed:
         args += ["--kv-resident", "32768"]
-    elif context >= 65536:
+    elif job.each >= 65536:
         notes.append("the KV cache stays in video memory: this PC's RAM has no room to stream it")
     return Shape(tuple(args), {}, experts_file, tuple(notes))

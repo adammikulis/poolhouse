@@ -150,7 +150,8 @@ def spent(usages: Sequence[harness.Usage]) -> harness.Usage:
 
 def served(found: str, alias: str, serving: Any) -> dict[str, Any]:
     """What a run's model is and how it is served, for its record: the file, the name the server answers to and the settings."""
-    settings = {name: getattr(serving, name, None) for name in ("slot_context", "slots", "cache_type", "draft", "spec_type", "mtp", "extra_args")}
+    settings = {name: getattr(serving, name, None)
+                for name in ("engine", "slot_context", "slots", "cache_type", "draft", "spec_type", "mtp", "extra_args")}
     return {"file": found, "alias": alias, "settings": {name: value for name, value in settings.items() if value not in (None, "", ())}}
 
 

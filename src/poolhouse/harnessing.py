@@ -48,7 +48,7 @@ from poolhouse.isolation import places
 from poolhouse.isolation.refusals import sentence
 from poolhouse.ownership import recorded_servers
 from poolhouse.sandbox import run as sandbox_run
-from poolhouse.serve import admission, chat_template, leases, profile, suggest, wired
+from poolhouse.serve import admission, chat_template, engines, leases, profile, suggest, wired
 from poolhouse.serve.matching import model_matches
 from poolhouse.serve.named import named as named_server
 from poolhouse.serve.ports import DEFAULT_HOST
@@ -158,6 +158,9 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
                     help="the draft head that guesses tokens ahead for the model to check: 'auto' takes "
                          "the smallest one on this machine, 'none' serves without one, or name one "
                          "(default: %(default)s)")
+    ap.add_argument("--engine", default="", choices=["", *sorted(engines.ENGINES)], metavar="NAME",
+                    help="serve the model with another engine than llama.cpp, such as strata (default: llama.cpp, or the "
+                         "engine of the server already up)")
     ap.add_argument(f"--{name}", default="", metavar="PATH",
                     help=f"the {name} binary (default: the one on PATH, else the one Poolhouse keeps)")
     return ap
@@ -244,6 +247,8 @@ class Want:
     draft: str = "auto"
     keep: bool = False
     """Leave a server this session started up when it ends, so the next session takes it warm (a delegate's)."""
+    engine: str = ""
+    """Another engine than llama.cpp to serve with (`poolhouse.serve.engines`)."""
 
 
 MIN_WINDOW = 65_536
@@ -275,7 +280,10 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
             why = f"holds {each:,} tokens a slot and {asked:,} were asked for"
         elif held < want.slots:
             why = f"serves {held} slot(s) and {want.slots} were asked for"
-        elif patched is not None and not _same_file(entry.get("chat_template_file"), patched):
+        elif want.engine and str(entry.get("backend") or "") != want.engine:
+            why = f"is not served by the {want.engine} engine"
+        elif (patched is not None and not _renders_late_system(str(entry.get("backend") or ""))
+              and not _same_file(entry.get("chat_template_file"), patched)):
             why = "renders the model's own chat template, which refuses a system message after the first"
         elif want.draft.lower() not in ("auto", "none") and Path(want.draft).name != Path(str(entry.get("draft") or "-")).name:
             why = f"does not run the draft head {want.draft} that was named"
@@ -285,13 +293,21 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
             # asked on that server's own port: the broker shares a `serve:` lease only with an ask for the same port;
             # the head it runs is asked for by name, and no say on `mtp` is made over a server that drafts, or the
             # lease would claim no head over one that has one
+            engine = str(entry.get("backend") or "")
             return Config(serving=Serving(model=found, port=port, slots=held, slot_context=each,
                                           cache_type=cache or KV, draft=head, spec_type=kind,
-                                          mtp=None if entry.get("mtp") or head or kind else False))
+                                          mtp=None if entry.get("mtp") or head or kind else False,
+                                          engine=engine if engine in engines.ENGINES else ""))
         declined.append(f"{up} {why}; leasing its own")
     for line in declined:
         say(line)
     return None
+
+
+def _renders_late_system(backend: str) -> bool:
+    """Whether the engine a lease record names renders a system message after the first by itself."""
+    engine = engines.ENGINES.get(backend)
+    return engine is not None and engine.renders_late_system
 
 
 def _same_file(recorded: object, patched: Path) -> bool:
@@ -311,6 +327,10 @@ def config_for(found: str, want: Want, say: Callable[[str], None]):
     fit = None
     if isinstance(requested, bool) or not isinstance(requested, int) or requested < 0:
         raise ValueError("context must be 0 (automatic) or a positive token count")
+    if want.engine:   # the engine fits its own context and picks its own drafter; llama.cpp's profiles do not apply
+        say(f"serving with the {want.engine} engine")
+        return Config(serving=Serving(model=found, port=port, slots=slots, slot_context=requested // slots, engine=want.engine,
+                                      mtp=False if draft.lower() == "none" else None))
     if not requested:
         fit = suggest.largest_fit(found, slots=slots)
         if fit.context <= 0 or fit.verdict not in {"green", "yellow"}:
@@ -360,9 +380,10 @@ def serving(model: str, want: Want, say: Callable[[str], None], by: str) -> Iter
     if config is None:
         leasing = say if leases.already_up(found, want.port) is None else (lambda _line: None)
         config = config_for(found, want, leasing)
-        if not admitted(found, config.serving.context, say, kv=config.serving.cache_type):
+        # an engine of its own is admitted by its own estimate at the lease; the wired-limit check reads llama.cpp's
+        if not config.serving.engine and not admitted(found, config.serving.context, say, kv=config.serving.cache_type):
             raise SystemExit(2)
-        if patched is not None:
+        if patched is not None and not _renders_late_system(config.serving.engine):
             leasing("this model's template refuses a system message after the first; serving "
                     f"with one that renders it instead ({patched.name})")
     with served(config, say=say, timeout=900.0, cache_reuse=256, warmup=False, escalate=True,
@@ -579,10 +600,11 @@ def serve_and_run(args: argparse.Namespace, name: str, say: Callable[[str], None
         return run((base_url, alias, window_of(base_url)))
     began = time.time()
     try:
-        with serving(args.model or default_model(), Want(args.port, args.slots, args.ctx, args.no_profile, args.draft), say, name) as (base_url, config, found):
+        want = Want(args.port, args.slots, args.ctx, args.no_profile, args.draft, engine=args.engine)
+        with serving(args.model or default_model(), want, say, name) as (base_url, config, found):
             alias = alias_of(base_url, found)
             say(f"{name} on {base_url} as {alias!r}, up in {time.time() - began:.0f}s")
-            return run((base_url, alias, config.serving.slot_context))
+            return run((base_url, alias, config.serving.slot_context or window_of(base_url)))
     except ValueError as why:
         say(f"error: {why}")
         return 2

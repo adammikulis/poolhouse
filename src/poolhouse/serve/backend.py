@@ -416,6 +416,10 @@ class ServerBackend(ABC):
     name: str
     #: whether the engine chooses and starts its own drafter, so no llama.cpp draft head is planned for it
     drafts_itself: bool = False
+    #: whether a running server's slots can be grown by saving them and starting it again (`ServerManager.escalate`)
+    escalates: bool = True
+    #: whether the engine renders a system message after the first by itself, so no replacement chat template is given to it
+    renders_late_system: bool = False
 
     def estimate_bytes(self, spec: ServerSpec) -> int | None:
         """What serving ``spec`` takes of this device's memory, for an engine that says; None for the estimate read off a GGUF."""

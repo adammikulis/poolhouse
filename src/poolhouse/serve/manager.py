@@ -243,7 +243,8 @@ class ServerManager(Admitting):
         ``say`` (else ``self.say``, else the log) is told of each decision.
         """
         how = how or Starting()
-        roam, escalate, anyway = how.roam, how.escalate, how.anyway
+        roam, anyway = how.roam, how.anyway
+        escalate = how.escalate and self.backend_for(spec).escalates
         told = say or self.say or logger.info
         spec = self._permitted(spec, escalate)
         iq = self._quant_guard(spec, how)
@@ -349,6 +350,8 @@ class ServerManager(Admitting):
         """``spec`` as it will be started, or `ServerFailed` when the port was just given up
         on or a limit on this machine refuses the lease."""
         spec = reusing_installed(spec)
+        if spec.chat_template_file and self.backend_for(spec).renders_late_system:
+            spec = replace(spec, chat_template_file=None)
         if escalate:
             # llama.cpp's slot-save file carries the cache's stream count, and a restore
             # raises "n_stream mismatch" the moment that count differs from the file's --

@@ -97,6 +97,8 @@ class StrataBackend(ServerBackend):
 
     name = NAME
     drafts_itself = True
+    escalates = False
+    renders_late_system = True
 
     def __init__(self, *, sandboxed: bool | None = None) -> None:
         self.sandboxed = sandboxed
@@ -116,7 +118,8 @@ class StrataBackend(ServerBackend):
         if found is None:
             return 0
         kind, memory = install.platform_kind(), psutil.virtual_memory().total
-        context = int(spec.context) or config.fitted_context(found[0], kind, memory, max(1, spec.parallel))
+        slots = max(1, int(spec.parallel or 1))
+        context = int(spec.context) or config.fitted_context(found[0], kind, memory, slots) * slots
         return config.estimate_bytes(found[0], context, kind, memory)
 
     def fit(self, spec: ServerSpec) -> tuple[ServerSpec, str]:
@@ -175,7 +178,7 @@ class StrataBackend(ServerBackend):
         chosen, files = self.model_of(spec)
         spec, _said = self.fit(spec)
         job = prepare.Job(install.ensure(say=logger.info), chosen, files, install.platform_kind(),
-                          psutil.virtual_memory().total, spec.context)
+                          psutil.virtual_memory().total, spec.context, max(1, int(spec.parallel or 1)))
         made = prepare.prepare(job, asked, say=logger.info)
         shaped = config.shape(job, made)
         if shaped.experts_file:

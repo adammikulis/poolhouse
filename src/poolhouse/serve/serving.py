@@ -124,6 +124,8 @@ class Serving:
     # longest this machine's room holds, or what scored best -- said outright rather
     # than left for a caller to work out from the number alone. "" when slots > 1.
     note: str = ""
+    # Another engine than llama.cpp (`poolhouse.serve.engines`), "" for llama.cpp's own.
+    engine: str = ""
 
     @property
     def context(self) -> int:
@@ -171,6 +173,8 @@ class Serving:
             out["flash_attn"] = bool(self.flash_attn)
         if self.extra_args:
             out["extra_args"] = tuple(self.extra_args)
+        if self.engine:
+            out["engine"] = self.engine
         return out
 
     def manager(self) -> Any | None:

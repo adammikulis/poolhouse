@@ -190,7 +190,8 @@ def session(model: str, *, want: harnessing.Want | None = None, offline: bool = 
     if config is None:
         leasing = say if leases.already_up(found, want.port) is None else (lambda _line: None)
         config = harnessing.config_for(found, want, leasing)
-        if not harnessing.admitted(found, config.serving.context, say, kv=config.serving.cache_type):
+        if not config.serving.engine and not harnessing.admitted(found, config.serving.context, say,
+                                                                 kv=config.serving.cache_type):
             raise ValueError("the model configuration exceeds this device's wired-memory limit")
         if patched is not None:
             leasing("this model's template refuses a system message after the first; serving "

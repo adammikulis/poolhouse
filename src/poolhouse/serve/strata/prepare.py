@@ -39,6 +39,13 @@ class Job:
     kind: str
     memory: int
     context: int = 0
+    """Tokens over all the slots, as a server spec counts them."""
+    slots: int = 1
+
+    @property
+    def each(self) -> int:
+        """Tokens one conversation gets: what the engine is started with, each of its slots holding that many."""
+        return self.context // max(1, self.slots)
 
 
 @dataclass(frozen=True, slots=True)

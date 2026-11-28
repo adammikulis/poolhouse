@@ -26,6 +26,12 @@ What is open and was checked against the tree on 2026-11-23 (`ac0639291`), plus 
 
 | Item | State | Where |
 |---|---|---|
+| Strata on a Mac, never served | Installed and prepared on this Mac; no server has been started, nothing is measured. Needs the change landed and the runtime updated (the machine broker runs the installed runtime), then `poolhouse-serve strata-proof MODEL` on a free GPU, beside llama.cpp, before any default changes | `docs/strata.md` |
+| Strata on Windows | Never built or run there. Prove it with `poolhouse-serve strata-proof` once the RTX 3090 Ti PC is in the pool, and add a Windows CI check of the install | `docs/strata.md` |
+| Strata drafters and model sets from publishers an agent may not pull | DFlash2 (`incoai`) and the IQ sets (`ISTA-DASLab`) wait for the owner's answer; MTP drafts and the `unsloth` sets or files already on disk serve | `src/poolhouse/serve/strata/pins.json` |
+| Strata pictures | Off: its server reads a file path or an address a request names. Patch it to `data:` pictures only, test that a path and an http address are refused, then enable | `src/poolhouse/serve/strata/backend.py` |
+| Strata sandbox | `POOLHOUSE_SANDBOX_SERVE` is refused for this engine, and Windows runs it unconfined | `src/poolhouse/serve/confined.py` |
+| Strata engine choice in the app and delegates | Both serve llama.cpp unless a Strata server is already up, which a session or delegate then takes; no start control in the app, no `poolhouse-delegate start --engine` | `src/poolhouse/fleet/serving.py` |
 | `node_key.migrate` passphrase branch | Reported unreachable by the rename review (the `elif passphrase` arm in `migrate`); not re-proved here. Delete it with its test once confirmed | `src/poolhouse/node_key.py` |
 | `models_adopt` old-name handling | Not removed; the brief that named it gave no further detail, so read the module before cutting | `src/poolhouse/serve/models_adopt.py` |
 | `bench` builds a `telemetry.Call` itself | `Call.from_reply(reply, 0.0)` in the backend instead of the client's own record | `src/poolhouse/bench/backends.py` |
