@@ -126,10 +126,10 @@ CLOSED_LIMITS = """\
 shell runs in the same working copy, inside a sandbox with these limits: no network; no localhost port of this computer reached by a test; no
 Poolhouse node; no nested sandbox; and no real model."""
 SHELL_WORK = """\
-{limits} The project's environments (its main checkout's where this copy has none) and the .git folder are read-only (git status, diff, log and
-show work, a commit fails). A command ends at its timeout ({default}s unless you give another as `timeout`, in milliseconds, at most {most}s)
-and never runs in the background. A test that needs what the sandbox refuses cannot run here: in your result, name every test you could not run
-and why.
+{limits} The project's environments (its main checkout's where this copy has none) and the .git folder are read-only: git status, diff, log and
+show work, and git commands that write to it (add, rm, mv and commit among them) are refused, so delete and move files with ordinary
+commands{committed}. A command ends at its timeout ({default}s unless you give another as `timeout`, in milliseconds, at most {most}s) and never
+runs in the background. A test that needs what the sandbox refuses cannot run here: in your result, name every test you could not run and why.
 When your turn ends your changes are applied to the project; only changes to .git, to a coding tool's settings, to credential files and
 links that lead out of the project are refused and kept aside for {lead}.
 """
@@ -423,7 +423,9 @@ def brief_of(rec: store.Delegate) -> str:
     """The system prompt of ``rec``: the same for every delegate of one lead that does the same kind of work."""
     shell = SHELL_WORK if rec.sandboxed else UNSANDBOXED_WORK
     limits = OPEN_LIMITS if sys.platform == "darwin" else CLOSED_LIMITS
-    work = shell.format(lead=rec.lead, limits=limits, default=int(SHELL_DEFAULT_S), most=int(SHELL_MAX_S)) if rec.edit else READ_WORK
+    committed = "; the files you change are committed for you" if rec.branch else ""
+    work = (shell.format(lead=rec.lead, limits=limits, committed=committed, default=int(SHELL_DEFAULT_S), most=int(SHELL_MAX_S))
+            if rec.edit else READ_WORK)
     project = "a working copy of the project" if rec.sandboxed else "the project folder itself"
     remembered = MEMORY_BRIEF.format(lead=rec.lead) if with_memory(rec) else ""
     return REQUIRED_BRIEFING.format(owner=rec.lead) + BRIEF.format(

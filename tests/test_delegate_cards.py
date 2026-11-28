@@ -69,6 +69,7 @@ def test_a_card_is_run_asked_about_reported_graded_and_only_then_remembered(edit
     rec = store.load(name)
     assert (rec.lead, rec.card, rec.memory, rec.branch) == (lead.name, "junk-card", True, f"delegate/{name}")
     assert "junk.txt is listed by no other file" in rec.message() and rec.message().startswith(f"You are {name}.")
+    assert "git commands that write are refused in your sandbox" in rec.message() and "the launcher commits the files" in rec.message()
     asked = answering(node, lead, name, "the root one")
     status = delegate_run.run(name)
     asked.join(30)

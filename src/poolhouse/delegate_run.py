@@ -47,13 +47,14 @@ def converse(rec: store.Delegate, bridge: lead_bridge.Bridge, mine: HarnessSessi
 
 def ended(answer: harness.Answer) -> str:
     """The state a run that gave ``answer`` ended in: `rejected` when its self-check did not accept the work. Else a run that edits is `done` only
-    when all it changed was applied and no write of it was refused: `unapplied` when it tried to change files and nothing was applied (with no
-    sandbox, no writing call went through), `partial` when some changes were made and others were not."""
+    when all it changed was applied and no write of it that counts (`delegate_refusals.lost`) was refused: `unapplied` when it tried to change
+    files and nothing was applied (with no sandbox, no writing call went through), `partial` when some changes were made and others were not."""
     if answer.is_error:
         return "failed"
     if answer.review is not None and not answer.review.accepted:
         return "rejected"
-    found, refused = answer.published, bool(answer.refused_writes)
+    found = answer.published
+    refused = bool(delegate_refusals.lost(answer.refused_writes, found.applied if found else ()))
     if found is None:
         return ("partial" if answer.wrote else "unapplied") if refused else "done"
     kept_back = bool(found.refused or found.conflicts or found.deferred or refused)
@@ -64,13 +65,15 @@ def ended(answer: harness.Answer) -> str:
 
 def changes(state: str, found: Any, refused: Sequence[delegate_refusals.Refused] = (), review: Any = None) -> str:
     """What became of a run's changes, in this process's words, from the publications' counts, the writes it was refused and what its self-check
-    came to; empty when there is nothing to warn of."""
+    came to; empty when there is nothing to say."""
     writes = delegate_refusals.said(refused)
     if state == "rejected":
         held = "nothing was applied to the project" if found is not None else review.where or "the answer is not accepted"
         kept = f"; kept patches: {', '.join(found.patches)}" if found is not None and found.patches else ""
         return "; ".join(each for each in (review.said(), held, writes) if each) + kept
-    if state == "done" or (found is None and not writes):
+    if state == "done":   # what is refused of a done run is of git's folder alone, and is said all the same
+        return f"{writes}; git's folder is read-only there, and this takes nothing from the applied changes" if writes else ""
+    if found is None and not writes:
         return ""
     where = "applied to the project" if found is not None else "made in the folder"
     nothing = "nothing was applied to the project" if found is not None else "nothing was changed in the folder"
