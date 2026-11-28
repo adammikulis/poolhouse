@@ -20,7 +20,7 @@ from poolhouse.files import read_json, write_json
 from poolhouse.lock import only_one, pid_alive
 from poolhouse.ownership import START_TOLERANCE_S, listens_on, recorded_servers, same_process
 
-__all__ = ["LOOPBACK", "bind", "bound", "for_url", "forget", "held", "issue", "key_file", "unproved", "unproxied", "write_key_file"]
+__all__ = ["LOOPBACK", "bind", "bound", "for_url", "forget", "held", "issue", "key_file", "run_folder", "unproved", "unproxied", "write_key_file"]
 
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 STARTING_S = 600
@@ -67,6 +67,17 @@ def _files(port: int) -> list[Path]:
     return list(home.state("server-keys.d").glob(f"{int(port)}-*.key"))
 
 
+def run_folder(port: int) -> Path:
+    """The private folder of a server on ``port`` that reads its key from its own run configuration, ``config.json`` and the
+    copies it makes of it; a protected part of the state folder, as the key files' own is."""
+    return home.state("engine-runs", str(int(port)))
+
+
+def _configured(port: int) -> list[Path]:
+    """The files of `run_folder` that hold the key of ``port``."""
+    return list(run_folder(port).glob("config.json*"))
+
+
 def _read(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8").strip()
@@ -109,7 +120,7 @@ def issue(port: int) -> str:
         found = _entries()
         entries = {p: e for p, e in found.items() if _live(e)}
         for gone in (p for p in set(found) - set(entries) if p.isdigit()):   # servers that ended without being stopped by us
-            for old in _files(int(gone)):
+            for old in (*_files(int(gone)), *_configured(int(gone))):
                 old.unlink(missing_ok=True)
         _write(port, key)
         entries[str(int(port))] = {"pid": 0, "at": time.time()}
@@ -118,8 +129,8 @@ def issue(port: int) -> str:
 
 
 def forget(port: int) -> None:
-    """Drop the key of the server on ``port`` and its file, once that server has ended or never came up. The key of a live process bound to the
-    port stays: a start that failed because another server holds the port is not the end of it."""
+    """Drop the key of the server on ``port`` and every file holding it, once that server has ended or never came up. The key of a live
+    process bound to the port stays: a start that failed because another server holds the port is not the end of it."""
     with _locked():
         entries = _entries()
         entry = entries.get(str(int(port)))
@@ -127,7 +138,7 @@ def forget(port: int) -> None:
             return
         if entries.pop(str(int(port)), None) is not None:
             _save(entries)
-        for old in _files(port):
+        for old in (*_files(port), *_configured(port)):
             old.unlink(missing_ok=True)
 
 

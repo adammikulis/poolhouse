@@ -16,11 +16,10 @@ if TYPE_CHECKING:  # what the names below resolve to, for readers and type check
         ServerFailed,
         ServerInfo,
         ServerSpec,
-        parse_context,
         tail,
-        trained_context,
     )
     from poolhouse.serve.binary import BinaryNotFound, child_env, find_binary, require_binary
+    from poolhouse.serve.contextsize import parse_context, trained_context
     from poolhouse.serve.escalation import EscalationRefused
     from poolhouse.serve.leases import merge_state
     from poolhouse.serve.manager import Measuring, ServerManager, serve, stop_all_servers
@@ -73,7 +72,7 @@ _HOME = {
     "kill_process_tree": ("poolhouse.serve.process", "kill_process_tree"),
     "merge_state": ("poolhouse.serve.leases", "merge_state"),
     "model_matches": ("poolhouse.serve.matching", "model_matches"),
-    "parse_context": ("poolhouse.serve.backend", "parse_context"),
+    "parse_context": ("poolhouse.serve.contextsize", "parse_context"),
     "pid_exists": ("poolhouse.serve.process", "pid_exists"),
     "port_is_free": ("poolhouse.serve.ports", "port_is_free"),
     "profile_for": ("poolhouse.serve.profile", "profile_for"),
@@ -93,7 +92,7 @@ _HOME = {
     "status": ("poolhouse.serve.public", "status"),
     "stop_all_servers": ("poolhouse.serve.manager", "stop_all_servers"),
     "tail": ("poolhouse.serve.backend", "tail"),
-    "trained_context": ("poolhouse.serve.backend", "trained_context"),
+    "trained_context": ("poolhouse.serve.contextsize", "trained_context"),
     "up": ("poolhouse.serve.public", "up"),
     "wait_until_free": ("poolhouse.serve.ports", "wait_until_free"),
 }

@@ -14,9 +14,21 @@ from poolhouse import caller, hub, limits as limits_mod, optional, platform
 from poolhouse.client import thinking
 from poolhouse.command import flag, option
 from poolhouse.log import say, warn
-from poolhouse.serve import build, guarded, holding, kvcache, mtp, ops, plan_cli, quant_guard, warm
-from poolhouse.serve.backend import ServerFailed, ServerSpec, parse_context
+from poolhouse.serve import (
+    build,
+    engines,
+    guarded,
+    holding,
+    kvcache,
+    mtp,
+    ops,
+    plan_cli,
+    quant_guard,
+    warm,
+)
+from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.binary import BinaryNotFound
+from poolhouse.serve.contextsize import parse_context
 from poolhouse.serve.fitted import fitted
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.ops import Refused
@@ -155,6 +167,12 @@ def _asked_spec(args: argparse.Namespace, model: str, extra: tuple[str, ...]) ->
 OPTIONS_UP = [
     flag("--no-repin", action="store_true", help="never pin a changed local file again (a program passes it)"),
     flag("model", help="path to a .gguf file, or hf:owner/repo/file.gguf"),
+    flag("--engine", default="", choices=["", *sorted(engines.ENGINES)], metavar="NAME",
+         help="serve with another engine than llama.cpp: strata (Qwen3.8-Flash-Next on Apple silicon or an NVIDIA card; "
+              "installed and prepared the first time, drafting with --draft mtp or dflash2, the best one when left out), vllm "
+              "or sglang"),
+    flag("--engine-option", action="append", default=[], metavar="FLAG=VALUE",
+         help="an option of the --engine's own, passed on once checked, e.g. --engine-option=--expert-cache=96; repeatable"),
     option("port", default=0,
            help="a port you would like. The broker picks the port and uses this one only "
                 "when it is free; a port held by another process is never taken or "
@@ -310,29 +328,31 @@ OPTIONS_UP = [
 def fork_head(args: argparse.Namespace, model: str) -> None:
     """Serve ``model`` with the head and build the harness serves it with, when only a fork loads it.
 
-    A head that borrows its target's embeddings is loaded by a fork build alone; the mainline
-    ``current`` has no multi-token-prediction graph for such a model and aborts or serves without. So an
-    ``up`` that named no binary, build, head or speculation takes the same `Head` a harness session
-    does (`hub.heads_for`, the head's build included), and says which. A head mainline loads is left to
-    `serve.mtp.plan`.
+    A head that borrows its target's embeddings is loaded by a fork build alone. So an ``up`` that
+    named no binary, build, head or speculation, on a machine whose only heads for ``model`` borrow,
+    takes the same `Head` a harness session does (`hub.heads_for`, the head's build included), and
+    says which. Where the mainline ``current`` loads a head, that is left to `serve.mtp.plan`.
     """
     asked = ("binary", "build", "draft", "spec", "spec_tree", "embedding", "reranking")
     if any(getattr(args, name, None) for name in asked) or not getattr(args, "mtp", True) or not mtp.enabled():
         return
-    heads = [one for one in hub.heads_for(model) if one.build and one.spec_type == mtp.KIND]
+    heads = [one for one in hub.heads_for(model) if one.spec_type == mtp.KIND]
     head = hub.head_choice(model, "auto", heads=heads)
-    if head is None:
+    if head is None or not head.build:
         return
     args.draft, args.spec, args.build = head.path, head.spec_type, head.build
     if getattr(args, "spec_n_max", None) is None:
         args.spec_n_max = head.depth
-    warn(f"MTP on: {head.serving()} (a fork build loads this head; the mainline build does not)")
+    warn(f"MTP on: {head.serving()} (the only head here borrows the model's embeddings, which a fork build loads)")
 
 
 def cmd_up(args: argparse.Namespace) -> int:
     model = str(hub.located(args.model) or args.model)
     if model != str(args.model):
         warn(f"resolved {args.model} -> {model}")
+
+    if getattr(args, "engine", ""):
+        return _up_engine(args, model)
 
     profile = None
     if getattr(args, "profile", False):
@@ -382,6 +402,26 @@ def cmd_up(args: argparse.Namespace) -> int:
     return _lease(args, spec, manager, chosen=chosen, profile=profile)
 
 
+def _up_engine(args: argparse.Namespace, model: str) -> int:
+    """``up --engine``: the spec as asked, for an engine that takes none of llama.cpp's profiles, heads or placement."""
+    extra = tuple(piece for one in args.engine_option for piece in one.split("=", 1))
+    if args.draft.lower() not in ("", "none"):   # an engine's drafter is a name, never a head's file to find or pin
+        args.spec, args.draft = args.draft, ""
+    spec = replace(_asked_spec(args, model, extra), engine=args.engine)
+    manager = ops.manager_for()
+    try:
+        spec, said = fitted(spec)
+    except (ServerFailed, ValueError) as exc:
+        warn(f"error: {exc}")
+        return 2
+    if said:
+        warn(said)
+    if getattr(args, "preflight_only", False) or getattr(args, "escalate", False):
+        warn(f"error: --preflight-only and --escalate are llama.cpp's; the {args.engine} engine takes neither")
+        return 2
+    return _lease(args, spec, manager, chosen="", profile=None)
+
+
 def _planned(args: argparse.Namespace, spec: ServerSpec) -> ServerSpec | int:
     """``spec`` with the placement `poolhouse-serve plan` chooses for this machine, or the
     exit code when nothing fits. Placement flags given on the command line win."""
@@ -417,8 +457,9 @@ def _lease(args: argparse.Namespace, spec: ServerSpec, manager: object, *, chose
     """``up``: ask the broker for a lease with this shape and hold it."""
     ask = args.model
     try:
-        quant_guard.enforce(spec.model, gpu_layers=spec.n_gpu_layers,
-                            asked=str(getattr(args, "iq", "") or ""), who="poolhouse-serve up")
+        if not spec.engine:   # the IQ warning is about llama.cpp's kernels
+            quant_guard.enforce(spec.model, gpu_layers=spec.n_gpu_layers,
+                                asked=str(getattr(args, "iq", "") or ""), who="poolhouse-serve up")
         if not (getattr(args, "no_repin", False) or caller.marked()):
             guarded.pin_served(args.model, args.draft, args.mmproj)
         weight = holding.check_fits(spec, ask=str(ask))

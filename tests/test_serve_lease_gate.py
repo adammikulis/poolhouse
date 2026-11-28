@@ -10,7 +10,14 @@ import json
 import pytest
 
 from poolhouse.serve import grant
-from poolhouse.serve.backend import Lease, LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
+from poolhouse.serve.backend import (
+    Lease,
+    LlamaServerBackend,
+    ServerBackend,
+    ServerFailed,
+    ServerInfo,
+    ServerSpec,
+)
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.ports import free_port
 from poolhouse.testing.canned import Canned, CannedServer
@@ -76,9 +83,7 @@ def test_the_record_exists_before_the_process_and_is_filled_or_forgotten_after(t
     state = tmp_path / "servers.json"
     seen = {}
 
-    class Backend:
-        name = "fake"
-
+    class Backend(_Backend):
         def start(self, spec, *, lease, timeout=300.0, **starting):
             held = json.loads(state.read_text())[str(spec.port)]
             seen["pending"] = dict(held)
@@ -88,9 +93,6 @@ def test_the_record_exists_before_the_process_and_is_filled_or_forgotten_after(t
                 raise ServerFailed("did not come up")
             return ServerInfo(base_url=f"http://127.0.0.1:{spec.port}", port=spec.port,
                               pid=4242, backend="fake")
-
-        def stop(self, info, *, grace_s=5.0):
-            return None
 
     manager = ServerManager(backend=Backend(), state_file=state)
     port = free_port()
@@ -107,8 +109,11 @@ def test_the_record_exists_before_the_process_and_is_filled_or_forgotten_after(t
     assert str(other) not in json.loads(state.read_text()), "a start that failed is forgotten"
 
 
-class _Backend:
+class _Backend(ServerBackend):
     name = "fake"
+
+    def command(self, spec):
+        return []
 
     def start(self, spec, *, lease, timeout=300.0, **starting):
         return ServerInfo(base_url=f"http://127.0.0.1:{spec.port}", port=spec.port,

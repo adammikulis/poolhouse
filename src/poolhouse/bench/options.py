@@ -652,7 +652,7 @@ def tree_options() -> tuple[Option, ...]:
              help="speed: MLX in this process, llama.cpp leased through the broker"),
         flag("--gguf", default="Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
              help="speed: the llama.cpp model"),
-        flag("--gguf-mtp", default="mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf",
+        flag("--gguf-mtp", default="mtp-Qwen3.8-Flash-Next-Q4_K_M.gguf",
              help="speed: the llama.cpp MTP head"),
         flag("--draft-max", type=int, default=4, help="speed: llama.cpp MTP depth (default: 4)"),
         flag("--context", type=int, default=16384, help="speed: llama.cpp context"),

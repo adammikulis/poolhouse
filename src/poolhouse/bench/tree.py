@@ -298,7 +298,7 @@ def mlx_arms(args: argparse.Namespace) -> list[Sample]:
 
 
 def llama_arms(args: argparse.Namespace) -> tuple[list[Sample], list[dict[str, Any]]]:
-    """llama.cpp without a draft and with the shared MTP head, each leased through the broker."""
+    """llama.cpp without a draft and with the MTP head, each leased through the broker."""
     arms = [("llama-plain", {"context": args.context}),
             ("llama-mtp", {"context": args.context, "draft": args.gguf_mtp,
                            "spec_type": "draft-mtp", "spec_draft_max": args.draft_max})]

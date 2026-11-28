@@ -11,7 +11,8 @@ from poolhouse import home
 from poolhouse.command import flag, option
 from poolhouse.log import say, warn
 from poolhouse.serve import charts, fit as fit_mod, ops
-from poolhouse.serve.backend import ServerSpec, parse_context
+from poolhouse.serve.backend import ServerSpec
+from poolhouse.serve.contextsize import parse_context
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.ops import Refused
 from poolhouse.serve.serving import split_cache_type

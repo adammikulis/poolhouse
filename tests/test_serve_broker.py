@@ -19,7 +19,8 @@ import psutil
 import pytest
 from machine_guard import stop_started
 
-from poolhouse.serve import LlamaServerBackend, ServerManager
+from poolhouse.serve import LlamaServerBackend, ServerManager, admission, node_memory
+from poolhouse.serve.backend import ServerSpec
 from poolhouse.serve.broker import Ask, Broker, BrokerError
 from poolhouse.serve.process import kill_process_tree, pid_exists
 from poolhouse.testing.canned import canned_binary
@@ -197,6 +198,30 @@ def test_a_held_server_is_not_stopped_on_request_and_a_foreign_one_never(
     finally:
         foreign.kill()
         foreign.wait(timeout=10)
+
+
+def test_an_idle_server_makes_room_for_all_a_start_takes_not_its_weights_alone(broker, models, holders, monkeypatch, tmp_path):
+    """The first server's memory is mostly its prompt cache, and the third fits only if all of it is given back; the held one stays."""
+    third = tmp_path / f"third-M3-{tmp_path.name}.gguf"
+    third.write_bytes(b"GGUF" + b"\x00" * 64)
+    pinned(third)
+    cached = {"context": 512, "cache_ram_mb": 4096}
+    takes = {name: -(-admission.estimate_bytes(ServerSpec(model=name, **spec)) // admission.MIB)
+             for name, spec in ((models[0], cached), (models[1], {"context": 512}), (str(third), cached))}
+    for module in (admission, node_memory):   # the records and the node's table are given the same budget
+        monkeypatch.setattr(module, "budget_mb", lambda: sum(takes.values()) - 1)
+    monkeypatch.setenv(admission.ENV_WAIT, "2")
+    broker.room = lambda: node_memory.free_bytes(broker.table)
+    a, b = holders(), holders()
+    idle = broker.lease(Ask(purpose="first", models=(models[0],), pid=a.pid, spec=cached), timeout=30)
+    held = broker.lease(ask(models[1], b.pid, purpose="second"), timeout=30)
+    idle_pid = broker.servers[idle.port].pid
+    broker.release(idle.lease)
+
+    got = broker.lease(Ask(purpose="third", models=(str(third),), pid=holders().pid, spec=cached), timeout=15)
+
+    assert {held.port, got.port} == set(broker.servers)
+    assert not pid_exists(idle_pid)
 
 
 def _owned_scan(process, port, model):

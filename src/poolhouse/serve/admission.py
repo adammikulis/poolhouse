@@ -1,8 +1,8 @@
 """What a model server asks of this device, and what the node's lease table gives it: memory and a slot for the model.
 
 A server about to start is a lease of the node (`poolhouse.leasetable`) tagged with its port: the memory it will take
-(`estimate_bytes`: the weights, the draft and projector files, the KV cache read off the GGUF header and a fixed allowance for the
-runtime) and its slot (`slot_name`). The node holds the machine's budget, the red share of what `poolhouse.hub.room` allows,
+(`estimate_bytes`: the weights, the draft and projector files, the KV cache read off the GGUF header, a prompt cache asked for and a
+fixed allowance for the runtime) and its slot (`slot_name`). The node holds the machine's budget, the red share of what `poolhouse.hub.room` allows,
 queues a start that does not fit beside the servers up, refuses one that could never fit, and ends the lease when the process it
 is bound to ends. A server runs on the device ``gpu``, or on ``cpu`` when it offloads no layer or says so. `poolhouse.gate` queues
 the requests of a device.
@@ -94,8 +94,9 @@ def _size(ref: str | Path | None) -> int:
 
 def estimate_bytes(spec: ServerSpec) -> int:
     """What serving ``spec`` will take: weights, draft and projector files, the KV cache
-    read off the GGUF header, and a fixed allowance for the runtime. Weights not on disk
-    are unknown and count as 0."""
+    read off the GGUF header, a prompt cache the spec asks for (llama-server's own default,
+    when it asks for none, is not counted) and a fixed allowance for the runtime. Weights
+    not on disk are unknown and count as 0."""
     weights = _size(spec.model)
     if not weights:
         return 0
@@ -108,7 +109,7 @@ def estimate_bytes(spec: ServerSpec) -> int:
     except (OSError, ValueError, struct.error):
         kv = 0
     return (weights + _size(spec.draft) + _size(spec.mmproj) + kv
-            + draft_kv_estimate_bytes(spec) + RUNTIME_ALLOWANCE_BYTES)
+            + draft_kv_estimate_bytes(spec) + max(spec.cache_ram_mb or 0, 0) * MIB + RUNTIME_ALLOWANCE_BYTES)
 
 
 def live(entry: Mapping[str, Any]) -> bool:
@@ -123,18 +124,48 @@ def live(entry: Mapping[str, Any]) -> bool:
 def pending_serves(spec: ServerSpec, entry: Mapping[str, Any]) -> bool:
     """Whether the server being started on ``entry`` will serve ``spec`` when it is up."""
     held = max(1, int(entry.get("parallel") or 1))
-    return (int(entry.get("context") or 0) // held >= int(spec.context) // max(1, int(spec.parallel or 1))
+    return (not engine_difference(spec.engine, entry)
+            and int(entry.get("context") or 0) // held >= int(spec.context) // max(1, int(spec.parallel or 1))
             and held >= max(1, int(spec.parallel or 1))
             and bool(entry.get("embedding")) == bool(spec.embedding)
             and bool(entry.get("reranking")) == bool(spec.reranking)
             and not (spec.mmproj and not entry.get("mmproj")))
 
 
+def engine_difference(asked: str, entry: Mapping[str, Any]) -> str:
+    """How the engine of the server on ``entry`` differs from the one ``asked`` for ("" is llama.cpp, or tree decoding), or
+    "" when it is that one. One engine never answers for another, whatever else matches."""
+    running = str(entry.get("engine") or "")
+    if running == asked:
+        return ""
+    return f"engine: {asked or 'llama.cpp'} was asked for and the server runs {running or 'llama.cpp'}"
+
+
+def servings(entry: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The settings a record, or a held server's shape, may be asked for by: as it serves, and, where it was started
+    with another draft head than was asked, with the head settings of each such asking (``asked``, ``also``)."""
+    others = (entry.get("asked"), *(entry.get("also") or ()))
+    return [entry, *({**entry, **one} for one in others if one)]
+
+
+def as_served(entry: Mapping[str, Any]) -> dict[str, Any]:
+    """The head settings the server on ``entry`` is asked for by as it serves."""
+    mtp = {"mtp": True} if entry.get("mtp") else {} if entry.get("draft") else {"mtp": False}
+    return {"draft": str(entry.get("draft") or ""), "spec_type": str(entry.get("spec_type") or ""), **mtp}
+
+
 def differences(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str]) -> list[str]:
     """Each way the server on ``entry`` differs from ``spec``, in plain words: ``mismatches``
     (from `serving_mismatch`) and then the recorded settings that were asked for and are not
-    the server's. Empty when it can serve ``spec`` as it is."""
-    out = list(mismatches)
+    the server's. Empty when it can serve ``spec`` as it is, by any of its `servings`."""
+    other = engine_difference(spec.engine, entry)
+    found = [_unlike(spec, one) for one in servings(entry)]
+    return [*mismatches, *([other] if other else []), *next((one for one in found if not one), found[0])]
+
+
+def _unlike(spec: ServerSpec, entry: Mapping[str, Any]) -> list[str]:
+    """Each recorded setting ``spec`` asks for that ``entry``, read one way, does not have."""
+    out: list[str] = []
     if bool(entry.get("embedding")) != bool(spec.embedding):
         out.append("embedding: the server " + ("serves embeddings" if entry.get("embedding") else "does not"))
     if bool(entry.get("reranking")) != bool(spec.reranking):

@@ -725,6 +725,18 @@ def test_a_measured_draft_depth_goes_out_with_the_request():
     assert "speculative" not in body, "the server registers a flat field, not an object"
 
 
+def test_a_local_server_is_told_the_replys_length_by_both_its_names():
+    from poolhouse.client.chat import Client
+
+    asked = [{"role": "user", "content": "hi"}]
+    capped = Client("http://127.0.0.1:1", request=Request(n_predict=64))
+    body = capped.build_body(asked)
+    assert (body["n_predict"], body["max_tokens"]) == (64, 64), "a server that reads only max_tokens ran uncapped"
+    assert capped.build_body(asked, max_tokens=8)["max_tokens"] == 8
+    unlimited = Client("http://127.0.0.1:1").build_body(asked)
+    assert unlimited["n_predict"] == -1 and "max_tokens" not in unlimited
+
+
 def test_a_hosted_endpoint_is_never_asked_to_guess_ahead():
     from poolhouse.client.chat import Client
 

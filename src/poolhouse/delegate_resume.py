@@ -21,6 +21,7 @@ from typing import Any
 
 from poolhouse import claude, client, delegate_review, delegate_store as store
 from poolhouse.errors import Denied
+from poolhouse.log import say as log
 from poolhouse.workspace import nudge_fence
 
 __all__ = ["ANSWER_WAIT_S", "RESUMES", "Model", "answers", "broke", "carried_on", "carry_conversation", "waited"]
@@ -84,8 +85,14 @@ class Model:
         return self
 
     def __exit__(self, *exc: object) -> bool | None:
+        """Give the lease up. A lease that cannot be given up (the broker is being replaced by a runtime upgrade) is said and left to the broker,
+        which frees it when this process ends: what the run came to, a stop included, stands."""
         block, self._block = self._block, None
-        return None if block is None else block.__exit__(*exc)
+        try:
+            return None if block is None else block.__exit__(*exc)
+        except (Denied, OSError, RuntimeError, ValueError) as why:
+            log(f"the model's lease could not be given up ({type(why).__name__}: {why}); it ends with this process")
+            return None
 
     def again(self) -> None:
         """Give the lease up and take the model again: a server that is up is taken as it stands, else one is started."""

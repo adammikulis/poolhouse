@@ -65,6 +65,10 @@ memory = ["cryptography>=50", "keyring>=24"]
 # through their own layer classes
 spec = ["mlx>=0.32.2", "mlx-lm>=0.31.3", "mlx-vlm>=0.7.1", "numpy>=1.24", "huggingface_hub>=1.32"]
 train = ["numpy>=1.24", "safetensors>=0.4"]
+# what the scripts of the Strata engine's server and model preparation import (`poolhouse.serve.strata`)
+serve-strata = ["numpy>=1.24", "jinja2>=3.1", "regex>=2024.11.6",
+    # NVIDIA's CUDA 13 libraries the prebuilt Windows engine loads (built against 13.0; a later 13.x loads the same names)
+    "nvidia-cublas>=13.0.2,<14; sys_platform == 'win32'", "nvidia-cuda-runtime>=13.0.96,<14; sys_platform == 'win32'"]
 train-mlx = ["poolhouse[train,mlx]", "mlx-lm>=0.31.3", "huggingface_hub>=1.32"]
 # a LoRA rather than a full fine-tune: two small matrices on each projection, the
 # base frozen. What makes an 8B tool caller trainable on one machine, where a full

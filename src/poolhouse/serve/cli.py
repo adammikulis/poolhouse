@@ -3,7 +3,7 @@
 Every subcommand parses its arguments and prints; the work is in `poolhouse.serve.ops`, and
 each command group's own parsing lives beside it: `status_cli`, `lifecycle_cli` (up, down,
 escalate, build), `slots_cli`, `profile_cli`, `fit_cli`, `machine_cli` (memory, limits, reclaim),
-`broker_cli` (broker, queue), `lease_cli` (leases, history).
+`broker_cli` (broker, queue), `lease_cli` (leases, history), `strata.proof` (strata-proof).
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from poolhouse.serve import (
     status_cli,
     warm_cli,
 )
+from poolhouse.serve.strata import proof as strata_proof
 
 __all__ = ["COMMANDS", "main"]
 
@@ -67,6 +68,12 @@ COMMANDS.add(
     "warm", warm_cli.cmd_warm,
     help="record which ranges of a model a run left in the page cache, and read them ahead",
     options=warm_cli.OPTIONS)
+
+COMMANDS.add(
+    "strata-proof", strata_proof.cmd_prove,
+    help="serve a model with the Strata engine and record its live proof: speed, long-context recall, tool calls, "
+         "conversation reuse, thinking, refused pictures, drafting",
+    options=strata_proof.OPTIONS)
 
 COMMANDS.add(
     "memory", machine_cli.cmd_memory,
