@@ -31,6 +31,10 @@ BENCH = ("run", "sweep", "concurrent", "drafts", "retrieval", "speed", "quants",
 CODE_FLAGS = {"binary": "--binary", "tool": "--tool", "tool_arg": "--tool-arg", "client": "--client", "ask": "--ask",
               "detach": "--detach"}
 """The parsed name of every bench flag a job refuses: it names a program or a module to run, or detaches from the job."""
+MEASURES = ("run", "sweep", "concurrent", "drafts", "retrieval", "speed")
+QUANTS_MEASURES = ("speed", "fidelity", "tasks")
+"""The bench subcommands, and the actions of ``quants``, that measure and keep what they measured: a model is removed after
+one only when what it kept can be used."""
 INPUTS = ("config", "corpus", "items", "model", "serve", "draft", "questions", "profile", "profiles")
 """The parsed names whose values may be files the step reads; each such file is fixed when the job is scheduled (`code.freeze`)."""
 REF = re.compile(r"hf:[A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*(?:/[A-Za-z0-9][\w.-]*)*\.gguf")
@@ -125,7 +129,8 @@ def parse(text: str, *, base: Path) -> list[dict[str, Any]]:
 
 
 def judge(step: dict[str, Any], read: dict[str, Any]) -> list[str]:
-    """Refuse a bench step the parser or the rules of a job do not take; the values among its words that may name input files."""
+    """Refuse a bench step the parser or the rules of a job do not take, and say in ``step`` whether it measures (`MEASURES`);
+    the values among its words that may name input files."""
     where = f"line {step['line']}"
     if error := read.get("error"):
         raise joblines.LineError(f"{where}: python -m poolhouse.bench {' '.join(step['argv'])}\n  {error}")
@@ -133,6 +138,8 @@ def judge(step: dict[str, Any], read: dict[str, Any]) -> list[str]:
     if used := [flag for name, flag in CODE_FLAGS.items() if values.get(name)]:
         raise joblines.LineError(f"{where}: a scheduled bench line takes no {', '.join(used)}: it names something to run, or "
                                  f"leaves the job, and a job runs Poolhouse's own commands alone")
+    word = step["argv"][0]
+    step["measures"] = word in MEASURES or (word == "quants" and values.get("action") in QUANTS_MEASURES)
     out: list[str] = []
     for name in INPUTS:
         value = values.get(name)

@@ -17,6 +17,11 @@ from poolhouse import schedule_record as record
 HOSTILE = "<img src=x onerror=\"document.title='owned'\">"
 
 
+def signed_in(serving) -> str:
+    """The cookie of a window the person opened: it spent a launch ticket this daemon minted."""
+    return serving.ticket_session()[2]["Set-Cookie"].split(";")[0]
+
+
 def waiting() -> str:
     now = time.time()
     steps = [{"n": 1, "line": 1, "kind": "bench", "role": "step", "words": f"quants speed {HOSTILE}", "argv": ["quants"]}]
@@ -51,10 +56,21 @@ def test_the_routes_list_show_and_cancel_and_nothing_makes_or_changes_a_job(serv
         assert status in (404, 405), (method, path, status, body)
     assert [one["id"] for one in record.jobs()] == [job] and record.load(job)["state"] == "waiting"
     assert serving.call("/ui/schedule/s-20260101-00000000")[0] == 404
-    status, body, _headers = serving.call(f"/ui/schedule/{job}/cancel", method="POST", body={})
+    status, body, _headers = serving.call(f"/ui/schedule/{job}/cancel", method="POST", body={}, cookie=signed_in(serving))
     assert status == 200 and body["job"]["state"] == "cancelled", body
     assert body["job"]["steps"][0]["state"] == "not run", "an ended job shows no step as still queued"
     assert "the person in the app" in record.load(job)["why"]
+
+
+def test_a_local_program_with_no_signed_in_window_cancels_nothing_in_a_pool_nobody_founded(serving):
+    """A sandboxed process that may reach loopback sends what the page sends, and holds no credential."""
+    job = waiting()
+    cancel = f"/ui/schedule/{job}/cancel"
+    for cookie in ("", "poolhouse_ui=made-up"):
+        status, body, _headers = serving.call(cancel, method="POST", body={}, cookie=cookie)
+        assert status == 403 and "poolhouse open" in body["error"] and "poolhouse schedule cancel" in body["error"], (status, body)
+    assert record.load(job)["state"] == "waiting" and record.load(job)["cancel"] is None
+    assert serving.call("/ui/schedule")[0] == 200
 
 
 def test_the_routes_keep_the_pages_own_checks_and_answer_no_other_computer_or_page(serving, monkeypatch):
@@ -83,7 +99,8 @@ def test_the_page_shows_when_a_job_starts_why_it_waits_and_cancels_it(serving, p
         page = browser.new_page(viewport={"width": width, "height": 900})
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
-        page.goto(f"http://127.0.0.1:{serving.port}/ui/#schedule")
+        ticket, _ = serving.ui.sessions.mint_ticket("launch-secret")
+        page.goto(f"http://127.0.0.1:{serving.port}/ui/?launch_ticket={ticket}#schedule")
         card = page.locator(f"schedule-view [data-job='{job}']")
         expect(page.locator("schedule-view").get_by_role("heading", level=1)).to_have_text("Scheduled jobs")
         expect(card).to_contain_text("Waiting: port 8080 is in use")

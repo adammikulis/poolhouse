@@ -1,7 +1,7 @@
 """The scheduled jobs of this account (`poolhouse.schedule_record`): ``/ui/schedule`` lists them, ``/ui/schedule/ID`` is one with
-the end of its output, and ``POST /ui/schedule/ID/cancel`` cancels it. Answered to this computer alone, after the page's own
-sign-in. No route creates or changes what a job runs: a job is made only by `poolhouse schedule add`, so no page or request can
-cause a run.
+the end of its output, and ``POST /ui/schedule/ID/cancel`` cancels it, for a window signed in with a credential only, in a pool
+nobody founded too. Answered to this computer alone, after the page's own sign-in. No route creates or changes what a job runs:
+a job is made only by `poolhouse schedule add`, so no page or request can cause a run.
 """
 
 from __future__ import annotations
@@ -25,6 +25,11 @@ class ScheduleRoutes:
         job, cancel = match[1], bool(match[2])
         if self.method != ("POST" if cancel else "GET"):
             self.send(405, {"error": "scheduled jobs are shown and cancelled here, and made with `poolhouse schedule add`"})
+            return True
+        # a pool nobody founded asks no sign-in, and a sandboxed process may reach loopback: a change needs a credential
+        if cancel and not self.ui.credentialed(self.cookie):
+            self.send(403, {"error": "cancel from a window Poolhouse signed in: open the page with `poolhouse open`, or run "
+                                     "`poolhouse schedule cancel ID`"})
             return True
         try:
             if job is None:

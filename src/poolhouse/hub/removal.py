@@ -1,8 +1,9 @@
 """Removing a model's files from the Hugging Face cache: ``poolhouse-models remove hf:owner/repo/file.gguf``.
 
-One reference names one build: the file, or every shard of a sharded one, in every revision the cache holds of that repository.
-A file's bytes go only when no other file in the cache still links to them, nothing outside the cache is touched, and a build
-a running process names is refused.
+One reference names one build: the file, or every shard of a sharded one, in every revision the cache holds of that repository;
+a wildcard or a revision in it is refused. Paths are compared by where they really are. A file's bytes go only when no other
+file in the cache still links to them, nothing outside the cache is touched, and a build a running process names, or another
+file is reached through, is refused.
 """
 
 from __future__ import annotations
@@ -35,13 +36,15 @@ class Removal:
         return f"{word} {self.ref}: {len(self.files)} file(s), freeing {human_bytes(self.bytes)}"
 
 
-def _chain(path: Path) -> list[Path]:
-    """The stored files ``path`` leads to, one link at a time."""
-    out: list[Path] = []
-    while path.is_symlink() and len(out) < 8:
-        path = Path(os.path.normpath(path.parent / path.readlink()))
-        out.append(path)
-    return out
+def _real(path: Path) -> Path:
+    """Where the entry ``path`` itself sits: its folder with every link followed, its own name not. Two paths are one entry
+    exactly when this is the same, however each reaches it."""
+    return Path(os.path.realpath(path.parent)) / path.name
+
+
+def _next(entry: Path) -> Path | None:
+    """The entry the link ``entry`` (a `_real` path) points at, one step; None for what is no link."""
+    return _real(entry.parent / entry.readlink()) if entry.is_symlink() else None
 
 
 def _links(cache: Path) -> Iterable[Path]:
@@ -54,10 +57,15 @@ def _links(cache: Path) -> Iterable[Path]:
 
 
 def plan(ref: str) -> Removal:
-    """What `remove` would take away; `ValueError` when ``ref`` names no file the cache holds."""
+    """What `remove` would take away; `ValueError` when ``ref`` names no file the cache holds, or could take more than it
+    names (a wildcard, a revision, a file another one is reached through)."""
+    if "@" in ref:
+        raise ValueError(f"a removal takes the build from every revision the cache holds, so name no revision: not {ref!r}")
     asked = remote.parse(ref)
     if not asked.file or asked.quant or ".." in asked.file.split("/") or not asked.file.endswith(".gguf"):
         raise ValueError(f"name one file of the build: hf:owner/repo/file.gguf, not {ref!r}")
+    if any(mark in asked.file for mark in "*?[]"):
+        raise ValueError(f"name one file of the build, with no wildcard: not {ref!r}")
     cache = Path(hub.hub_cache()).absolute()
     snapshots = cache / f"models--{asked.repo.replace('/', '--')}" / "snapshots"
     wanted = Path(asked.file)
@@ -71,28 +79,37 @@ def plan(ref: str) -> Removal:
                       if path.is_symlink() or path.is_file()]
     if not files:
         raise ValueError(f"the cache at {cache} holds no {asked.repo}/{asked.file}")
-    gone = set(files)
+    top = Path(os.path.realpath(cache))
+    gone = {_real(path) for path in files}
+    leads = {entry: _next(entry) for entry in map(_real, _links(cache))}
+    if reached := next((entry for entry, to in sorted(leads.items()) if to in gone and entry not in gone), None):
+        raise ValueError(f"{ref} stays: {reached} is another file, reached through it")
     stored: list[Path] = []
-    links = {path: Path(os.path.normpath(path.parent / path.readlink())) for path in _links(cache)}
-    queue = list(files)
+    queue = list(gone)
     while queue:
-        for target in _chain(queue.pop())[:1]:
-            kept_by = [path for path, to in links.items() if to == target and path not in gone]
-            if target in gone or kept_by or cache not in target.parents or not (target.is_symlink() or target.is_file()):
-                continue
-            gone.add(target)
-            stored.append(target)
-            queue.append(target)
+        target = _next(queue.pop())
+        if target is None or target in gone or top not in target.parents or not (target.is_symlink() or target.is_file()):
+            continue
+        if any(to == target and entry not in gone for entry, to in leads.items()):
+            continue
+        gone.add(target)
+        stored.append(target)
+        queue.append(target)
     size = sum(path.lstat().st_size for path in [*files, *stored] if not path.is_symlink())
     return Removal(ref, tuple(files), tuple(stored), size)
 
 
 def in_use(paths: Iterable[Path]) -> str:
-    """Which running process names one of ``paths``, or the file it leads to, on its command line; "" when none does."""
-    names = {str(each) for path in paths for each in (path, os.path.realpath(path))}
+    """Which running process names one of ``paths``, or the file it leads to, on its command line, by that name or any other
+    way to the same place; "" when none does."""
+    paths = list(paths)
+    places = {str(each) for path in paths for each in (_real(path), os.path.realpath(path))}
+    names = places | {str(path) for path in paths}
     for _process, info in procscan.readable(["pid", "cmdline"]):
-        line = " ".join(info.get("cmdline") or ())
-        if info.get("pid") != os.getpid() and any(name in line for name in names):
+        words = info.get("cmdline") or ()
+        line = " ".join(words)
+        if info.get("pid") != os.getpid() and (any(name in line for name in names)
+                                               or any(Path(word).is_absolute() and str(_real(Path(word))) in places for word in words)):
             return f"pid {info.get('pid')} is running with it"
     return ""
 

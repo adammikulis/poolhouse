@@ -21,14 +21,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import authority, caller, node_launch, schedule_record as record
+from poolhouse import authority, caller, node_launch, runtime, schedule_record as record
 from poolhouse.board import place
 from poolhouse.board.client import Client, NodeError
 from poolhouse.command import Group, flag, option
 from poolhouse.errors import Denied
 from poolhouse.fleet import autostart_check
 from poolhouse.log import say
-from poolhouse.schedule import check, code, runner, spawn, steps, who
+from poolhouse.schedule import check, code, device, runner, spawn, steps, who
 
 __all__ = ["Asked", "add_job", "autostart_note", "main", "moment", "span"]
 
@@ -90,17 +90,17 @@ def _prepare(job: dict[str, Any], *, checkout: str, python: str, cwd: Path) -> C
         if not any(step["kind"] == "bench" for step in job["steps"]):
             return
         source = code.code_dir(checkout)
-        copy = None
+        copy, taken = None, {}
         if source is not None:
             copy = where / "code"
-            code.snapshot(source, copy)
+            taken = code.snapshot(source, copy)
         rows = steps.bench_rows(job["steps"], lambda argvs: code.check_bench(argvs, python=python, copy=copy,
                                                                               cwd=where / "work"))
         pins: dict[str, list[int]] = {}
         for step, values in rows:
             step["argv"] = code.freeze(step["argv"], values, base=cwd, into=where / "inputs", pins=pins)
         job["pins"] = pins
-        job["code"] = {"python": python, "copied": copy is not None, **(code.revision(source) if source else {})}
+        job["code"] = {"python": python, "copied": copy is not None, **taken}
 
     return fill
 
@@ -149,11 +149,32 @@ class Asked:
     max_hours: float = MAX_HOURS
 
 
+def _unrunnable() -> str:
+    """Why no job could run on this computer now, "" when one could. The model broker that reserves the device runs the selected
+    runtime, so one from before scheduled jobs grants no job the device."""
+    chosen = runtime.available()
+    if chosen is None or spawn.runs_jobs(chosen.prefix):
+        return ""
+    return (f"the selected runtime ({chosen.commit[:12]}) has no scheduled jobs, so its model broker could reserve the device for "
+            f"none: deploy a commit that has them with `poolhouse runtime ensure`, then add the job")
+
+
+def _said_blockers() -> None:
+    found = device.blockers()
+    for line in found:
+        say(f"blocking now: {line}")
+    if not found:
+        say("nothing holds the device now")
+
+
 def add_job(file: Path, asked: Asked, *, identity: Mapping[str, Any] | None = None, cwd: Path | None = None,
-            begin: Callable[[str], None] = spawn.start) -> dict[str, Any]:
-    """Schedule the job of ``file``, decided now for this caller (`who.admit`), audited, with its process started."""
+            begin: Callable[[str], None] = spawn.begin) -> dict[str, Any]:
+    """Schedule the job of ``file``, decided now for this caller (`who.admit`), audited, and held by its own process before this
+    returns; `ValueError` when no process holds it (`spawn.begin`)."""
     identity = who.admit("scheduling a job") if identity is None else identity
     here = (cwd or Path.cwd()).resolve()
+    if why := _unrunnable():
+        raise ValueError(why)
     if asked.latest < time.time():
         raise ValueError(f"the latest start, {record.when(asked.latest)}, has passed")
     if not 0 < asked.max_hours <= 168:
@@ -164,7 +185,7 @@ def add_job(file: Path, asked: Asked, *, identity: Mapping[str, Any] | None = No
     job = {"name": asked.name or file.stem, "at": asked.at, "latest": asked.latest, "max_hours": asked.max_hours,
            "created": time.time(), "steps": found,
            "by": {"who": identity["who"], "sessions": identity.get("sessions") or [], "board": board, "agent": agent,
-                  "cwd": str(here)}, "code": {}, "pins": {}, "child": None}
+                  "cwd": str(here)}, "code": {}, "pins": {}, "child": None, "env": spawn.stored()}
     made = record.create(job, _prepare(job, checkout=asked.checkout, python=asked.python or sys.executable, cwd=here))
     digest = hashlib.sha256(json.dumps(made["steps"], sort_keys=True).encode()).hexdigest()
     caller.record("schedule.create", job=made["id"], by=identity["who"], agent=agent, at=record.when(asked.at),
@@ -210,13 +231,20 @@ def add(args: argparse.Namespace) -> int:
             say(f"code: {found.get('commit', '?')[:12] or 'no commit'} of {found.get('checkout')}"
                 + (" with uncommitted changes" if found.get("uncommitted") else ""))
         say(autostart_note(autostart_check.state_word()))
+        if why := _unrunnable():
+            say(f"blocking now: {why}")
+        _said_blockers()
         say("nothing was scheduled: --dry-run")
         return 0
     made = add_job(file, Asked(at, latest, args.name, args.code, args.python, args.notify, args.max_hours))
     say(f"scheduled {made['id']} ({made['name']}): start {record.when(at)}, latest start {record.when(latest)}")
     _listed(made)
+    if holder := record.view(record.load(made["id"]) or made)["holder"]:
+        say(f"held by pid {holder['pid']} ({holder['python']}); `poolhouse schedule show {made['id']} --json` says \"held\": true "
+            f"while it is")
     say(f"the notice goes to {made['by']['agent'] or '#announcements'}; `poolhouse schedule show {made['id']}`")
     say(autostart_note(autostart_check.state_word()))
+    _said_blockers()
     return 0
 
 
@@ -251,6 +279,8 @@ def show(args: argparse.Namespace) -> int:
         return 0
     say(f"{row['id']} {row['name']}: {row['state']}" + (f": {row['why']}" if row["why"] else ""))
     say(f"  start {row['starts']}, latest start {row['latest_start']}, scheduled {row['created']} by {row['by']}")
+    if holder := row["holder"]:
+        say(f"  held by pid {holder['pid']} ({holder['python']})")
     if row["started"] or row["ended"]:
         say(f"  started {row['started'] or '-'}, ended {row['ended'] or '-'}")
     for step in row["steps"]:

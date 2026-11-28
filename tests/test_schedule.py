@@ -22,13 +22,18 @@ from poolhouse import (
     delegate_record,
     delegate_store,
     joblines,
+    jobs,
+    runtime,
+    runtime_store,
     schedule_record as record,
 )
+from poolhouse.bench import keep
 from poolhouse.cli import daemon as daemon_command
 from poolhouse.fleet import daemon
 from poolhouse.isolation import ancestry
 from poolhouse.lock import only_one
-from poolhouse.schedule import cli, code, execute, spawn, steps, who
+from poolhouse.schedule import cli, code, execute, runner, spawn, steps, who
+from poolhouse.serve import broker_wire
 
 REPO = Path(__file__).resolve().parents[1]
 ME = {"who": "user tester pid 1", "sessions": []}
@@ -391,6 +396,175 @@ def test_keeping_jobs_looks_at_once_and_goes_on_after_a_failure_until_it_is_told
     monkeypatch.setattr(spawn, "ensure", ensure)
     spawn.keep(stop, every=0.01)
     assert len(looked) == 2
+
+
+# -- a job that can be run ------------------------------------------------------------------
+
+def installed(tmp_path: Path, name: str, *, schedules: bool) -> runtime.Runtime:
+    """An installed runtime as its files show it, with scheduled jobs or from before them."""
+    prefix = tmp_path / name
+    package = prefix / "lib" / "python3.13" / "site-packages" / "poolhouse"
+    (package / "schedule").mkdir(parents=True) if schedules else package.mkdir(parents=True)
+    (package / "__init__.py").touch()
+    if schedules:
+        (package / "schedule" / "cli.py").touch()
+    return runtime.Runtime(prefix, ("1" if schedules else "0") * 40, "0", "x")
+
+
+def test_a_job_is_refused_at_once_when_the_selected_runtime_has_no_scheduled_jobs(tmp_path, monkeypatch):
+    old = installed(tmp_path, "old", schedules=False)
+    monkeypatch.setattr(runtime, "available", lambda: old)
+    with pytest.raises(ValueError, match=r"has no scheduled jobs.*runtime ensure"):
+        scheduled(tmp_path, "quants report --set qwen3.8-27b\n")
+    assert record.jobs() == []
+
+
+def test_a_job_no_process_takes_is_not_reported_as_scheduled(tmp_path, monkeypatch):
+    started: list[str] = []
+    monkeypatch.setattr(spawn, "start", started.append)
+    monkeypatch.setattr(spawn, "HELD_WAIT_S", 0.3, raising=False)
+    with pytest.raises(ValueError, match="no process took it"):
+        cli.add_job(job_file(tmp_path, "delegate --model m --task x\n"), cli.Asked(time.time() + 600, time.time() + 1200),
+                    identity=ME, cwd=tmp_path)
+    [job] = record.jobs()
+    assert started == [job["id"]] and job["state"] == "failed" and "no process took it" in job["why"]
+    assert audited("schedule.end")[0]["state"] == "failed"
+    assert spawn.ensure(begin=lambda _job: pytest.fail("a job that was refused is started later")) == []
+
+
+@pytest.mark.parametrize("schedules", [True, False])
+def test_a_jobs_process_runs_on_the_selected_runtime_only_when_that_has_scheduled_jobs(tmp_path, monkeypatch, schedules):
+    chosen = installed(tmp_path, "selected", schedules=schedules)
+    monkeypatch.setattr(runtime, "available", lambda: chosen)
+    asked: dict = {}
+    monkeypatch.setattr(jobs, "detach", lambda module, argv, **kept: asked.update(kept, argv=argv))
+    job = stored()
+    spawn.start(job["id"])
+    assert asked["argv"] == ["hold", job["id"]] and asked["same_interpreter"] is (not schedules)
+
+
+def test_a_runtime_deploy_keeps_what_a_job_that_has_not_ended_runs_from(tmp_path):
+    root = tmp_path / "runtimes"
+    trees = []
+    for index in range(7):
+        prefix = root / (str(index) * 40) / "p"
+        (prefix / "bin").mkdir(parents=True)
+        (prefix / "bin" / "python").symlink_to(sys.executable)
+        runtime_store.mark_created(prefix, "probe", "ensure")
+        runtime_store.mark_verified(runtime.Runtime(prefix, str(index) * 40, "0", "x"))
+        (prefix / "verified.json").write_text(json.dumps({"verified_at": 1000.0 + index, "commit": str(index) * 40,
+                                                          "version": "0", "identity": "x"}), encoding="utf-8")
+        trees.append(prefix)
+    stored(code={"python": str(trees[0] / "bin" / "python")})
+    stored(runner={"pid": 1, "started": 1.0, "python": str(trees[1] / "bin" / "python"), "at": 0.0})
+    ended = stored(code={"python": str(trees[2] / "bin" / "python")})
+    record.update(ended["id"], lambda kept: kept.update(state="done"))
+    gone = runtime_store.collect({trees[6]}, root=root)
+    assert trees[0].is_dir() and trees[1].is_dir() and set(gone) == {trees[2], trees[3]}
+
+
+def test_a_jobs_steps_and_process_use_the_environment_it_was_scheduled_in(tmp_path, monkeypatch):
+    """Whoever starts its process again, the daemon after a restart say, has another PATH and another model cache."""
+    cache = str(Path.home() / "models-elsewhere")
+    monkeypatch.setenv("HF_HUB_CACHE", cache)
+    monkeypatch.setenv("PATH", os.pathsep.join(["/usr/sbin", "/usr/bin"]))
+    monkeypatch.setenv("POOLHOUSE_WORKSPACE_TOKEN", "a-session-token")
+    job = scheduled(tmp_path, "delegate --model m --task x\n")
+    assert "a-session-token" not in json.dumps(record.load(job["id"]))
+    monkeypatch.delenv("HF_HUB_CACHE")
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("HF_HOME", "/another/hf")
+    monkeypatch.setenv("PATH", "/bin")
+    seen: dict = {}
+
+    class Looked:
+        def __init__(self, _job):
+            pass
+
+        def run(self):
+            seen.update(os.environ)
+            return "done"
+
+    monkeypatch.setattr(os, "environ", os.environ.copy())
+    monkeypatch.setattr(runner.signal, "signal", lambda *_args: None)
+    monkeypatch.setattr(who, "refused_here", lambda: "")
+    monkeypatch.setattr(runner, "Runner", Looked)
+    assert runner.hold(job["id"]) == 0
+    assert seen["HF_HUB_CACHE"] == cache and seen["PATH"] == os.pathsep.join(["/usr/sbin", "/usr/bin"])
+    assert "HF_HOME" not in seen and "CLAUDECODE" not in seen and seen["POOLHOUSE_HOME"] == os.environ["POOLHOUSE_HOME"]
+    held = record.load(job["id"])["runner"]
+    assert held["pid"] == os.getpid() and held["python"] == sys.executable
+
+
+def test_a_process_keeps_its_job_when_the_successor_it_started_does_not_take_it(monkeypatch):
+    job = stored()
+    started: list[str] = []
+    outcomes = iter(["handover", "done"])
+    drove: list[str] = []
+
+    class Driven:
+        def __init__(self, found):
+            drove.append(found)
+
+        def run(self):
+            return next(outcomes)
+
+    monkeypatch.setattr(os, "environ", os.environ.copy())
+    monkeypatch.setattr(runner.signal, "signal", lambda *_args: None)
+    monkeypatch.setattr(who, "refused_here", lambda: "")
+    monkeypatch.setattr(runner, "Runner", Driven)
+    monkeypatch.setattr(spawn, "start", started.append)
+    monkeypatch.setattr(spawn, "HELD_WAIT_S", 0.3, raising=False)
+    assert runner.hold(job["id"]) == 0
+    assert started == [job["id"]] and drove == [job["id"], job["id"]]
+
+
+def test_a_bench_result_of_a_jobs_copy_names_the_commit_it_was_taken_from(tmp_path):
+    job = scheduled(tmp_path, "quants report --set qwen3.8-27b\n")
+    copy = record.folder(job["id"]) / "code"
+    said = subprocess.run([sys.executable, "-P", "-B", "-c", "from poolhouse.bench import keep; print(keep._commit())"],
+                          capture_output=True, text=True, cwd=tmp_path, env=code.environment(copy), timeout=120, check=False)
+    assert said.returncode == 0, said.stderr
+    stamped = said.stdout.strip()
+    assert stamped and job["code"]["commit"].startswith(stamped.split()[0])
+    assert stamped.endswith(" (dirty)") is job["code"]["uncommitted"]
+
+
+def test_a_job_knows_which_of_its_bench_lines_measure(tmp_path):
+    job = scheduled(tmp_path, "quants speed --set qwen3.8-27b\nquants build-tool\nquants --set qwen3.8-27b fidelity\n"
+                              "quants report --set qwen3.8-27b\nquants plan --set qwen3.8-27b\n")
+    assert [step["measures"] for step in job["steps"]] == [True, False, True, False, False]
+
+
+def test_a_kept_run_leaves_a_receipt_of_what_in_it_can_be_used(tmp_path, monkeypatch):
+    receipt = tmp_path / "kept.jsonl"
+    monkeypatch.setenv("POOLHOUSE_BENCH_RECEIPT", str(receipt))
+    keep.save(tmp_path / "runs.ladybug", [{"repeat": 0, "contended": True}, {"repeat": 1, "contended": False, "errors": 0},
+                                          {"repeat": 2, "contended": False, "errors": 1}, {"error": "refused"}],
+              kind="speed", label="set:one")
+    [line] = [json.loads(one) for one in receipt.read_text(encoding="utf-8").splitlines()]
+    assert (line["label"], line["rows"], line["usable"]) == ("set:one", 4, 1)
+
+
+def test_a_full_disk_does_not_stop_a_step_from_being_watched(tmp_path):
+    class Full:
+        def write(self, _data):
+            raise OSError(28, "No space left on device")
+
+        flush = write
+
+    execute.Run({"id": "s-20261127-00000000"}, Full(), lambda: "").say("a line")
+
+
+def test_adding_a_job_names_what_holds_the_device_now(tmp_path, monkeypatch, capsys, unboxed):
+    held = {"claims": {}, "servers": [{"port": 8080, "model": "held.gguf", "holders": [{"pid": 4242, "label": "up"}],
+                                       "loading": False, "ours": True}]}
+    monkeypatch.setattr(broker_wire, "status", lambda **_kept: held)
+    monkeypatch.chdir(tmp_path)
+    file = job_file(tmp_path, "delegate --model m --task x\n")
+    assert cli.main(["add", str(file), "--at", "+30m", "--dry-run"]) == 0
+    said = capsys.readouterr().out
+    assert "blocking now" in said and "port 8080" in said and "pid 4242" in said
 
 
 # -- times and words ------------------------------------------------------------------------

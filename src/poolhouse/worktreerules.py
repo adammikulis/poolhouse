@@ -197,8 +197,8 @@ def hard_edit_refusal(paths: Iterable[str], cwd: str, owns: Callable[[str], bool
         target = base / _unquote(raw)
         place = os.path.normpath(str(target))
         if rules.guarded(place, owns=owns) or rules.guarded(os.path.realpath(place), owns=owns) or rules.secret(place):
-            return (f"{target} is one of the guards, hook settings, the person folder or the authority registry: refused to an "
-                    "agent, since they decide what an agent may run; leave it as it is and say in the report what should change.")
+            return (f"{target} is one of the guards, hook settings, the person folder, the authority registry or a stored scheduled "
+                    "job: refused to an agent, since they decide what runs; leave it as it is and say in the report what should change.")
     return ""
 
 

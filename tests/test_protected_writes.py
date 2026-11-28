@@ -138,6 +138,28 @@ def test_the_active_state_root_is_protected_where_it_is(tree):
     assert not why(f"ls {root}/sentinel", tree, environ=environ)
 
 
+def test_a_scheduled_jobs_stored_record_and_code_are_protected_like_the_authority_registry(tree, monkeypatch):
+    """A stored job is a command that runs later outside every agent: no file tool or shell command of an agent writes it."""
+    environ = {"HOME": str(home_of(tree))}
+    root = tree / "elsewhere"
+    moved = {**environ, "POOLHOUSE_HOME": str(root)}
+    monkeypatch.setenv("POOLHOUSE_HOME", str(root))
+    held = "s-20261127-00000000"
+    for inside in (f"schedule/{held}/job.json", f"schedule/{held}/code/src/poolhouse/__init__.py", f"schedule/{held}", "schedule"):
+        for path, found in ((f"{home_of(tree)}/.poolhouse/{inside}", environ), (f"{root}/{inside}", moved)):
+            assert worktreerules.hard_edit_refusal([path], str(tree)), path
+            assert protectedwrites.tool_refusal("mcp__files__write_file", {"path": path}, cwd=str(tree), environ=found), path
+            assert why(f"echo x > {path}", tree, environ=found), path
+            assert why(f"rm -rf {path}", tree, environ=found), path
+    for command in (f"cat ~/.poolhouse/schedule/{held}/log", f"cat {root}/schedule/{held}/job.json"):
+        assert not why(command, tree, environ=moved), command
+    assert not protectedwrites.tool_refusal("Read", {"file_path": f"{root}/schedule/{held}/job.json"}, cwd=str(tree), environ=moved)
+    assert why(f"python3 -c \"open('{home_of(tree)}/.poolhouse/schedule/{held}/job.json','w')\"", tree, environ=environ)
+    assert not worktreerules.hard_edit_refusal([str(tree / "src" / "poolhouse" / "schedule" / "cli.py")], str(tree))
+    assert not why("echo x > src/poolhouse/schedule/cli.py", tree, environ=moved)
+    assert not why(f"echo x > {root}/schedules.txt", tree, environ=moved)
+
+
 def test_a_script_file_that_names_a_guard_is_refused_when_it_is_run(tree):
     (tree / "evil.py").write_text("open('.git/hooks/pre-push', 'w').write('exit 0')\n", encoding="utf-8")
     (tree / "evil.sh").write_text("echo x > .git/hooks/pre-push\n", encoding="utf-8")

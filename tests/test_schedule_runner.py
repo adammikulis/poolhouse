@@ -7,6 +7,7 @@ over an empty store, which load nothing. The clock is the test's, so a window of
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -18,7 +19,7 @@ import pytest
 from reservation_kit import Wire
 
 from poolhouse import caller, schedule_record as record
-from poolhouse.schedule import execute, notice, runner
+from poolhouse.schedule import device as device_module, execute, notice, runner
 from poolhouse.schedule.device import Device
 from poolhouse.serve import broker_holds, gpu
 from poolhouse.serve.broker import Broker
@@ -215,13 +216,172 @@ def test_a_job_whose_process_ended_while_it_ran_is_failed_and_nothing_is_run_aga
     assert kept["results"]["1"]["state"] == "failed" and "2" not in kept["results"] and "quants" not in record.log_tail(made["id"])
 
 
-def test_a_waiting_job_hands_over_to_a_newly_selected_runtime_and_stays_waiting(device_broker):
+def installed(tmp_path: Path, name: str, *, schedules: bool) -> Path:
+    """The prefix of an installed runtime as its files show it."""
+    package = tmp_path / name / "lib" / "python3.13" / "site-packages" / "poolhouse"
+    (package / "schedule").mkdir(parents=True) if schedules else package.mkdir(parents=True)
+    if schedules:
+        (package / "schedule" / "cli.py").touch()
+    return tmp_path / name
+
+
+def test_a_waiting_job_hands_over_to_a_newly_selected_runtime_and_stays_waiting(device_broker, tmp_path):
     broker, _process = device_broker
     clock = Clock()
     made = job([bench(1, REPORT)], at=clock.now + 3600, latest=clock.now + 7200)
-    selected = iter(["old", "new"])
+    selected = iter([installed(tmp_path, "old", schedules=True), installed(tmp_path, "new", schedules=True)])
     assert drive(made, broker, clock, selection=lambda: next(selected)) == "handover"
     assert record.load(made["id"])["state"] == "waiting"
+
+
+@pytest.mark.parametrize("near", [False, True])
+def test_a_waiting_job_keeps_its_process_for_a_runtime_without_scheduled_jobs_and_close_to_its_time(device_broker, tmp_path, near):
+    broker, _process = device_broker
+    clock = Clock()
+    early = 120 if near else 3600
+    made = job([bench(1, REPORT)], at=clock.now + early, latest=clock.now + 7200)
+    old, new = installed(tmp_path, "old", schedules=True), installed(tmp_path, "new", schedules=near)
+    looked: list[Path] = []
+
+    def selection() -> Path:
+        looked.append(old if not looked else new)
+        return looked[-1]
+
+    assert drive(made, broker, clock, selection=selection) == "done"
+
+
+def full_disk(monkeypatch, refused) -> list[str]:
+    """Refuse the record writes for which ``refused(record, writes so far)`` holds, as a full disk does."""
+    real, seen = record._write, []
+
+    def write(where, kept):
+        seen.append(kept["state"])
+        if refused(kept, len(seen)):
+            raise OSError(28, "No space left on device")
+        real(where, kept)
+
+    monkeypatch.setattr(record, "_write", write)
+    return seen
+
+
+@pytest.mark.parametrize("refused", [2, 3, 4, 5])
+def test_a_record_that_cannot_be_written_once_neither_ends_the_job_nor_kills_its_step(device_broker, monkeypatch, refused):
+    broker, _process = device_broker
+    clock = Clock()
+    made = job([bench(1, REPORT), bench(2, REPORT)], at=clock.now - 1, latest=clock.now + 600)
+    writes: list[int] = []
+
+    def once(kept, _count):
+        if kept["state"] == "running":
+            writes.append(1)
+        return kept["state"] == "running" and len(writes) == refused
+
+    full_disk(monkeypatch, once)
+    told = Told()
+    assert drive(made, broker, told=told) == "done"
+    kept = record.load(made["id"])
+    assert kept["state"] == "done" and [kept["results"][n]["state"] for n in ("1", "2")] == ["ok", "ok"], kept
+    assert [one["state"] for one in told.jobs] == ["done"] and "could not be written" in record.log_tail(made["id"])
+
+
+def test_a_start_that_cannot_be_recorded_is_tried_again_and_nothing_runs_unrecorded(device_broker, monkeypatch):
+    broker, _process = device_broker
+    clock = Clock()
+    made = job([bench(1, REPORT)], at=clock.now, latest=clock.now + 600)
+    failed: list[int] = []
+    ran: list[str] = []
+    real = execute.bench
+    monkeypatch.setitem(runner.STEPS, "bench",
+                        lambda run, step: (ran.append(record.load(made["id"])["state"]), real(run, step))[1])
+
+    def twice(kept, _count):
+        if kept["state"] == "running" and not kept["results"] and len(failed) < 2:
+            failed.append(1)
+            return True
+        return False
+
+    full_disk(monkeypatch, twice)
+    assert drive(made, broker, clock) == "done"
+    assert len(failed) == 2 and ran == ["running"]
+
+
+def test_an_end_that_cannot_be_written_is_told_at_once_and_written_when_the_disk_has_room(device_broker, monkeypatch):
+    broker, _process = device_broker
+    clock = Clock()
+    made = job([bench(1, REPORT)], at=clock.now - 1, latest=clock.now + 600)
+    failed: list[int] = []
+
+    def for_a_while(kept, _count):
+        if kept["state"] == "done" and len(failed) < 6:
+            failed.append(1)
+            return True
+        return False
+
+    full_disk(monkeypatch, for_a_while)
+    told = Told()
+    assert drive(made, broker, clock, told) == "done"
+    assert record.load(made["id"])["state"] == "done" and len(told.jobs) == 1 and not broker.claims
+
+
+def measured(rows: list[tuple[str, int]]):
+    """A measuring step as the runner sees it. PLUMBING: it leaves the receipt a bench step's kept runs leave; nothing is measured."""
+    def step(run, step_):
+        receipt = run.folder / f"kept-{step_['n']}.jsonl"
+        receipt.write_text("".join(json.dumps({"label": label, "rows": 4, "usable": usable}) + "\n" for label, usable in rows),
+                           encoding="utf-8")
+        return "ok", ""
+
+    return step
+
+
+def removal_after(*before: dict) -> list[dict]:
+    return [*before, {"n": len(before) + 1, "line": 9, "kind": "remove-model", "role": "step", "words": "remove-model",
+                      "ref": "hf:a/b/c.gguf"}]
+
+
+@pytest.mark.parametrize(("rows", "why"), [
+    ([], "kept no result"), ([("set:one", 4), ("set:two", 0)], "nothing usable for set:two")])
+def test_a_model_stays_when_a_measuring_step_before_it_kept_nothing_usable(device_broker, monkeypatch, rows, why):
+    broker, _process = device_broker
+    now = time.time()
+    made = job(removal_after({**bench(1, ["quants", "speed"]), "measures": True}), at=now - 1, latest=now + 600)
+    monkeypatch.setitem(runner.STEPS, "bench", measured(rows))
+    assert drive(made, broker) == "failed"
+    kept = record.load(made["id"])
+    assert kept["results"]["2"]["state"] == "skipped" and why in kept["results"]["2"]["why"], kept["results"]
+    assert why in kept["results"]["1"]["why"] and why in kept["why"]
+
+
+def test_a_report_that_found_nothing_is_no_reason_to_remove_a_model(device_broker):
+    broker, _process = device_broker
+    now = time.time()
+    made = job(removal_after({**bench(1, REPORT), "measures": False}), at=now - 1, latest=now + 600)
+    assert drive(made, broker) == "failed"
+    kept = record.load(made["id"])
+    assert kept["results"]["1"]["state"] == "ok" and kept["results"]["2"]["state"] == "skipped"
+    assert "no step before it kept a result" in kept["results"]["2"]["why"]
+
+
+def test_a_removal_after_a_usable_measurement_is_run(device_broker, monkeypatch):
+    broker, _process = device_broker
+    now = time.time()
+    made = job(removal_after({**bench(1, ["quants", "speed"]), "measures": True}), at=now - 1, latest=now + 600)
+    monkeypatch.setitem(runner.STEPS, "bench", measured([("set:one", 3)]))
+    assert drive(made, broker) == "failed"
+    results = record.load(made["id"])["results"]
+    assert results["1"]["usable"] is True
+    assert results["2"]["state"] == "failed" and "holds no a/b/c.gguf" in results["2"]["why"], "the removal itself ran"
+
+
+def test_what_holds_the_device_is_named_without_taking_it(device_broker):
+    broker, process = device_broker
+    other = process().pid
+    broker.claim(gpu.CLAIM, other, {"purpose": "a long training run"})
+    found = device_module.blockers(wire=Wire(broker, os.getpid()), measuring=lambda: None)
+    assert len(found) == 1 and "a long training run" in found[0] and str(other) in found[0]
+    assert set(broker.claims) == {gpu.CLAIM}
+    broker.unclaim(gpu.CLAIM, other)
+    assert device_module.blockers(wire=Wire(broker, os.getpid()), measuring=lambda: None) == []
 
 
 def test_a_notice_that_cannot_be_sent_is_kept_to_try_again(device_broker):

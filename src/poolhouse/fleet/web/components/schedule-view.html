@@ -42,7 +42,7 @@ schedule-view .schedule-job summary { cursor:pointer; color:var(--muted); font-s
     const found=(await W.api('/ui/schedule')).jobs||[];
     this.paint(found);
     for(const [id,card] of this.cards)if(card.about.open)await this.output(id,card);
-    this.note.textContent=found.length?'':'No job is scheduled. Add one with: poolhouse schedule add FILE --at TIME';
+    if(this.refused)W.status(this.note,this.refused);else this.note.textContent=found.length?'':'No job is scheduled. Add one with: poolhouse schedule add FILE --at TIME';
    }catch(error){W.status(this.note,error);}
    finally{this.loading=false;}
   }
@@ -74,8 +74,8 @@ schedule-view .schedule-job summary { cursor:pointer; color:var(--muted); font-s
   }
   async cancel(id,button){
    button.disabled=true;
-   try{await W.post(`/ui/schedule/${encodeURIComponent(id)}/cancel`,{});await this.load();}
-   catch(error){button.disabled=false;W.status(this.note,error);}
+   try{await W.post(`/ui/schedule/${encodeURIComponent(id)}/cancel`,{});this.refused=null;await this.load();}
+   catch(error){button.disabled=false;this.refused=error;W.status(this.note,error);}
   }
  }
  customElements.define('schedule-view',ScheduleView);

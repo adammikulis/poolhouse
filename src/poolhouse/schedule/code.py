@@ -46,15 +46,21 @@ def code_dir(named: str = "") -> Path | None:
                      "--code DIR, and its code is copied into the job")
 
 
-def snapshot(code: Path, into: Path) -> None:
-    """Copy the parts of the checkout ``code`` that a bench step reads to ``into``."""
+def snapshot(code: Path, into: Path) -> dict[str, Any]:
+    """Copy the parts of the checkout ``code`` that a bench step reads to ``into``, and name in the copy the commit it was taken
+    from, which the bench stamps on its results (`paths.SNAPSHOT_COMMIT`); `revision` of the checkout."""
     for part in PARTS:
         if (code / part).is_dir():
             shutil.copytree(code / part, into / part, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "node_modules"))
+    found = revision(code)
+    if short := found.pop("short"):
+        (into / "src" / "poolhouse" / paths.SNAPSHOT_COMMIT).write_text(
+            short + (" (dirty)" if found["uncommitted"] else ""), encoding="utf-8")
+    return found
 
 
 def revision(code: Path) -> dict[str, Any]:
-    """The commit the copy was taken from and whether the checkout held changes that were in no commit."""
+    """The commit of the checkout, in full and short, and whether it holds changes that are in no commit."""
     def git(*words: str) -> str:
         try:
             done = subprocess.run(["git", "-C", str(code), *words], capture_output=True, text=True, timeout=60, check=False)
@@ -62,7 +68,7 @@ def revision(code: Path) -> dict[str, Any]:
             return ""
         return done.stdout.strip() if done.returncode == 0 else ""
 
-    return {"checkout": str(code), "commit": git("rev-parse", "HEAD"),
+    return {"checkout": str(code), "commit": git("rev-parse", "HEAD"), "short": git("rev-parse", "--short", "HEAD"),
             "uncommitted": bool(git("status", "--porcelain", "--", *PARTS))}
 
 

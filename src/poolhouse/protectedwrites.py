@@ -24,7 +24,7 @@ GUARD_PATHS = (
     r"scripts/(release-key|github-protection-apply|github-protection|dev-branch-rule|agent-identity)", r"src/poolhouse/credentials/.*",
     r"\.git/(refs/remotes/.*|packed-refs)",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
-    r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
+    r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl|schedule(/.*)?)")
 GUARDS = re.compile(r"(^|/)(" + "|".join(GUARD_PATHS) + ")$", re.I)
 REGISTRY = re.compile(r"(^|/)" + GUARD_PATHS[-1] + "$", re.I)
 SECRETS = re.compile(r"(^|/)\.poolhouse/(person|node/client|node/person)(/|$)", re.I)
@@ -32,10 +32,10 @@ HELD = tuple(tuple(path.split("/")) for path in (
     "src/poolhouse/workspace/harness_ancestry.py", "scripts/hooks/harness-ancestry",
     "scripts/hooks/claude-harness-bind", "scripts/release-key", "src/poolhouse/credentials/__init__.py",
     ".git/hooks/pre-push", ".git/config", ".config/git/config", ".gitconfig"))
-KEPT = re.compile(r"\.poolhouse/(person|node/client|node/person|authority)", re.I)
+KEPT = re.compile(r"\.poolhouse/(person|node/client|node/person|authority|schedule/)", re.I)
 MENTION = re.compile(r"\.git/hooks|" + KEPT.pattern, re.I)
-"""What code run from a shell may not name: git's hooks, the owner's keys, the session tokens and the authority registry. Code that only names
-git's settings or a guard's file runs (a test or a document does); writing those by redirect, copy, edit in place or `git config` is refused."""
+"""What code run from a shell may not name: git's hooks, the owner's keys, the session tokens, the authority registry and stored jobs.
+Code that only names git's settings or a guard's file runs (a test does); writing those by redirect, copy or `git config` is refused."""
 
 NATIVE_SESSION = frozenset({"POOLHOUSE_SESSION_ID", "POOLHOUSE_SESSION_HARNESS", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID"})
 """The variables by which a harness names the main session a shell belongs to. The stamp takes them out of a subagent's shell, so
@@ -107,8 +107,9 @@ PATH_KEY = re.compile(r"(path|paths|file|files|dir|dirs|directory|directories|fo
 COMMAND_KEY = re.compile(r"(command|commands|cmd|cmds|script|scripts|argv|commandline|cmdline)$|^(run|exec|execute|shell|bash|zsh|sh)$")
 """Keys of a tool input, with every character but a letter taken out and lower case, that hold a path or a command."""
 TOO_COMPLEX = "is too long or too nested for the rules to read in bounded work: split it into smaller steps"
-REFUSED = ("refused to an agent: the guards, the hook settings, git's hooks and config and the authority registry decide what an "
-           "agent may run, so an agent never changes them; leave them as they are and say in the report what should change")
+REFUSED = ("refused to an agent: the guards, the hook settings, git's hooks and config, the authority registry and the stored "
+           "scheduled jobs decide what runs, so an agent never writes them (a job is made and cancelled with `poolhouse schedule`); "
+           "leave them as they are and say in the report what should change")
 NOT_READ = "refused to an agent: the person folder holds the owner's keys and the session tokens; read a file of the project instead"
 
 
@@ -140,10 +141,10 @@ def _holds_a_guard(path: str) -> bool:
 
 
 def file_guarded(path: str, environ: Mapping[str, str] | None = None, owns: Callable[[str], bool] | None = None) -> bool:
-    """Whether ``path`` is itself protected: the authority registry, or (where ``owns`` reaches) a guard, a hook setting,
-    git's hooks or config."""
-    if REGISTRY.search(path) or any(path.casefold() in (f"{root}/authority.json", f"{root}/authority-audit.jsonl")
-                                    for root in _roots(environ or os.environ)):
+    """Whether ``path`` is itself protected: the authority registry, a stored job, or (where ``owns`` reaches) a guard, git's hooks."""
+    low = path.casefold()
+    if REGISTRY.search(path) or any(low in (f"{root}/authority.json", f"{root}/authority-audit.jsonl", f"{root}/schedule")
+                                    or low.startswith(f"{root}/schedule/") for root in _roots(environ or os.environ)):
         return True
     return bool(GUARDS.search(path)) and (owns is None or owns(path))
 
@@ -893,7 +894,7 @@ def _tool_refusal(name: str, given: Mapping[str, object], here: Path, found: Map
             if secret(place, found):
                 return f"{text} is in the person folder or is a session token: {NOT_READ}."
             if writes and guarded(place, found):
-                return f"{text} is a guard, a hook setting or the authority registry: {REFUSED}."
+                return f"{text} is a guard, a hook setting, the authority registry or a stored scheduled job: {REFUSED}."
         if name in ("Glob", "Grep") and _reaches_secrets(text, here, found):
             return f"a search from {text} reaches the person folder: {NOT_READ}."
     return ""

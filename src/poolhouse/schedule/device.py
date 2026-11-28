@@ -13,10 +13,40 @@ from typing import Any
 
 from poolhouse.serve import broker_wire
 from poolhouse.serve.broker import BrokerError
-from poolhouse.serve.broker_holds import JOB_CLAIM
+from poolhouse.serve.broker_holds import GPU_CLAIM, JOB_CLAIM, MODEL_START
 from poolhouse.serve.manager import measurement_on_the_card, measurement_said
 
-__all__ = ["Device"]
+__all__ = ["Device", "blockers"]
+
+
+def _in_use(server: dict[str, Any]) -> str:
+    """Why a job may not stop the server the broker reports, "" for one of Poolhouse's that nothing holds."""
+    port, model = server["port"], server["model"]
+    if server.get("unmanaged") or not server.get("ours", True):
+        return f"port {port} serves {model}, which Poolhouse did not start"
+    if server.get("holders") or server.get("loading"):
+        held = ", ".join(f"pid {one['pid']} ({one.get('label') or 'no label'})" for one in server.get("holders") or [])
+        return f"port {port} serves {model}, in use by {held or 'a load under way'}"
+    return ""
+
+
+def blockers(*, wire: Any = broker_wire, measuring: Callable[[], Any] = measurement_on_the_card) -> list[str]:
+    """What would keep a job from the device were it due now, each named; nothing is taken, started or stopped. A server
+    nothing holds is not one: the job stops it."""
+    found = []
+    try:
+        if (held := measuring()) is not None:
+            found.append(f"a measurement holds the device: {measurement_said(held)}")
+        status = wire.status()
+    except (BrokerError, OSError, RuntimeError, ValueError) as why:
+        if str(why).startswith("no broker is running"):
+            return found
+        return [*found, f"the model broker could not be asked: {why}"]
+    for name, claim in (status.get("claims") or {}).items():
+        if name in (GPU_CLAIM, JOB_CLAIM) or name.startswith(MODEL_START):
+            purpose = (claim.get("info") or {}).get("purpose") or "a model start"
+            found.append(f"the device is claimed: {purpose} (pid {claim.get('pid') or '?'})")
+    return found + [why for server in status.get("servers") or [] if (why := _in_use(server))]
 
 
 class Device:
@@ -51,11 +81,8 @@ class Device:
         left = []
         for server in self.wire.status()["servers"]:
             port, model = server["port"], server["model"]
-            if server.get("unmanaged") or not server.get("ours", True):
-                left.append(f"port {port} serves {model}, which Poolhouse did not start")
-            elif server.get("holders") or server.get("loading"):
-                held = ", ".join(f"pid {one['pid']} ({one.get('label') or 'no label'})" for one in server.get("holders") or [])
-                left.append(f"port {port} serves {model}, in use by {held or 'a load under way'}")
+            if held := _in_use(server):
+                left.append(held)
             elif (done := self.wire.stop(port)).get("stopped"):
                 self.say(f"stopped the server on port {port} ({model}): nothing held it, and this job measures the device alone")
             else:

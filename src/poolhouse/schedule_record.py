@@ -24,8 +24,8 @@ from poolhouse.files import read_json, write_json
 from poolhouse.lock import held_by, only_one
 from poolhouse.platform import private_dir, private_file
 
-__all__ = ["ENDED", "ID", "RUNNER_LOCK", "STATES", "Refused", "alive", "cancel", "create", "folder", "jobs", "load", "log_tail",
-           "root", "update", "view", "when"]
+__all__ = ["ENDED", "ID", "RUNNER_LOCK", "STATES", "Refused", "alive", "cancel", "create", "folder", "interpreters", "jobs",
+           "load", "log_tail", "root", "update", "view", "when"]
 
 STATES = ("waiting", "running", "done", "failed", "missed", "cancelled")
 ENDED = ("done", "failed", "missed", "cancelled")
@@ -78,6 +78,7 @@ def create(record: dict[str, Any], prepare: Callable[[Path], None] | None = None
         private_dir(where)
     record.update(id=job, state="waiting", why="", checked=0.0, started=0.0, ended=0.0, results={}, cancel=None,
                   notice={"sent": 0.0, "error": ""})
+    record.setdefault("runner", None)
     made = False
     try:
         (where / "work").mkdir(mode=0o700)
@@ -138,6 +139,16 @@ def alive(job: str) -> bool:
     return bool(held_by(folder(job) / RUNNER_LOCK))
 
 
+def interpreters() -> list[str]:
+    """The interpreters that jobs which have not ended name: each one's bench steps', and that of the process holding it. A
+    runtime that holds one of them is not removed (`poolhouse.runtime_store.collect`)."""
+    named = []
+    for record in jobs():
+        if record["state"] not in ENDED:
+            named += [str((record.get(part) or {}).get("python") or "") for part in ("code", "runner")]
+    return [one for one in named if one]
+
+
 def cancel(job: str, by: str) -> dict[str, Any]:
     """Ask for ``job`` to be cancelled, audited. One that waits with no process ends at once; a process that holds it ends it, and
     stops the step it is running. A job that has ended is left as it ended."""
@@ -182,7 +193,9 @@ def view(record: dict[str, Any]) -> dict[str, Any]:
     steps = [{"n": step["n"], "kind": step["kind"], "words": step["words"], **unrun, **results.get(str(step["n"]), {})}
              for step in record.get("steps") or []]
     by = record.get("by") or {}
+    runner = (record.get("runner") or {}) if held else {}
     return {"id": record["id"], "name": record.get("name", ""), "state": state, "why": why, "held": held,
+            "holder": {"pid": runner.get("pid"), "python": runner.get("python", "")} if runner else None,
             "at": record.get("at", 0.0), "latest": record.get("latest", 0.0), "starts": when(record.get("at", 0.0)),
             "latest_start": when(record.get("latest", 0.0)), "started": when(record.get("started", 0.0)),
             "ended": when(record.get("ended", 0.0)), "created": when(record.get("created", 0.0)),

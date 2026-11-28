@@ -78,6 +78,54 @@ def test_a_reference_that_names_no_file_of_the_cache_removes_nothing(cache, ref)
     assert sorted(path.name for path in (cache / "blobs").iterdir()) == ["d1", "d2", "d3"]
 
 
+@pytest.mark.parametrize(("ref", "why"), [
+    ("hf:owner/repo/BF16/*-00001-of-00002.gguf", "wildcard"),
+    ("hf:owner/repo/*.gguf", "wildcard"),
+    ("hf:owner/repo/m-Q?.gguf", "wildcard"),
+    ("hf:owner/repo/m-[Q]4.gguf", "wildcard"),
+    ("hf:owner/repo/BF16/m-BF16-00001-of-00002.gguf@aaa", "revision"),
+    ("hf:owner/repo/m-Q4.gguf@main", "revision")])
+def test_a_reference_that_would_take_more_than_it_names_is_refused(cache, ref, why):
+    with pytest.raises(ValueError, match=why):
+        removal.remove(ref, dry_run=True)
+
+
+def test_bytes_a_file_of_another_repository_reaches_by_a_full_path_stay(cache, tmp_path, monkeypatch):
+    """The cache is reached through a link, and the other file names the stored bytes by where they really are."""
+    named = tmp_path / "linked-hub"
+    named.symlink_to(cache.parent)
+    monkeypatch.setenv("HF_HUB_CACHE", str(named))
+    other = cache.parent / "models--owner--other" / "snapshots" / "ccc" / "same.gguf"
+    other.parent.mkdir(parents=True)
+    other.symlink_to(os.path.realpath(cache / "blobs" / "d1"))
+    done = removal.remove(BF16)
+    assert [path.name for path in done.blobs] == ["d2"] and other.read_bytes() == b"x" * 100
+
+
+def test_a_build_another_file_is_reached_through_stays(cache):
+    other = cache.parent / "models--owner--other" / "snapshots" / "ccc" / "view.gguf"
+    other.parent.mkdir(parents=True)
+    other.symlink_to(cache / "snapshots" / "aaa" / "m-Q4.gguf")
+    with pytest.raises(ValueError, match=r"view\.gguf"):
+        removal.remove("hf:owner/repo/m-Q4.gguf")
+    assert other.read_bytes() == b"x" * 30
+
+
+def test_a_build_a_running_process_names_by_its_real_folder_stays(cache, tmp_path, monkeypatch):
+    named = tmp_path / "linked-hub"
+    named.symlink_to(cache.parent)
+    monkeypatch.setenv("HF_HUB_CACHE", str(named))
+    served = Path(os.path.realpath(cache)) / "snapshots" / "aaa" / "BF16" / "m-BF16-00001-of-00002.gguf"
+    child = subprocess.Popen([sys.executable, "-c", "import time;time.sleep(60)", str(served)])
+    try:
+        with pytest.raises(ValueError, match=f"in use and stays: pid {child.pid}"):
+            removal.remove(BF16)
+    finally:
+        child.kill()
+        child.wait()
+    assert served.read_bytes() == b"x" * 100
+
+
 def test_a_build_a_running_process_names_stays(cache):
     served = cache / "snapshots" / "aaa" / "BF16" / "m-BF16-00001-of-00002.gguf"
     child = subprocess.Popen([sys.executable, "-c", "import time;time.sleep(60)", str(served)])

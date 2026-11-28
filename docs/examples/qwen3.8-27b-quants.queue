@@ -4,9 +4,10 @@
 # UD-IQ4_XS, UD-Q3_K_XL and UD-IQ3_S, UD-IQ3_XXS and UD-Q2_K_XL. About 5.6 h by `quants plan --set qwen3.8-27b`, whose
 # rates are estimates: speed 1.9 h, fidelity 3.7 h. The coding tasks (48 h) are not in it.
 #
-# Schedule it from a source checkout (a release build ships no benchmark), after checking it with --dry-run:
+# Schedule it with the installed Poolhouse, naming a source checkout for the benchmark (an installed build ships none),
+# after checking it with --dry-run. Run from the checkout:
 #
-#   PYTHONPATH=src python -m poolhouse.cli schedule add docs/examples/qwen3.8-27b-quants.queue \
+#   poolhouse schedule add docs/examples/qwen3.8-27b-quants.queue --code . \
 #       --at "2026-11-28 23:07" --window 2h --max-hours 12 --dry-run
 #
 # Speed runs first, on the machine as it was found free, before building and scoring load it. --anyway keeps a repeat that

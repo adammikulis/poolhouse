@@ -9,7 +9,7 @@ import shutil
 import time
 from pathlib import Path
 
-from poolhouse import runtime
+from poolhouse import runtime, schedule_record
 from poolhouse.files import read_json, write_json
 from poolhouse.runtime_age import MARK, verified_at
 from poolhouse.serve.process import running_within
@@ -144,10 +144,18 @@ def referenced(prefix: Path, root: Path | None = None) -> bool:
     return False
 
 
+def scheduled(root: Path) -> set[Path]:
+    """The trees holding an interpreter that a scheduled job which has not ended names."""
+    # the interpreter itself is a link out of its tree, so its folder is what is resolved
+    folders = [Path(os.path.realpath(Path(python).parent)) for python in schedule_record.interpreters()]
+    return {tree for tree in trees(root) if any(folder.is_relative_to(os.path.realpath(tree)) for folder in folders)}
+
+
 def collect(protect: set[Path], *, keep: int = KEEP, root: Path | None = None) -> list[Path]:
-    """Delete only this tool's verified runtimes beyond the newest `keep` and stale unverified ones, never the selected, a launcher-named or an in-use one."""
+    """Delete only this tool's verified runtimes beyond the newest `keep` and stale unverified ones, never the selected, a
+    launcher-named, an in-use one or one a scheduled job is still to run from."""
     root = root or runtime.directory()
-    kept = {chosen.prefix for chosen in candidates(root)[:keep]} | protect
+    kept = {chosen.prefix for chosen in candidates(root)[:keep]} | protect | scheduled(root)
     gone = []
     for prefix in (tree for tree in trees(root) if ours(tree)):
         stale = not verified_at(prefix) and time.time() - prefix.stat().st_mtime > UNVERIFIED_GRACE_S

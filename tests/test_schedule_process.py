@@ -18,7 +18,7 @@ import psutil
 import pytest
 
 from poolhouse import caller, runtime, schedule_record as record
-from poolhouse.schedule import spawn, who
+from poolhouse.schedule import cli, spawn, who
 
 REPO = Path(__file__).resolve().parents[1]
 pytestmark = pytest.mark.slow
@@ -98,6 +98,21 @@ def test_a_jobs_own_process_holds_it_outlives_no_parent_and_ends_it_when_cancell
     assert os.getsid(process.pid) != os.getsid(0), "it belongs to no terminal"
     environment = process.environ()
     assert not [name for name in caller.AGENT_MARKERS if name in environment]
+    record.cancel(job, "user tester")
+    until(lambda: record.load(job)["state"] == "cancelled" and not record.alive(job))
+
+
+def test_adding_a_job_returns_only_once_its_own_process_holds_it(started, tmp_path):
+    file = tmp_path / "night.queue"
+    file.write_text("delegate --model m --task x\n", encoding="utf-8")
+    now = time.time()
+    job = cli.add_job(file, cli.Asked(now + 3600, now + 7200), identity={"who": "user tester", "sessions": []},
+                      cwd=tmp_path)["id"]
+    started.append(job)
+    assert record.alive(job), "a job reported as scheduled has a process holding it"
+    holder = record.view(record.load(job))["holder"]
+    [process] = processes(job)
+    assert holder["pid"] == process.pid and holder["python"]
     record.cancel(job, "user tester")
     until(lambda: record.load(job)["state"] == "cancelled" and not record.alive(job))
 

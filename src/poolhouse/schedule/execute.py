@@ -6,6 +6,8 @@ A step answers ``("ok" or "failed", why)``. A stop ends the processes of that st
 
 from __future__ import annotations
 
+import contextlib
+import json
 import os
 import re
 import subprocess
@@ -16,13 +18,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import delegate_record, schedule_record as record
+from poolhouse import delegate_record, paths, schedule_record as record
 from poolhouse.hub import removal
 from poolhouse.platform import start_process
 from poolhouse.schedule import code
 from poolhouse.serve.process import kill_process_tree
 
-__all__ = ["Run", "bench", "delegate", "remove"]
+__all__ = ["Run", "bench", "delegate", "receipt", "remove", "unusable"]
 
 LOOK_S = 1.0
 STARTED = re.compile(r"^(?:started (\S+) \(pid|(\S+) is already running that task)", re.MULTILINE)
@@ -41,8 +43,9 @@ class Run:
     look_s: float = LOOK_S
 
     def say(self, line: str) -> None:
-        self.log.write(f"{time.strftime('%H:%M:%S')} {line}\n".encode())
-        self.log.flush()
+        with contextlib.suppress(OSError):  # a full disk: the line is lost and the step in flight goes on being watched
+            self.log.write(f"{time.strftime('%H:%M:%S')} {line}\n".encode())
+            self.log.flush()
 
     @property
     def folder(self) -> Path:
@@ -80,7 +83,34 @@ def bench(run: Run, step: dict[str, Any]) -> tuple[str, str]:
     copy = run.folder / "code" if held.get("copied") else None
     argv = [held["python"], "-P", "-B", "-m", "poolhouse.bench", *step["argv"]]
     run.say(f"python -m poolhouse.bench {' '.join(step['argv'])}")
-    return _ended(*run.command(argv, cwd=run.folder / "work", env=code.environment(copy)))
+    kept = receipt(run, step)
+    kept.unlink(missing_ok=True)
+    env = {**code.environment(copy), paths.BENCH_RECEIPT_ENV: str(kept)}
+    return _ended(*run.command(argv, cwd=run.folder / "work", env=env))
+
+
+def receipt(run: Run, step: dict[str, Any]) -> Path:
+    """Where the bench writes a line for each run it keeps during ``step`` (`poolhouse.bench.keep.save`)."""
+    return run.folder / f"kept-{step['n']}.jsonl"
+
+
+def unusable(run: Run, step: dict[str, Any]) -> str:
+    """Why what a measuring ``step`` kept is nothing to act on, "" when each thing it measured has a usable row. An exit of 0
+    says the command ran, not that it measured: a repeat that found the machine busy is kept and left out of the report."""
+    usable: dict[str, int] = {}
+    try:
+        for line in receipt(run, step).read_text(encoding="utf-8").splitlines():
+            row = json.loads(line)
+            usable[str(row["label"])] = usable.get(str(row["label"]), 0) + int(row["usable"])
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, KeyError, TypeError) as why:
+        return f"left a receipt of its results that cannot be read: {why}"
+    if not usable:
+        return "kept no result"
+    if empty := sorted(label for label, count in usable.items() if not count):
+        return f"kept nothing usable for {', '.join(empty)}"
+    return ""
 
 
 def _own(module: str, *words: str) -> list[str]:
