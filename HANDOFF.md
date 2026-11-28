@@ -34,6 +34,7 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | Windows runs natively, without WSL | Pull request, green Windows installer check, install over an older release, then confinement of the model server and agents | branch `worktree-agent-adc2b4ba43534d41d`, #112 |
 | Phone linking to a computer, including native Windows | Attack pass of the Windows permission changes; take its Windows fixes into the native branch | #111 |
 | Android app | Join or found a pool from the app, guest and device-uses screens, then a test on a phone | #114, branch `feat/android-node-mode` |
+| Approvals in the app, with a person deciding, for the actions that person chooses; protections stay automatic | Keep the node's approval protocol. #114 removes the old approval app and its native library, so the new app needs the approval screens. Settle which actions can ask and what happens with no answer, and state it in the rule of `AGENTS.md` that nothing waits for a person | `docs/phone-approval.md`, `app/poolhouse-node/src/gov/`, #114 |
 | Phone node runs no code from other devices | Wire the node module into the app | branch `backup/phone-node` |
 | VM prototype for the phone, not wired in | Review and land as a prototype | #119 |
 
@@ -81,7 +82,6 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 
 | Item | State | Where |
 |---|---|---|
-| Phone approval protocol | Remove it with its node code, phone endpoint, document and `app/phone-governance-jni`: a protection never waits for a person's tap. After #114, which removes the old app | `docs/phone-approval.md`, `app/poolhouse-node/src/gov/` |
 | Lead agents installing login units | Decided, not built; findings F1 to F16 are open, F15 and F1 first | `docs/agent-login-unit-install.md` |
 | A refused or shut-down pool is deleted after 3 days; a compromised pool is sealed read-only and never restorable | Not built | `docs/design-phone-free-pools.md` |
 | Session credential sandbox | Not proven: the generated Codex configuration has no read-deny rules, a hard link made before confinement stays readable, and the installed wrappers are untested. Do not claim S1 or S7 credentials are protected | `docs/agent-sandbox.md` |
