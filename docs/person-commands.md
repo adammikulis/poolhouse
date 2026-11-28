@@ -1,7 +1,7 @@
 # Commands an agent is refused, and why
 
-Nothing in Poolhouse waits for a person. There is no typed yes, no phone tap, no "needs a terminal on stdin", no inbox answer
-that a command parks on. Every action is decided at once by one of three rules, and every decision is audited with who ran it
+Nothing in Poolhouse waits for a person, except an action that person chose to approve in the app (every choice starts off).
+No command here parks on a typed yes, a phone tap, a "needs a terminal on stdin" or an inbox answer. Every action is decided at once by one of three rules, and every decision is audited with who ran it
 (`authority-audit.jsonl` under the state root: `poolhouse.caller.audit_rows()`; `who` is the process or session, for example
 `agent CLAUDECODE session s-1 pid 4242` or `user alice pid 77`).
 
