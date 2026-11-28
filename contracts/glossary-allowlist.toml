@@ -183,6 +183,27 @@ reason = "a torch/mlx implementation pair in the backend parity code"
 token = "MLXPair"
 reason = "a torch/mlx implementation pair in the backend parity code"
 
+[[allow]]
+path = ["app/android/app/src/main/kotlin/app/poolhouse/phone/ui/PoolScreens.kt",
+        "app/android/app/src/main/kotlin/app/poolhouse/phone/ui/WorkScreens.kt",
+        "app/android/app/src/test/kotlin/app/poolhouse/phone/ThemeTest.kt",
+        "app/android/core/src/main/kotlin/app/poolhouse/core/store/SessionTree.kt",
+        "app/android/core/src/main/kotlin/app/poolhouse/core/store/Work.kt",
+        "app/android/core/src/test/kotlin/app/poolhouse/core/SampleComputer.kt",
+        "app/android/llm/src/debug/kotlin/app/poolhouse/llm/bench/PoolBench.kt",
+        "app/android/llm/src/main/kotlin/app/poolhouse/llm/engine/ModelHost.kt",
+        "app/android/llm/src/main/kotlin/app/poolhouse/llm/pool/PoolProtocol.kt",
+        "app/android/llm/src/main/kotlin/app/poolhouse/llm/ui/LocalChatActivity.kt",
+        "app/android/llm/src/main/kotlin/app/poolhouse/llm/ui/ModelsActivity.kt",
+        "app/android/llm/src/test/kotlin/app/poolhouse/llm/pool/LocalEndpointTest.kt",
+        "app/android/llm/src/test/kotlin/app/poolhouse/llm/pool/PoolTest.kt"]
+words = ["pair"]
+reason = "Kotlin's own Pair type, a tuple of two values, in the Android app; nothing to do with membership"
+
+[[token]]
+token = "peerCertificates"
+reason = "the Java platform's name for the certificates of a connection's other end"
+
 # -- "cluster" as ordinary English or another program's word -------------------------------------------
 
 [[allow]]

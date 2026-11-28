@@ -36,11 +36,11 @@ import javax.net.ssl.SSLContext
 
 /** A phone key held in memory, signing as Android Keystore does. */
 class MemoryKey : PhoneKey {
-    private val pair: KeyPair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
-    override val publicKey: PublicKey get() = pair.public
+    private val keys: KeyPair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+    override val publicKey: PublicKey get() = keys.public
 
     override fun sign(data: ByteArray): ByteArray = Signature.getInstance("SHA256withECDSA").run {
-        initSign(pair.private)
+        initSign(keys.private)
         update(data)
         sign()
     }
