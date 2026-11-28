@@ -237,6 +237,30 @@ if "mode:edits-nothing" in task:
 open("src/feature.py", "w").write("def feature():\\n    return 1\\n")
 if "mode:clean" in task:
     ended(CANNED + " done")
+if "mode:commits" in task:
+    step()
+    got = shell("git add src/feature.py && git commit -qm 'PLUMBING commit made in the box' && git log -1 --format=%an")
+    finish()
+    open("src/after.py", "w").write("x = 1\\n")
+    if "then:errors" in task:
+        step(CANNED + " committed " + got)
+        finish()
+        event("error", error={{"type": "provider", "message": "the model server went away"}})
+        sys.exit(1)
+    if "then:linger" in task:
+        step(CANNED + " committed " + got)
+        finish()
+        open("src/waiting.py", "w").write("x = 1\\n")
+        time.sleep(120)
+    if "then:tampers" in task:
+        got += shell("rm -rf .git && echo 'gitdir: /nonexistent/NOT-A-REPOSITORY' > .git && echo replaced")
+    if "then:hoards" in task:
+        held = []
+        for _ in range(48):
+            held.append(os.urandom(16 << 20))
+            time.sleep(0.05)
+        time.sleep(15)
+    ended(CANNED + " committed " + got)
 if "mode:errors" in task:
     step(CANNED + " half way")
     finish()
@@ -761,6 +785,49 @@ def test_a_delegate_in_the_worktree_made_for_it_is_confined_there_and_its_change
     assert row["applied"] == ["src/feature.py"] and row["tree"]["branch"] == f"delegate/{name}", row
     assert said_by("show", "--name-only", "--format=", row["tree"]["commit"]).split() == ["src/feature.py"]
     assert not tree.exists() and not (project / "src").exists()
+
+
+@pytest.mark.parametrize(("then", "state"), [("done", "done"), ("errors", "failed"), ("linger", "stopped"), ("hoards", "failed"),
+                                             ("tampers", "done")])
+def test_a_delegate_commits_in_its_box_and_its_work_is_on_its_branch_however_the_run_ends(editing, confinable, monkeypatch, then, state):
+    node, lead, project = editing
+
+    def said_by(*words):
+        argv = ["git", "-C", str(project), "-c", "user.name=t", "-c", "user.email=t@example.invalid", *words]
+        return subprocess.run(argv, check=True, capture_output=True, text=True).stdout
+
+    said_by("add", "-A")
+    said_by("commit", "--allow-empty", "-qm", "start")
+    config = (project / ".git" / "config").read_bytes()
+    if then == "hoards":
+        derived = choke_point.derive
+        monkeypatch.setattr(choke_point, "derive", lambda volume: replace(derived(volume), memory_bytes=256 << 20))
+    assert started("--task", f"mode:commits then:{then}", "--project", str(project), "--edit", tree=True) == 0
+    [name] = agent_names(node, lead)
+
+    def stop_when_working():
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            if list(confinable.glob("**/src/waiting.py")):
+                os.kill(os.getpid(), signal.SIGTERM)
+                return
+            time.sleep(0.05)
+
+    if then == "linger":
+        threading.Thread(target=stop_when_working, daemon=True).start()
+    assert delegate_run.run(name) == (0 if state == "done" else 1), store.result(name)
+    row = store.result(name)
+    sha = row["tree"]["commit"]
+    assert row["state"] == state and sha and sha == said_by("rev-parse", f"delegate/{name}").strip(), row
+    held = said_by("show", "--name-only", "--format=", sha).split()
+    assert {"src/after.py", "src/feature.py"} <= set(held), (held, row)
+    message = said_by("log", "-1", "--format=%B%n%an", sha)
+    assert name in message and ("UNFINISHED" in message) == (state != "done"), message
+    assert "PLUMBING commit made in the box" not in message, "the launcher reads nothing of the copy's .git, whose commits stay there"
+    if then in ("done", "errors", "tampers"):
+        assert f"committed 0 {name}" in row["text"], "git commit works in the box, under the delegate's own name"
+    assert row["patches"] == [] and not Path(store.load(name).workdir).exists(), row
+    assert not (project / "src").exists() and (project / ".git" / "config").read_bytes() == config, "the lead's checkout is not written"
 
 
 def test_a_harness_that_ends_while_its_child_holds_the_pipe_ends_the_run_and_the_child(editing):

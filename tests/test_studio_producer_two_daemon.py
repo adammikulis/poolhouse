@@ -23,6 +23,7 @@ from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.producer_runtime import Runtime
 from poolhouse.fleet.remote import Member
 from poolhouse.fleet.service_pool import Pool
+from tests.short_temp import short_temp
 
 runtime_app = _runtime_app
 REAL_DISCOVER = Member.discover  # the one-daemon fixture it shares replaces it with an empty list
@@ -72,7 +73,7 @@ def launch_sdk(producer, outgoing):
 @pytest.fixture
 def connected(runtime_app, monkeypatch, studio_node):
     producer, _producer_cookie, outgoing = runtime_app
-    with tempfile.TemporaryDirectory(prefix='recv-', dir='/tmp') as temporary:
+    with tempfile.TemporaryDirectory(prefix='recv-', dir=short_temp()) as temporary:
         root = Path(temporary).resolve()
         receiver = Serving(root, name='Receiving daemon', pool=Pool(studio_node.b.state),
                              service_identity=lambda: studio_node.idb)

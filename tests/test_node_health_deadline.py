@@ -15,6 +15,7 @@ import pytest
 
 from poolhouse import node_health
 from poolhouse.platform import is_windows
+from tests.short_temp import short_temp
 
 
 def dribbling_node(state: Path, gap_s: float) -> threading.Thread:
@@ -44,7 +45,7 @@ def dribbling_node(state: Path, gap_s: float) -> threading.Thread:
 
 @pytest.mark.skipif(is_windows(), reason="the Unix socket exchange")
 def test_a_reply_that_arrives_a_byte_at_a_time_runs_out_the_exchange_deadline():
-    with tempfile.TemporaryDirectory(prefix="nh-", dir="/tmp") as folder:
+    with tempfile.TemporaryDirectory(prefix="nh-", dir=short_temp()) as folder:
         state = Path(folder)
         dribbling_node(state, gap_s=0.3)
         began = time.monotonic()

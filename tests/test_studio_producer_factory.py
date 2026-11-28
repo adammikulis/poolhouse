@@ -18,6 +18,7 @@ from poolhouse.fleet.producer_control import receive_frame, send_frame
 from poolhouse.fleet.producer_runtime import Runtime
 from poolhouse.fleet.remote import Member
 from poolhouse.fleet.service_pool import Pool
+from tests.short_temp import short_temp
 
 served = _served
 
@@ -56,7 +57,7 @@ def test_start_availability_runs_without_store_lock_and_changed_source_prevents_
 @pytest.fixture
 def runtime_app(monkeypatch, studio_node):  # noqa: F811
     # A short private test root keeps real Unix socket paths within the kernel limit.
-    with tempfile.TemporaryDirectory(prefix='prod-', dir='/tmp') as temporary:
+    with tempfile.TemporaryDirectory(prefix='prod-', dir=short_temp()) as temporary:
         root = Path(temporary).resolve()
         app = Serving(root)
         app.ui.root = root / 'traind'

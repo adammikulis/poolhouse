@@ -147,6 +147,9 @@ class Plan:
     interactive: bool = False
     bounds: Bounds | None = None
     """What the session may take (`isolation.bounds`); ``None`` derives each from the machine at launch."""
+    committer: str = ""
+    """For a session whose project is a checkout of its own (a delegate's worktree), the name it commits under: `git commit` works in its copy,
+    and a publication asked for at the end is made also when a resource bound ended the session, unless the copy is past the disk or file bound."""
 
 
 class Admission:
@@ -363,7 +366,8 @@ class Confinement:
         """End every process of the session, publish the last turn (the checks decide, not the exit status), stop the services and remove what the
         launch made. With ``publish`` false (the session is stopped by the one that started it, or it failed) nothing more is published: the stage's
         unpublished work is dropped with the stage, after it is kept as a patch when ``keep_patch`` says so. A session that passed a resource bound
-        publishes nothing more and keeps the patch, whatever the caller asked. Safe to call twice; the first call decides."""
+        publishes nothing more and keeps the patch, whatever the caller asked; one that commits (`Plan.committer`) is still published when its copy
+        is within the disk and file bounds. Safe to call twice; the first call decides."""
         if self.closed:
             return self.turn or Turn()
         self.closed = True
@@ -374,7 +378,7 @@ class Confinement:
             if self.made.watch is not None:
                 self.end_processes()   # the last look is taken once nothing writes any more, and before anything is published
                 passed = self.made.watch.stop()
-            if passed:
+            if passed and not (publish and self.plan.committer and self.made.watch.fits(str(self.session.stage.physical))):
                 publish, keep_patch = False, True
             self.turn = (self.session.finish(tree, stalled=self.stall, ended=None if started else process_tree.Ended()) if publish
                          else self.session.discard(tree, stalled=self.stall, keep_patch=keep_patch, ended_by=passed))
@@ -477,7 +481,8 @@ def prepare(plan: Plan) -> Confinement:
     in both the harness does not exist."""
     began = time.monotonic()
     require_capable(Spec(plan.harness, "", "", "", 0, project=plan.project, interactive=plan.interactive))
-    session = Session.begin(Launch(plan.project, str(state_home.state("isolation")), plan.agent, plan.notice, plan.conversation))
+    session = Session.begin(Launch(plan.project, str(state_home.state("isolation")), plan.agent, plan.notice, plan.conversation,
+                                   committer=plan.committer))
     parts = Parts()
     stack, scratch = parts.stack, parts.scratch
     staged = time.monotonic()
@@ -511,7 +516,7 @@ def prepare(plan: Plan) -> Confinement:
             frozen.append(str(agent_home / name))
         spec = Spec(plan.harness, stage, str(agent_home), install_tree(plan.binary), model.port, bridge.path, 0, session.patches, plan.project,
                     plan.policy, plan.interactive, tuple(frozen), server if rendering.serves else "", session.reads,
-                    tuple(window.ports) if window else (), window.path if window else "", temp, _withheld(plan.upstream))
+                    tuple(window.ports) if window else (), window.path if window else "", temp, _withheld(plan.upstream), bool(plan.committer))
         env = environment(Inputs(plan.harness, str(agent_home), search_path(spec, plan.grants), context.base_url, model.token, plan.lease.alias,
                                  plan.lease.window, plan.interactive, {}, plan.extras, (*shims, *session.sources),
                                  window.setting if window else "", temp))

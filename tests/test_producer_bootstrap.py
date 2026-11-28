@@ -18,13 +18,14 @@ import psutil
 import pytest
 
 from poolhouse.fleet import app_identity, producer_bootstrap as bootstrap, tls
+from tests.short_temp import short_temp
 
 NONCE = "1" * 64
 
 
 @pytest.fixture
 def directory():
-    with tempfile.TemporaryDirectory(prefix="bootstrap-", dir="/tmp") as name:
+    with tempfile.TemporaryDirectory(prefix="bootstrap-", dir=short_temp()) as name:
         root = Path(name).resolve()
         root.chmod(0o700)
         (root / app_identity.PROOF_KEY_FILE).write_text("ab" * 32)

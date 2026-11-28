@@ -176,6 +176,17 @@ def test_a_build_that_fails_says_so_and_leaves_no_binary(site, tmp_path):
     assert not list((tmp_path / "cache" / testnode.FOLDER).glob("?" * testnode.KEY_LENGTH))
 
 
+def test_a_build_folder_that_cannot_be_written_is_a_build_that_failed(site, tmp_path):
+    """In a coding box the account's build folder is refused: the runner then runs the rest, where an error of another kind ended the run."""
+    closed = tmp_path / "closed"
+    closed.mkdir(mode=0o500)
+    try:
+        with pytest.raises(testnode.BuildError, match="cannot be built in"):
+            site.build(closed / "cache")
+    finally:
+        closed.chmod(0o700)
+
+
 def test_the_node_fixture_uses_the_runners_binary_and_never_runs_cargo(tmp_path, monkeypatch):
     made = tmp_path / "poolhouse-node"
     made.write_text("binary")
@@ -237,8 +248,13 @@ def test_a_failed_build_stops_the_run_before_any_test_with_the_cargo_error(tmp_p
         raise testnode.BuildError("cargo build -p poolhouse-node failed:\nerror[E0432]")
 
     monkeypatch.setattr(runner.testnode, "ensure", broken)
+    monkeypatch.setattr(runner.sandbox, "confined", lambda: False)   # this suite may itself run in a coding box, which goes on without
     assert runner.build_node() == 4
     assert "error[E0432]" in capsys.readouterr().err
+    monkeypatch.delitem(os.environ, testnode.UNBUILT, raising=False)
+    monkeypatch.setattr(runner.sandbox, "confined", lambda: True)
+    monkeypatch.setitem(os.environ, testnode.UNBUILT, "")
+    assert runner.build_node() == 0 and "coding sandbox" in os.environ[testnode.UNBUILT]
 
 
 def test_the_build_command_prints_the_binary_for_a_run_the_runner_does_not_start(tmp_path, monkeypatch, capsys):

@@ -9,6 +9,7 @@ deletion. Content `HEAD` also holds under an ordinary name, and the empty file's
 
 The index keeps the working copy's files, so `git diff HEAD` is the uncommitted change with the session's and `git diff` the session's alone.
 Other files no session is given (`excluded`) stay as `HEAD` has them, skip-worktree. `.git/REVIEW` holds three views for one that only reads.
+The launcher reads nothing more of the `.git` of a session that commits, whose commits stay in the stage (`coding_workspace.Workspace.pin`).
 """
 
 from __future__ import annotations
@@ -23,8 +24,10 @@ from pathlib import Path
 from poolhouse import secretpaths
 from poolhouse.activity import source_snapshot
 
-__all__ = ["DEPTH", "REVIEW", "committed", "give"]
+__all__ = ["DEPTH", "IDENTITY", "REVIEW", "committed", "give"]
 
+IDENTITY = "poolhouse.invalid"
+"""The domain of the address a session or a delegate's branch is committed under, which reaches no one."""
 DEPTH = 200
 """The commits of `HEAD`'s history a stage holds: enough to read a branch's log and a change's parents, packed in about a second."""
 REVIEW = "poolhouse-review"
@@ -190,14 +193,22 @@ def committed(source: Path) -> bool:
         return False
 
 
-def give(source: Path, stage: Path, excluded: Sequence[bytes]) -> str:
-    """Give the stage the project's history (see the module). Empty when it did or the project has none, else why git in the box will not
-    show it."""
-    if not committed(source):
-        return ""
+def _identified(stage: Path, committer: str) -> None:
+    """Name ``committer`` in the stage's own configuration, so `git commit` in the box needs no setting of anyone's; nothing is signed."""
+    for key, value in (("user.name", committer), ("user.email", f"{committer}@{IDENTITY}"), ("commit.gpgSign", "false")):
+        _git(stage, ["config", key, value])
+
+
+def give(source: Path, stage: Path, excluded: Sequence[bytes], committer: str = "") -> str:
+    """Give the stage the project's history (see the module), and ``committer``, where there is one, an identity to commit under. Empty when it
+    did or there was nothing to give, else why git in the box will not show it."""
     try:
-        head = _commits(source, stage)
-        kept = [row for row in _git(stage, ["ls-tree", "-r", "-z", head]).split(b"\0") if row and _under(row.partition(b"\t")[2], excluded)]
+        if committer:
+            _identified(stage, committer)
+        if not committed(source):
+            return ""
+        made = _commits(source, stage)
+        kept = [row for row in _git(stage, ["ls-tree", "-r", "-z", made]).split(b"\0") if row and _under(row.partition(b"\t")[2], excluded)]
         if kept:
             entries = (b"%s %s\t%s" % (row.split()[0], row.split()[2], row.partition(b"\t")[2]) for row in kept)
             _git(stage, ["update-index", "-z", "--index-info"], b"\0".join(entries) + b"\0")

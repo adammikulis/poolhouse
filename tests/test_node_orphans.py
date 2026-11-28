@@ -14,6 +14,7 @@ import node_orphans
 import pytest
 
 from poolhouse import node_binary as node_binary_module, node_launch, node_supervise
+from tests.short_temp import short_temp
 
 pytest_plugins = ["node_kit"]
 
@@ -37,7 +38,7 @@ def test_node_binary_fixture_does_not_reap_shared_state(tmp_path, monkeypatch):
 
 @pytest.fixture
 def orphan_base():
-    with tempfile.TemporaryDirectory(prefix="orphan-", dir="/tmp") as name:
+    with tempfile.TemporaryDirectory(prefix="orphan-", dir=short_temp()) as name:
         yield Path(name)
 
 

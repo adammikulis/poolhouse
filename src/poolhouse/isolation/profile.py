@@ -35,8 +35,9 @@ from poolhouse.sandbox.run import fair_share
 __all__ = ["Profile", "build", "interpreter_programs", "interpreter_reads", "search_path"]
 
 GIT_DIRECTORY = ".git"
-"""The stage's git directory, which the launcher reads again after the run (its index names what is captured): a session reads it, so `git diff` and
-`git status` work, and writes nothing in it, so a commit in the box fails."""
+"""The stage's git directory, whose index names what the launcher captures: a session reads it, so `git diff` and `git status` work, and writes
+nothing in it, so a commit in the box fails. A session that commits (`Spec.commits`) writes it, and the launcher reads the stage by its own copy
+of the index (`coding_workspace.Workspace.pin`)."""
 PERSONAL_PROGRAMS = (".cargo/bin", ".local/bin", ".bun/bin")
 """Folders of programs a package manager installs under the home folder, which a macOS box has at the end of its ``PATH``."""
 PREFERENCES = {"codex": ("com.openai.codex",)}
@@ -137,7 +138,8 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
                     unix_sockets=tuple(each for each in (spec.session_socket, spec.window_socket) if each),
                     unix_namespaces=(spec.server,) if spec.server else (),
                     read_files=settings, read_metadata=linked,
-                    deny_write=(*(str(Path(spec.stage) / name) for name in (*CONTROL_PREFIXES, GIT_DIRECTORY)), *spec.frozen),
+                    deny_write=(*(str(Path(spec.stage) / name) for name in (*CONTROL_PREFIXES, *(() if spec.commits else (GIT_DIRECTORY,)))),
+                                *spec.frozen),
                     limits=limits or Limits(wall_seconds=None, output_bytes=None, processes=fair_share()),
                     open=opened, private=(*toolchain.private_trees(), *toolchain.tool_credentials()) if opened else ())
     return Profile(policy, spec.stage, spec.home, search_path(spec, grants), tuple(grants), _digest(policy, grants, spec), spec.harness,

@@ -8,10 +8,12 @@ from pathlib import Path
 import pytest
 import testkit.kernel_isolation as isolation
 
+from tests.short_temp import short_temp
+
 
 @pytest.mark.skipif(sys.platform != "darwin", reason="the Seatbelt kernel runs on macOS")
 def test_failed_preparation_removes_the_control_directory(monkeypatch):
-    storage = Path(tempfile.mkdtemp(prefix="cr", dir="/tmp"))
+    storage = Path(tempfile.mkdtemp(prefix="cr", dir=short_temp()))
     try:
         monkeypatch.setattr(isolation, "supervisor_storage", lambda environment: storage)
 

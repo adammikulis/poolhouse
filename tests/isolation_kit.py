@@ -30,6 +30,7 @@ from poolhouse.isolation.environment import Inputs
 from poolhouse.isolation.profile import Profile
 from poolhouse.sandbox import run
 from tests.sandbox_kit import policy
+from tests.short_temp import short_temp
 
 MARK = "[CANNED RESPONSE, NOT A MODEL]"
 MODEL = "CANNED-NOT-A-MODEL"
@@ -96,7 +97,7 @@ def world(tmp_path: Path, *, plan: bool = False, harness: str = "claude") -> Ite
     (stage / "main.py").write_text("print('hello')\n")
     server = ThreadingHTTPServer(("127.0.0.1", 0), Canned)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    short = tempfile.mkdtemp(prefix="pp-sock-", dir="/tmp")
+    short = tempfile.mkdtemp(prefix="pp-sock-", dir=short_temp())
     path = os.path.realpath(Path(short) / "session")
     stop = threading.Event()
     threading.Thread(target=_serve_unix, args=(path, stop), daemon=True).start()

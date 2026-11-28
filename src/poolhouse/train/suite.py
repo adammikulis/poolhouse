@@ -21,7 +21,7 @@ from typing import Any
 from poolhouse import home
 from poolhouse.backend import detect_backend, set_seeds
 from poolhouse.log import say, warn
-from poolhouse.optional import module
+from poolhouse.optional import mlx_core, module
 
 __all__ = ["KIND", "Suite", "busy_pct", "file_name", "known", "lock_path",
            "peak_memory_bytes", "register", "registered", "run", "said", "suite_lock"]
@@ -85,9 +85,7 @@ def peak_memory_bytes(backend: str) -> int:
     """The most memory the backend says it allocated, or 0 when it does not say."""
     try:
         if backend == "mlx":
-            import mlx.core as mx
-
-            return int(mx.get_peak_memory())
+            return int(mlx_core().get_peak_memory())
         if backend == "torch":
             import torch
 

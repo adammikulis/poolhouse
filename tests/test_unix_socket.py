@@ -11,12 +11,13 @@ import psutil
 import pytest
 
 from poolhouse import unix_socket
+from tests.short_temp import short_temp
 
 
 @pytest.fixture
 def tmp_path():
     # Darwin pathname sockets cannot use pytest's long per-test directory names.
-    with tempfile.TemporaryDirectory(prefix='unix-endpoint-', dir='/tmp') as directory:
+    with tempfile.TemporaryDirectory(prefix='unix-endpoint-', dir=short_temp()) as directory:
         yield Path(directory)
 
 

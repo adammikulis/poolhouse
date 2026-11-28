@@ -5,13 +5,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from poolhouse.optional import mlx_core
+
 Tensor = Any
 
 
 def require_mlx() -> tuple[Any, Any]:
     """Import ``mlx.core`` and ``mlx.nn``, with a clear error if they are absent."""
     try:
-        import mlx.core as mx
+        mx = mlx_core()
         import mlx.nn as nn
     except ImportError as exc:
         raise RuntimeError(

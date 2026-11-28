@@ -48,6 +48,8 @@ class Spec:
     it fits; empty where the agent home holds the temporary files."""
     withheld: tuple[int, ...] = ()
     """Loopback ports of this machine's services that a box which reaches its loopback may still not reach: the model server's."""
+    commits: bool = False
+    """The session commits in its copy, so it writes the stage's `.git`; the launcher reads nothing there after the start."""
 
     @property
     def read_only_stage(self) -> bool:

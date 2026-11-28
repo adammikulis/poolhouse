@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 
 from poolhouse import unix_socket
+from poolhouse.files import open_step
 from poolhouse.graph.guard import MAX_BODY
 from poolhouse.json_objects import unique_object
 
@@ -50,10 +51,11 @@ class _Location:
         if not self.root.is_absolute() or ".." in self.root.parts:
             raise ValueError("Private producer directory must be absolute")
         try:
-            at = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            parts = self.root.parts
+            at = open_step(parts[0], last=len(parts) == 1)
             self.descriptors.append(at)
-            for component in self.root.parts[1:]:
-                child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=at)
+            for position, component in enumerate(parts[1:], 2):
+                child = open_step(component, last=position == len(parts), dir_fd=at)
                 self.descriptors.append(child)
                 self.anchors.append((at, component, child, _identity(os.fstat(child))))
                 at = child

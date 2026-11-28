@@ -14,6 +14,9 @@ from poolhouse import coding_workspace_state as state, files, lock, private_path
 from poolhouse.activity import source_snapshot
 from poolhouse.activity.source_snapshot import Capture, SourceSnapshot
 
+INDEXED_AT_ONCE = 500
+"""The files one `git add` of a stage is given. No recorded reason beyond keeping each call far inside `source_snapshot.STALL_S`."""
+
 
 def _free_bytes(directory: Path) -> int:
     return shutil.disk_usage(directory).free
@@ -67,6 +70,8 @@ class Workspace:
         self.last: Capture | None = None
         self.changes: tuple[Change, ...] = ()
         self.persisted: dict | None = None
+        self.pinned: Path | None = None
+        """The index a stage is read by in place of its own (`pin`)."""
         snapshot = SourceSnapshot(self.source, self.directory, strict=False)
         try:
             self.initial = snapshot.capture(self.master, excluded=self._excluded(snapshot))
@@ -124,7 +129,7 @@ class Workspace:
             made.source_identity = tuple(receipt["source_identity"])
             made.directory_identity = tuple(receipt["directory_identity"])
             made.alias, made.lock, made.free = directory / "workspace", threading.Lock(), _free_bytes
-            made.revision, made.persisted = receipt["revision"], receipt
+            made.revision, made.persisted, made.pinned = receipt["revision"], receipt, None
             made.excluded = state.paths(receipt["initial"]["manifest"]["excluded"])
             made.initial = made._restore_capture(receipt["initial"])
             made.last = made._restore_capture(receipt["master"])
@@ -157,8 +162,8 @@ class Workspace:
         credentials = (name for name in snapshot.entries if secretpaths.name_hit(os.fsdecode(name)))
         return tuple(sorted({*self.excluded, *credentials, *(os.fsencode(path) for path in state.CONTROL_PREFIXES)}))
 
-    def _capture(self, root: Path, label: str, previous: Capture) -> Capture:
-        snapshot = SourceSnapshot(root, self.directory, known_paths=previous.missing, strict=False)
+    def _capture(self, root: Path, label: str, previous: Capture, index: Path | None = None) -> Capture:
+        snapshot = SourceSnapshot(root, self.directory, known_paths=previous.missing, strict=False, index=index)
         try:
             return snapshot.capture(self.directory / f"{label}-{uuid.uuid4().hex}",
                                     excluded=self._excluded(snapshot))
@@ -172,10 +177,12 @@ class Workspace:
             source_snapshot.git_output(["init", "--quiet", str(root)], cwd=self.directory)
         names = self.directory / f"paths-{uuid.uuid4().hex}"
         try:
-            names.write_bytes(b"\0".join(entry.path for entry in capture.entries) + b"\0")
-            if capture.entries:
+            # git says nothing while it adds, so a project is added a batch at a time, each with a stall's time: a large one is no stall
+            for at in range(0, len(capture.entries), INDEXED_AT_ONCE):
+                names.write_bytes(b"\0".join(entry.path for entry in capture.entries[at:at + INDEXED_AT_ONCE]) + b"\0")
                 source_snapshot.git_output(["--literal-pathspecs", "add", "--force", *(["--intent-to-add"] if intent else []),
-                                            "--pathspec-from-file=" + str(names), "--pathspec-file-nul"], cwd=root)
+                                            "--pathspec-from-file=" + str(names), "--pathspec-file-nul"], cwd=root,
+                                           seconds=source_snapshot.STALL_S)
         finally:
             names.unlink(missing_ok=True)
 
@@ -242,8 +249,17 @@ class Workspace:
         credential name the tool made is not carried and is returned by name, beside the capture, so the rest is published; `finish` is
         unchanged and still refuses the whole result for either. ``base`` is the capture the session last published."""
         present = {os.fsencode(prefix) for prefix in state.CONTROL_PREFIXES if os.path.lexists(stage.physical / prefix)}
-        captured = self._capture(stage.physical, "result", base)
+        captured = self._capture(stage.physical, "result", base, self.pinned)
         return captured, tuple(sorted(present | {name for name in captured.excluded if name not in base.excluded}))
+
+    def pin(self, stage: Stage) -> None:
+        """Keep the index of ``stage`` as it is now, outside every folder a session writes, and read the stage by that copy from here on
+        (`observe`): the index of a session that commits changes, and then decides nothing of what is captured."""
+        held, index = self.directory / f"index-{uuid.uuid4().hex}", stage.physical / ".git" / "index"
+        if os.path.lexists(index):   # git writes none for a project with no file to add; the copy that is not there lists none either
+            shutil.copyfile(index, held)
+            held.chmod(0o600)
+        self.pinned = held
 
     def adopt(self, kept: Path) -> Stage:
         """Take a stage an earlier launch of the same conversation kept (a directory of another private namespace of this account) as the working

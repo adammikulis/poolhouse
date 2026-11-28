@@ -19,6 +19,7 @@ import pytest
 from poolhouse import sandbox
 from poolhouse.sandbox import Limits, Net, SandboxViolation, run
 from tests.sandbox_kit import CONNECT, policy
+from tests.short_temp import short_temp
 
 pytest_plugins = ["tests.sandbox_kit"]
 
@@ -309,7 +310,7 @@ for name, call in (("file", lambda: open(folder + "/file", "w")), ("link", lambd
 
 
 def test_a_unix_namespace_lets_a_process_serve_on_its_sockets_and_make_no_other_file(tmp_path, seatbelt):
-    folder = os.path.realpath(tempfile.mkdtemp(prefix="pp-", dir="/tmp"))
+    folder = os.path.realpath(tempfile.mkdtemp(prefix="pp-", dir=short_temp()))
     try:
         held = replace(policy(python=True), unix_namespaces=(folder,))
         done = run([sys.executable, "-c", NAMESPACE, folder], held)

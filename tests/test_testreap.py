@@ -16,6 +16,7 @@ from testreap import Proc
 
 from poolhouse import node_launch, node_supervise
 from poolhouse.lock import pid_alive
+from tests.short_temp import short_temp
 
 SUPERVISOR = "/usr/bin/python3 -m poolhouse.node_launch supervise --state {state} --arg=--presence --arg=terminal"
 WATCHED = SUPERVISOR + " --parent-pid {owner}"
@@ -154,7 +155,7 @@ def test_a_listed_process_is_unchanged_only_while_its_start_and_command_line_are
 
 
 def test_a_pid_that_now_belongs_to_another_process_is_not_stopped():
-    mine = Path(tempfile.mkdtemp(prefix="mlreap", dir="/tmp"))
+    mine = Path(tempfile.mkdtemp(prefix="mlreap", dir=short_temp()))
     bystander = sleeper()
     stale_row = Proc(bystander.pid, 1, time.time() - OLD * 10, f"{sys.executable} -m poolhouse.node_launch supervise --state {mine}/node")
     try:
@@ -176,7 +177,7 @@ def supervisor_of(state: Path, owner: int, fake: Path) -> subprocess.Popen:
 
 
 def test_a_supervisor_whose_owner_has_exited_is_stopped_and_one_whose_owner_runs_is_not(tmp_path):
-    mine = Path(tempfile.mkdtemp(prefix="mlreap", dir="/tmp"))
+    mine = Path(tempfile.mkdtemp(prefix="mlreap", dir=short_temp()))
     owner = sleeper()
     doomed = supervisor_of(mine, owner.pid, tmp_path / "a")
     kept = supervisor_of(mine, os.getpid(), tmp_path / "b")

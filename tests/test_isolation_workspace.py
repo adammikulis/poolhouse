@@ -94,6 +94,29 @@ def test_a_survivor_or_an_incomplete_tree_skips_publication_keeps_the_stage_and_
     assert unfollowed.deferred, "a tree nobody followed is never taken as ended"
 
 
+@pytest.mark.parametrize("how", ["a survivor", "written while read", "failed and unread"])
+def test_a_publication_that_does_not_run_loses_no_work_of_a_session_no_relaunch_takes_up(project, tmp_path, monkeypatch, how):
+    session = begin(project, tmp_path, Sink())
+    write(session, "src/more.py", "m = 1\n")
+    stage = session.stage.physical
+
+    def moving(*_given):
+        raise RuntimeError("PLUMBING: the stage was written while it was read")
+
+    if how != "a survivor":
+        monkeypatch.setattr(session.workspace, "observe", moving)
+    if how == "failed and unread":
+        turn = session.discard(None, stalled=1.0, keep_patch=True)
+    else:
+        survivors = (os.getpid(),) if how == "a survivor" else ()
+        turn = session.finish(None, stalled=1.0, ended=process_tree.Ended(survivors=survivors))
+    assert turn.deferred and not turn.applied and not (project / "src" / "more.py").exists()
+    if how == "a survivor":
+        assert turn.withheld == ("src/more.py",) and b"m = 1" in Path(turn.patch.path).read_bytes() and turn.patch.path in turn.text, turn
+    else:
+        assert (stage / "src" / "more.py").read_text() == "m = 1\n" and str(stage) in turn.text and str(stage) in turn.deferred, turn
+
+
 def test_a_relaunch_of_the_same_conversation_reuses_the_kept_stage_and_a_file_refused_before_is_not_reported_again(project, tmp_path):
     first_sink = Sink()
     first = begin(project, tmp_path, first_sink, conversation="c1")

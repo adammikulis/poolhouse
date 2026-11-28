@@ -36,6 +36,7 @@ from poolhouse import (
 from poolhouse.board import grants, session as board_session
 from poolhouse.board.client import Client
 from poolhouse.testfarm.client import Shards, pool_devices
+from tests.short_temp import short_temp
 
 BOARD = "demo"
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,7 +70,7 @@ class Device:
 
 def start(binary: Path, name: str, person: RigPerson) -> Device:
     """A node process on a short temporary root, listening on loopback, with one session registered on the board."""
-    root = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
+    root = Path(tempfile.mkdtemp(prefix="ml", dir=short_temp()))
     state = root / "node"
     state.mkdir(mode=0o700)
     wire.plant_key(state, person.key.public.hex(), "phone")

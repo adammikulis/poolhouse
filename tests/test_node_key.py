@@ -28,6 +28,7 @@ from poolhouse import (
     node_supervise,
 )
 from poolhouse.node_key import KeyUnavailable
+from tests.short_temp import short_temp
 
 pytest_plugins = ["node_kit"]
 
@@ -439,7 +440,7 @@ def keystore_node(node_binary, monkeypatch, tmp_path):
     import keyring
     from onboard_support import FileKeyring
 
-    root = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
+    root = Path(tempfile.mkdtemp(prefix="ml", dir=short_temp()))
     state = root / "node"
     state.mkdir(mode=0o700)
     ring = tmp_path / "keyring.json"

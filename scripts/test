@@ -668,7 +668,7 @@ def build_node(files: list[str] | None = None) -> int:
         print(f"test: {error}", file=sys.stderr)
         if not sandbox.confined():
             return 4
-        os.environ[testnode.UNBUILT] = "the node binary cannot be built in a coding sandbox, which has no Rust toolchain of the account and no network"
+        os.environ[testnode.UNBUILT] = "the node binary cannot be built in a coding sandbox, which writes no Rust build folder and has no network"
         print(f"test: {os.environ[testnode.UNBUILT]}: the tests that start one are skipped", file=sys.stderr)
     return 0
 

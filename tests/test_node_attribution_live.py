@@ -17,6 +17,7 @@ from state_attribution import Watch
 
 from poolhouse import node_binary as node_binary_module, node_supervise
 from poolhouse.board import client as board_client
+from tests.short_temp import short_temp
 
 pytest_plugins = ["node_kit"]
 NAMES, TOKENS = "node/boards/demo/names.json", "node/tokens.json"
@@ -40,7 +41,7 @@ out.write_text(json.dumps({"name": made.name}))
 @pytest.fixture
 def outside_node(node_binary, monkeypatch):
     """A running node on a short temporary root that a process which has since exited started, so it is no part of this run."""
-    root = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
+    root = Path(tempfile.mkdtemp(prefix="ml", dir=short_temp()))
     state = root / "node"
     state.mkdir(mode=0o700)
     monkeypatch.setenv("POOLHOUSE_HOME", str(root))

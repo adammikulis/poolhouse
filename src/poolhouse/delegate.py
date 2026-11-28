@@ -147,7 +147,8 @@ def start(args: argparse.Namespace) -> int:
     board = place.at_path(client, Path.cwd())
     lead = harnessid.launcher(client, board, args.parent).name
     model = standing_model(args.model)
-    asked = store.Delegate("", lead, board, args.task, "", model, args.name, source, edit, permissions=tier, review_rounds=rounds)
+    asked = store.Delegate("", lead, board, args.task, "", model, args.name, source, edit, permissions=tier, review_rounds=rounds,
+                           commit=delegate_grade.commit_of(source))
     if same := _running(asked):
         say(f"{same} is already running that task; `poolhouse-delegate status {same}`")
         return 0
@@ -165,7 +166,7 @@ def start(args: argparse.Namespace) -> int:
             raise
     rec = store.Delegate(made.name, lead, board, args.task, workdir, model, args.name, source, edit, args.max_turns,
                          [made.native.model, made.native.harness, made.native.id], permissions=tier, sandboxed=not why, kind=kind,
-                         review_rounds=rounds, commit=delegate_grade.commit_of(source), resumes=args.resumes, branch=branch)
+                         review_rounds=rounds, commit=asked.commit, resumes=args.resumes, branch=branch)
     store.save(rec)
     delegate_grade.opened(rec)
     job = jobs.detach(delegate_run.__name__, [rec.name], log=store.log_file(rec.name), kind=JOB,
@@ -202,15 +203,15 @@ def _admitted(asked: store.Delegate, typed: str, why: str) -> str:
 
 
 def _own_tree(asked: store.Delegate, name: str, why: str) -> tuple[str, str]:
-    """A worktree and branch of delegate ``name``, admitted like its project; removed again when it is refused."""
+    """A worktree and branch of delegate ``name`` at the commit ``asked`` names, admitted like its project; removed again when it is refused."""
     if behind := delegate_tree.uncommitted(asked.source):
         say(f"it starts from the project's commit: {len(behind)} uncommitted file(s) of {asked.source} are not in its worktree")
-    workdir, branch = delegate_tree.made(asked.source, name)
+    workdir, branch = delegate_tree.made(asked.source, name, asked.commit)
     try:
         if not why:
             delegate_confined.admit(replace(asked, workdir=workdir), "")
     except (Denied, OSError, RuntimeError, ValueError):
-        delegate_tree.removed(asked.source, workdir, branch, keep_branch=False)
+        delegate_tree.removed(asked.source, workdir, branch, asked.commit)
         raise
     return workdir, branch
 
@@ -223,11 +224,12 @@ def _announce(rec: store.Delegate, pid: int, why: str) -> None:
         mode = f"{rec.permissions}, with no sandbox,"
     say(f"started {rec.name} (pid {pid}) for {rec.lead} on {Path(rec.model).name}: {mode} in {rec.workdir}")
     if rec.review_rounds:
-        held = "" if why or not rec.edit else ", and its change is applied only once accepted"
+        held = "" if why or not rec.edit or rec.branch else ", and its change is applied only once accepted"
         say(f"a fresh reviewer checks the work before delivery, in up to {rec.review_rounds} round(s){held}; --no-review turns it off")
     say(f"it asks you with a message from {rec.name}: read `poolhouse-workspace inbox`, answer with `poolhouse-workspace send {rec.name} answer TEXT`")
     if rec.branch:
-        say(f"it works on branch {rec.branch} in a worktree of its own; what stands is committed there for you to review and land")
+        say(f"it works on branch {rec.branch} in a worktree of its own; what it makes is committed there, however the run ends, for you to "
+            "review and land")
     say(f"poolhouse-delegate status {rec.name} | follow {rec.name} | wait {rec.name} | result {rec.name} | stop {rec.name}")
 
 
@@ -377,24 +379,30 @@ def result(args: argparse.Namespace) -> int:
 
 @COMMANDS.command("stop", help="end the agent, and its confined processes, and remove what it made", options=[flag("name")])
 def stop(args: argparse.Namespace) -> int:
-    """End the process if it runs (its confinement ends every process of the session and publishes nothing more), the session if it still stands,
-    and remove the scratch folder of a delegate that had no project."""
+    """End the process if it runs (its confinement ends every process of the session) and the session if it still stands, remove the scratch folder
+    of a delegate that had no project, and commit what a runner that is gone left in its worktree. A runner that wrote its result settled its own
+    worktree, and one that is still ending settles it itself: neither is touched."""
     rec = store.load(args.name)
     if rec is None:
         raise ValueError(f"no delegate {args.name}; `poolhouse-delegate status` lists them")
     here = store.folder(rec.name)
     if jobs.alive(JOB, home=here):
         jobs.stop(JOB, home=here, say=say)
+        if jobs.alive(JOB, home=here):
+            say(f"{rec.name} is still running: it is keeping what it made, which no stop cuts short; `poolhouse-delegate wait {rec.name}` returns "
+                "when it has ended")
+            return 1
     if not store.finished(rec.name):
         store.set_status(rec.name, "stopped", "stopped by the lead")
     if not store.graded(rec.name)["run"].get("state"):   # a runner that ended wrote its own
         store.keep(rec.name, run={"state": store.status(rec.name).get("state", "stopped"), "ended": time.time()})
     with contextlib.suppress(Denied, NodeError, ValueError, OSError):
         harnessid.launcher(Client(node_launch.default_state()), rec.board, rec.lead).retire(rec.name)
-    if rec.branch:   # a runner that ended removed its own; one that is gone left it
-        _state, said, _kept = delegate_tree.settled(rec, "stopped", ())
-        if said:
-            say(said)
+    if rec.branch:
+        if not store.result(rec.name):
+            _state, said, _kept = delegate_tree.settled(rec, "stopped", None)
+            if said:
+                say(said)
     elif rec.workdir != rec.source:
         shutil.rmtree(rec.workdir, ignore_errors=True)
     say(f"stopped {rec.name}")

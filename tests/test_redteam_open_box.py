@@ -11,11 +11,15 @@ in the harness's place is a shell script (NOT A MODEL and NOT A HARNESS) and the
 
 from __future__ import annotations
 
+import _posixshmem
+import ctypes
 import importlib.util
 import json
+import mmap
 import os
 import pwd
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
@@ -27,9 +31,11 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import loopback_window
+import poolhouse
+from poolhouse import loopback_window, sandbox
 from poolhouse.isolation import confinement as choke_point, toolchain
-from poolhouse.sandbox import confinement, process_tree, seatbelt_open
+from poolhouse.sandbox import Limits, Policy, confinement, process_tree, seatbelt_open
+from tests.short_temp import short_temp
 from tests.test_redteam_isolation_shell import box, shelled  # noqa: F401  (box is a fixture)
 
 pytest_plugins = ["tests.confined_kit", "tests.sandbox_kit"]
@@ -239,6 +245,72 @@ def test_a_process_that_took_the_pid_of_an_ended_member_is_not_admitted():
         member.wait()
 
 
+SHARED_MEMORY = """\
+import ctypes, mmap, os, sys, _posixshmem
+libc = ctypes.CDLL(None, use_errno=True)
+libc.shmat.restype = ctypes.c_void_p
+what, named = sys.argv[1], sys.argv[2]
+if what == "attach":
+    at = libc.shmat(int(named), None, 0)
+    if at == ctypes.c_void_p(-1).value:
+        sys.exit(1)
+    print(ctypes.string_at(at, 40))
+elif what == "find":
+    sys.exit(0 if libc.shmget(int(named), 4096, 0o600) >= 0 else 1)
+elif what == "make":
+    made = libc.shmget(0, 4096, 0o1600)
+    print("made", made)
+    sys.exit(0 if made >= 0 else 1)
+elif what == "remove":
+    sys.exit(0 if libc.shmctl(int(named), 0, None) == 0 else 1)
+elif what == "semaphores":
+    sys.exit(0 if libc.semget(int(named), 1, 0o600) >= 0 else 1)
+else:
+    held = _posixshmem.shm_open(named, os.O_RDONLY, mode=0)
+    print(mmap.mmap(held, 40, prot=mmap.PROT_READ)[:40])
+"""
+
+
+def test_an_open_box_reaches_no_system_v_memory_or_semaphore_and_posix_memory_only_by_a_name_it_is_told(box):  # noqa: F811
+    """The second is declared (`seatbelt_open.EXPOSURES`, X5): Seatbelt cannot tell a box's own POSIX objects from another program's."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.shmat.restype = ctypes.c_void_p
+    key = 0x50480000 | (os.getpid() & 0xFFFF)
+    segment = libc.shmget(key, 4096, 0o1000 | 0o600)
+    semaphores = libc.semget(key, 1, 0o1000 | 0o600)
+    name = f"/phx5-{os.getpid()}"
+    posix = _posixshmem.shm_open(name, os.O_CREAT | os.O_RDWR, mode=0o600)
+    try:
+        assert segment >= 0 and semaphores >= 0, ctypes.get_errno()
+        at = libc.shmat(segment, None, 0)
+        ctypes.memmove(at, b"NOT-A-REAL-SECRET in a segment\0", 31)
+        os.ftruncate(posix, 4096)
+        with mmap.mmap(posix, 4096) as held:
+            held[:20] = b"PLUMBING posix bytes"
+        (box.project / "memory.py").write_text(SHARED_MEMORY)
+        out, _, _ = shelled(box, f"""\
+            tried attach-segment '{PYTHON} memory.py attach {segment}'
+            {PYTHON} memory.py attach {segment}
+            tried find-segment '{PYTHON} memory.py find {key}'
+            tried remove-segment '{PYTHON} memory.py remove {segment}'
+            tried make-segment '{PYTHON} memory.py make 0'
+            {PYTHON} memory.py make 0
+            tried semaphores '{PYTHON} memory.py semaphores {key}'
+            tried posix-memory-by-name '{PYTHON} memory.py posix {name}'
+            """)
+        still = libc.shmat(segment, None, 0) != ctypes.c_void_p(-1).value
+    finally:
+        os.close(posix)
+        _posixshmem.shm_unlink(name)
+        libc.shmctl(segment, 0, None)
+        libc.semctl(semaphores, 0, 0)
+    for line in out.splitlines():   # a segment a box could make would outlive it: removed here, and the assertion below says it was made
+        if line.startswith("made ") and int(line.split()[1]) >= 0:
+            libc.shmctl(int(line.split()[1]), 0, None)
+    expect(out, ("posix-memory-by-name",), ("attach-segment", "find-segment", "remove-segment", "make-segment", "semaphores"))
+    assert still and "made -1" in out and "NOT-A-REAL-SECRET" not in out, out
+
+
 def test_an_open_box_runs_the_installed_tools_and_reads_none_of_their_credentials_or_the_persons_files(box):  # noqa: F811
     mine = Path(os.environ["HOME"])   # the suite's own home, which the launcher takes for the person's
     (mine / ".cargo" / "bin").mkdir(parents=True)
@@ -267,6 +339,56 @@ def test_an_open_box_runs_the_installed_tools_and_reads_none_of_their_credential
            ("change-installed", "registry-credential", "tool-credential", "private-file", "keychain-list", "keychain-item", "clipboard-read",
             "clipboard-write", "preferences-read", "preferences-write"))
     assert "NOT-A-REAL" not in out, out
+
+
+def test_the_folder_a_test_makes_short_paths_in_holds_a_unix_socket_inside_the_box(box):  # noqa: F811
+    """Every test that needs a short path asks `tests.short_temp`; in a box that is the box's own temporary folder, never the shared ``/tmp``."""
+    shutil.copyfile(Path(__file__).with_name("short_temp.py"), box.project / "short_temp.py")
+    (box.project / "folders.py").write_text(
+        "import os, socket, tempfile\nfrom short_temp import short_temp\n"
+        "made = tempfile.mkdtemp(prefix='pp-sock-', dir=short_temp()) + '/s'\n"
+        "held = socket.socket(socket.AF_UNIX)\nheld.bind(made)\nheld.listen()\nsocket.socket(socket.AF_UNIX).connect(made)\n"
+        "print('own' if short_temp() == tempfile.gettempdir() == os.environ['TMPDIR'] else short_temp())\n")
+    out, _, _ = shelled(box, f"{PYTHON} folders.py\n")
+    assert out.strip().splitlines()[-1] == "own", out
+
+
+WALKS = """
+import os, sys
+sys.path.insert(0, sys.argv[1])
+from pathlib import Path
+from poolhouse.fleet import app_identity, launch_health, producer_bootstrap, producer_control, studio_epoch, studio_transfer
+try:
+    os.listdir(Path.cwd().parent)
+    raise SystemExit("the folder above was listed")
+except PermissionError:
+    pass
+root = Path.cwd() / "node"
+root.mkdir(mode=0o700)
+key = root / app_identity.PROOF_KEY_FILE
+key.write_text("ab" * 32)
+key.chmod(0o600)
+producer_control._Location(root).close()
+assert producer_bootstrap.read_existing(root) == launch_health._read_existing(root) == bytes.fromhex("ab" * 32)
+with studio_epoch.directory(root) as held:
+    os.fsync(held)
+os.close(studio_transfer._directory(root / "made", create=True))
+print("walked")
+"""
+
+
+def test_the_private_walks_pass_a_folder_that_may_be_gone_through_and_not_listed():
+    """As in a coding box, whose own temporary folder is under the shared one that it is refused: the walks from the root still reach a private
+    folder in it, and the folder above stays unlisted."""
+    own = Path(tempfile.mkdtemp(prefix="walk-", dir=short_temp())).resolve()
+    try:
+        policy = Policy("walk", write=(str(own),), exec=(os.path.realpath(sys.executable),), open=True, private=(str(own.parent),),
+                        env={"PATH": os.defpath, "HOME": str(own), "TMPDIR": str(own)}, limits=Limits(wall_seconds=60))
+        source = str(Path(poolhouse.__file__).resolve().parents[1])
+        done = sandbox.run([sys.executable, "-I", "-B", "-c", WALKS, source], policy, cwd=own)
+        assert done.ok and done.stdout.strip() == "walked", done.stderr[-2000:]
+    finally:
+        shutil.rmtree(own)
 
 
 def test_an_open_box_reaches_this_machines_loopback_and_nothing_beyond_it_and_binds_no_address(box, earlier):  # noqa: F811

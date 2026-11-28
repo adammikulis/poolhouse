@@ -18,6 +18,7 @@ from poolhouse import node_health, node_launch, sealing
 from poolhouse.board.client import Client
 from poolhouse.fleet import project_client
 from poolhouse.http import Sealed, ServerError
+from tests.short_temp import short_temp
 
 PROJECT = "a" * 32
 
@@ -25,7 +26,7 @@ PROJECT = "a" * 32
 @pytest.fixture
 def squatter():
     """A server on the socket a node would own, answering the first request with what the test says."""
-    root = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
+    root = Path(tempfile.mkdtemp(prefix="ml", dir=short_temp()))
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind(str(root / node_health.SOCKET))
     listener.listen(1)

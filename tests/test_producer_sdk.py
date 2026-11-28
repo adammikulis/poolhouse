@@ -21,6 +21,7 @@ from poolhouse.fleet import (
     producer_holder as holder,
     tls,
 )
+from tests.short_temp import short_temp
 
 SOURCE = str(Path(__file__).resolve().parents[1] / "src")
 OFFER = "a" * 32
@@ -97,7 +98,7 @@ class DataServer:
 
 @pytest.fixture
 def setup(monkeypatch):
-    with tempfile.TemporaryDirectory(prefix="sdk-", dir="/tmp") as directory:
+    with tempfile.TemporaryDirectory(prefix="sdk-", dir=short_temp()) as directory:
         root = Path(directory).resolve()
         root.chmod(0o700)
         secret = root / "app-identity"

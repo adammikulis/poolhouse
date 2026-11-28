@@ -236,7 +236,10 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
   reads only OpenSSL's `openssl.cnf` and public `cert.pem` (`toolchain.system_settings`). git does not read the system configuration.
 - **GPU and browsers** (macOS). A command computes on the GPU (Metal, MLX) and runs a headless Chromium, with the browser's inner
   sandbox off inside the box.
-- **git.** `.git` is read-only: `git status` and `git diff` work; `git add` and `git commit` fail.
+- **git.** A delegate with a worktree of its own commits in its copy (`git add`, `git commit`, under its own name, set in that copy's
+  configuration alone). The launcher reads the copy by its own copy of the index, taken before the model starts, and nothing of its `.git`
+  after that: its commits and their messages stay in the copy, and nothing runs in the box once the delegate's processes have ended. For any
+  other session `.git` is read-only: `git status` and `git diff` work; `git add` and `git commit` fail.
 - **Time and output.** A command ends at its timeout (180 s unless it asks for another, at most 600 s) with everything it left running: the
   plugin runs each one under `delegate_confined.BOUNDED`, since OpenCode itself would move a command that overruns to the background. The model
   is given at most as many bytes of a tool's output as the served window has tokens (OpenCode's `tool_output`, docs/limits.md). The delegate's
@@ -388,12 +391,18 @@ poolhouse-delegate summary [--model TEXT] [--kind WORD] [--json]
 
 `start --edit` on the root of a git project with a commit needs nothing else from the lead (`poolhouse.delegate_tree`): the launcher adds a worktree
 beside the project (`PROJECT-NAME`) on a new branch `delegate/NAME` at the project's commit, and the delegate works there. The lead's checkout and
-git configuration are not written, and its uncommitted files are not in the worktree (`start` says how many). When the run ends `done` or `partial`,
-what was applied is committed there, each file by name, as the delegate (`NAME@poolhouse.invalid`), with no repository hook and no signature, so the
-project's hooks have not run on it. The lead's notice says a review is waiting and names the branch and commit. Nothing is merged or pushed: the
-session that started the delegate reviews the branch, grades it (`grade`, an entry of its own beside the self-check's) and lands it. A run that is
-rejected, fails or is stopped keeps its patch, and its worktree and branch are removed; so is a worktree after a commit. If the runner's process is
-gone, `stop NAME` removes what it left. `--in-place` changes the project folder itself instead; a project with no commit is also changed in place.
+git configuration are not written, and its uncommitted files are not in the worktree (`start` says how many). However the run ends, what it changed
+is published into the worktree and committed there, each file by name, as the delegate (`NAME@poolhouse.invalid`), with no repository hook and no
+signature, so the project's hooks have not run on it. The commit's message is the launcher's words and the task; no words of the delegate's are in
+it. When the run ends `done` or `partial` the lead's notice says a review is waiting and names the branch and commit; the commit of a run that is
+rejected, fails, passes a resource bound or is stopped says it is unfinished, and so does the notice. A run whose working copy is past the disk or
+file bound is not published: its changes are kept as a patch. Nothing is merged or pushed: the session that started the delegate reviews the
+branch, grades it (`grade`, an entry of its own beside the self-check's) and lands it. The worktree is removed once its work is committed, with a
+branch still at the commit it was made at; a branch with a commit on it is never deleted, and a worktree with work git could not commit is left.
+A stop that arrives once the work is over does not cut the publication or the commit short. If the runner's process is gone with no result
+written, `stop NAME` commits what it had published into the worktree; what stood only in the box is lost with it. `stop` touches neither the
+worktree nor the branch of a run that has ended or is still ending. `--in-place` changes the project folder itself instead, and a project with no
+commit is also changed in place: there a run that is not accepted publishes nothing and keeps a patch.
 
 `--wait` returns when the delegate ends (its result and exit status), asks something (status 3) or has a new notice while it goes on
 (status 4, "What the lead is told"); `wait NAME` does the same for one already started. Run either in the background and the harness that runs it is
@@ -443,9 +452,9 @@ work cannot instruct its own reviewer.
 - **Rounds.** A rejection starts a fix pass (the worker's tools and prompt, the task and the findings, a session of its own), then a new reviewer,
   up to `--review-rounds` reviews (default 3, at most 20). A fix pass that fails ends the loop.
 - **Publication.** The work's confinement holds the change and publishes nothing, not at a turn the box says has ended either, until a reviewer
-  accepts. Each review and fix is a confinement of its own over the project, given the held change before its harness starts; a fix's changes are
-  carried back into the held stage. A change never accepted applies nothing and is kept as a patch; the run ends `rejected` with the open findings
-  in `result`, in `status` and in the lead's notice.
+  accepts, and what is published then is the capture of the held change that reviewer was given. Each review and fix is a confinement of its own
+  over the project, given the held change before its harness starts; a fix's changes are carried back into the held stage. A change never accepted applies nothing to the project: it is committed as unfinished on the delegate's own
+  branch, or, changed in place, kept as a patch. The run ends `rejected` with the open findings in `result`, in `status` and in the lead's notice.
 - **With no sandbox** the change is already in the folder and nothing can hold it back: the reviewer only reads (for a delegate that edits, a copy
   of the folder with each instruction and settings file as it was before), runs no test, and a rejected run says the changes are in the folder and
   keeps `rejected.patch` in the delegate's folder.
@@ -458,8 +467,8 @@ and an answer cut at its length are not interruptions. The files it had changed 
 plain files only) is carried into the next attempt, and the attempt starts once the model answers: the model is leased again while it does not, for
 up to 900 seconds (`ANSWER_WAIT_S`). A harness that cannot take the conversation up starts a new one told what the last said. Up to `--resumes`
 attempts (default 3, 0 for none) share the pass's limit of turns. Each broken attempt is in the record with what broke it. A run that cannot be
-continued ends `failed` (a fix: `rejected`) with the reason, applies nothing and keeps the patch. The runner's own process ending (a restart of the
-computer) is not covered.
+continued ends `failed` (a fix: `rejected`) with the reason, and its changes are kept as in any run that is not accepted. The runner's own
+process ending (a restart of the computer) is not covered.
 
 ### The grading record
 
@@ -523,9 +532,9 @@ and one list of entries in one shape: every self-check round (`kind` `self-check
   from the launcher's own identity, in the launcher's words (counts and causes, no name the agent chose). The same words end `result NAME`. An
   edit or a deletion of a file git does not hold (a draft of yours, a file an earlier run made) is published too: the launcher keeps the version
   it displaces first, read-only and named by the digest of its bytes, under `~/.poolhouse/isolation/restored/NAME/`, and says where in the same
-  words; a file you changed since the run started is never overwritten. `stop NAME` ends every process of the confinement, publishes nothing
-  further, keeps what the run had changed as a patch beside those already kept, writes a result with the turns and tokens it had come to and
-  removes what the launch made.
+  words; a file you changed since the run started is never overwritten. `stop NAME` ends every process of the confinement and writes a result with
+  the turns and tokens it had come to; changing the project in place it publishes nothing further and keeps what the run had changed as a patch
+  beside those already kept, and on a branch of its own it commits it there.
 - **A run that fails or stalls.** OpenCode prints one JSON line per event (`run --format json`), so `status` shows the turns taken and the last
   tool while it runs. When it exits, every process left in its tree is ended, so a child that holds its output does not hold the run. A run that
   prints nothing for 180 seconds (`delegate_confined.NO_PROGRESS_S`) while no request is with the model server, no question waits for the lead

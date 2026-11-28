@@ -292,7 +292,9 @@ def metadata_directory(root: Path) -> Path:
 class SourceSnapshot:
     """Inventory a worktree using private Git metadata without configured filters."""
 
-    def __init__(self, root: Path, storage: Path, *, known_paths: tuple[bytes, ...] = (), strict: bool = True):
+    def __init__(self, root: Path, storage: Path, *, known_paths: tuple[bytes, ...] = (), strict: bool = True, index: Path | None = None):
+        """``index`` is a Git index that says which files ``root`` holds, read in place of the root's own."""
+        self.given = index
         self.root = validate_storage(root, protected_roots(dict(os.environ)))
         storage = validate_storage(storage, ())
         owner = storage.stat()
@@ -316,7 +318,7 @@ class SourceSnapshot:
             (self.directory / name).mkdir(mode=0o700)
         (self.directory / "HEAD").write_text("ref: refs/heads/source\n")
         (self.directory / "config").write_text("[core]\n repositoryformatversion = 0\n bare = false\n")
-        index = metadata_directory(self.root) / "index"
+        index = self.given or metadata_directory(self.root) / "index"
         self.index = index
         self.index_identity = _optional_identity(index)
         if self.index_identity is not None:

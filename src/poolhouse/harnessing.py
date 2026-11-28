@@ -599,7 +599,7 @@ class Harness:
     """The harness a launch starts: its name, its binary, the model it was served (base URL, alias, window), the launcher's own lines, the
     variables its caller sets (the effort and the extra body of a task) and whether it is interactive. ``lead`` makes what the session
     bridge has of the agent's lead from the helper; ``conversation`` names the conversation whose stage a re-launch keeps (default: the
-    helper's own; none for a launch that is never resumed)."""
+    helper's own; none for a launch that is never resumed). ``committer`` is `isolation.Plan.committer`."""
 
     name: str
     binary: str
@@ -614,6 +614,7 @@ class Harness:
     conversation: str | None = None
     observe: Callable[[str, Mapping[str, Any], Mapping[str, Any]], None] | None = None
     """Told each hook event of the box, with its payload and the answer it was given."""
+    committer: str = ""
 
 
 @contextlib.contextmanager
@@ -647,7 +648,8 @@ def confined(args: argparse.Namespace, run: Session, how: Harness,
     plan = isolation.Plan(how.name, how.binary, str(run.cwd), coding_policy.Policy(args.permissions, args.execution_mode), base_url,
                           isolation.Lease.of(alias, window, args.slots), serverkeys.for_url(base_url), helper.name, decide,
                           lead.run, render, notice,
-                          args.launch.grants, helper.name if how.conversation is None else how.conversation, dict(how.extras), how.interactive)
+                          args.launch.grants, helper.name if how.conversation is None else how.conversation, dict(how.extras), how.interactive,
+                          committer=how.committer)
     confinement = isolation.prepare(plan)
     try:
         yield confinement
