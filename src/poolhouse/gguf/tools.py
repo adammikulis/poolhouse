@@ -9,7 +9,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from poolhouse import home, lazy, net, provision
+from poolhouse import home, lazy, net, provision, safelaunch
 from poolhouse.files import promote
 from poolhouse.httpguard import Refused
 from poolhouse.lock import only_one
@@ -130,7 +130,7 @@ def find_quantize(explicit: str | Path | None = None) -> Path | None:
                         return candidate.resolve()
 
     for name in QUANTIZE_NAMES:
-        if found := shutil.which(name):
+        if found := safelaunch.which(name):
             return Path(found).resolve()
 
     for directory in (*source_dirs(), *_release_dirs()):

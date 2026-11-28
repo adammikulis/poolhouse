@@ -4,6 +4,7 @@ file only writes a mark; the programs run are the real ones, offline, in throwaw
 from __future__ import annotations
 
 import contextlib
+import importlib
 import os
 import shutil
 import subprocess
@@ -14,13 +15,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import provision, safelaunch
-from poolhouse.fleet import environment as environments, measuring
+from poolhouse import delegate, delegate_candidate, provision, safelaunch
+from poolhouse.fleet import environment as environments, llama, measuring
+from poolhouse.gguf import tools as gguf
 from poolhouse.gym import catalog
-from poolhouse.net import packages, uvinstall
-from poolhouse.serve import build_platform, llamacpp_ccache, llamacpp_compile
+from poolhouse.isolation import profile
+from poolhouse.net import git as netgit, packages, uvinstall
+from poolhouse.serve import binary, build_platform, llamacpp_ccache, llamacpp_compile
 
-browser = __import__("importlib").import_module("poolhouse.scrape.browser")  # the package exports a function of this name
+browser = importlib.import_module("poolhouse.scrape.browser")  # the package exports a function of this name
+capability = importlib.import_module("poolhouse.isolation.capability")  # and this one a function of this name
 
 
 @pytest.fixture
@@ -128,6 +132,39 @@ def test_the_llama_cpp_build_takes_no_program_from_where_the_caller_stands(tmp_p
     assert [llamacpp_compile._which(name) for name in ("cmake", "cc", "ninja", "make", "git", "nvcc")] == [None] * 6
     assert llamacpp_ccache.find() is None
     assert Path(build_platform.cmake_program()).parent == Path("/kept") and asked == ["llama-build"]
+
+
+@pytest.fixture
+def planted(tmp_path, monkeypatch):
+    """A directory somebody else wrote, stood in and first on ``PATH`` under relative names, holding programs that say they ran."""
+    project = tmp_path / "project"
+    project.mkdir()
+    mark = tmp_path / "planted-program-ran"
+    for name in ("git", "llama-server", "llama-server.exe", "llama-quantize"):
+        (project / name).write_text(f"#!/bin/sh\n# PLUMBING ONLY: planted, never to be run\necho ran >> '{mark}'\n")
+        (project / name).chmod(0o755)
+    monkeypatch.chdir(project)
+    monkeypatch.setenv("PATH", os.pathsep.join((".", "")))
+    for name in ("LLAMA_CPP_ROOT", "LLAMA_CPP_DIR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(binary, "_LOGIN_SHELL_DIRS", ())
+    return SimpleNamespace(where=project, ran=mark.exists)
+
+
+def test_no_git_is_taken_from_where_the_caller_stands(planted, tmp_path):
+    with pytest.raises(netgit.GitFailed, match="not on PATH"):
+        netgit._git()
+    with pytest.raises(ValueError, match="not installed"):
+        delegate_candidate.git(tmp_path, "status")
+    with pytest.raises(OSError, match="git is not installed"):
+        delegate._folder("", False)
+    assert profile._git_directory() == () and not capability._trusted_git() and not planted.ran()
+
+
+def test_no_llama_cpp_program_is_taken_from_where_the_caller_stands(planted, tmp_path):
+    assert binary.machine_binary("llama-server", binary.SERVER_NAMES) is None
+    assert llama.find_server(tmp_path / "vendor") is None
+    assert gguf.find_quantize() is None
 
 
 def test_on_windows_every_poolhouse_process_keeps_bare_names_from_running_out_of_the_current_directory():

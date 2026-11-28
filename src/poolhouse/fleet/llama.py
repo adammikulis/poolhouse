@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from poolhouse import net, provision
+from poolhouse import net, provision, safelaunch
 from poolhouse.hub.probe import machine_memory
 from poolhouse.lock import only_one
 from poolhouse.safenames import Unsafe, unpack
@@ -44,7 +44,7 @@ def find_server(vendor: Path | str) -> Path | None:
     direct = Path(vendor).expanduser() / SERVER
     if direct.is_file():
         return direct.resolve()
-    found = shutil.which(SERVER)
+    found = safelaunch.which(SERVER)
     return Path(found).resolve() if found else None
 
 

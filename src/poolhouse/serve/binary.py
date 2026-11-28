@@ -5,12 +5,11 @@ from __future__ import annotations
 import logging
 import os
 import platform
-import shutil
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from poolhouse import credentials, errors, home, lazy
+from poolhouse import credentials, errors, home, lazy, safelaunch
 from poolhouse.credentials import child_environment
 from poolhouse.files import read_json
 from poolhouse.serve import binary_trust, policy as trust
@@ -188,14 +187,14 @@ def _absent_build(named: str, name: str, source: str) -> str:
 
 
 def machine_binary(name: str, candidates: tuple[str, ...]) -> Path | None:
-    """``name`` as this machine installs it: a login shell's directories, then PATH."""
+    """``name`` as this machine installs it: a login shell's directories, then PATH (`safelaunch.which`)."""
     for directory in _LOGIN_SHELL_DIRS:
         for candidate in candidates:
             path = directory / candidate
             if path.is_file():
                 return path.resolve()
 
-    if found := shutil.which(name):
+    if found := safelaunch.which(name):
         return Path(found).resolve()
 
     return None
