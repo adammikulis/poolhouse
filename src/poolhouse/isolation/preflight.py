@@ -3,8 +3,8 @@
 What is checked is read from the working copy's own files and no flag: `git status`, `diff`, `log` and `show`; then, for a stage the session
 writes, the project's test runner, asked to collect one small test file (`scripts/test` where the project has one, pytest for a Python project
 with tests, the test script's program for a `package.json`, `cargo metadata` for a Cargo project). What the launcher can set up it has set up
-before this runs (`environments`, `history`, `profile`); what still fails is said in plain words to the launching session at once, in the
-session's brief and in its result, and an editing run that could not test does not end as plainly done (`Findings.untested`).
+before this runs (`environments`, `history`, `profile`); what still fails is said in plain words to the launching session at once, in a
+delegate's first message and in the result, and an editing run that could not test does not end as plainly done (`Findings.untested`).
 """
 
 from __future__ import annotations
@@ -81,6 +81,8 @@ def checks(stage: Path) -> tuple[tuple[str, str], ...]:
     elif one and python:
         found.append(("tests", f"python -m pytest --collect-only -q -p no:cacheprovider {shlex.quote(one)}"))
     if program := _node_test(stage):
+        if program != "node":
+            found.append(("tests", "command -v node"))
         found.append(("tests", f"PATH=\"$PWD/node_modules/.bin:$PATH\" command -v {shlex.quote(program)}"))
     if (stage / "Cargo.toml").is_file():
         found.append(("tests", "cargo metadata --offline --no-deps --format-version 1 >/dev/null"))

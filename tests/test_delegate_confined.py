@@ -132,6 +132,8 @@ def ended(text):
 
 if "mode:unguarded" not in task:
     hook("post", {{"loaded": True}})
+if "mode:echo" in task:
+    ended(CANNED + " told<<" + task + ">>told system<<" + config["agents"][config["default_agent"]]["system"] + ">>system")
 if "mode:reads" in task:
     step()
     written = "refused"
@@ -593,11 +595,6 @@ def test_the_model_sees_only_the_delegates_tools_and_opencode_is_bounded_by_its_
     assert rendering.files["session/bounded.py"] == delegate_confined.BOUNDED
     brief = agent["system"]
     assert "You have no shell" not in brief and "name every test you could not run" in brief
-    # Owner-order: "No agent should be inhibited from doing their work that is given them." The brief says what the box allows and refuses.
-    told = ("GPU compute", "headless", "loopback", "any network beyond this computer", "no other program can listen", "sandbox-exec") \
-        if sys.platform == "darwin" else ("no network", "no localhost port", "no Poolhouse node", "no nested sandbox", "no real model")
-    for limit in (*told, "at most 600s"):
-        assert limit in brief, limit
     assert "lead_ask(question)" in brief and "lead_note(text)" in brief and set(session_verbs.LEAD) == {"ask", "note"}
     reading = rendered(tmp_path, edit=False)
     assert "session/bounded.py" not in reading.files
@@ -828,6 +825,41 @@ def test_a_delegate_commits_in_its_box_and_its_work_is_on_its_branch_however_the
         assert f"committed 0 {name}" in row["text"], "git commit works in the box, under the delegate's own name"
     assert row["patches"] == [] and not Path(store.load(name).workdir).exists(), row
     assert not (project / "src").exists() and (project / ".git" / "config").read_bytes() == config, "the lead's checkout is not written"
+
+
+@pytest.mark.parametrize("tree", [False, True])
+def test_a_confined_delegate_is_told_the_facts_of_its_run_in_its_first_message_and_its_prompt_holds_none(editing, tree):
+    node, lead, project = editing
+
+    def said_by(*words):
+        argv = ["git", "-C", str(project), "-c", "user.name=t", "-c", "user.email=t@example.invalid", *words]
+        return subprocess.run(argv, check=True, capture_output=True, text=True).stdout
+
+    (project / "pyproject.toml").write_text('[tool.poolhouse.tests]\nrun = "make check"\nfile = "make check FILE=<file>"\n')
+    (project / "package.json").write_text('{"scripts": {"test": "PLUMBING-absent-runner"}}\n')
+    said_by("add", "-A")
+    said_by("commit", "--allow-empty", "-qm", "start")
+    head = said_by("rev-parse", "--short=12", "HEAD").strip()
+    assert started("--task", "mode:echo", "--project", str(project), "--edit", "--max-turns", "9", tree=tree) == 0
+    [name] = agent_names(node, lead)
+    assert delegate_run.run(name) in (0, 1), store.result(name)
+    text = store.result(name)["text"]
+    told, system = text.split("told<<")[1].split(">>told")[0], text.split("system<<")[1].split(">>system")[0]
+    assert told.startswith(f"You are {name}.\nTask from {lead.name}:\nmode:echo\n\nFacts of this run"), told
+    branch = f"delegate/{name}" if tree else said_by("branch", "--show-current").strip()
+    assert f"Branch and base: branch {branch} at commit {head}." in told, told
+    assert "run `make check`; one file `make check FILE=<file>`" in told
+    assert ("Commit: git works here" in told) is tree and ("Commit: you cannot commit" in told) is not tree, told
+    assert (f"commits what you leave in the files on branch delegate/{name}" in told) is tree, told
+    assert "at most 9 turn(s)" in told and f"Lead: {lead.name}, reached with lead_note and lead_ask" in told
+    assert "Preflight: " in told and "PLUMBING-absent-runner" in told, "what the preflight could not run is said before it starts"
+    # Owner-order: "No agent should be inhibited from doing their work that is given them." The brief says what the box allows and refuses.
+    limits = ("GPU compute", "headless", "loopback", "any network beyond this computer", "no other program can listen", "sandbox-exec") \
+        if sys.platform == "darwin" else ("no network", "no localhost port", "no Poolhouse node", "no nested sandbox", "no real model")
+    for limit in (*limits, "at most 600s"):
+        assert limit in told, limit
+    for fact in ("Facts of this run, read by the program", "make check", head, name, "PLUMBING-absent-runner"):
+        assert fact not in system.replace("The task ends with the facts of this run", ""), f"{fact} would break the shared prompt"
 
 
 def test_a_harness_that_ends_while_its_child_holds_the_pipe_ends_the_run_and_the_child(editing):

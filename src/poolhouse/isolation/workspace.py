@@ -239,7 +239,8 @@ class Session:
         return environments.sources(self.stage.physical, {name for name, _ in self.links})
 
     def note(self) -> str:
-        """The sentence the session's brief and result carry when the project asks for an environment the box has none of; empty otherwise."""
+        """The sentence a delegate's first message and the result carry when the project asks for an environment the box has none of; empty
+        otherwise."""
         return environments.note(self.root, {name for name, _ in self.links})
 
     def binds(self) -> tuple[tuple[str, str, bool], ...]:

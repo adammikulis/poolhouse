@@ -218,12 +218,12 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
 - **The code under test is the working copy's.** With a Python environment linked, `PYTHONPATH` is the working copy's `src` and root, ahead of
   anything installed in that environment (an editable install there points at the person's own checkout, which is not readable).
 - **No environment.** A project that asks for one (`pyproject.toml`, `requirements.txt`, `package.json` and the like) and has none the box can
-  use is told so in one sentence, in the delegate's brief and in its result.
+  use is told so in one sentence, in the delegate's first message and in its result.
 - **The preflight.** Before the harness starts, the launcher runs in the proved box `git status`, `diff`, `log` and `show`, writes the tree
   of a copy of the index as a tool's snapshot does, runs `git` with no environment and the system's `PATH` alone, and (for a stage the
   session writes) asks the project's test runner to collect its
-  smallest test file (`scripts/test`, pytest, a `package.json` test program, `cargo metadata`). What fails is posted to the launching session
-  at once and is in the delegate's brief and result; an edit run that changed files and could not start the tests ends `partial`, with
+  smallest test file (`scripts/test`, pytest, `node` and a `package.json` test program, `cargo metadata`). What fails is posted to the launching
+  session at once and is in the delegate's first message and result; an edit run that changed files and could not start the tests ends `partial`, with
   `untested:` first in its detail (`isolation.preflight`).
 - **History.** The stage holds the newest 200 commits of the project's `HEAD` and no blob a commit holds under a credential name. Its trees
   are read without those names (`git replace`), so status, diffs, the log, the index and `git write-tree` work and show neither the file nor a
@@ -497,6 +497,15 @@ and one list of entries in one shape: every self-check round (`kind` `self-check
   hold the shared prefix; how much of it a server reuses has not been measured with a model. (4) `warm` runs one trivial delegate task (`Reply
   with the single word ready`) so the prefix is in the cache before the first real task; use `--edit` for the prompt of an editing delegate,
   whose tools differ.
+- **What it is told** (`poolhouse.briefing`, `poolhouse.brief_facts`), so a task states the task alone. Its prompt holds the standard of its
+  role: the project's `AGENTS.md` binds, it reports what it changed, ran and could not prove, and its lead lands it. Each pass's first message
+  ends with facts the program reads when it starts: the working directory, branch and base commit, whether it can commit and what becomes of
+  its changes, the project's test command, the shell timeouts, turn, progress and resource limits that are enforced, what the sandbox that was
+  built allows, what the preflight could not run, its lead, and what the model broker holds reserved. The test command is what the project's
+  `pyproject.toml` declares (`[tool.poolhouse.tests]`, strings `run` and `file`), else its own `scripts/test`, else what its files imply
+  (`package.json`, `Cargo.toml`, `go.mod`, a pytest configuration); a project that says nothing has none given. A Claude Code subagent of this
+  repository is told the same of its checkout by `scripts/hooks/claude-subagent-start`, with the test broker's workers, the commit attribution
+  the project declares, what not to push or merge and how to report.
 - **What it can do.** `read`, `glob` and `grep` in a read-only stage of `--project` (default: an empty scratch folder of its own, made a git
   repository; a folder that is not the root of a git project is read from a copy), and two ways to the lead. It has no shell and no editing tool,
   and nothing it does is written to the folder. Its OpenCode permissions deny everything but its own tools: no web fetch or search, no subagent

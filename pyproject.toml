@@ -270,6 +270,11 @@ exclude = [
 "contracts" = "poolhouse/contracts/_data"
 "patches" = "poolhouse/serve/_patches"
 
+# What an agent is told of this project's tests when it starts (poolhouse.brief_facts).
+[tool.poolhouse.tests]
+run = "scripts/test all <affected test files>"
+file = "scripts/test all tests/<file>.py"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # how many workers is the broker's to say, so several suites at once do not each take every

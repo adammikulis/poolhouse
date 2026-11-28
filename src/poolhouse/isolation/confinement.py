@@ -121,8 +121,6 @@ class Rendering:
     serves: bool = False
     """Whether the harness runs a server of its own (OpenCode's), on `Context.server_socket` where there is one: the profile then lets the session
     serve on that socket's folder."""
-    noted: Callable[[str], Mapping[str, str]] | None = None
-    """The files to write again when the box lacks something, given the sentence the harness's brief is to say; ``None`` where it has no brief."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -537,11 +535,8 @@ def prepare(plan: Plan) -> Confinement:
         proved = run_proof(profile, Services(model.port, bridge.path, granted))
         found = preflight.run(profile, history.committed(session.root))
         if lacks := " ".join(each for each in (session.note(), found.words()) if each):
-            # said at once to the launching session, then in the brief (before the harness reads its files) and in the result
+            # said at once to the launching session, and in the result; a delegate's first message says it too (`Made.lacks`)
             session.reports.send([Refusal("(preflight)", "preflight")], f"{HEAD} {lacks}")
-            for name, text in (rendering.noted(lacks) if rendering.noted else {}).items():
-                (agent_home / name).chmod(stat.S_IRUSR | stat.S_IWUSR)
-                _write(agent_home / name, text)
     finally:
         if proved is None:
             _abandon(session, stack, scratch)

@@ -22,7 +22,7 @@ import secrets
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 from poolhouse import (
@@ -267,14 +267,7 @@ def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], 
     if context.server_socket:
         written[SOCKET_PRELOAD] = through_socket(context.server_socket)
         through = (context.server_socket, str(context.file(SOCKET_PRELOAD)))
-
-    def noted(lacks: str) -> dict[str, str]:
-        """The config again, with what the box lacks at the end of the agent's own system prompt."""
-        agent = {**made.agent, "system": f"{made.agent['system']}{lacks}\n"}
-        return {f".opencode-config/{CONFIG}": config(replace(made, agent=agent))}
-
-    return isolation.Rendering(argv_of(binary, alias, extra, context.stage, through), written, serves=True,
-                               noted=noted if made.agent else None)
+    return isolation.Rendering(argv_of(binary, alias, extra, context.stage, through), written, serves=True)
 
 
 OWN = ("$schema", "model", "small_model", "provider", "tool_output", "instructions")

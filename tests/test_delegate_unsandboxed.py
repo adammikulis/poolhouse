@@ -112,7 +112,7 @@ server.stdin.close()
 found = {{"inside": inside, "outside": outside, "force": force, "tools": tools, "note": note["isError"], "home": os.environ["HOME"],
          "keys": sorted(name for name in os.environ if "KEY" in name or "TOKEN" in name), "cwd": os.getcwd(), "argv": sys.argv[1:],
          "base": config["provider"]["poolhouse"]["options"]["baseURL"], "token": config["provider"]["poolhouse"]["options"]["apiKey"],
-         "rules": config["agents"]["poolhouse"]["permissions"], "system": config["agents"]["poolhouse"]["system"]}}
+         "rules": config["agents"]["poolhouse"]["permissions"], "message": task}}
 line("text", text=json.dumps(found))
 line("step_finish", reason="stop", tokens={{"input": 1, "output": 1}})
 '''
@@ -196,7 +196,7 @@ def test_an_edit_delegate_with_no_sandbox_warns_edits_the_folder_is_blocked_outs
     assert found["home"] != os.environ["HOME"] and not Path(found["home"]).exists(), "a home of its own, removed with the run"
     assert found["keys"] == [], "no key or login of the starting process"
     assert found["base"].startswith("http://127.0.0.1:") and not found["base"].startswith("http://127.0.0.1:9/") and len(found["token"]) >= 32
-    assert "--standalone" in found["argv"] and "no sandbox" in found["system"]
+    assert "--standalone" in found["argv"] and "- There is no sandbox: what you change is changed in the folder at once" in found["message"]
 
 
 def test_a_delegate_with_no_sandbox_whose_only_write_was_refused_ends_unapplied(unsandboxed):

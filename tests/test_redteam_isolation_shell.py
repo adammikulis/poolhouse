@@ -27,7 +27,16 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import coding_policy, harnesshook, isolation, opencode, sandbox
+from poolhouse import (
+    brief_facts,
+    coding_policy,
+    delegate_confined,
+    delegate_store,
+    harnesshook,
+    isolation,
+    opencode,
+    sandbox,
+)
 from poolhouse.isolation import history, toolchain
 from poolhouse.isolation.notices import Notice
 from poolhouse.isolation.reports import Reporter
@@ -108,6 +117,12 @@ def shelled(box: Box, script: str, *, look: Callable[[isolation.Confinement], ob
         assert not any(reader.is_alive() for reader in readers), "a process of the session still holds a pipe"
         after = look(confinement)
     return b"".join(said).decode(errors="replace"), (before, after), confinement
+
+
+def first_message(box: Box, confinement: isolation.Confinement) -> str:
+    """What a delegate editing ``box``'s project would be told first in ``confinement``."""
+    rec = delegate_store.Delegate("helper-sh", "lead", "board", "the task", str(box.project), "m", source=str(box.project), edit=True)
+    return brief_facts.first_message(rec, delegate_confined.work_pass(rec), 1.0, confinement)
 
 
 def tree_digest(directory: Path) -> dict[str, str]:
@@ -291,17 +306,19 @@ def test_the_preflight_reports_at_once_in_the_brief_and_in_the_result_what_the_b
     venv = fresh_worktree(box)
     shutil.rmtree(next((venv / "lib").glob("python*")) / "site-packages" / "_pytest")
     config: list[str] = []
+    message: list[str] = []
 
     def look(confinement):
         found = list(confinement.home.rglob(opencode.CONFIG))
         config.extend(each.read_text() for each in found)
+        message.append(first_message(box, confinement))
         return list(box.sink.posts)
 
     out, (posted, _), confinement = shelled(box, "true\n", look=look, brief="THE BRIEF\n")
     said = "The preflight could not start this project's tests in the sandbox, so work here is untested"
     assert said in confinement.untested + " ".join(confinement.said()) and "python -m pytest --collect-only" in confinement.untested, (out, confinement.said())
     assert posted and said in posted[0][3], "the launching session is told before the harness starts"
-    assert said in config[0] and "THE BRIEF" in config[0], config
+    assert said in message[0] and "THE BRIEF" in config[0] and said not in config[0], (message, config)
 
 
 def test_the_preflight_finds_an_index_that_names_an_object_the_stage_lacks_which_status_and_diff_do_not_show(box, monkeypatch):
@@ -317,15 +334,17 @@ def test_a_project_with_no_usable_environment_is_told_so_in_the_brief_and_in_the
     (box.project / "pyproject.toml").write_text('[project]\nname = "pkg"\nversion = "0"\n')
     shutil.rmtree(box.project / "tests")
     config: list[str] = []
+    message: list[str] = []
 
     def look(confinement):
         config.extend(each.read_text() for each in confinement.home.rglob(opencode.CONFIG))
+        message.append(first_message(box, confinement))
 
     _, _, confinement = shelled(box, "true\n", look=look, brief="THE BRIEF\n")
     [note] = confinement.said()
     assert note.startswith("This working copy has no Python environment (.venv or venv) the sandbox can use") and note.count(". ") == 0, note
     assert note in confinement.said(), confinement.said()
-    assert f"THE BRIEF\\n{note}" in config[0], config
+    assert f"- Preflight: {note}" in message[0] and "THE BRIEF" in config[0] and note not in config[0], (message, config)
     with_environments(box)
     _, _, confinement = shelled(box, "true\n")
     assert not confinement.said(), confinement.said()

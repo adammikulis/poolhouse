@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import (
+    brief_facts,
     coding_policy,
     delegate_candidate,
     delegate_confined,
@@ -279,7 +280,8 @@ class _InPlace:
         try:
             with store.log_file(rec.name).open("ab") as errors:
                 process = running.popen(stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
-                delegate_confined.follow(running, process, ask.message.encode(), stream, (moved, held, over))
+                message = brief_facts.first_message(rec, ask, delegate_confined.NO_PROGRESS_S, folder=str(folder))
+                delegate_confined.follow(running, process, message.encode(), stream, (moved, held, over))
             status = process.returncode
         except (Denied, OSError, RuntimeError, ValueError) as error:
             why = f"{type(error).__name__}: {error}"
