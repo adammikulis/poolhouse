@@ -16,25 +16,25 @@
     "q20": {"repo": "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF", "shards": [
       {"path": "Q2_0/Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-00001-of-00002.gguf", "bytes": 37623740192, "sha256": "69820c02ec7d0b45ef2ebb19d6620299db749fe2aded7f39f93c6b88b199b720"},
       {"path": "Q2_0/Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-00002-of-00002.gguf", "bytes": 28800138432, "sha256": "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113"}]},
-    "shared-q4": {"repo": "unsloth/Qwen3.8-Flash-Next-GGUF", "shards": [{"path": "MTP/mtp-Qwen3.8-Flash-Next-shared-Q4_K_M.gguf", "bytes": 1907151936}]},
-    "shared-q8": {"repo": "unsloth/Qwen3.8-Flash-Next-GGUF", "shards": [{"path": "MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf", "bytes": 2786568256}]},
-    "full-q4": {"repo": "unsloth/Qwen3.8-Flash-Next-GGUF", "shards": [{"path": "MTP/mtp-Qwen3.8-Flash-Next-Q4_K_M.gguf", "bytes": 2786204800}]},
-    "full-q8": {"repo": "unsloth/Qwen3.8-Flash-Next-GGUF", "shards": [{"path": "MTP/mtp-Qwen3.8-Flash-Next-Q8_0.gguf", "bytes": 4137429120}]}
+    "shared-q4": {"repo": "unsloth/Qwen3.8-Flash-Next-GGUF", "shards": [{"path": "MTP/mtp-Qwen3.8-Flash-Next-shared-Q4_K_M.gguf", "bytes": 1907151936, "sha256": "f521868a9e143718bef513772f6e04d9642551e362cf2439636d2abdbd149dfc"}]},
+    "shared-q8": {"repo": "unsloth/Qwen3.8-Flash-Next-GGUF", "shards": [{"path": "MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf", "bytes": 2786568256, "sha256": "5ff54097406a905cf3a724c709124ceb0e3e10235ee862298969e91c96fa96e6"}]},
+    "full-q4": {"repo": "unsloth/Qwen3.8-Flash-Next-GGUF", "shards": [{"path": "MTP/mtp-Qwen3.8-Flash-Next-Q4_K_M.gguf", "bytes": 2786204800, "sha256": "8087dbb39fc73f79ac069b1debe4069a44b73ada900c8bd761569d43a5a90231"}]},
+    "full-q8": {"repo": "unsloth/Qwen3.8-Flash-Next-GGUF", "shards": [{"path": "MTP/mtp-Qwen3.8-Flash-Next-Q8_0.gguf", "bytes": 4137429120, "sha256": "58a47d6a216307e9b97172d5bfdc3436a8994b632f5e436b9bb6edf8951da8d1"}]}
   },
   "devices": {
     "mac": {"arms": [
       {"name": "fork-iq2", "engine": "llama.cpp", "build": "unsloth", "model": "iq2", "head": "shared-q4", "draft_n_max": 4, "extra_args": ["-ub", "2048"]},
       {"name": "main-iq2", "engine": "llama.cpp", "model": "iq2", "head": "full-q4", "draft_n_max": 4, "extra_args": ["-ub", "2048"],
-       "tune": {"depths": [1, 2, 3, 4, 6], "loads": [
+       "tune": {"depths": [0, 1, 2, 3, 4, 6], "loads": [
          {"head": "full-q4"}, {"head": "full-q4", "draft_p_min": 0.5}, {"head": "full-q8"}, {"head": "full-q4", "spec_type": "draft-mtp,ngram-mod"}]}},
       {"name": "main-iq3s", "engine": "llama.cpp", "model": "iq3s", "head": "full-q4", "draft_n_max": 4, "extra_args": ["-ub", "2048"],
-       "tune": {"depths": [1, 2, 3, 4, 6], "loads": [
+       "tune": {"depths": [0, 1, 2, 3, 4, 6], "loads": [
          {"head": "full-q4"}, {"head": "full-q4", "draft_p_min": 0.5}, {"head": "full-q4", "spec_type": "draft-mtp,ngram-mod"}]}},
       {"name": "main-q20", "engine": "llama.cpp", "model": "q20", "head": "full-q4", "draft_n_max": 4, "extra_args": ["-ub", "2048"],
-       "tune": {"depths": [1, 2, 3, 4, 6], "loads": [
+       "tune": {"depths": [0, 1, 2, 3, 4, 6], "loads": [
          {"head": "full-q4"}, {"head": "full-q4", "draft_p_min": 0.5}, {"head": "full-q4", "spec_type": "draft-mtp,ngram-mod"}]}},
       {"name": "fork-iq2-tuned", "engine": "llama.cpp", "build": "unsloth", "model": "iq2", "head": "shared-q4", "draft_n_max": 4, "extra_args": ["-ub", "2048"],
-       "tune": {"depths": [1, 2, 3, 4, 6], "loads": [
+       "tune": {"depths": [0, 1, 2, 3, 4, 6], "loads": [
          {"head": "shared-q4"}, {"head": "shared-q4", "draft_p_min": 0.5}, {"head": "shared-q8"}, {"head": "shared-q4", "spec_type": "draft-mtp,ngram-mod"}]}},
       {"name": "diag-nodraft", "engine": "llama.cpp", "model": "iq2", "head": "", "spec_type": "none", "extra_args": ["-ub", "2048"]},
       {"name": "diag-ub512", "engine": "llama.cpp", "model": "iq2", "head": "full-q4", "extra_args": ["-ub", "512"]},
@@ -42,11 +42,11 @@
     ]},
     "windows": {"arms": [
       {"name": "main-iq2", "engine": "llama.cpp", "model": "iq2", "head": "full-q4", "draft_n_max": 3,
-       "tune": {"depths": [1, 2, 3, 4], "loads": [{"head": "full-q4"}, {"head": "full-q4", "draft_p_min": 0.5}, {"head": "full-q4", "spec_type": "draft-mtp,ngram-mod"}]}},
+       "tune": {"depths": [0, 1, 2, 3, 4], "loads": [{"head": "full-q4"}, {"head": "full-q4", "draft_p_min": 0.5}, {"head": "full-q4", "spec_type": "draft-mtp,ngram-mod"}]}},
       {"name": "main-iq3s", "engine": "llama.cpp", "model": "iq3s", "head": "full-q4", "draft_n_max": 3,
-       "tune": {"depths": [1, 2, 3, 4], "loads": [{"head": "full-q4"}, {"head": "full-q4", "draft_p_min": 0.5}]}},
+       "tune": {"depths": [0, 1, 2, 3, 4], "loads": [{"head": "full-q4"}, {"head": "full-q4", "draft_p_min": 0.5}]}},
       {"name": "main-q20", "engine": "llama.cpp", "model": "q20", "head": "full-q4", "draft_n_max": 3,
-       "tune": {"depths": [1, 2, 3, 4], "loads": [{"head": "full-q4"}, {"head": "full-q4", "draft_p_min": 0.5}]}}
+       "tune": {"depths": [0, 1, 2, 3, 4], "loads": [{"head": "full-q4"}, {"head": "full-q4", "draft_p_min": 0.5}]}}
     ]}
   }
 }

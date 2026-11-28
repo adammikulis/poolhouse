@@ -19,10 +19,12 @@ def _cache() -> Path:
     return Path(constants.HF_HUB_CACHE)
 
 
-def found(repo: str, path: str, cache: Path | None = None) -> Path | None:
-    """``path`` of ``repo`` in the Hub cache, from whichever snapshot holds it, or None."""
+def found(repo: str, path: str, cache: Path | None = None, sha256: str = "") -> Path | None:
+    """``path`` of ``repo`` in the Hub cache, from the newest snapshot holding it, or None; with ``sha256``, only a
+    file whose blob is that digest."""
     snapshots = (cache or _cache()) / f"models--{repo.replace('/', '--')}" / "snapshots"
-    held = sorted((p for p in snapshots.glob(f"*/{path}") if p.is_file()), key=lambda p: p.stat().st_mtime)
+    held = sorted((p for p in snapshots.glob(f"*/{path}") if p.is_file()
+                   and (not sha256 or p.resolve().name == sha256)), key=lambda p: p.stat().st_mtime)
     return held[-1] if held else None
 
 
@@ -33,7 +35,7 @@ def needed(config: Mapping[str, Any], key: str, cache: Path | None = None) -> li
     home_ = cache or _cache()
     out = []
     for shard in entry["shards"]:
-        path = found(entry["repo"], shard["path"], home_)
+        path = found(entry["repo"], shard["path"], home_, str(shard.get("sha256") or ""))
         blob = home_ / f"models--{entry['repo'].replace('/', '--')}" / "blobs" / str(shard.get("sha256") or "-")
         out.append({"repo": entry["repo"], "path": shard["path"], "bytes": int(shard["bytes"]),
                     "sha256": shard.get("sha256"), "here": path, "download": 0 if path or blob.is_file()
@@ -50,7 +52,8 @@ def required(config: Mapping[str, Any], keys: Sequence[str]) -> dict[str, Path]:
             if shard["here"] is None:
                 say(f"fetching {shard['repo']}/{shard['path']} ({shard['download'] / 1e9:.1f} GB to download)")
                 hub.fetch(f"hf:{shard['repo']}/{shard['path']}")
-        first = found(config["files"][key]["repo"], config["files"][key]["shards"][0]["path"])
+        entry = config["files"][key]
+        first = found(entry["repo"], entry["shards"][0]["path"], None, str(entry["shards"][0].get("sha256") or ""))
         if first is None:
             raise ValueError(f"{key} is not in the Hub cache after fetching it")
         out[key] = first

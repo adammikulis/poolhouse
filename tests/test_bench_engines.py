@@ -115,6 +115,17 @@ def test_the_drafting_chosen_is_the_fastest_over_the_same_requests_and_ignores_c
     assert got["a"]["draft_n_max"] == 4 and got["a"]["decode_tps"] == 100.0 and got["a"]["acceptance"] == 0.5
 
 
+def test_an_undrafted_depth_is_compared_with_but_never_chosen():
+    def row(depth, ms, **more):
+        return {"arm": "a", "setting": {"head": "h", "draft_n_max": depth}, "prompt": 0, "predicted_n": 100,
+                "predicted_ms": ms, **more}
+
+    rows = [row(0, 500.0), row(4, 1000.0, draft_n=10, draft_n_accepted=5)]
+    assert engines.best_draft(rows)["a"]["draft_n_max"] == 4
+    said = engines.tuned(rows)
+    assert "nothing drafted" in said[0] and "0.50x undrafted" in said[1]
+
+
 def test_a_clock_time_already_past_means_tomorrow():
     now = datetime(2030, 1, 1, 23, 0)
     assert engines.moment("", now) is None
@@ -132,3 +143,5 @@ def test_a_shard_held_under_another_name_costs_no_download(tmp_path):
         {"path": "A/here.gguf", "bytes": 1}, {"path": "B/linked.gguf", "bytes": 5, "sha256": "abc"},
         {"path": "B/absent.gguf", "bytes": 7, "sha256": "def"}]}}}
     assert [s["download"] for s in plan_files.needed(config, "f", tmp_path)] == [0, 0, 7]
+    config["files"]["f"]["shards"] = [{"path": "A/here.gguf", "bytes": 1, "sha256": "replaced-upstream"}]
+    assert [s["download"] for s in plan_files.needed(config, "f", tmp_path)] == [1]

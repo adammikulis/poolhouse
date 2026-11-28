@@ -54,7 +54,9 @@ ROOT = Path(__file__).resolve().parents[3]
 CAMPAIGN = ROOT / "docs" / "experiments" / "engines-qwen3.8-flash.json"
 #: Seconds one request may take: a cold read of the largest level at the slowest rate seen (125 tok/s) is under this.
 REQUEST_S = 3600.0
-TUNE_WRITES = workload.WRITES[:3]
+TUNE_WRITES = workload.WRITES
+#: What each of `workload.WRITES` asks for, as the report names it.
+WORK = ("new code", "rewrite and explain", "JSON", "prose about code")
 
 
 @dataclass(frozen=True)
@@ -119,7 +121,9 @@ def llama_config(arm: Arm, files: Mapping[str, Path], context: int, port: int) -
     """The lease of one llama.cpp arm: one slot, the whole context, its drafting."""
     config = Config(serving=Serving(model=str(files[arm.model])))
     drafting = ({"draft": str(files[arm.head]), "spec_type": arm.spec_type, "draft_n_max": arm.draft_n_max,
-                 "draft_p_min": arm.draft_p_min} if arm.head else {"draft": "", "spec_type": "", "mtp": False})
+                 "draft_p_min": arm.draft_p_min} if arm.head else {
+                     "draft": "", "mtp": False, "draft_n_max": arm.draft_n_max,
+                     "spec_type": "" if arm.spec_type in ("none", "draft-mtp") else arm.spec_type})
     return config.over(slots=1, slot_context=context, port=port, cache_type=arm.kv, kv_unified=True,
                        extra_args=arm.extra_args, **drafting)
 
@@ -349,10 +353,11 @@ def campaign(args: Any, config: Mapping[str, Any], arms: Sequence[Arm]) -> int:
 
 def best_draft(rows: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
     """For each arm, the drafting whose clean requests wrote most tokens a second over all of them. Settings missing
-    a request another setting of the arm answered are left out, so every one is compared on the same work."""
+    a request another setting of the arm answered are left out, so every one is compared on the same work; a depth
+    of 0 drafts nothing and is measured for comparison, never chosen."""
     held: dict[tuple[str, str], list[Mapping[str, Any]]] = defaultdict(list)
     for row in rows:
-        if not row.get("contended") and row.get("predicted_ms"):
+        if not row.get("contended") and row.get("predicted_ms") and row["setting"].get("draft_n_max") != 0:
             held[(row["arm"], json.dumps(row["setting"], sort_keys=True))].append(row)
     asked: dict[str, set] = defaultdict(set)
     for (arm, _), got in held.items():
@@ -444,6 +449,30 @@ def spread(values: Sequence[float], digits: int = 1) -> str:
             f"n={len(values)}")
 
 
+def tuned(rows: Sequence[Mapping[str, Any]]) -> list[str]:
+    """One line per arm, load, depth and kind of work: tokens a second and accepted share over the clean requests,
+    with the gain over the same load's undrafted rate where it was measured."""
+    held: dict[tuple[str, str, int, int], list[Mapping[str, Any]]] = defaultdict(list)
+    for row in rows:
+        if not row.get("contended") and row.get("predicted_ms"):
+            setting = dict(row["setting"])
+            depth = int(setting.pop("draft_n_max"))
+            load = f"{Path(setting.get('head') or '-').name} {setting.get('spec_type')} p_min {setting.get('draft_p_min')}"
+            held[(row["arm"], load, row["prompt"], depth)].append(row)
+    rate = {key: statistics.median(1000 * r["predicted_n"] / r["predicted_ms"] for r in got)
+            for key, got in held.items()}
+    out = []
+    for (arm, load, prompt, depth), got in sorted(held.items()):
+        mine = rate[(arm, load, prompt, depth)]
+        plain = rate.get((arm, load, prompt, 0))
+        drafted = sum(r.get("draft_n") or 0 for r in got)
+        taken = sum(r.get("draft_n_accepted") or 0 for r in got)
+        out.append(f"{arm} | {load} | {WORK[prompt]} | depth {depth}: {mine:.1f} tok/s n={len(got)}"
+                   + (f", accepted {taken / drafted:.0%}" if drafted else ", nothing drafted")
+                   + (f", {mine / plain:.2f}x undrafted" if plain and depth else ""))
+    return out
+
+
 def figures(rows: Sequence[Mapping[str, Any]]) -> dict[tuple[str, str, int], dict[str, list[float]]]:
     """``(arm, kind, level)`` to each figure's values over clean requests. ``cold_s`` and ``cold_tps`` are a session's
     reading up to a level summed over its read turns, given only when none of them was contended or missing."""
@@ -486,6 +515,8 @@ def figures(rows: Sequence[Mapping[str, Any]]) -> dict[tuple[str, str, int], dic
 
 def report(args: Any, config: Mapping[str, Any]) -> int:
     where = campaign_dir(config)
+    for line in tuned(lines(where / "tune.jsonl")):
+        say(line)
     rows = lines(where / "turns.jsonl")
     if not rows:
         say(f"nothing kept yet in {where}")
