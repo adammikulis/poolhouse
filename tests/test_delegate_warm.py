@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import dataclasses
 import importlib
 import socket
 import time
@@ -136,8 +137,7 @@ def test_only_a_session_cards_delegate_leases_a_server_already_up_and_nothing_el
     monkeypatch.setattr(delegate_confined, "leased", leased)
     monkeypatch.setattr(harnessing, "binary_for", lambda _name, pinned=False: "/bin/true")
     for name, card in (("claude-plain1", ""), ("claude-card01", "junk-card")):
-        rec = a_delegate(name, edit=True)
-        rec.card = card
+        rec = dataclasses.replace(a_delegate(name, edit=True), card=card)
         store.save(rec)
         with pytest.raises(RuntimeError, match="the lease was asked for"):
             delegate_confined.converse(rec, None, None, lambda _line: None)
