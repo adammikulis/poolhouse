@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import ast
 import platform
-import shutil
 import subprocess
 import sys
 import zipfile
@@ -16,7 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import pinned, provision
+from poolhouse import pinned, provision, safelaunch
 from poolhouse.fleet import environment as environments
 from poolhouse.serve import build_patches, build_platform, build_recover, build_release
 from poolhouse.serve.build_paths import BuildFailed
@@ -128,7 +127,7 @@ def test_only_the_pinned_llama_cpp_download_is_kept_where_there_is_no_virus_scan
 def test_the_pinned_release_has_a_build_for_each_supported_machine(monkeypatch, system, machine, tools):
     monkeypatch.setattr(platform, "system", lambda: system)
     monkeypatch.setattr(platform, "machine", lambda: machine)
-    monkeypatch.setattr(shutil, "which", lambda name: name if name in tools else None)
+    monkeypatch.setattr(safelaunch, "which", lambda name: name if name in tools else None)
     monkeypatch.delenv("VULKAN_SDK", raising=False)
     names = [one["name"] for one in build_patches.pinned_release()["assets"]]
     for pattern in build_release._release_asset_globs():
@@ -163,7 +162,7 @@ def test_a_first_build_with_no_verified_commit_never_compiles_upstreams_newest(m
 @pytest.mark.parametrize("system", ["Darwin", "Windows"])
 def test_a_source_build_downloads_no_web_page_nothing_pins(monkeypatch, system):
     monkeypatch.setattr(platform, "system", lambda: system)
-    monkeypatch.setattr(shutil, "which", lambda name: None)
+    monkeypatch.setattr(safelaunch, "which", lambda name: None)
     assert "-DLLAMA_USE_PREBUILT_UI=OFF" in build_platform.cmake_flags()
 
 

@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import net, sandbox
+from poolhouse import net, safelaunch, sandbox
 from poolhouse.httpguard import Refused
 from poolhouse.net import git as netgit
 from poolhouse.sandbox.policies import SYSTEM_EXEC, system_env
@@ -60,7 +60,7 @@ def _tree(path: str) -> str:
 
 def _which(name: str) -> str | None:
     """``name`` on PATH, else in the Homebrew directories a launchd or systemd unit's PATH leaves out."""
-    return shutil.which(name) or shutil.which(name, path=HOMEBREW_PATH)
+    return safelaunch.which(name) or safelaunch.which(name, path=HOMEBREW_PATH)
 
 
 def _xcode(*query: str) -> str:

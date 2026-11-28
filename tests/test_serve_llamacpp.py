@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 import poolhouse.setup as stack_setup
-from poolhouse import provision, sandbox, sentinel
+from poolhouse import provision, safelaunch, sandbox, sentinel
 from poolhouse.sandbox.run import wrapped
 from poolhouse.serve import (
     binary,
@@ -262,7 +262,7 @@ def test_a_cmake_that_cannot_be_installed_is_named_and_no_system_installer_is_ru
     site.commit(100)
     asked = []
     real = subprocess.run
-    monkeypatch.setattr(shutil, "which", lambda name, *a, **k: None if name == "cmake" else real and "/usr/bin/" + name)
+    monkeypatch.setattr(safelaunch, "which", lambda name, *a, **k: None if name == "cmake" else real and "/usr/bin/" + name)
     monkeypatch.setattr(subprocess, "run", lambda argv, *a, **k: asked.append(argv) or real(argv, *a, **k))
     with pytest.raises(BuildFailed) as caught:
         llamacpp_update.update("master", llamacpp_update.Env(site.upstream, pipe, smoke=passes))

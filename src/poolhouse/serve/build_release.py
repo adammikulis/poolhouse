@@ -11,7 +11,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from poolhouse import net
+from poolhouse import net, safelaunch
 from poolhouse.files import promote
 from poolhouse.fleet import updates as gh_updates
 from poolhouse.http import ServerError
@@ -79,7 +79,7 @@ def _release_asset_globs(*, fork: bool = False) -> list[str]:
     system = platform.system()
     if system == "Windows":
         globs = []
-        if arch == "x64" and shutil.which("nvcc"):
+        if arch == "x64" and safelaunch.which("nvcc"):
             globs.append("app-*-windows-x64-cuda12-newer.zip" if fork
                          else "llama-*-bin-win-cuda-12.4-x64.zip")
         if vulkan_available():

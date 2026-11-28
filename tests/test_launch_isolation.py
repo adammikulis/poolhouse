@@ -18,6 +18,7 @@ from poolhouse import provision, safelaunch
 from poolhouse.fleet import environment as environments, measuring
 from poolhouse.gym import catalog
 from poolhouse.net import packages, uvinstall
+from poolhouse.serve import build_platform, llamacpp_ccache, llamacpp_compile
 
 browser = __import__("importlib").import_module("poolhouse.scrape.browser")  # the package exports a function of this name
 
@@ -109,6 +110,24 @@ def test_uv_is_never_taken_from_the_current_directory(tmp_path, monkeypatch):
     assert safelaunch.which("uv", planted) is None
     monkeypatch.chdir(tmp_path.anchor)
     assert safelaunch.which("uv", str(elsewhere)) == str(elsewhere / "uv"), "a root as the directory rules out only itself"
+
+
+def test_the_llama_cpp_build_takes_no_program_from_where_the_caller_stands(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    (project / "bin").mkdir(parents=True)
+    for where in (project, project / "bin"):
+        for name in ("cmake", "cc", "ccache", "nvcc", "ninja", "make", "git"):
+            (where / name).write_text("#!/bin/sh\n# PLUMBING ONLY: planted, never to be run\n")
+            (where / name).chmod(0o755)
+    monkeypatch.chdir(project)
+    monkeypatch.setenv("PATH", os.pathsep.join(("", ".", "bin", str(project / "bin"))))
+    monkeypatch.setattr(llamacpp_compile, "HOMEBREW_PATH", "")
+    asked = []
+    monkeypatch.setattr(provision, "module", lambda name, extra: asked.append(extra) or SimpleNamespace(CMAKE_BIN_DIR="/kept"))
+    assert not build_platform.can_build_from_source()
+    assert [llamacpp_compile._which(name) for name in ("cmake", "cc", "ninja", "make", "git", "nvcc")] == [None] * 6
+    assert llamacpp_ccache.find() is None
+    assert Path(build_platform.cmake_program()).parent == Path("/kept") and asked == ["llama-build"]
 
 
 def test_on_windows_every_poolhouse_process_keeps_bare_names_from_running_out_of_the_current_directory():
