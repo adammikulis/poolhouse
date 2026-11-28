@@ -1,13 +1,14 @@
-//! Who may hold a connection to the phone endpoint. The endpoint answers anyone on the network, so a host that opens connections and
-//! says nothing must not be able to use them all: one address holds a few, and the last few connections are kept for addresses a phone
-//! has recently answered from.
+//! Who may hold a connection to a listener of the node, and until when. A listener answers anyone on the network, so a host that opens
+//! connections and says nothing must not be able to use them all: one address holds a few, the last few connections are kept for
+//! addresses that a device the node knows has recently answered from (`Gate`), and a connection has a deadline (`Timed`).
 
 use std::collections::BTreeMap;
-use std::net::IpAddr;
+use std::io::{Read, Write};
+use std::net::{IpAddr, TcpStream};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-/// How long an address that a phone answered from keeps its claim on the reserved connections.
+/// How long an address that a known device answered from keeps its claim on the reserved connections.
 const KNOWN_FOR: Duration = Duration::from_secs(3600);
 const MOST_KNOWN: usize = 64;
 
@@ -17,8 +18,8 @@ struct Counts {
     known: BTreeMap<IpAddr, Instant>,
 }
 
-/// The connections of the endpoint: at most ``most`` together, ``per_address`` for one address, and the last ``reserved`` only for
-/// addresses a phone answered from.
+/// The connections of one listener: at most ``most`` together, ``per_address`` for one address, and the last ``reserved`` only for
+/// addresses a known device answered from.
 pub struct Gate {
     most: usize,
     per_address: usize,
@@ -67,7 +68,7 @@ impl Gate {
 }
 
 impl Permit {
-    /// A phone answered from this address: its next connections may use the reserved places.
+    /// A known device answered from this address: its next connections may use the reserved places.
     pub fn vouch(&self) {
         let mut c = self.gate.counts.lock().unwrap_or_else(PoisonError::into_inner);
         if c.known.len() >= MOST_KNOWN && !c.known.contains_key(&self.address) {
@@ -96,9 +97,111 @@ impl Drop for Permit {
     }
 }
 
+/// A connection with a deadline on the whole of a stage, not on each read: a host that sends a byte every few seconds is cut off
+/// all the same. With no deadline, the socket's own timeouts hold.
+pub struct Timed {
+    tcp: TcpStream,
+    until: Option<Instant>,
+}
+
+impl Timed {
+    /// ``tcp`` with no deadline.
+    pub fn open(tcp: TcpStream) -> Timed {
+        Timed { tcp, until: None }
+    }
+
+    /// ``tcp``, to be done with within ``span``.
+    pub fn within(tcp: TcpStream, span: Duration) -> Timed {
+        Timed { tcp, until: Some(Instant::now() + span) }
+    }
+
+    /// The reads and writes from now on are done within ``span`` together.
+    pub fn arm(&mut self, span: Duration) {
+        self.until = Some(Instant::now() + span);
+    }
+
+    /// End the deadline: each read and each write from now on may take ``each``.
+    pub fn disarm(&mut self, each: Duration) -> std::io::Result<()> {
+        self.until = None;
+        self.tcp.set_read_timeout(Some(each))?;
+        self.tcp.set_write_timeout(Some(each))
+    }
+
+    pub fn into_inner(self) -> TcpStream {
+        self.tcp
+    }
+
+    fn left(&self) -> std::io::Result<Option<Duration>> {
+        let Some(until) = self.until else { return Ok(None) };
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() { Err(std::io::ErrorKind::TimedOut.into()) } else { Ok(Some(left)) }
+    }
+}
+
+impl Read for Timed {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if let Some(left) = self.left()? {
+            self.tcp.set_read_timeout(Some(left))?;
+        }
+        self.tcp.read(buf)
+    }
+}
+
+impl Write for Timed {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if let Some(left) = self.left()? {
+            self.tcp.set_write_timeout(Some(left))?;
+        }
+        self.tcp.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.tcp.flush()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::TcpListener;
+
+    fn connected() -> (TcpStream, TcpStream) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        (client, listener.accept().unwrap().0)
+    }
+
+    #[test]
+    fn a_peer_that_says_nothing_is_cut_off_at_the_deadline() {
+        let (_client, server) = connected();
+        let mut timed = Timed::within(server, Duration::from_millis(300));
+        let began = Instant::now();
+        assert!(timed.read(&mut [0u8; 16]).is_err());
+        assert!(began.elapsed() < Duration::from_secs(2), "{:?}", began.elapsed());
+    }
+
+    #[test]
+    fn a_peer_that_sends_a_byte_at_a_time_is_cut_off_at_the_same_deadline() {
+        let (client, server) = connected();
+        let sender = std::thread::spawn(move || {
+            let mut client = client;
+            for _ in 0..40 {
+                if client.write_all(b"x").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        });
+        let mut timed = Timed::within(server, Duration::from_millis(600));
+        let (began, mut got) = (Instant::now(), 0);
+        while let Ok(n) = timed.read(&mut [0u8; 16]) {
+            got += n;
+            assert!(n > 0, "the peer did not close");
+        }
+        assert!(began.elapsed() < Duration::from_millis(1500) && (3..15).contains(&got), "{:?} {got}", began.elapsed());
+        drop(timed);
+        sender.join().unwrap();
+    }
 
     fn at(last: u8) -> IpAddr {
         IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, last))

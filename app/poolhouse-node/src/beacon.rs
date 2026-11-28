@@ -269,14 +269,14 @@ pub fn start(cfg: BeaconConfig, key: SigningKey, hooks: Hooks, stop: Arc<AtomicB
     let hooks = Arc::new(hooks);
     let stats = Arc::new(BeaconStats::default());
     let (h, s, c, st) = (hooks.clone(), stop.clone(), cfg.clone(), stats.clone());
-    std::thread::spawn(move || {
+    std::thread::Builder::new().name("beacon-hear".into()).spawn(move || {
         let mut buf = [0u8; MAX_DATAGRAM + 1];
         while !s.load(Ordering::SeqCst) {
             hear(&inbound, &c, &h, &st, now, &mut buf);
         }
-    });
+    })?;
     let st = stats.clone();
-    std::thread::spawn(move || {
+    std::thread::Builder::new().name("beacon-send".into()).spawn(move || {
         let Ok(out) = UdpSocket::bind("0.0.0.0:0") else { return };
         let _ = out.set_multicast_loop_v4(true);
         let _ = out.set_broadcast(true);
@@ -288,6 +288,6 @@ pub fn start(cfg: BeaconConfig, key: SigningKey, hooks: Hooks, stop: Arc<AtomicB
                 waited += Duration::from_millis(50);
             }
         }
-    });
+    })?;
     Ok(stats)
 }
