@@ -13,8 +13,8 @@ performance are not claimed anywhere.
 
 ## 0. The five findings that shape the order
 
-1. A phone app exists already, and it is native Android, not a web page. It approves for the node's pool
-   (`app/android/README.md` [D]). It cannot command anything else.
+1. A phone app exists, and it is native Android, not a web page. It directs the computer it is linked to through
+   the phone API (`app/android/README.md` [D], `docs/phone-api.md`).
 2. No person action can come from a phone today. Every person-session browser route requires the client
    address to be loopback and a Host header that is not a DNS name (`workspace/person_session.py:_validate`
    [V], `fleet/ui.py:host_ok` [V]). That is a deliberate floor, so the
@@ -235,7 +235,7 @@ untrusted certificate. The session cookie sets `Secure` only if asked, and sign-
 |---|---|---|---|
 | option A: the tailnet (`tailscale serve`, a certificate for the tailnet DNS name) | `host.tailnet-name.ts.net`, stable | Valid public-CA certificate, secure context | Needs the Tailscale app on the phone and every device and a Tailscale account; certificate issuance is transparent-log public (the machine name appears in CT logs); the daemon's `host_ok` refuses a Host that is a DNS name and a `serve` proxy arrives as loopback with that Host, so person routes stay refused until section 3 slice 4 changes the credential model [V `ui.py`, `person_session.py`] |
 | option B: a local certificate authority the phone trusts | a name the owner picks, needs local DNS or mDNS | Secure context once the CA is installed | iOS needs the profile installed and enabled as full trust, Android 11+ cannot trust a user CA for apps that do not opt in (the native app pins its own certificate and is unaffected); we would own a CA private key, an attack target and a security surface; the CA install is a person-only device setting; renewals and DNS are ours to run |
-| option C: plain LAN, no HTTPS trust | IP or `.local` | Not secure, or a warning page | No PWA install, no service worker, no web push, no camera in page, no WebAuthn, copy buttons fail; native Android app unaffected because it pins the certificate itself (`app/android` `PinnedHttps.java` [V]); the launch ticket travels over the self-signed TLS only |
+| option C: plain LAN, no HTTPS trust | IP or `.local` | Not secure, or a warning page | No PWA install, no service worker, no web push, no camera in page, no WebAuthn, copy buttons fail; native Android app unaffected because it pins the certificate itself (`app/android` `PinnedTls.kt` [V]); the launch ticket travels over the self-signed TLS only |
 
 **(b) Tailscale as transport only.** Already the design for detection and routing
 (`docs/onboarding.md` "Devices on other networks", `docs/security.md` [D]; `fleet/tailnet.py`,
