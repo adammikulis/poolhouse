@@ -24,9 +24,11 @@ import json
 import os
 import re
 import sys
+import tempfile
 import tomllib
 from collections import Counter
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -422,7 +424,9 @@ def find_tools(found: dict[str, Surface]) -> None:
     for tool in mcp.TOOLS:
         add(found, "mcp-tool", tool.name, f"mcp.py:{tool.name}")
     person = do.Person(io.StringIO(""), io.StringIO(""))
-    session = chat.Chat(None, person, role="approve-first", extension=chat.extensions(person))
+    # the chat's extensions open a memory store, which here is a scratch one: listing the tools reads nothing of the account's
+    with tempfile.TemporaryDirectory() as scratch, mock.patch.dict(os.environ, {"POOLHOUSE_HOME": scratch, "POOLHOUSE_CACHE": scratch}):
+        session = chat.Chat(None, person, role="approve-first", extension=chat.extensions(person))
     for spec, _ in session.offered:
         add(found, "chat-tool", spec["function"]["name"], f"chat.py:{spec['function']['name']}")
 

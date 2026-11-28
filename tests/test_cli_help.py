@@ -11,9 +11,11 @@ installed. No model is served, and nothing under ``~/.poolhouse`` is touched.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib
 import re
 import shlex
+import tempfile
 import tomllib
 from pathlib import Path
 from unittest import mock
@@ -109,7 +111,18 @@ def flags_of(parser: argparse.ArgumentParser, *paths: str) -> set[str]:
     return {s for one in chosen for s in one._option_string_actions if s.startswith("--")}
 
 
-PARSERS = {command: parser_of(command) for command in SCRIPTS}
+@contextlib.contextmanager
+def scratch_roots():
+    """Scratch roots for building parsers at collection: a parser's defaults name the state folder, and a test run is refused the
+    account's own."""
+    with pytest.MonkeyPatch.context() as moved, tempfile.TemporaryDirectory() as scratch:
+        moved.setenv("POOLHOUSE_HOME", scratch)
+        moved.setenv("POOLHOUSE_CACHE", scratch)
+        yield
+
+
+with scratch_roots():
+    PARSERS = {command: parser_of(command) for command in SCRIPTS}
 SUBCOMMANDS = [(command, path) for command, parser in PARSERS.items()
                for path in parsers_of(parser) if path]
 
@@ -258,7 +271,8 @@ def _documented() -> list[tuple[str, str, tuple[str, ...], set[str], argparse.Ar
     return found
 
 
-DOCUMENTED = _documented()
+with scratch_roots():
+    DOCUMENTED = _documented()
 
 
 def test_the_docs_were_read():
