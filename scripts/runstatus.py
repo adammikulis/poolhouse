@@ -1,4 +1,5 @@
-"""The report behind scripts/status: the local test broker, the test jobs and the GitHub runs of the development branch.
+"""The report behind scripts/status: the local test broker, the test jobs, the GitHub runs of the development branch and the
+agent hooks that failed.
 
 Stuck means: a GitHub run still going after 25 minutes; a GitHub run queued for more than 5 minutes while no run of the same
 workflow has started after it (one queued behind a running run of its workflow is only flagged after 25 minutes); a local run past
@@ -79,6 +80,17 @@ def test_jobs() -> list[str]:
     return ["test jobs:", *(live or ["  none running"])]
 
 
+def hook_lines() -> list[str]:
+    """The agent hooks that failed in the last day, as `scripts/hooks/hook_failures.py` recorded them."""
+    sys.path.append(str(ROOT / "scripts" / "hooks"))
+    import hook_failures
+    import hook_state
+    try:
+        return hook_failures.summary(hook_state.state_dir())
+    except OSError as why:
+        return [f"hooks: the failure record could not be read ({type(why).__name__})"]
+
+
 def development_branch() -> str:
     """$POOLHOUSE_DEV_BRANCH, else the branch of the primary checkout."""
     if os.environ.get("POOLHOUSE_DEV_BRANCH"):
@@ -149,6 +161,7 @@ def report(now: float, jobs: bool = True) -> list[str]:
     lines += test_jobs() if jobs else []
     shown, found, said = github()
     lines += shown
+    lines += hook_lines()
     if said is not None and said.actions:
         info = "; ".join(["github degraded: " + "; ".join(said.actions), *(p.removeprefix("github: ") for p in found)])
         lines.append(f"  {info}")

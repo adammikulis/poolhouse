@@ -110,6 +110,20 @@ def test_a_session_that_ends_twice_or_is_unknown_does_not_fail_the_hook(workspac
     assert hook("claude-session-end").returncode == 0
 
 
+def test_a_retire_that_hangs_ends_within_the_hooks_limit_and_is_recorded(workspace_node, project, tmp_path, monkeypatch):
+    monkeypatch.setenv("POOLHOUSE_HOOK_STATE", str(tmp_path / "hookstate"))
+    assert start("hangs").returncode == 0
+    shim = tmp_path / "shim" / "poolhouse-workspace"
+    shim.write_text(f"#!{sys.executable}\nimport time\ntime.sleep(60)  # plumbing only: a command that never answers\n")
+    settings = json.loads((ROOT / ".claude" / "settings.json").read_text())
+    limit = settings["hooks"]["SessionEnd"][0]["hooks"][0]["timeout"]
+    done = subprocess.run([sys.executable, str(HOOKS / "claude-session-end")], text=True, capture_output=True, check=False,
+                          timeout=limit, input=json.dumps({"hook_event_name": "SessionEnd", "session_id": "hangs", "reason": "other"}))
+    assert done.returncode == 0 and "timed out" in done.stderr
+    held = (tmp_path / "hookstate" / "hook-failures" / "spool.jsonl").read_text()
+    assert "claude-session-end" in held and "was not retired" in held
+
+
 def test_a_terminal_starts_as_many_sessions_as_it_needs_without_ending_any(workspace_node, project):
     for index in range(12):
         started = start(f"worker-{index}")

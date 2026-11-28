@@ -10,19 +10,30 @@ value a later Claude Code adds keep the registration: a registration kept in err
 
 from __future__ import annotations
 
+import hook_failures
+import hook_state
 import workspace_hook
 
 EXITS = ("prompt_input_exit", "logout", "other")
+RETIRE_S = 10.0
+"""Under the 15 s the settings give this hook, with room for the lookups before it."""
 
 
 def main() -> int:
     event = workspace_hook.event("SessionEnd")
     if event is None or event.get("agent_id") or event.get("reason") not in EXITS:
         return 0
-    environment = workspace_hook.session_environment(event, "SessionEnd")
-    if environment is None or not environment.get("POOLHOUSE_WORKSPACE_AGENT"):
-        return 0
-    workspace_hook.run(["poolhouse-workspace", "retire"], "SessionEnd", environment=environment)
+    try:
+        environment = workspace_hook.session_environment(event, "SessionEnd")
+        if environment is None or not environment.get("POOLHOUSE_WORKSPACE_AGENT"):
+            return 0
+        done = workspace_hook.run(["poolhouse-workspace", "retire"], "SessionEnd", environment=environment, timeout=RETIRE_S)
+    except Exception as error:
+        hook_failures.record(hook_state.state_dir(), "claude-session-end", "SessionEnd", error)
+        raise
+    if done is None:  # no event of this session follows, so the next session is told
+        hook_failures.record(hook_state.state_dir(), "claude-session-end", "SessionEnd",
+                             "the ended session's identity was not retired")
     return 0
 
 
