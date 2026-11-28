@@ -136,7 +136,7 @@ def test_a_model_that_is_used_claimed_or_not_served_with_room_starts_no_card(roo
 def test_a_holder_that_only_keeps_the_server_up_is_no_use_and_the_model_has_to_stay_unused_a_while(root):
     release(root)
     computer = Computer()
-    computer.holders = [{"pid": 5, "label": "poolhouse-serve up Qwen.gguf"}]
+    computer.holders = [{"pid": 5, "label": "poolhouse-serve up Qwen.gguf"}, {"pid": 6, "label": "sentinel-canary"}]
     host = computer.host(idle_s=600)
     assert cards_run.step(root, host)[0] == "waiting"
     computer.now += 599
@@ -215,6 +215,9 @@ def test_a_checked_grade_accepts_the_work_and_a_lower_one_returns_the_reasons_to
     cards_run.step(root, computer.host())
     assert "accepted" in graded("correct", True, "run-2") and states(root)["junk-card"] == "accepted"
     assert cards_run.step(root, computer.host())[0] == "idle" and cards_run.needs(root) == []
+    (root / "docs" / "cards" / "junk-card.toml").unlink()
+    cards_run.listing(root)
+    assert "junk-card" not in cards_ledger.read(root)["cards"], "its change has landed"
 
 
 def test_a_delegate_that_cannot_be_started_holds_the_runner_until_a_lead_releases_it_again(root):

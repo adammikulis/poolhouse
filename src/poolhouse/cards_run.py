@@ -40,8 +40,9 @@ IDLE_S = 600.0
 POLL_S = 10.0
 OVERSIZE = cards.COMPACTS_AT * 9 // 10
 """A run whose context came this near the compaction point did not fit its session."""
-UP = "poolhouse-serve up "
-"""How the holder `poolhouse-serve up` is labelled: it keeps a server running and asks it nothing."""
+UNUSING = ("poolhouse-serve up ", "sentinel-canary")
+"""How a holder that is nobody's use of the model is labelled: `poolhouse-serve up` keeps a server running and asks it nothing, and the broker's
+canary check asks one question of a server that is idle."""
 DEFERRED = "llamacpp:requests_deferred"
 UNAVAILABLE = (BrokerError, OSError, RuntimeError, ValueError)
 CARD_MODEL = "Qwen3.8-Flash-Next"
@@ -149,7 +150,9 @@ def standing(root: Path) -> list[Standing]:
 
 
 def listing(root: Path) -> dict[str, Any]:
-    """The cards of ``root`` as the commands and the web page show them, kept for the page as it is made."""
+    """The cards of ``root`` as the commands and the web page show them, kept for the page as it is made. What was kept of accepted work whose card
+    has landed (its file is gone) is dropped."""
+    cards_ledger.landed(root, {card.id for card in cards.load(root)[0]})
     ledger, rows = cards_ledger.read(root), []
     for each in standing(root):
         try:
@@ -249,7 +252,7 @@ def _others(status: dict[str, Any], mine: int) -> str:
         if server.get("loading"):
             return "a model is loading"
         for holder in server.get("holders") or []:
-            if holder.get("pid") != mine and not str(holder.get("label") or "").startswith(UP):
+            if holder.get("pid") != mine and not str(holder.get("label") or "").startswith(UNUSING):
                 return f"port {server.get('port')} is in use by {holder.get('label') or holder.get('pid')}"
     return ""
 
@@ -314,8 +317,8 @@ def _launch(root: Path, host: Host, each: Standing, model: str) -> tuple[str, st
     reasons = [str(one) for one in each.entry.get("reasons") or []]
     task = cards.brief(root, card, lead, reasons)
     before = set(store.names())
-    words = ["start", "--task", task, "--edit", "--project", str(root), "--as", lead, "--name", card.id, "--kind", "card", "--card", card.id,
-             "--model", model, *(["--memory", "--about", f"{card.title} {' '.join(card.write)}"] if card.memory else [])]
+    words = ["start", "--task", task, "--edit", "--project", str(root), "--as", lead, "--kind", "card", "--card", card.id, "--model", model,
+             *(["--memory", "--about", f"{card.title} {' '.join(card.write)}"] if card.memory else [])]
     status = host.start(words)
     new = [name for name in store.names() if name not in before and (rec := store.load(name)) and rec.card == card.id]
     if status or not new:

@@ -1,21 +1,21 @@
 """What the card runner keeps under the state root: for each project, the hold, its release and what became of each card's runs, and the last
 listing, which the web page shows.
 
-A card's file says what the work is (`poolhouse.cards`); this says where a run of it stands. Nothing here is a second backlog: an entry of a card
-that is gone from the project is dropped.
+A card's file says what the work is (`poolhouse.cards`); this says where a run of it stands. Nothing here is a second backlog: only cards the
+project holds are listed, and what is kept of accepted work is dropped once its card has landed.
 """
 
 from __future__ import annotations
 
 import contextlib
 import hashlib
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Collection, Iterator
 from pathlib import Path
 from typing import Any
 
 from poolhouse import files, home, lock
 
-__all__ = ["VERSION", "edit", "folder", "graded", "publish", "published", "read"]
+__all__ = ["VERSION", "edit", "folder", "graded", "landed", "publish", "published", "read"]
 
 VERSION = 1
 
@@ -73,6 +73,15 @@ def graded(project: Path, card: str, name: str, grade: dict[str, Any]) -> str:
         return f"card {card} rejected: it is ready again, and its next run is told why"
 
     return edit(project, change)
+
+
+def landed(project: Path, present: Collection[str]) -> None:
+    """Drop what is kept of accepted work whose card is not in ``present``: its change has landed, and a later card of that name starts fresh."""
+    def change(ledger: dict[str, Any]) -> None:
+        for ident in [ident for ident, entry in ledger["cards"].items() if entry.get("state") == "accepted" and ident not in present]:
+            del ledger["cards"][ident]
+
+    edit(project, change)
 
 
 def publish(listing: dict[str, Any]) -> None:
