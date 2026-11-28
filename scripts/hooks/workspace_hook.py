@@ -28,11 +28,15 @@ def warning(stage: str, reason: object) -> None:
     print(f'workspace {stage}: {redacted(reason)[:1000]}', file=sys.stderr)
 
 
+EVENT_LIMIT = 32 * 1024 * 1024
+"""A tool-call event carries the tool's input and result, so it is as long as they are."""
+
+
 def event(stage: str) -> dict | None:
     try:
-        text = sys.stdin.read(65537)
-        if len(text) > 65536:
-            raise ValueError('hook event exceeds 64 KiB')
+        text = sys.stdin.read(EVENT_LIMIT + 1)
+        if len(text) > EVENT_LIMIT:
+            raise ValueError('hook event exceeds 32 MiB')
         value = json.loads(text)
         if not isinstance(value, dict):
             raise ValueError('hook event must be a JSON object')

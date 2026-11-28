@@ -72,10 +72,8 @@ def main() -> int:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import hook_failures
         import hook_state
-        text, commit = hook_failures.pending(event, hook_state.state_dir())
-        if text:
-            say(str(event.get("hook_event_name") or "PostToolUse"), text)
-        commit()
+        name = str(event.get("hook_event_name") or "PostToolUse")
+        hook_failures.deliver(event, hook_state.state_dir(), lambda text: say(name, text))
     except BaseException as error:  # whatever stops it is said, since nothing else would report this hook
         trace = error.__traceback__
         while trace is not None and trace.tb_next is not None:

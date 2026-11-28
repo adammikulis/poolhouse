@@ -166,6 +166,27 @@ def test_no_environment_value_token_output_or_quoted_content_is_told(session, mo
         assert hidden not in text, hidden
 
 
+def test_a_path_in_the_home_folder_reads_from_the_home_folder(session, monkeypatch):
+    monkeypatch.setenv("HOME", "/Users/syntheticperson")
+    monkeypatch.setenv("USER", "syntheticperson")
+    append(session, success(stderr="workspace lifecycle: /Users/syntheticperson/.poolhouse/node/claude.token missing"))
+    text = told(session)
+    assert "workspace lifecycle: ~/.poolhouse/node/claude.token missing" in text and "syntheticperson" not in text, text
+
+
+def test_of_two_events_at_once_one_tells_and_a_reader_that_was_ended_does_not_silence_the_next(session, tmp_path):
+    append(session, crash())
+    claim = tmp_path / "state" / "hook-failures" / f"{SESSION}.busy"
+    claim.parent.mkdir(parents=True)
+    claim.write_text("")
+    assert told(session) == "", "another event of this session is telling it"
+    reader, said = load("hook_failures"), []
+    reader.CLAIM_S = -1.0  # the claim is now older than a reader may hold one: its holder was ended
+    reader.deliver({"session_id": SESSION, "transcript_path": str(session)}, tmp_path / "state", said.append)
+    assert len(said) == 1 and "claude-lead-attention" in said[0], said
+    assert not claim.exists()
+
+
 def test_a_crash_in_the_attention_hooks_background_check_is_told(session, tmp_path):
     folder = tmp_path / "state" / "attention"
     folder.mkdir(parents=True)
@@ -199,7 +220,7 @@ def test_a_reader_that_cannot_run_says_so_once(session, tmp_path):
     copy.mkdir()
     for name in ("claude-hook-failures", "hook_state.py"):
         shutil.copy(HOOKS / name, copy / name)
-    (copy / "hook_failures.py").write_text("def pending(event, state):\n    raise KeyError('tool content that stays private')\n")
+    (copy / "hook_failures.py").write_text("def deliver(event, state, say):\n    raise KeyError('tool content that stays private')\n")
     text = told(session, script=copy / "claude-hook-failures")
     assert "did not do its work (KeyError at hook_failures.py:2)" in text and "private" not in text, text
     assert told(session, script=copy / "claude-hook-failures") == ""

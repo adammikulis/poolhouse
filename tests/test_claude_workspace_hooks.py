@@ -165,6 +165,19 @@ def test_an_attention_event_with_no_check_due_loads_no_board_client(tmp_path, mo
     assert not loaded & {'poolhouse.board', 'poolhouse.board.client', 'poolhouse.guard.secrets'}
 
 
+def test_a_tool_result_longer_than_64_kib_does_not_stop_the_lead_being_told(tmp_path, monkeypatch):
+    monkeypatch.setenv('POOLHOUSE_HOOK_STATE', str(tmp_path))
+    held = tmp_path / 'attention'
+    held.mkdir()
+    (held / 'large').write_text(str(time.time()))  # no check is due: the hook only shows what is held
+    (held / 'large.text').write_text('a question waits for you')
+    done = subprocess.run([sys.executable, str(HOOKS / 'claude-lead-attention')], text=True, capture_output=True, timeout=60,
+                          check=False, input=json.dumps({'hook_event_name': 'PostToolUse', 'session_id': 'large',
+                                                         'tool_response': {'output': 'x' * 300_000}}))
+    assert done.returncode == 0 and not done.stderr, done.stderr
+    assert json.loads(done.stdout)['hookSpecificOutput']['additionalContext'] == 'a question waits for you'
+
+
 @pytest.mark.parametrize('stage', ['SessionStart', 'SubagentStart'])
 def test_timeout_warning_is_nonblocking_and_redacts_the_command(monkeypatch, capsys, stage):
     spec = importlib.util.spec_from_file_location('tested_workspace_hook', HOOKS / 'workspace_hook.py')

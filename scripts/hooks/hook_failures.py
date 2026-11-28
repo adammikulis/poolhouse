@@ -1,6 +1,6 @@
 """Which hooks failed, for the agent: the harness shows a hook's crash or timeout to the person only.
 
-`claude-hook-failures` calls `pending` at each event. It reads, from where it stopped last time, what the harness recorded in the
+`claude-hook-failures` calls `deliver` at each event. `pending` reads, from where it stopped last time, what the harness recorded in the
 session's transcript (the lead reads its own and every subagent's, a subagent only its own), what a hook recorded itself
 (`record`, for an event no later one follows) and what a hook's background check wrote to its log. Only the hook's name, the
 event, the kind of failure, one cleaned error line, a count and two times are told: never a hook's output, a tool's input or result,
@@ -31,6 +31,8 @@ SHOWN = 6
 GROUPS = 100
 LINE = 200
 SPOOL_BYTES = 262_144
+CLAIM_S = 15.0
+"""A claim to tell older than this was left by a reader that was ended: longer than the settings let one run."""
 BAD_OUTPUT_UNDER = 9000
 """A longer output may have been cut short by the harness, so it is not judged."""
 SOURCE = Path(__file__).resolve().parents[2] / "src"
@@ -52,11 +54,11 @@ PREFIX = "Failed with non-blocking status code:"
 def clean(line: object) -> str:
     """``line`` as one short line with environment values, tokens and quoted content taken out."""
     text = " ".join("".join(c if c.isprintable() else " " for c in ANSI.sub("", str(line))).split())
+    home = os.environ.get("HOME", "")
+    if len(home) > 1:  # first, so that a path under it stays readable when the account's name is a value too
+        text = text.replace(home, "~")
     for value in sorted({v for v in os.environ.values() if len(v) >= 8 and not v.startswith(("/", "~"))}, key=len, reverse=True):
         text = text.replace(value, "<env>")
-    home = os.environ.get("HOME", "")
-    if len(home) > 1:
-        text = text.replace(home, "~")
     with contextlib.suppress(Exception):  # the patterns below stand alone when the package cannot be loaded
         if str(SOURCE) not in sys.path:
             sys.path.append(str(SOURCE))
@@ -348,6 +350,25 @@ def pending(event: dict, state: Path, now: float | None = None):
         partial.replace(held)
 
     return text, commit
+
+
+def deliver(event: dict, state: Path, say) -> None:
+    """Give ``say`` the notice of ``event`` when there is one; of two events of an agent at once, only one tells."""
+    claim = record_file(state, event).with_suffix(".busy")
+    with contextlib.suppress(FileNotFoundError):
+        if time.time() - claim.stat().st_mtime > CLAIM_S:
+            claim.unlink()
+    try:
+        os.close(os.open(claim, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+    except FileExistsError:
+        return
+    try:
+        text, commit = pending(event, state)
+        if text:
+            say(text)
+        commit()
+    finally:
+        claim.unlink(missing_ok=True)
 
 
 def summary(state: Path, now: float | None = None) -> list[str]:
