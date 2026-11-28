@@ -374,9 +374,12 @@ about a quarter of an hour. Every harness that points at a local model keeps to 
   limit (15 % of the window kept free), asked as the conversation with the summary's words at its end. 2.4.2 prunes no old tool output, and a
   delegate's title is given, so no title is asked for.
 - **Room in the server's prompt cache.** A server a coding session starts is given `--cache-ram` for two conversations of its window, at most a
-  quarter of the machine and half of what the model leaves of the memory servers are admitted against (`harnessing.prompt_cache_mb`), and the
-  broker counts it with the server (`admission.estimate_bytes`); where that is under llama-server's 8192 MiB, nothing is asked. One conversation of
-  Qwen3.8-Flash-Next is about 7 GiB at 166,000 tokens, so with 8192 MiB one other request pushed it out. A server already up keeps its own setting.
+  quarter of the machine and half of what this model, the servers already up and the other memory leases leave of the memory servers are admitted
+  against (`harnessing.conversation_cache_mb`), and the broker counts it with the server (`admission.estimate_bytes`); where that is under
+  llama-server's 8192 MiB, or the llama-server build has no `--cache-ram`, nothing is asked. Sized so, the cache does not refuse the start that asks
+  for it. It stays counted while that server is up, so a later start has less room: the broker stops idle servers when that makes it fit, and a
+  server still held is left running. One conversation of Qwen3.8-Flash-Next is about 7 GiB at 166,000 tokens, so with 8192 MiB one other request
+  pushed it out. A server already up keeps its own setting.
 - **The same prompt in every box.** A delegate's conversation taken up in a later box is asked with the system prompt it was begun with: the box's
   paths are replaced (those of earlier boxes too), and what the first box lacked stays in it, what a later one lacks being said at the end.
 - **A rewrite is said.** The model bridge compares each prompt with those before it (`isolation.prompt_watch`), one comparison for every box of a

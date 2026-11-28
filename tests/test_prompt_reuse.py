@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import time
 from types import SimpleNamespace
 
@@ -24,11 +25,21 @@ from poolhouse import (
     delegate_store as store,
     harnessing,
     http,
+    leasetable,
+    ownership,
 )
 from poolhouse.isolation import Lease, ModelBridge, model_bridge, prompt_watch
-from poolhouse.serve import admission
+from poolhouse.serve import LlamaServerBackend, ServerManager, admission, ledger, node_memory
 from poolhouse.serve.backend import ServerSpec
+from poolhouse.serve.broker import Ask, Broker
+from poolhouse.serve.events import Caller
+from poolhouse.serve.ports import free_port
+from poolhouse.serve.process import kill_process_tree
+from poolhouse.serve.serving import Serving
 from poolhouse.testing import canned
+from tests.model_pins import pinned
+
+pytest_plugins = ["serve_node"]
 
 CHAT = "/v1/chat/completions"
 LONG = "PLUMBING " * 8_000
@@ -362,13 +373,91 @@ def test_a_prompt_cache_asked_for_is_counted_in_what_the_server_takes(monkeypatc
     assert admission.estimate_bytes(asked_for) - admission.estimate_bytes(spec) == 20_000 * 2**20
 
 
-def test_a_coding_session_asks_for_that_prompt_cache_when_it_starts_the_server(monkeypatch):
+@pytest.fixture
+def sizing(monkeypatch, tmp_path, serve_leases):
+    """A 128 GiB machine that admits 90 GiB, a window of `KV` bytes and a build that takes ``--cache-ram``. Call it with the GiB the
+    model's server takes without a prompt cache."""
+    monkeypatch.setenv("LLAMA_CPP_SERVER", str(canned.canned_binary(tmp_path)))
     monkeypatch.setattr(harnessing.profile, "profile_for", lambda *_a, **_k: None)
     monkeypatch.setattr(harnessing, "drafted", lambda config, *_a, **_k: config)
     monkeypatch.setattr(harnessing.estimate, "read_meta", lambda _path: {"PLUMBING": 1})
-    monkeypatch.setattr(harnessing.estimate, "estimate_meta", lambda *_a, **_k: SimpleNamespace(kv_cache_bytes=26_000 * 262_144))
+    monkeypatch.setattr(harnessing.estimate, "estimate_meta", lambda *_a, **_k: SimpleNamespace(kv_cache_bytes=KV))
     monkeypatch.setattr(harnessing.hub, "total_memory", lambda: 128 * 2**30)
     monkeypatch.setattr(harnessing.admission, "budget_mb", lambda: 90 * 1024)
-    monkeypatch.setattr(harnessing.admission, "estimate_bytes", lambda spec: 62 * 2**30 + (spec.cache_ram_mb or 0) * 2**20)
-    got = harnessing.config_for("/PLUMBING/m.gguf", harnessing.Want(ctx=262_144), lambda _line: None)
+
+    def takes(need_gib):
+        monkeypatch.setattr(harnessing.admission, "estimate_bytes",
+                            lambda spec: need_gib * 2**30 + (spec.cache_ram_mb or 0) * 2**20)
+        return harnessing.config_for("/PLUMBING/m.gguf", harnessing.Want(ctx=262_144), lambda _line: None)
+
+    return takes
+
+
+def test_a_coding_session_asks_for_that_prompt_cache_when_it_starts_the_server(sizing):
+    got = sizing(62)
     assert got.serving.cache_ram_mb == 14 * 1024 and got.lease()["cache_ram_mb"] == 14 * 1024
+
+
+@pytest.mark.parametrize("need_gib,other_gib,cache_gib", [
+    (40, 30, 10),     # half of the 20 GiB the two servers leave
+    (40, 40, None),   # half of what is left is under llama-server's own 8192 MiB
+    (55, 20, None),
+    (30, 55, None),
+    (55, 40, None),   # does not fit with or without a cache
+])
+def test_the_prompt_cache_is_sized_from_what_the_live_servers_leave(sizing, need_gib, other_gib, cache_gib):
+    other = ServerSpec(model="/PLUMBING/other.gguf", port=1)
+    ledger.save(ownership.lease_file(), {"1": ledger.entry(other, backend="PLUMBING", lease="", est_mb=other_gib * 1024)})
+    got = sizing(need_gib)
+    assert got.serving.cache_ram_mb == (cache_gib and cache_gib * 1024)
+    records = ownership.recorded_servers()
+    with_cache = need_gib * 1024 + (got.serving.cache_ram_mb or 0)
+    assert ledger.fits(records, with_cache)[0] == ledger.fits(records, need_gib * 1024)[0]
+
+
+def test_the_prompt_cache_leaves_the_memory_a_lease_that_is_no_server_holds(sizing, serve_leases):
+    serve_leases.budget(90 * 1024)
+    assert serve_leases.acquire([leasetable.memory(30 * 1024)], leasetable.Terms(pid=os.getpid()))["state"] == "held"
+    assert sizing(40).serving.cache_ram_mb == 10 * 1024
+
+
+def test_a_build_without_the_prompt_cache_flag_is_asked_for_no_prompt_cache(sizing, monkeypatch, tmp_path):
+    older = tmp_path / "older"
+    older.mkdir()
+    lacking = "\n".join(line for line in canned.LLAMA_SERVER_HELP.splitlines() if "--cache-ram" not in line) + "\n"
+    monkeypatch.setenv("LLAMA_CPP_SERVER", str(canned.canned_binary(older, help_text=lacking)))
+    got = sizing(40)
+    assert got.serving.cache_ram_mb is None and "cache_ram_mb" not in got.lease()
+
+
+@pytest.mark.parametrize("through", ["start", "lease"])
+def test_a_start_beside_a_held_server_is_not_refused_for_its_prompt_cache(monkeypatch, tmp_path, serve_leases, through):
+    """PLUMBING servers: the broker and the admission are real; only the sizes are large, said by the budget and the first one's cache."""
+    binary = canned.canned_binary(tmp_path)
+    monkeypatch.setenv("LLAMA_CPP_SERVER", str(binary))
+    monkeypatch.setenv(admission.ENV_WAIT, "2")
+    for module in (admission, node_memory):   # the records and the node's table are given the same budget
+        monkeypatch.setattr(module, "budget_mb", lambda: 90 * 1024)
+    monkeypatch.setattr(harnessing.hub, "total_memory", lambda: 256 * 2**30)
+    monkeypatch.setattr(harnessing.estimate, "read_meta", lambda _path: {"PLUMBING": 1})
+    monkeypatch.setattr(harnessing.estimate, "estimate_meta", lambda *_a, **_k: SimpleNamespace(kv_cache_bytes=20 * 2**30))
+    first, second = (tmp_path / f"{name}-{tmp_path.name}.gguf" for name in ("PLUMBING-first", "PLUMBING-second"))
+    for path in (first, second):
+        path.write_bytes(b"GGUF" + b"\x00" * 64)
+        pinned(path)
+    broker = Broker(ServerManager(LlamaServerBackend(binary=binary)), idle_s=3600.0, scan=lambda: [])
+    try:
+        held = broker.lease(Ask(purpose="first", models=(str(first),), pid=os.getpid(),
+                                spec={"context": 512, "cache_ram_mb": 60 * 1024}), timeout=30)
+        cache = harnessing.conversation_cache_mb(str(second), Serving(model=str(second), slot_context=512))
+        assert cache and cache > 8192
+        settings = {"context": 512, "cache_ram_mb": cache}
+        if through == "lease":
+            port = broker.lease(Ask(purpose="second", models=(str(second),), pid=os.getpid(), spec=settings), timeout=30).port
+        else:
+            port = broker.start(ServerSpec(model=str(second), port=free_port(), **settings), Caller(pid=os.getpid()), timeout=30).port
+        assert {held.port, port} <= set(broker.servers)
+    finally:
+        for one in list(broker.servers.values()):
+            if one.pid and one.ours:
+                kill_process_tree(one.pid)

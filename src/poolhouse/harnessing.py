@@ -30,6 +30,7 @@ from poolhouse import (
     hub,
     isolation,
     lead_bridge,
+    leasetable,
     opencode_install,
     provision,
     runtime,
@@ -46,10 +47,23 @@ from poolhouse.hub.naming import DENSE_27B
 from poolhouse.hub.probe import MachineMemory
 from poolhouse.isolation import places, prompt_watch
 from poolhouse.isolation.refusals import sentence
+from poolhouse.node_health import Refused
 from poolhouse.ownership import recorded_servers
 from poolhouse.sandbox import run as sandbox_run
-from poolhouse.serve import admission, chat_template, estimate, leases, profile, suggest, wired
-from poolhouse.serve.backend import ServerSpec
+from poolhouse.serve import (
+    admission,
+    chat_template,
+    estimate,
+    leases,
+    ledger,
+    node_memory,
+    profile,
+    suggest,
+    wired,
+)
+from poolhouse.serve.backend import ServerFailed, ServerSpec, flags_of
+from poolhouse.serve.binary import BinaryNotFound
+from poolhouse.serve.manager import default_manager
 from poolhouse.serve.matching import model_matches
 from poolhouse.serve.named import named as named_server
 from poolhouse.serve.ports import DEFAULT_HOST
@@ -306,26 +320,42 @@ def _same_file(recorded: object, patched: Path) -> bool:
 
 def prompt_cache_mb(kv_bytes: int, total: int, left: int) -> int | None:
     """The prompt cache (``--cache-ram``, in MiB) of a coding session's server, whose conversations may fill a KV cache of ``kv_bytes`` on a machine
-    of ``total`` bytes with ``left`` bytes of the memory servers are admitted against once this one is counted: room for two conversations, at most a
-    quarter of the machine and half of what is left, the rest being for other servers; None where llama-server's default holds as much. A
-    conversation another request pushes off its slot is put there, and one that does not fit is read again from its start. Its saved state is about
-    twice its KV cache (the draft head's copy beside it): 45 KiB a token were measured where the estimate of the KV cache alone was 25."""
+    of ``total`` bytes with ``left`` bytes of the memory servers are admitted against once this one and those already up are counted: room for two
+    conversations, at most a quarter of the machine and half of what is left, the rest being for later servers; None where llama-server's default
+    holds as much. A conversation another request pushes off its slot is put there, and one that does not fit is read again from its start. Its
+    saved state is about twice its KV cache (the draft head's copy beside it): 45 KiB a token were measured where the estimate of the KV cache
+    alone was 25."""
     held = min(4 * kv_bytes, total // 4, max(left, 0) // 2) // wired.MIB
     return held if held > wired.CACHE_RAM_MB else None
 
 
 def conversation_cache_mb(found: str, serving_: Serving) -> int | None:
-    """`prompt_cache_mb` for the weights ``found`` served as ``serving_``; None when their header or this machine's memory does not say enough.
-    What it gives is counted with the server (`admission.estimate_bytes`)."""
+    """`prompt_cache_mb` for the weights ``found`` served as ``serving_``, out of what the servers and leases already up leave, so asking for it
+    does not refuse this start. None when their header, this machine's memory or its lease table does not say enough, or the build has no
+    ``--cache-ram``. What it gives is counted with the server (`admission.estimate_bytes`)."""
     try:
         meta = estimate.read_meta(Path(found))
         setup = estimate.Setup(context=serving_.context, kv_cache_type=serving_.cache_type)
         kv = estimate.estimate_meta(meta, 0, setup).kv_cache_bytes if meta else 0
         need = admission.estimate_bytes(ServerSpec(model=found, **serving_.lease())) if kv else 0
-    except (OSError, ValueError, KeyError, TypeError):
+        if not need or not _takes_cache_ram(found, serving_):
+            return None
+        # a start is admitted against the servers' records and against the node's leases (`serve.admitting`): the fuller one binds
+        held = max(ledger.taken(recorded_servers()), node_memory.committed(leasetable.default().listing())[0])
+    except (OSError, ValueError, KeyError, TypeError, Refused):
         return None
-    budget = admission.budget_mb() * wired.MIB
-    return prompt_cache_mb(kv, hub.total_memory(), budget - need) if need and budget else None
+    return prompt_cache_mb(kv, hub.total_memory(), (admission.budget_mb() - held) * wired.MIB - need)
+
+
+def _takes_cache_ram(found: str, serving_: Serving) -> bool:
+    """Whether the build that will serve ``found`` has ``--cache-ram``: a start passing a flag its build lacks is refused. True for one that
+    lists no flags, and for one not here yet, since the build installed as it starts has it."""
+    try:
+        backend = (serving_.manager() or default_manager()).backend_for(ServerSpec(model=found))
+        known = flags_of(backend.binary)
+    except (AttributeError, OSError, BinaryNotFound, ServerFailed):
+        return True
+    return not known or "--cache-ram" in known
 
 
 def config_for(found: str, want: Want, say: Callable[[str], None]):
