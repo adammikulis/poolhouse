@@ -63,7 +63,8 @@ Steps: `install`, `home`, `models`, `download`, `chat`, `reinstall`, `crashes`; 
 crashes. It writes `report.txt`, pictures and the app's own log to the folder. It installs, opens, removes and reads only this
 app; it reads the screen, taps and types only while the app is focused, takes a picture only while nothing of the system is drawn
 over it (status bar cut off), never wakes or unlocks the phone and changes no setting. Where a person has to unlock or allow
-something it says so once and waits.
+something it says so once and waits. `reinstall` removes the app, which also removes its link and settings, and then needs the
+person to open the models folder to the new install.
 
 ## Layout
 

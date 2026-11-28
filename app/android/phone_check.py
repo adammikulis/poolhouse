@@ -40,6 +40,8 @@ GRACE = 15
 QUESTION = "What is 17 times 23? Answer with the number only."
 ANSWER = "391"
 MODEL = "Gemma 4 E2B"
+#: How every model's title begins: a model's own button lies between its title and the next one.
+MODELS = "Gemma 4 "
 STEPS = ("install", "home", "models", "download", "chat", "reinstall", "crashes")
 DEFAULT_STEPS = ("install", "home", "models", "crashes")
 
@@ -312,12 +314,24 @@ class Check:
             top = next((n.top for n in nodes if n.words == title or n.words.startswith(title)), None)
             if top is None:
                 return None
-            below = sorted((n for n in nodes if n.top > top and n.words.startswith(labels)), key=lambda n: n.top)
+            end = min((n.top for n in nodes if n.top > top and n.words.startswith(MODELS)), default=float("inf"))
+            below = sorted((n for n in nodes if top < n.top < end and n.words.startswith(labels)), key=lambda n: n.top)
             return below[0] if below else None
         return found
 
+    def reuse(self) -> bool:
+        """Taps the app's offer of the models an earlier install left, if it makes one; the system's own question is the person's."""
+        nodes = self.wait("the models", lambda found: found if pick(found, MODEL) else None)
+        if not any(n.words == "Use them" for n in nodes):
+            return False
+        self.press("Use them")
+        self.report('ON THE PHONE: tap "Use this folder", then "Allow".')
+        return True
+
     def download(self) -> None:
         self.models()
+        if self.reuse():
+            self.wait("the copied model", self.button_under(MODEL, ("Use", "In use")), patience=1800)
         button = self.wait("the model's button", self.button_under(MODEL, ("Download ", "Continue download", "Use", "In use")))
         if button.words.startswith(("Download ", "Continue download")):
             if not self.phone.tap(button):
@@ -350,10 +364,12 @@ class Check:
     def reinstall(self) -> None:
         self.phone.uninstall()
         self.phone.install(self.apk)
-        self.report("removed the app and installed it again")
+        self.report("removed the app (its link and settings with it) and installed it again")
         self.models()
-        self.wait("the model still on the phone", self.button_under(MODEL, ("Use", "In use")))
-        self.report(f"{MODEL} is still on the phone: nothing to download")
+        if not self.reuse():
+            raise Failed("The app offers no model left from before: it would have to be downloaded again.")
+        self.wait("the model still on the phone", self.button_under(MODEL, ("Use", "In use")), patience=1800)
+        self.report(f"{MODEL} was still on the phone: nothing downloaded")
         self.picture("08-after-reinstall")
 
     def crashes(self) -> None:

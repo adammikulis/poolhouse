@@ -134,7 +134,7 @@ ALLOWED = (
 
 def test_a_whole_run_asks_the_phone_only_about_the_app(tmp_path):
     home = "Chats|Phone models|Model on this phone|Pool|Work|Inbox"
-    downloaded = "Gemma 4 E2B|In use|Ask the model on this phone|Send|391"
+    downloaded = "Use them|Gemma 4 E2B|In use|Ask the model on this phone|Send|391"
     # The screens in the order the steps read them: each read takes the next, and the last stays.
     canned = CannedPhone(screen=(f"{home}|{downloaded}",), raw=raw(4, 100))
     clock = iter(range(0, 100_000))
@@ -143,6 +143,34 @@ def test_a_whole_run_asks_the_phone_only_about_the_app(tmp_path):
     strange = [said for said in canned.asked if not any(re.fullmatch(pattern, said) for pattern in ALLOWED)]
     assert not strange, strange
     assert "uninstall app.poolhouse.phone" in canned.asked
+
+
+class ModelLeft(CannedPhone):
+    """After installing again the model is still on the phone, and is offered once the folder has been opened to the app."""
+
+    def __call__(self, command, **named):
+        done = super().__call__(command, **named)
+        if self.asked[-1] == "shell input tap 50 325":
+            self.screen = ["Chats|Phone models|Inbox|Gemma 4 E2B|Use"]
+        return done
+
+
+def checking(canned: CannedPhone, out: Path):
+    clock = iter(range(0, 100_000))
+    return check.Check(phone(canned), out.parent / "app.apk", out, patience=100, pause=lambda _: None, clock=lambda: next(clock), say=lambda _: None)
+
+
+def test_a_model_left_from_before_is_reused_through_the_phones_own_question(tmp_path):
+    canned = ModelLeft(screen=("Chats|Phone models|Inbox|Use them|Gemma 4 E2B|On the phone from before",), raw=raw(4, 100))
+    assert checking(canned, tmp_path / "out").run(["reinstall"])
+    report = (tmp_path / "out" / "report.txt").read_text(encoding="utf-8")
+    assert 'tap "Use this folder", then "Allow"' in report and "nothing downloaded" in report
+
+
+def test_installing_again_fails_when_the_model_would_have_to_be_downloaded(tmp_path):
+    # The other model's button is no answer for this one.
+    canned = CannedPhone(screen=("Chats|Phone models|Inbox|Gemma 4 E2B|Download 2.6 GB|Gemma 4 E4B|Use",), raw=raw(4, 100))
+    assert not checking(canned, tmp_path / "out").run(["reinstall"])
 
 
 def test_a_person_is_asked_to_unlock_once_and_nothing_is_done_for_them(tmp_path):
