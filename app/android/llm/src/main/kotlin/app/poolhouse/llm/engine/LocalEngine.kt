@@ -7,24 +7,11 @@ enum class ModelFormat(val label: String) { LITERTLM("LiteRT-LM"), GGUF("llama.c
 
 enum class Accelerator(val label: String) { GPU("GPU"), CPU("CPU") }
 
-enum class Role(val wire: String) { SYSTEM("system"), USER("user"), ASSISTANT("assistant"), TOOL("tool") }
+enum class Role(val wire: String) { SYSTEM("system"), USER("user"), ASSISTANT("assistant") }
 
-/** A call the model asks for; `arguments` is a JSON object as text. */
-data class ToolCall(val id: String, val name: String, val arguments: String)
-
-/**
- * One message of a conversation. `images` are the encoded bytes (JPEG or PNG) that came with it, `toolCalls` the calls an
- * assistant message made, and `toolName` the tool whose answer a tool message carries.
- */
-class ChatTurn(
-    val role: Role,
-    val text: String,
-    val images: List<ByteArray> = emptyList(),
-    val toolCalls: List<ToolCall> = emptyList(),
-    val toolName: String? = null,
-) {
+/** One message of a conversation; `images` are the encoded bytes (JPEG or PNG) that came with it. */
+class ChatTurn(val role: Role, val text: String, val images: List<ByteArray> = emptyList()) {
     override fun equals(other: Any?): Boolean = other is ChatTurn && role == other.role && text == other.text &&
-        toolCalls == other.toolCalls && toolName == other.toolName &&
         images.size == other.images.size && images.indices.all { images[it].contentEquals(other.images[it]) }
 
     override fun hashCode(): Int = 31 * (31 * role.hashCode() + text.hashCode()) + images.size
@@ -37,13 +24,11 @@ data class GenerationOptions(
     val topK: Int? = null,
     val topP: Double? = null,
     val seed: Int? = null,
-    /** The tools offered, each an OpenAI function object as JSON text. */
-    val tools: List<String> = emptyList(),
     /** Whether the runtime may keep the conversation in memory after the reply, to go on from it. */
     val keep: Boolean = true,
 )
 
-enum class Finish(val wire: String) { STOP("stop"), LENGTH("length"), TOOL_CALLS("tool_calls"), CANCELLED("cancelled") }
+enum class Finish(val wire: String) { STOP("stop"), LENGTH("length"), CANCELLED("cancelled") }
 
 /** What one reply cost, as the runtime counted it. A null count is one the runtime does not report. */
 data class GenerationStats(
@@ -56,7 +41,7 @@ data class GenerationStats(
     val contextSize: Int,
 )
 
-data class GenerationResult(val finish: Finish, val stats: GenerationStats, val toolCalls: List<ToolCall> = emptyList())
+data class GenerationResult(val finish: Finish, val stats: GenerationStats)
 
 /** A request to stop, which a running reply hears at once. */
 class CancelToken {
