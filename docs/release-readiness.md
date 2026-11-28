@@ -86,7 +86,7 @@ terminal.
 | # | The person does | Kind | Built today |
 | --- | --- | --- | --- |
 | 1 | Installs Poolhouse on the computer; allows network discovery once | install, os-prompt | The installer is a one-line command typed in a terminal (README, "Install"); not driven by a person |
-| 2 | Installs the Poolhouse app on the phone; allows camera and notifications once | install, os-prompt x2 | The app is a sideloaded APK, not on a store (`app/android/README.md`); never run on a phone |
+| 2 | Installs the Poolhouse app on the phone; allows the camera and the local network once | install, os-prompt x2 | The app is a sideloaded APK, not on a store (`app/android/README.md`) |
 | 3 | The computer's app shows "Link your phone" with a code; scans it and confirms the same three words on both screens | link-phone x2 | No such screen, and no command: `poolhouse-workspace phone add` and the QR code are removed, so nothing adds a phone and no step of the person's waits for one (`first_run` in `contracts/phone-friction.json` counts the removed steps). Check words are not built (slices 5 and 8) |
 | 4 | Says "Make a pool called home" | say | `ph.pool.found` exists; it refuses a weak key, and no strong key can sign a charter yet |
 | 5 | Taps once on the phone to create the pool | tap | Not built (phone-signed charters, F2 to F10) |
@@ -170,7 +170,7 @@ item numbers are used below.
 | ID | The release must | Verified by | State | Depends on |
 | --- | --- | --- | --- | --- |
 | PH-1 | Add the first phone: the computer asks the person once with its own prompt, one scan, one fingerprint; the app and the terminal name the same key words | `scripts/pool-check --only phone-approval`; `tests/test_board_approval.py`; `tests/test_api_approval.py`; `tests/test_presence.py`; drive: items 1, 2, 11 | built untested; never run on a phone | HANDOFF "Phone approval": nothing of the app has run on a phone |
-| PH-2 | A routine approval is 2 steps and a sensitive one is 4 (3 and 5 from a locked phone) | `tests/test_phone_friction.py`; `app/android` `gradle protocolChecks` (`PhoneApprovalTest`); drive: items 3 to 5 | built untested; `tests/test_phone_friction.py` passes | none |
+| PH-2 | A routine approval is 2 steps and a sensitive one is 4 (3 and 5 from a locked phone) | `tests/test_phone_friction.py`; drive: items 3 to 5 | the app has no approval screens (`app/android/README.md`); `tests/test_phone_friction.py` passes | none |
 | PH-3 | The request text is complete and signed as shown; a signature over other text is refused; a second decision is refused | `app/poolhouse-node/tests/approvals.rs`; `scripts/pool-check --only phone-approval`; drive: items 3, 5 | built untested | none |
 | PH-4 | Lock screen shows only who is asking; an offline phone catches up; a request expires | drive: items 4, 6 | built untested; not driven | none |
 | PH-5 | A new fingerprint ends the key and the app offers the scan; a second phone is added and the first removed from it | drive: items 7, 8 | built untested; not driven | none |
@@ -338,10 +338,12 @@ WSL onboarding, execution dispatch or any POOL/GOV completion claim.
 
 | ID | The release must | Verified by | State | Depends on |
 | --- | --- | --- | --- | --- |
-| AND-1 | The APK builds and its protocol checks pass | `python app/android/build.py GRADLE PLUGIN API debug` (an Android SDK and JDK; no CI job builds it) | built untested | SDK licence accepted by a person |
+| AND-1 | The APK builds, its protocol checks pass and Android lint is clean | `python app/android/build.py lint` (an Android SDK and JDK; the `android` workflow) | built; protocol checks pass | SDK licence accepted by a person |
 | AND-2 | A release APK is signed (alias `poolhouse-preview`) and sideloaded | `ANDROID_SIGNING_STORE`, `ANDROID_SIGNING_PASSWORD` | not built: a person's signing material | OW-9 |
-| AND-3 | Every item of "Checks on a real phone" passes on a phone running Android 11 or later | `docs/phone-approval.md` items 1 to 11 | not driven | PH-1 to PH-7 |
-| AND-4 | The chat page of the computer reads on the phone behind the fingerprint | drive: `app/android/README.md`, "What it does" | built untested; not driven | none |
+| AND-3 | A phone running Android 12 or later links by scanning the computer's code and reaches it on the home network and over Tailscale | drive: `app/android/README.md`, "Linking" | not driven | the computer side of the phone API, not on this branch |
+| AND-4 | From the phone a person talks to a live Claude session, answers its question, starts and stops work and serves a model | drive: `app/android/README.md`, "Linking" | built against a canned sample computer; not driven against a live computer | AND-3 |
+| AND-6 | With no computer, a person downloads a model on the phone, chats with it, and finds it still there after removing and installing the app | `python app/android/phone_check.py ... download chat reinstall` on a phone | built; the module's tests pass; no model run on a phone through the one app | the shared-folder model store |
+| AND-7 | The phone is a pool node inside the one app | none | not built: the node runtime and its isolated runner are not in the app | `app/android/README.md`, "Where a node goes" |
 | AND-5 | An iPhone app | none | not built; blocked until the product takes off (`docs/service.md` 9.1) | section 6 |
 
 ### 3.15 The docs and onboarding text

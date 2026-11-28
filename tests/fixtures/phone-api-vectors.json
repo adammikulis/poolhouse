@@ -1,0 +1,35 @@
+{
+  "about": "docs/phone-api.md sections 2 and 3, computed by Python; the Android app (:core) and tests/test_android_phone_api.py check them",
+  "pin": "bcaab228fa62c51826055378d07880cc73992a14bdb541947c476250c15ddf71",
+  "typed_code": "abcde-fghjk",
+  "code": "ABCDEFGHJK",
+  "name": "Pixel test",
+  "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJEwLCPCvYPLBMhVb5yvy3PoSJ3VVW8TdlqqVh5MppWPwxUTqadEDDZhY47lJr/RPAY/IWIbPfpVjeK4bSOgIsw==",
+  "phone": "ph-0123456789ab",
+  "code_key": "fe0999b1b1715fb837f4b44cdb64fa837493298e588af7cb9efd61a363fb1f84",
+  "link_message": "poolhouse/phone-link/v1\nbcaab228fa62c51826055378d07880cc73992a14bdb541947c476250c15ddf71\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJEwLCPCvYPLBMhVb5yvy3PoSJ3VVW8TdlqqVh5MppWPwxUTqadEDDZhY47lJr/RPAY/IWIbPfpVjeK4bSOgIsw==\nPixel test",
+  "link_proof": "8UkLyc2XQ2+NPIjWj+80UDzcgwoZWz51qslElOD6tW0=",
+  "computer_proof": "1/73f93l2UvCUgnB2ndxkMFiIqSCdLpowudIu2Y3wiM=",
+  "words": "3b16 65d0 8cd2 3a9b ffdc e761",
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/phone/v1/sessions/claude-0000/messages",
+      "time_ms": 1790000000000,
+      "nonce": "canned-nonce-0123456789",
+      "body": "{\"text\":\"canned: hello\"}",
+      "message": "poolhouse/phone-request/v1\nbcaab228fa62c51826055378d07880cc73992a14bdb541947c476250c15ddf71\nph-0123456789ab\nPOST\n/phone/v1/sessions/claude-0000/messages\n1790000000000\ncanned-nonce-0123456789\nd2a16ad4bff5eb4e691b89d966956623794dd6f40ec066978a4ddcd1016cd3f9",
+      "signature": "MEQCIGnt4kRyAX9FW5eAZIPH2vZdKEMLDFQ8IHrwiKTOIPvGAiB81LkDc3nZPSa7GIZAFDdgcSUMxed+z80auUq90FGObQ=="
+    },
+    {
+      "method": "GET",
+      "path": "/phone/v1/sessions/a%20b/events?after=t%3A81233%3A0",
+      "time_ms": 1790000000000,
+      "nonce": "canned-nonce-0123456789",
+      "body": "",
+      "message": "poolhouse/phone-request/v1\nbcaab228fa62c51826055378d07880cc73992a14bdb541947c476250c15ddf71\nph-0123456789ab\nGET\n/phone/v1/sessions/a%20b/events?after=t%3A81233%3A0\n1790000000000\ncanned-nonce-0123456789\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "MEQCIFfVjW8r/FNcveZEYI9swlNY6dZuWhRnnlN2cwLzALx+AiAzMzk8xSiJHREgraudceLogdioRhqNaN6cvVs+uhv+Dw=="
+    }
+  ],
+  "link": "poolhouse://link?v=1&pin=bcaab228fa62c51826055378d07880cc73992a14bdb541947c476250c15ddf71&code=ABCDEFGHJK&at=192.168.1.4%3A7450&at=100.101.2.3%3A7450&at=%5Bfd7a%3A115c%3Aa1e0%3A%3A1%5D%3A7450&name=Sample%20computer&expires=1790000600"
+}

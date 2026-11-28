@@ -1,0 +1,37 @@
+name: android
+# The Android app: its protocol checks (app/android/core, on a real TLS socket), Android lint and the debug APK. The runner image
+# carries the SDK packages and accepted licences app/android/build.py needs; the build installs no SDK package.
+on:
+  push:
+    branches: [main, "*dev"]
+    paths: ["app/android/**", "tests/fixtures/phone-api-vectors.json", "scripts/testslots*.py", "pyproject.toml", ".github/workflows/android.yml"]
+  pull_request:
+    paths: ["app/android/**", "tests/fixtures/phone-api-vectors.json", "scripts/testslots*.py", "pyproject.toml", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: protocol checks, lint and debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+      - name: build and check the app
+        run: python app/android/build.py lint
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: poolhouse-debug-apk
+          path: app/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7

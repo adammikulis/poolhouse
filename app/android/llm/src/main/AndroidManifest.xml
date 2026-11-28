@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- A node on the same phone reads where the lent model answers; only apps signed with this app's key may. -->
+    <permission
+        android:name="${applicationId}.permission.LOCAL_MODEL"
+        android:protectionLevel="signature" />
+
+    <application>
+        <activity android:name="app.poolhouse.llm.ui.LocalChatActivity" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name="app.poolhouse.llm.ui.ModelsActivity" android:exported="false" />
+        <service android:name="app.poolhouse.llm.android.PoolService" android:exported="false" android:foregroundServiceType="connectedDevice" />
+        <service android:name="app.poolhouse.llm.android.DownloadService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <provider
+            android:name="app.poolhouse.llm.android.LocalModelProvider"
+            android:authorities="${applicationId}.localmodel"
+            android:exported="true"
+            android:readPermission="${applicationId}.permission.LOCAL_MODEL" />
+        <!-- The phone's own graphics driver libraries, which the GPU backends load when they are there. -->
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+        <uses-native-library android:name="libvndksupport.so" android:required="false" />
+    </application>
+</manifest>
