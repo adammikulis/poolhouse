@@ -39,7 +39,7 @@ class ChatRoutes(ConversationRoutes):
 
     def _say(self, available: list) -> bool:
         from .chat_stream import Transfer, frame, release, reserve
-        problem = agent_dependency.problem()
+        problem = agent_dependency.problem(install=True)
         if problem:
             self.send(503, {"error": problem})
             return True

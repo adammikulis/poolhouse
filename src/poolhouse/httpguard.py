@@ -25,6 +25,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from poolhouse import lazy
 from poolhouse.files import writing
 
 __all__ = [
@@ -37,10 +38,13 @@ __all__ = [
     "Refused",
     "Streaming",
     "TooLarge",
+    "address_refusal",
     "allowed_address",
     "allowed_hosts",
     "download",
     "fetch",
+    "local_name",
+    "on_this_network",
     "resolve",
     "split",
     "stream",
@@ -57,6 +61,10 @@ MIN_RATE = 8 * 1024
 dropped."""
 SECRET_HEADERS = {"authorization", "cookie", "proxy-authorization", "x-api-key"}
 NAT64 = ipaddress.ip_network("64:ff9b::/96")
+WIDEST_ON_LINK = 8
+"""The shortest netmask, in bits, that `on_this_network` reads as a network this machine is on."""
+IPV6_ON_LINK = 64
+"""The prefix length, in bits, of an IPv6 network, whose interface identifiers are 64 bits (RFC 4291, 2.5.1)."""
 
 Resolver = Callable[[str, int], Iterable[str]]
 """``(host, port) -> addresses``; a test answers for DNS with one."""
@@ -189,9 +197,10 @@ def allowed_hosts() -> frozenset[str]:
 
 
 def allowed_address(address: str) -> bool:
-    """Whether ``address`` is on the public internet: not loopback, private, link-local
-    (the cloud metadata address included), carrier-grade NAT, multicast, reserved or
-    unspecified, and not one of those wrapped in IPv6."""
+    """Whether ``address`` is of the public internet's kind: not loopback, private, link-local
+    (the cloud metadata address included), site-local, carrier-grade NAT, multicast, reserved or
+    unspecified, and not one of those wrapped in IPv6. Such an address may still be this
+    machine's or a neighbour's, which `resolve` asks as well (`on_this_network`)."""
     ip = ipaddress.ip_address(address.split("%")[0])
     if isinstance(ip, ipaddress.IPv6Address):
         if ip.ipv4_mapped is not None:
@@ -200,8 +209,53 @@ def allowed_address(address: str) -> bool:
             return allowed_address(str(ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)))
         if ip.sixtofour is not None:
             return allowed_address(str(ip.sixtofour))
+        if ip.is_site_local:
+            return False
     return ip.is_global and not (ip.is_multicast or ip.is_reserved or ip.is_unspecified
                                  or ip.is_loopback or ip.is_link_local)
+
+
+def on_this_network(address: str) -> bool:
+    """Whether ``address`` is one of this machine's own interface addresses or in a network one of its interfaces is on: a
+    global IPv6 address, or a public IPv4 one, that leads here or next door. An interface whose netmask is shorter than
+    `WIDEST_ON_LINK` bits (a VPN that claims the whole internet) names no neighbours, only its own address. A netmask counts
+    for an address of its own family; an IPv6 address listed without one is on its /`IPV6_ON_LINK`. False where the system
+    will not list its interfaces."""
+    ip = ipaddress.ip_address(address.split("%")[0])
+    if isinstance(ip, ipaddress.IPv6Address):
+        carried = ip.ipv4_mapped or (ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF) if ip in NAT64 else None)
+        ip = carried or ip
+    try:
+        interfaces = lazy.load("psutil", "net_if_addrs")()
+    except OSError:
+        return False
+    for held in (one for listed in interfaces.values() for one in listed):
+        if held.family not in (socket.AF_INET, socket.AF_INET6):
+            continue
+        own = ipaddress.ip_address(held.address.split("%")[0])
+        if own.version != ip.version:
+            continue
+        mask = ipaddress.ip_address(held.netmask.split("%")[0]) if held.netmask else None
+        if mask is not None and mask.version == own.version:
+            bits = bin(int(mask)).count("1")
+        else:   # psutil on Windows gives an IPv6 address no netmask, or the one of the IPv4 address listed before it
+            bits = IPV6_ON_LINK if own.version == 6 else 0
+        if ip == own or (bits >= WIDEST_ON_LINK and ip in ipaddress.ip_interface(f"{own}/{bits}").network):
+            return True
+    return False
+
+
+def local_name(host: str) -> bool:
+    """Whether ``host`` is a name for this machine or its network."""
+    return host == "localhost" or host.endswith((".localhost", ".local", ".internal"))
+
+
+def address_refusal(address: str) -> str:
+    """Why nothing may be fetched from ``address``, or an empty string: it is not public, or is this machine's or on its
+    network."""
+    if not allowed_address(address):
+        return "which is not on the public internet"
+    return "which is this machine or its network" if on_this_network(address) else ""
 
 
 def _system_resolver(host: str, port: int) -> list[str]:
@@ -213,12 +267,11 @@ def _system_resolver(host: str, port: int) -> list[str]:
 
 
 def resolve(host: str, port: int, limits: Limits = DEFAULT) -> list[str]:
-    """Every address ``host`` names; `Refused` when any is not public (unless ``host`` is one
-    of the limits' ``allow_hosts``)."""
+    """Every address ``host`` names; `Refused` when any is not public, or is this machine's or
+    on its network (unless ``host`` is one of the limits' ``allow_hosts``)."""
     named = limits.allow_hosts | allowed_hosts()
     allow_private, resolver = host in named or f"{host}:{port}" in named, limits.resolver
-    if not allow_private and (host == "localhost"
-                              or host.endswith((".localhost", ".local", ".internal"))):
+    if not allow_private and local_name(host):
         raise Refused(f"{host} is this machine or its network")
     try:
         addresses = [str(ipaddress.ip_address(host))]
@@ -227,9 +280,8 @@ def resolve(host: str, port: int, limits: Limits = DEFAULT) -> list[str]:
     if not addresses:
         raise Refused(f"{host} resolves to nothing")
     for address in addresses:
-        if not allow_private and not allowed_address(address):
-            raise Refused(f"{host} resolves to {address.split('%')[0]}, "
-                          "which is not on the public internet")
+        if not allow_private and (why := address_refusal(address)):
+            raise Refused(f"{host} resolves to {address.split('%')[0]}, {why}")
     return addresses
 
 

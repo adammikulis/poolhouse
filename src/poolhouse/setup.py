@@ -19,7 +19,7 @@ from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
-from poolhouse import home, runtime_identity
+from poolhouse import home, provision, runtime_identity
 from poolhouse.checks import Finding, checkout, show, tilde
 from poolhouse.fleet.onboard.lan import can_bind
 from poolhouse.installed import standard
@@ -172,9 +172,11 @@ def look() -> list[Finding]:
         out.append(Finding(name="models on this machine", good=False,
                            said=f"could not read the model roots: {exc}"))
 
-    out.extend(Finding(name=one.name, good=here,
-                       said=f"{one.module} is here" if here else "not installed",
-                       fix=[] if here else one.fix, note="" if here else one.does)
+    refused = provision.refusal()
+    out.extend(Finding(name=one.name, good=here or not refused,
+                       said=f"{one.module} is here" if here else "installed the first time it is needed" if not refused
+                       else "not installed",
+                       note="" if here else f"{one.does}; it cannot be installed here: {refused}" if refused else one.does)
                for one, here in standard())
     out.extend(_speech_findings())
     out.append(_commands_finding())
@@ -187,35 +189,36 @@ def look() -> list[Finding]:
 
 
 SPEECH_PROTOCOLS = (
-    ("speech recognition", "asr", ["pip", "install", "poolhouse[speech]"]),
-    ("speech synthesis", "tts", ["pip", "install", "poolhouse[speech]"]),
-    ("voice activity", "vad", []),
+    ("speech recognition", "asr", "faster-whisper is installed the first time something is transcribed"),
+    ("speech synthesis", "tts", ""),
+    ("voice activity", "vad", ""),
 )
+"""Each protocol's label, its registry and, for one Poolhouse installs at first use, what it says while none is here."""
 
 
 def _speech_findings() -> list[Finding]:
     """One finding per speech protocol: which engines probe here, which `auto` picks, and
-    what would add one where none does."""
+    what is installed at first use where none does."""
     from poolhouse.speech.service import providers
 
     found = providers()
     out: list[Finding] = []
-    for label, kind, fix in SPEECH_PROTOCOLS:
+    refused = provision.refusal()
+    for label, kind, later in SPEECH_PROTOCOLS:
         table = found.get(kind, {"auto": None, "providers": []})
         working = [one for one in table["providers"] if one["available"]]
         missing = [one for one in table["providers"] if not one["available"]]
+        at_need = bool(later) and not refused
+        details = "; ".join(f"{one['name']}: {one['detail']}" for one in missing)
         out.append(Finding(
             name=label,
-            good=bool(working),
+            good=bool(working) or at_need,
             said=(", ".join(f"{one['name']}" + (f" ({one['model']})" if one["model"] else "")
                             for one in working) if working
-                  else "nothing on this machine"),
-            fix=[] if working else fix,
-            note=(f"poolhouse-speech uses {table['auto']} unless told otherwise"
-                  + ("; " + "; ".join(f"{one['name']}: {one['detail']}" for one in missing)
-                     if missing else "")
+                  else later if at_need else "nothing on this machine"),
+            note=(f"poolhouse-speech uses {table['auto']} unless told otherwise" + ("; " + details if missing else "")
                   if working
-                  else "; ".join(f"{one['name']}: {one['detail']}" for one in missing))))
+                  else details + (f"; none can be installed here: {refused}" if later and refused else ""))))
     return out
 
 
@@ -287,7 +290,7 @@ def _store_finding(path: Path | None = None) -> Finding:
             pass
     except GraphStoreUnavailable as exc:
         return Finding(name="store", good=False, said=str(exc),
-                       fix=["pip", "install", "poolhouse[store]"])
+                       note="the graph store library is installed the first time a store is opened")
     except (RuntimeError, OSError) as exc:
         return Finding(name="store", good=False, said=f"{tilde(path)} did not open: {exc}",
                        fix=["poolhouse-store", "check", str(path)])

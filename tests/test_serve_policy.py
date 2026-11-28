@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from poolhouse import provision
 from poolhouse.files import sha256_file
 from poolhouse.serve import binary as binary_module, binary_trust, policy
 from poolhouse.serve.binary import BinaryTampered, find_binary, managed_builds, vetted
@@ -427,6 +428,7 @@ def test_the_fetch_that_replaces_a_binary_nothing_vouches_for_installs_checks_an
     from poolhouse.serve import build_recover
     from poolhouse.serve.build_paths import builds_dir, current_link
 
+    monkeypatch.delenv(provision.SWITCH, raising=False)   # the download is stood in for below
     monkeypatch.setattr(build_recover, "can_build_from_source", lambda: False)
     monkeypatch.setattr(build_recover, "build_from_release", release_standing_in)
     local = LocalPolicy()
@@ -448,6 +450,7 @@ def test_a_build_from_source_that_fails_is_followed_by_the_release_and_both_are_
     def source_fails(args):
         raise BuildFailed("the patches do not apply to this commit")
 
+    monkeypatch.delenv(provision.SWITCH, raising=False)   # both builds are stood in for
     monkeypatch.setattr(build_recover, "can_build_from_source", lambda: True)
     monkeypatch.setattr(build_recover, "build_from_source", source_fails)
     monkeypatch.setattr(build_recover, "build_from_release", release_standing_in)
@@ -461,7 +464,7 @@ def test_a_build_from_source_that_fails_is_followed_by_the_release_and_both_are_
     monkeypatch.setattr(build_recover, "build_from_release", release_fails)
     with pytest.raises(BuildFailed) as both:
         build_recover.fetch()
-    assert "from source: the patches do not apply" in str(both.value) and "from the newest release: no asset" in str(both.value)
+    assert "from source: the patches do not apply" in str(both.value) and "from the verified release: no asset" in str(both.value)
 
 
 def test_a_binary_path_that_looks_like_an_option_or_a_command_is_one_argument_of_codesign(tmp_path):

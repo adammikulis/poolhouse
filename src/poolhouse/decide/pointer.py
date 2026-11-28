@@ -8,6 +8,7 @@ checkpoints in `poolhouse.decide.pins`, or one trained by `poolhouse.train.decid
 
 from __future__ import annotations
 
+import importlib
 import json
 import threading
 import time
@@ -15,6 +16,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from poolhouse import provision
 from poolhouse.decide import pointer_prompt, window
 from poolhouse.decide.base import Asked, BaseDecider, Request, text_of
 from poolhouse.decide.calibrate import Calibration
@@ -44,12 +46,12 @@ def _length_groups(lengths: list[int], spread: float = 1.3) -> list[list[int]]:
 
 
 def _torch() -> Any:
+    """torch, the pointer backend's libraries (torch, transformers, peft) installed first when one is not here."""
     try:
-        import torch
+        provision.ensure("decide-pointer", "torch", "transformers", "peft", "safetensors")
+        return importlib.import_module("torch")
     except ImportError as exc:
-        raise BackendUnavailable("the pointer backend needs torch, transformers and peft: "
-                                 "pip install 'poolhouse[decide-pointer]'") from exc
-    return torch
+        raise BackendUnavailable(f"the pointer backend needs torch, transformers and peft: {exc}") from exc
 
 
 def device_name(requested: str = "auto") -> str:

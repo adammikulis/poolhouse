@@ -22,7 +22,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -32,6 +32,7 @@ from poolhouse import (
     keystore_guard,
     platform,
     private_path,
+    provision,
     real_machine,
     sentinel,
 )
@@ -114,9 +115,9 @@ def os_user() -> str:
 def scrypt_key(passphrase: str, salt: bytes, n: int = SCRYPT_N) -> bytes:
     """A 32-byte key from a passphrase, for the explicit passphrase fallback."""
     try:
-        from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+        Scrypt = provision.module("cryptography.hazmat.primitives.kdf.scrypt", "memory").Scrypt
     except ImportError as exc:
-        raise KeystoreUnavailable("this needs `pip install cryptography`") from exc
+        raise KeystoreUnavailable(f"this needs cryptography: {exc}") from exc
     return Scrypt(salt=salt, length=32, n=n, r=8, p=1).derive(passphrase.encode())
 
 
@@ -243,28 +244,31 @@ class Keystore:
         return "" if self._noticed or self._path("noticed.json").exists() else NOTICE
 
     def available(self) -> bool:
-        """Whether this machine has a usable keystore backend (no item is touched)."""
+        """Whether this machine has a usable keystore backend (no item is touched and nothing is installed)."""
         try:
-            self._ring()
+            with provision.nothing_installed():
+                self._ring()
         except KeystoreUnavailable:
             return False
         return True
 
     def backend(self) -> str:
         """The keyring backend this machine would use, by module and class, or why there is none
-        (backends are chosen by import and priority; no item is read or made)."""
+        (backends are chosen by import and priority; no item is read or made and nothing is installed)."""
         try:
-            ring = self._ring().get_keyring()
+            with provision.nothing_installed():
+                ring = self._ring().get_keyring()
         except KeystoreUnavailable as exc:
             return f"none: {exc}"
         return f"{type(ring).__module__}.{type(ring).__name__}"
 
     def _ring(self) -> Any:
         try:
+            provision.ensure("memory", "keyring", "cryptography")
             import keyring
             import keyring.errors
         except ImportError as exc:
-            raise KeystoreUnavailable("the keystore needs `pip install keyring cryptography`") from exc
+            raise KeystoreUnavailable(f"the keystore needs keyring and cryptography: {exc}") from exc
         try:
             usable = float(getattr(keyring.get_keyring(), "priority", 0)) > 0
         except (keyring.errors.KeyringError, AttributeError, TypeError, ValueError, OSError):
@@ -486,13 +490,20 @@ def _parse(held: Any) -> bytes | None:
     return key if len(key) == 32 else None
 
 
+def fetch_libraries() -> None:
+    """Install the keystore's libraries when they are missing, for a caller about to keep a key. A check never calls
+    this; where they cannot be had `Keystore.available` then says there is no keystore."""
+    with suppress(ImportError):
+        provision.ensure("memory", "keyring", "cryptography")
+
+
 def aead(key: bytes) -> Any:
     """AES-256-GCM under ``key``."""
     try:
-        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        module = provision.module("cryptography.hazmat.primitives.ciphers.aead", "memory")
     except ImportError as exc:
-        raise KeystoreUnavailable("the keystore needs `pip install cryptography`") from exc
-    return AESGCM(key)
+        raise KeystoreUnavailable(f"the keystore needs cryptography: {exc}") from exc
+    return module.AESGCM(key)
 
 
 _DEFAULTS: dict[tuple[str, int], Keystore] = {}

@@ -26,6 +26,7 @@ from types import SimpleNamespace
 import pytest
 
 import poolhouse.serve.binary as binary_module
+from poolhouse import safelaunch
 from poolhouse.serve import (
     build,
     build_persist,
@@ -556,12 +557,12 @@ class TestPlatformSelection:
     """``--from`` defaults to source only when a compiler is actually on PATH."""
 
     def test_defaults_to_release_with_no_compiler(self, monkeypatch):
-        monkeypatch.setattr(shutil, "which", lambda name: None)
+        monkeypatch.setattr(safelaunch, "which", lambda name: None)
         assert build_platform.can_build_from_source() is False
 
     def test_defaults_to_source_when_cmake_and_a_compiler_are_present(self, monkeypatch):
         monkeypatch.setattr(platform, "system", lambda: "Darwin")
-        monkeypatch.setattr(shutil, "which",
+        monkeypatch.setattr(safelaunch, "which",
                             lambda name: f"/usr/bin/{name}" if name in ("cmake", "cc") else None)
         assert build_platform.can_build_from_source() is True
 
@@ -569,7 +570,7 @@ class TestPlatformSelection:
         monkeypatch.setattr(platform, "system", lambda: "Windows")
         monkeypatch.setattr(platform, "machine", lambda: "AMD64")
 
-        monkeypatch.setattr(shutil, "which", lambda name: None)
+        monkeypatch.setattr(safelaunch, "which", lambda name: None)
         monkeypatch.delenv("VULKAN_SDK", raising=False)
         assert build_release._release_asset_globs() == ["llama-*-bin-win-cpu-x64.zip"]
 
@@ -577,7 +578,7 @@ class TestPlatformSelection:
         assert build_release._release_asset_globs() == [
             "llama-*-bin-win-vulkan-x64.zip", "llama-*-bin-win-cpu-x64.zip"]
 
-        monkeypatch.setattr(shutil, "which", lambda name: "nvcc.exe" if name == "nvcc" else None)
+        monkeypatch.setattr(safelaunch, "which", lambda name: "nvcc.exe" if name == "nvcc" else None)
         assert build_release._release_asset_globs()[0] == "llama-*-bin-win-cuda-12.4-x64.zip"
 
     def test_macos_and_linux_asset_globs_are_tar_gz_not_zip(self, monkeypatch):
@@ -726,7 +727,7 @@ class TestNamedReleaseAssetGlobs:
     def test_windows_uses_the_forks_app_bundle_naming_not_llama_bin(self, monkeypatch):
         monkeypatch.setattr(platform, "system", lambda: "Windows")
         monkeypatch.setattr(platform, "machine", lambda: "AMD64")
-        monkeypatch.setattr(shutil, "which", lambda name: None)
+        monkeypatch.setattr(safelaunch, "which", lambda name: None)
         monkeypatch.delenv("VULKAN_SDK", raising=False)
         assert build_release._release_asset_globs(fork=True) == ["app-*-windows-x64-cpu.zip"]
 

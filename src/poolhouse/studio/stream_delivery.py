@@ -47,8 +47,9 @@ def _prepare(destination, envelope, authorize):
         addresses = [str(ipaddress.ip_address(host))]
     except ValueError:
         addresses = [row[4][0] for row in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)]
-    if not addresses or any('%' in address or not httpguard.allowed_address(address) for address in addresses):
-        raise ValueError('Delivery destinations must resolve entirely to public addresses')
+    if (not addresses or httpguard.local_name(host)
+            or any('%' in address or httpguard.address_refusal(address) for address in addresses)):
+        raise ValueError('Delivery destinations must resolve entirely to public addresses beyond this device and its networks')
     _current(authorize)
     return url, host, port, addresses[0], body
 

@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from poolhouse import provision
 from poolhouse.client.embed import embed as server_embed
 from poolhouse.decide.base import Asked, BaseDecider
 from poolhouse.decide.calibrate import Calibration
@@ -28,11 +29,9 @@ CACHE_MAX = 4096
 
 def _numpy() -> Any:
     try:
-        import numpy
+        return provision.module("numpy", "decide")
     except ImportError as exc:
-        raise BackendUnavailable("the embed backend needs numpy: pip install 'poolhouse[arrays]'"
-                                 ) from exc
-    return numpy
+        raise BackendUnavailable(f"the embed backend needs numpy: {exc}") from exc
 
 
 def server_embedder(base_url: str = "http://127.0.0.1:8080", *, model: str | None = None,

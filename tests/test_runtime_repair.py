@@ -247,7 +247,7 @@ def test_missing_runtime_install_runs_in_background_and_readiness_enables_chat(t
     served.ui.conversations = Conversations(tmp_path / "chats")
     from poolhouse.scrape.browser import Window, browser
 
-    driver = browser(Window(profile=tmp_path / "browser", channel="chromium"), playwright)
+    driver = browser(Window(profile=tmp_path / "browser", channel="chromium", own_pages=True), playwright)
     page = driver.__enter__()
     try:
         person = served.ui.sessions.open("setup")
@@ -377,7 +377,7 @@ def test_failed_runtime_job_survives_reload_and_retries_through_actual_api(tmp_p
     served.ui.serving.register(model.port, [CANNED_MODEL_ID])
     served.ui.conversations = Conversations(tmp_path / "chats")
     try:
-        with browser(Window(profile=tmp_path / "retry-browser", channel="chromium"), playwright) as page:
+        with browser(Window(profile=tmp_path / "retry-browser", channel="chromium", own_pages=True), playwright) as page:
             person = served.ui.sessions.open("setup")
             page.context.add_cookies([{"name": "poolhouse_ui", "value": person.sid,
                                       "url": f"http://127.0.0.1:{served.port}"}])

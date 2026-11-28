@@ -105,6 +105,16 @@ def test_a_name_from_the_graph_is_refused(tmp_path):
     assert "Wren Halloway" in said
 
 
+def test_a_name_source_that_cannot_be_read_is_said_and_one_that_is_not_configured_is_not(tmp_path):
+    """The graph a machine's wrapper pointed at was gone for good and every commit passed as if its names had been checked."""
+    where = repo(tmp_path, PEOPLE)
+    (tmp_path / "graph.json").unlink()
+    code, said = check(where, tmp_path, notes="Nothing personal.\n")
+    assert code == 0, said
+    assert f"NAMES_GRAPH={tmp_path / 'graph.json'} could not be read" in said
+    assert "NAMES_SCRAPE" not in said
+
+
 def test_a_merge_is_checked_for_what_it_adds_not_for_what_the_other_parent_brought(tmp_path):
     where = repo(tmp_path, PEOPLE)
     git = lambda *a: subprocess.run(["git", *a], cwd=where, check=True, capture_output=True)  # noqa: E731
@@ -299,6 +309,23 @@ def test_a_real_looking_address_is_still_refused(tmp_path):
     code, said = check(where, tmp_path, **{"t.py": f'A = "{address}"\n'})
     assert code == 1
     assert "pellard.co" in said
+
+
+def test_a_decorator_after_a_newline_escape_in_a_string_is_not_an_address(tmp_path):
+    """A decorator written after a newline escape was read as an address whose name is the escape's letter, and refused a commit
+    of new tests. Mutation: read the line with its escapes."""
+    where = repo(tmp_path, graph={"nodes": []})
+    code, said = check(where, tmp_path, **{"t.py": 'A = "x = 1\\n@pytest.mark.skip\\n\\t@pytest.fixture"\n'})
+    assert code == 0, said
+
+
+def test_an_address_after_a_newline_escape_is_still_refused_without_the_escape_letter(tmp_path):
+    where = repo(tmp_path, graph={"nodes": []})
+    address = "ada.lovelace@" + "pellard.co"
+    code, said = check(where, tmp_path, **{"t.py": f'A = "to:\\n{address}"\n'})
+    assert code == 1
+    assert f"'{address}'" in said or f" {address}" in said
+    assert "n" + address not in said
 
 
 def test_the_middle_of_a_uuid_is_not_a_phone_number(tmp_path):

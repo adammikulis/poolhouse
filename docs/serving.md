@@ -906,12 +906,19 @@ heads each), so 4,096 tokens read about 54,000 distinct pages.
 **llama.cpp.** The GGUF stores a row as 90 contiguous bytes (IQ4_NL), one read a lookup, and
 the operating system's page cache is the row cache: llama.cpp has no row cache of its own and
 no flag for either one. The `unsloth` build asks for a micro-batch's rows with
-`posix_madvise(WILLNEED)` before computing it. llama.cpp's own source asks on Linux and
-Windows only (`llama_prefetch` in `src/llama-mmap.cpp` is empty on macOS) and gathers on one
-thread (`GGML_OP_GET_ROWS` takes `n_tasks = 1`), so on a Mac such a build waits for each page
-in turn. The head build on that Mac (`b11577-cbe28bb3c`) imports `posix_madvise` and no
-`madvise`, as that source does; it has not been timed. Closing the gap needs
-`llama_prefetch` compiled for `__APPLE__` as it is for Linux.
+`posix_madvise(WILLNEED)` before computing it. llama.cpp's own source gathers on one thread
+(`GGML_OP_GET_ROWS` takes `n_tasks = 1`) and asks through `llama_prefetch` in
+`src/llama-mmap.cpp`, which upstream compiles for macOS since `b9f3599fb` (2026-10-13); a Mac
+build of an older commit waits for each page in turn. The commit `poolhouse-serve build` is
+pinned to (`verified.json`) is past it, and so is the tracked build `b12825-6d8a8886f`, which
+imports `madvise`.
+
+What that line is worth, measured 2026-11-27 on a 128 GB Mac: `llama_prefetch` from
+`cbe28bb3c` compiled with and without macOS in its condition, each linked into a one-thread
+gather with no model and no GPU, on a clone of the table's shard evicted before every run (0%
+resident), 4,096 tokens, 7 runs each, alternating, load 39 to 49: 6.47 s median without (5.71
+to 12.86), 0.59 s with (0.50 to 1.96), 878 to 879 MB read either way. A served model's prefill
+has not been timed both ways.
 
 Measured 2026-11-27 on a 128 GB Mac, `Qwen3.8-Flash-Next-UD-IQ2_XS` served at 262,144 tokens
 by `unsloth-b10715-mix-86bd2d3`, 4,096-token prompts of repository text sent to `/completion`

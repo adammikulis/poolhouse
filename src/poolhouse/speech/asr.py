@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import importlib.util
 import shutil
 import subprocess
 import tempfile
 import threading
 from pathlib import Path
 
+from poolhouse import provision, safelaunch
 from poolhouse.speech.protocols import (
     DEFAULT_SAMPLE_RATE,
     ProviderError,
@@ -22,14 +24,22 @@ class AudioConversionError(ProviderError):
     """ffmpeg could not decode the input."""
 
 
+def ffmpeg_program() -> str:
+    """The ``ffmpeg`` on PATH, else the one the ``ffmpeg`` extra carries, installed the first time audio needs it.
+    Raises `AudioConversionError` when none can be had."""
+    if found := safelaunch.which("ffmpeg"):
+        return found
+    try:
+        return provision.module("imageio_ffmpeg", "ffmpeg").get_ffmpeg_exe()
+    except (ImportError, RuntimeError, OSError) as exc:
+        raise AudioConversionError(
+            "ffmpeg is how arbitrary uploaded audio becomes something a model can read; none is on PATH and "
+            f"none could be installed: {exc}") from exc
+
+
 def to_wav_16k(audio: Path | str | bytes, *, sample_rate: int = DEFAULT_SAMPLE_RATE) -> bytes:
     """Anything ffmpeg understands -> mono PCM WAV at ``sample_rate``."""
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg is None:
-        raise AudioConversionError(
-            "ffmpeg is not on PATH. It is how arbitrary uploaded audio becomes something "
-            "a model can read. On macOS: brew install ffmpeg"
-        )
+    ffmpeg = ffmpeg_program()
 
     data = as_bytes(audio)
     result = subprocess.run(
@@ -72,6 +82,10 @@ class _LoadedOnce:
         return self._model
 
 
+REVISIONS = {"small.en": "d1d751a5f8271d482d14ca55d9e2deeebbae577f"}
+"""The model-repository revision the default model is fetched at. A model somebody names is their choice and is fetched as the library does."""
+
+
 class FasterWhisperASR(_LoadedOnce):
     """``faster-whisper``: CTranslate2 Whisper, fast on CPU."""
 
@@ -96,14 +110,21 @@ class FasterWhisperASR(_LoadedOnce):
             import faster_whisper  # noqa: F401
         except ImportError as exc:
             return ProviderHealth.missing(f"faster-whisper is not installed ({exc})")
-        if shutil.which("ffmpeg") is None:
-            return ProviderHealth.missing("ffmpeg is not on PATH")
+        if shutil.which("ffmpeg") is None and importlib.util.find_spec("imageio_ffmpeg") is None and provision.refusal():
+            return ProviderHealth.missing(f"no ffmpeg, and none could be installed: {provision.refusal()}")
         return ProviderHealth.ok(self.model)
 
     def _load(self):
-        from faster_whisper import WhisperModel
-
-        return WhisperModel(self.model, device=self.device, compute_type=self.compute_type)
+        WhisperModel = provision.module("faster_whisper", "asr").WhisperModel
+        pinned = {"revision": REVISIONS[self.model]} if self.model in REVISIONS else {}
+        refused = provision.download_refusal()
+        try:
+            return WhisperModel(self.model, device=self.device, compute_type=self.compute_type, **pinned,
+                                **({"local_files_only": True} if refused else {}))
+        except (OSError, ValueError, RuntimeError) as exc:
+            if not refused:
+                raise
+            raise ProviderError(f"{self.model} could not be loaded from this device alone, and {refused}: {exc}") from exc
 
     def transcribe(self, audio, *, language: str | None = None) -> Transcript:
         model = self._require()
@@ -201,6 +222,18 @@ class WhisperCppASR:
         )
 
 
+def _kept_only(model: str) -> str:
+    """``model`` as it may be loaded now: itself where downloads are allowed or it is a directory here, else the copy this
+    device holds. Raises `ProviderError` when nothing may be fetched and none is held."""
+    refused = provision.download_refusal()
+    if not refused or Path(model).is_dir():
+        return model
+    try:
+        return provision.module("huggingface_hub", "hub").snapshot_download(model, local_files_only=True)
+    except (ImportError, OSError, ValueError) as exc:
+        raise ProviderError(f"{model} is not on this device and was not downloaded: {refused}") from exc
+
+
 class TransformersWhisperASR(_LoadedOnce):
     """Whisper through ``transformers``. The widest model selection, the heaviest install."""
 
@@ -246,7 +279,7 @@ class TransformersWhisperASR(_LoadedOnce):
         device = self._pick_device(torch)
         return pipeline(
             "automatic-speech-recognition",
-            model=self.model,
+            model=_kept_only(self.model),
             device=device,
             torch_dtype=self._resolve_dtype(torch),
         )

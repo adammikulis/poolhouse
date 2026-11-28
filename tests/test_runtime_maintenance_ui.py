@@ -27,7 +27,7 @@ def test_healthy_chat_and_advanced_maintenance_repair_use_saved_preferences(tmp_
     served.ui.serving.register(model.port, [CANNED_MODEL_ID])
     served.ui.conversations = Conversations(tmp_path / "chats")
     try:
-        with browser(Window(profile=tmp_path / "maintenance-browser", channel="chromium"), playwright) as page:
+        with browser(Window(profile=tmp_path / "maintenance-browser", channel="chromium", own_pages=True), playwright) as page:
             page.goto(f"http://127.0.0.1:{served.port}/ui/#chat", wait_until="domcontentloaded")
             expect(page.locator("chat-view #chat-send")).to_be_enabled()
             page.wait_for_function("() => document.querySelector('chat-view').runtimeChecking === false")
