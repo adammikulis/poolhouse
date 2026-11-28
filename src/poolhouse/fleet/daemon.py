@@ -117,6 +117,9 @@ class DaemonOptions:
     announcer: Callable[[Callable[[], list[dict]]], Callable[[str], object]] | None = None
     """`poolhouse.board.model_uploads.board_notice`, handed in by the command for the same reason: given the daemon's boards, it posts
     the daily model upload check's lines. None checks and posts nothing."""
+    scheduler: Callable[[threading.Event], None] | None = None
+    """`poolhouse.schedule.spawn.keep`, handed in by the command: while the daemon serves, a process is kept for every scheduled job
+    that has not ended, until the event is set. The jobs' processes are their own and outlive the daemon."""
 
 
 class DaemonRuntime:
@@ -141,6 +144,7 @@ class DaemonRuntime:
         self.track = options.track
         self.pool_actions = options.pool_actions
         self.announcer = options.announcer
+        self.scheduler = options.scheduler
 
     def configure(self) -> None:
         self.root = home.expand(self.root) if self.root else default_root()
@@ -354,11 +358,15 @@ class DaemonRuntime:
             say(f"  reclaiming a server unused for {self.idle_s:.0f}s")
             self.reclaiming.enter_context(watching(older_than=self.idle_s, say=print))
         runtime_repair.resume_stored(self.interface, self.root)
+        stopping = threading.Event()
+        if self.scheduler is not None:
+            threading.Thread(target=self.scheduler, args=(stopping,), name="scheduled-jobs", daemon=True).start()
         try:
             self.httpd.serve_forever()
         except KeyboardInterrupt:
             pass
         finally:
+            stopping.set()
             try:
                 self.reclaiming.close()
                 self.scanner.stop()
@@ -475,7 +483,7 @@ def persist(*, slots: int = 1, labels: tuple[str, ...] = (), report: str = "") -
     return 2
 
 
-def run(argv: list[str] | None = None, *, pool_actions: Any = None, announcer: Any = None) -> int:
+def run(argv: list[str] | None = None, *, pool_actions: Any = None, announcer: Any = None, scheduler: Any = None) -> int:
     ap = argparse.ArgumentParser(prog="poolhouse-traind")
     ap.add_argument("--root", default=str(default_root()))
     ap.add_argument(
@@ -649,6 +657,7 @@ def run(argv: list[str] | None = None, *, pool_actions: Any = None, announcer: A
             track=a.track,
             pool_actions=pool_actions,
             announcer=announcer,
+            scheduler=scheduler,
         )
     )
     return 0

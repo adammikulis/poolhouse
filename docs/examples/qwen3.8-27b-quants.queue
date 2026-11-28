@@ -1,0 +1,24 @@
+# Qwen3.8-27B quantisations compared on this computer, Metal against the CPU (docs/scheduled-jobs.md).
+#
+# The set `qwen3.8-27b` of docs/experiments/quants-qwen3.8.json: BF16 is the reference; against it UD-Q4_K_XL, UD-Q4_K_S and
+# UD-IQ4_XS, UD-Q3_K_XL and UD-IQ3_S, UD-IQ3_XXS and UD-Q2_K_XL. About 5.6 h by `quants plan --set qwen3.8-27b`, whose
+# rates are estimates: speed 1.9 h, fidelity 3.7 h. The coding tasks (48 h) are not in it.
+#
+# Schedule it from a source checkout (a release build ships no benchmark), after checking it with --dry-run:
+#
+#   PYTHONPATH=src python -m poolhouse.cli schedule add docs/examples/qwen3.8-27b-quants.queue \
+#       --at "2026-11-28 23:07" --window 2h --max-hours 12 --dry-run
+#
+# Speed runs first, on the machine as it was found free, before building and scoring load it. --anyway keeps a repeat that
+# found the machine busy, marked contended and left out of the report, so one busy moment does not end the night.
+
+set SET=--set qwen3.8-27b
+
+quants speed ${SET} --anyway
+smoke: quants build-tool
+then:  quants fidelity ${SET}
+quants report ${SET}
+
+# Removing a build's files once every line above has passed is a line of this form, one for each build to remove. None is
+# listed: which files go is decided when the results have been read.
+# remove-model hf:unsloth/Qwen3.8-27B-GGUF/BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf

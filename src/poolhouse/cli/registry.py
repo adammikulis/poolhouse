@@ -30,6 +30,7 @@ ROUTED: dict[str, str] = {
     "device-setup": "poolhouse.device_setup:main",
     "credentials": "poolhouse.credentials.cli:command",
     "features": "poolhouse.features_cli:main",
+    "schedule": "poolhouse.schedule.cli:main",
     "test": "poolhouse.testfarm.cli:command",
     "test-devices": "poolhouse.testfarm.devices:command",
 }

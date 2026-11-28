@@ -1,5 +1,5 @@
 """``poolhouse-models``: what is installed, what fits and what to pull -- list, where, info,
-which, fit, suggest, pull, search, recommend and machine -- beside the Hub commands."""
+which, fit, suggest, pull, search, recommend, machine and remove -- beside the Hub commands."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ import json
 from collections.abc import Callable
 
 from poolhouse import hub
-from poolhouse.hub import cli as hub_cli, hf_cache, origins, uploads
+from poolhouse.hub import cli as hub_cli, hf_cache, origins, removal, uploads
 from poolhouse.log import say, warn
 from poolhouse.serve import estimate as est, models_adopt, suggest as pick
 from poolhouse.units import human_bytes
 
 COMMANDS = ("list", "where", "info", "which", "fit", "suggest", "pull", "snapshot", "search",
-            "recommend", "machine", "adopt")
+            "recommend", "machine", "adopt", "remove")
 
 
 def _emit(args: argparse.Namespace, payload: object, text: Callable[[], None]) -> int:
@@ -73,6 +73,9 @@ def add(sub: argparse._SubParsersAction) -> None:
                      default="agent")
     rec.add_argument("--query", default="", help="also rank what the Hub offers for this")
     make("machine", "the memory this machine has for a model")
+    gone = make("remove", "remove a model's files from the Hugging Face cache: every shard of the build each reference names")
+    gone.add_argument("refs", nargs="+", metavar="REF", help="hf:owner/repo/file.gguf")
+    gone.add_argument("--dry-run", action="store_true", help="say what would be removed and remove nothing")
     adopt =make("adopt", "take the models kept outside the hub cache (the decider, the weights views, the "
                  "drafters) into it: plan, then run", arg="action")
     adopt.add_argument("--offline", action="store_true",
@@ -252,10 +255,17 @@ def _snapshot(args: argparse.Namespace) -> int:
                  lambda: say(str(path)))
 
 
+def _remove(args: argparse.Namespace) -> int:
+    done = [removal.remove(ref, dry_run=args.dry_run) for ref in args.refs]
+    return _emit(args, [{"ref": one.ref, "files": [str(path) for path in one.files], "bytes": one.bytes,
+                         "removed": not args.dry_run} for one in done],
+                 lambda: [say(one.said(done=not args.dry_run)) for one in done])
+
+
 RUN: dict[str, Callable[[argparse.Namespace], int]] = {
     "list": _list, "where": _where, "info": _info, "which": _which, "fit": _fit,
     "suggest": _suggest, "pull": _pull, "search": _search, "recommend": _recommend,
-    "machine": _machine, "snapshot": _snapshot, "adopt": _adopt,
+    "machine": _machine, "snapshot": _snapshot, "adopt": _adopt, "remove": _remove,
 }
 
 

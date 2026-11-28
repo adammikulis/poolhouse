@@ -1,0 +1,83 @@
+<style>
+schedule-view { display:contents; }
+schedule-view .schedule-heading { margin-bottom:18px; }
+schedule-view .schedule-heading h1 { margin:0 0 8px; } schedule-view .schedule-heading p { margin:0; }
+schedule-view .schedule-list { display:grid; gap:12px; min-width:0; }
+schedule-view .schedule-job { min-width:0; }
+schedule-view .schedule-top { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+schedule-view .schedule-top h2 { margin:0; font-size:1.143rem; overflow-wrap:anywhere; }
+schedule-view .schedule-state { font-size:0.786rem; padding:2px 8px; border-radius:20px; border:1px solid var(--line); background:var(--bg-sunken); }
+schedule-view .schedule-state[data-live=true] { background:var(--poolhouse-yellow); color:var(--poolhouse-yellow-ink,var(--poolhouse-navy)); border-color:transparent; }
+schedule-view .schedule-state[data-bad=true] { border-color:var(--bad); color:var(--bad); }
+schedule-view .schedule-top button { margin:0 0 0 auto; }
+schedule-view .schedule-when, schedule-view .schedule-why { margin:8px 0 0; overflow-wrap:anywhere; }
+schedule-view .schedule-when { color:var(--muted); }
+schedule-view .schedule-job ol { margin:10px 0 0; padding-left:20px; } schedule-view .schedule-job li { overflow-wrap:anywhere; }
+schedule-view .schedule-job li[data-state=failed] { color:var(--bad); }
+schedule-view .schedule-job pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:320px; overflow:auto; background:var(--bg); padding:10px; border-radius:8px; font-size:0.857rem; }
+schedule-view .schedule-job summary { cursor:pointer; color:var(--muted); font-size:0.857rem; margin-top:8px; }
+</style>
+<template>
+<section class="workspace page-shell" hidden>
+  <header class="schedule-heading page-heading"><div><h1>Scheduled jobs</h1><p class="intro">Poolhouse's own commands set to run later on this computer, once it is free: when each starts, why it waits and what came of it.</p></div></header>
+  <p class="status" id="schedule-status" role="status">Loading scheduled jobs…</p>
+  <div class="schedule-list" id="schedule-list" aria-label="Scheduled jobs"></div>
+</section>
+</template>
+<script>
+(function(){
+ const M=window.fleetModel,W=window.workspaceModel,E=M.el;
+ const ENDED=['done','failed','missed','cancelled'],BAD=['failed','missed'];
+ class ScheduleView extends HTMLElement {
+  connectedCallback(){
+   if(this.wired)return;this.wired=true;
+   this.host=this.querySelector('section');this.note=this.querySelector('#schedule-status');this.list=this.querySelector('#schedule-list');this.cards=new Map();
+   W.route(this.host,'schedule',()=>this.load());
+   this.timer=setInterval(()=>{if(!this.host.hidden&&!document.hidden)this.load();},5000);
+  }
+  disconnectedCallback(){clearInterval(this.timer);}
+  async load(){
+   if(this.loading)return;this.loading=true;
+   try{
+    const found=(await W.api('/ui/schedule')).jobs||[];
+    this.paint(found);
+    for(const [id,card] of this.cards)if(card.about.open)await this.output(id,card);
+    this.note.textContent=found.length?'':'No job is scheduled. Add one with: poolhouse schedule add FILE --at TIME';
+   }catch(error){W.status(this.note,error);}
+   finally{this.loading=false;}
+  }
+  paint(jobs){
+   const seen=new Set(jobs.map(job=>job.id));
+   for(const [id,card] of this.cards)if(!seen.has(id)){card.node.remove();this.cards.delete(id);}
+   jobs.forEach((job,index)=>{
+    const card=this.cards.get(job.id)||this.card(job.id);
+    card.name.textContent=job.name||job.id;
+    card.state.textContent=job.state;card.state.dataset.live=String(job.state==='running');card.state.dataset.bad=String(BAD.includes(job.state));
+    card.cancel.hidden=ENDED.includes(job.state);card.cancel.disabled=!!job.cancel;card.cancel.textContent=job.cancel&&!ENDED.includes(job.state)?'Cancelling…':'Cancel';
+    const times=job.ended?`Started ${job.started||'never'}, ended ${job.ended}`:job.state==='running'?`Started ${job.started}`:`Starts ${job.starts}, latest start ${job.latest_start}`;
+    card.when.textContent=`${times} · scheduled by ${job.by||'this computer'} · ${job.id}`;
+    card.why.textContent=job.why?`${job.state==='waiting'?'Waiting: ':''}${job.why}`:'';card.why.hidden=!job.why;
+    card.steps.replaceChildren(...job.steps.map(step=>E('li',{'data-state':step.state},`${step.words}: ${step.state}${step.why?' · '+step.why:''}`)));
+    if(this.list.children[index]!==card.node)this.list.insertBefore(card.node,this.list.children[index]||null);
+   });
+  }
+  card(id){
+   const name=E('h2'),state=E('span',{class:'schedule-state'}),when=E('p',{class:'schedule-when'}),why=E('p',{class:'schedule-why'}),steps=E('ol'),text=E('pre');
+   const cancel=E('button',{type:'button',class:'secondary',onclick:()=>this.cancel(id,cancel)},'Cancel');
+   const about=E('details',{ontoggle:()=>{if(about.open)this.output(id,this.cards.get(id));}},E('summary',{},'End of the output'),text);
+   const node=E('article',{class:'workspace-card schedule-job','data-job':id},E('div',{class:'schedule-top'},name,state,cancel),when,why,steps,about);
+   const card={node,name,state,cancel,when,why,steps,about,text};this.cards.set(id,card);return card;
+  }
+  async output(id,card){
+   try{const found=await W.api(`/ui/schedule/${encodeURIComponent(id)}`);card.text.textContent=found.output||'Nothing yet.';}
+   catch(error){card.text.textContent=String(error.message||error);}
+  }
+  async cancel(id,button){
+   button.disabled=true;
+   try{await W.post(`/ui/schedule/${encodeURIComponent(id)}/cancel`,{});await this.load();}
+   catch(error){button.disabled=false;W.status(this.note,error);}
+  }
+ }
+ customElements.define('schedule-view',ScheduleView);
+})();
+</script>

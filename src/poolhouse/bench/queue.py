@@ -33,8 +33,6 @@ from __future__ import annotations
 import contextlib
 import json
 import os
-import re
-import shlex
 import signal
 import subprocess
 import sys
@@ -46,7 +44,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import bench
+from poolhouse import bench, joblines
 from poolhouse.log import say
 from poolhouse.platform import end_child
 from poolhouse.serve.process import pid_exists
@@ -54,16 +52,13 @@ from poolhouse.serve.process import pid_exists
 #: what a summary line looks like, so the log can be read by eye and by `grep`
 SUMMARY = "=== {clock} step {n}/{total}: {words} -- {state} ({seconds:.0f}s)"
 
-_SET = re.compile(r"^set\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$")
-_VAR = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
-
 #: how many words of a line stand for it in the summary
 WORDS = 4
 
 
-class QueueError(ValueError):
-    """A queue file that cannot be run as written -- said with the line it is on, before
-    anything is measured, because a typo found an hour in has cost an hour."""
+QueueError = joblines.LineError
+"""A queue file that cannot be run as written -- said with the line it is on, before
+anything is measured, because a typo found an hour in has cost an hour."""
 
 
 @dataclass
@@ -93,75 +88,19 @@ class Step:
 
 # -- reading the file ----------------------------------------------------------------------
 
-def expand(text: str, variables: dict[str, str], *, line: int) -> str:
-    """``${NAME}`` replaced from ``variables``, else from the environment.
-
-    An unset name is refused rather than expanded to nothing: a queue whose `${FX}` went
-    missing would otherwise serve the default model for six hours and call it a result.
-    """
-    missing: list[str] = []
-
-    def one(m: re.Match[str]) -> str:
-        name = m.group(1)
-        if name in variables:
-            return variables[name]
-        if name in os.environ:
-            return os.environ[name]
-        missing.append(name)
-        return ""
-
-    said = _VAR.sub(one, text)
-    if missing:
-        raise QueueError(f"line {line}: nothing sets " + ", ".join(f"${{{n}}}" for n in missing))
-    return said
-
-
 def parse(text: str, *, validate: bool = True) -> list[Step]:
-    """The steps a queue file names, in order, with its `set` lines expanded.
+    """The steps a queue file names, in order, with its `set` lines expanded (`poolhouse.joblines`).
 
     Every line is checked against ``python -m poolhouse.bench``'s own parser as it is read, so a flag
     that does not exist is a refusal before the first model is loaded rather than a
     traceback after the fourth.
     """
-    variables: dict[str, str] = {}
     steps: list[Step] = []
-    pending_smoke: Step | None = None
-    for lineno, raw in enumerate(text.splitlines(), start=1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        named = _SET.match(line)
-        if named:
-            variables[named.group(1)] = expand(named.group(2).strip(), variables, line=lineno)
-            continue
-        kind = "step"
-        if line.lower().startswith("smoke:"):
-            kind, line = "smoke", line[len("smoke:"):].strip()
-        elif line.lower().startswith("then:"):
-            kind, line = "then", line[len("then:"):].strip()
-        line = expand(line, variables, line=lineno)
-        try:
-            argv = shlex.split(line, comments=True)
-        except ValueError as why:                       # an unbalanced quote
-            raise QueueError(f"line {lineno}: {why}") from None
-        if not argv:
-            continue
-        if argv[:3] == ["python", "-m", "poolhouse.bench"]:      # written out in full: allowed, ignored
-            argv = argv[3:]
-        if not argv:
-            raise QueueError(f"line {lineno}: nothing to run")
-        if kind == "then" and pending_smoke is None:
-            raise QueueError(f"line {lineno}: `then:` with no `smoke:` above it")
-        if kind == "smoke" and pending_smoke is not None:
-            raise QueueError(f"line {lineno}: `smoke:` on line {pending_smoke.line} has no "
-                             f"`then:` under it")
-        step = Step(n=len(steps) + 1, line=lineno, kind=kind, argv=argv)
+    for line in joblines.read_lines(text):
+        step = Step(n=len(steps) + 1, line=line.number, kind=line.kind, argv=line.argv)
         if validate:
-            step.label = label_of(argv, where=f"line {lineno}")
+            step.label = label_of(line.argv, where=f"line {line.number}")
         steps.append(step)
-        pending_smoke = step if kind == "smoke" else None
-    if pending_smoke is not None:
-        raise QueueError(f"line {pending_smoke.line}: `smoke:` with no `then:` under it")
     return steps
 
 

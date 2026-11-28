@@ -28,6 +28,8 @@ Poolhouse pools devices. Devices join a pool, the pool's compute is pooled, and 
 | **lead**, **helper** | A lead is a main session; a helper is a session started under one (a subagent, an agent a launcher started). Both are agents the node places by the process tree a command runs in, and both may launch coding agents and delegates, widen a launch and register or remove a project. A marked process the node places in no session may not widen a launch or register or remove a project; it may still start an agent that asks for no more than the default. |
 | **unattended agent** | An agent that runs with nobody at it and reads outside content: an agent `poolhouse-delegate` starts, or a local agent of a board. Neither it nor what the process table shows below its runner starts an agent, widens a launch or changes a project's record. |
 | **lease** | Permission to use a limited resource (the GPU, a test slot, a port) for a time. |
+| **scheduled job** | One or more of Poolhouse's own commands set to run later on one device, with a start time and a latest start, once the model broker finds the device free ([scheduled-jobs.md](scheduled-jobs.md)). It ends `done`, `failed`, `missed` or `cancelled`. |
+| **reservation** | The broker's hold of a device for one scheduled job (`gpu-job`): while it lasts, only that job's processes start or lease a model there or claim the GPU. |
 | **capacity** | What a device can offer the pool: memory, accelerator, free slots. |
 | **sentinel**, **flags** | The open-join safety: what the sentinel watches and the flags it raises when a pool takes devices without a code. |
 | **enrol** | Used only inside membership and audit records ("enrolled", the recorded way a member entered). A person never enrols a device; they add one. |

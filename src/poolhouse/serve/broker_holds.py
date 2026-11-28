@@ -10,6 +10,8 @@ import uuid
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any
 
+import psutil
+
 from poolhouse import leasetable
 from poolhouse.node_health import Refused
 from poolhouse.ownership import recorded_servers
@@ -17,9 +19,14 @@ from poolhouse.serve import admission, node_memory
 from poolhouse.serve.broker_lifecycle import admitted
 from poolhouse.serve.process import started_at
 
-__all__ = ["MODEL_START", "POLL_S", "BrokerHolds"]
+__all__ = ["GPU_CLAIM", "JOB_CLAIM", "MODEL_START", "POLL_S", "BrokerHolds"]
 
 POLL_S = 0.5
+GPU_CLAIM = "gpu-training"
+JOB_CLAIM = "gpu-job"
+"""A scheduled job's reservation of the device, held by the job's process. It is granted only while nothing is in use; while it
+is held, only that process and what runs under it may start or lease a model server or claim the GPU. It holds nothing in the
+node's table, so the job's own steps take the GPU as they always do."""
 MODEL_START = "gpu-model-start:"
 """The prefix of a claim that reserves a native model start until its server lease is recorded."""
 
@@ -51,7 +58,7 @@ class BrokerHolds:
         waiter = {"name": name, "pid": pid, "started": started_at(pid), "info": dict(info), "since": time.time()}
         if not self._waiter_alive(waiter, connected):
             raise RuntimeError("The compute requester is no longer connected or cannot prove its process identity.")
-        if name == "gpu-training":
+        if name in (GPU_CLAIM, JOB_CLAIM):
             self.adopt()
         deadline = None if timeout is None else time.monotonic() + timeout
         ticket = uuid.uuid4().hex
@@ -66,6 +73,22 @@ class BrokerHolds:
     def _claim_alive(self, held: Mapping[str, Any]) -> bool:
         return bool(held.get("started") is not None and self.alive(held["pid"])
                     and started_at(held["pid"]) == held["started"])
+
+    def gpu_blocker(self, pid: int) -> dict[str, Any] | None:
+        """The claim that keeps ``pid`` off the GPU: a live GPU claim, else a job's reservation ``pid`` does not run under.
+        Called with the lock held."""
+        training = self.claims.get(GPU_CLAIM)
+        if training and self._claim_alive(training):
+            return training
+        return self.reserved_out(pid)
+
+    def reserved_out(self, pid: int) -> dict[str, Any] | None:
+        """The job's reservation that keeps ``pid`` out, None when there is none or ``pid`` runs under its holder. What it keeps
+        out is not in line: nothing waiting for the job to end stands in front of the job's own steps. Called with the lock held."""
+        reserved = self.claims.get(JOB_CLAIM)
+        if reserved and self._claim_alive(reserved) and not _under(pid, reserved["pid"]):
+            return reserved
+        return None
 
     def _waiter_alive(self, waiter: Mapping[str, Any], connected: Callable[[], bool] | None) -> bool:
         try:
@@ -84,19 +107,24 @@ class BrokerHolds:
                 if held["info"] != waiter["info"]:
                     raise ValueError("This process already holds that claim for different work.")
                 return {"granted": True, **held}
+            exclusive = name in (GPU_CLAIM, JOB_CLAIM)
             busy = next((server for server in self.servers.values()
-                         if server.loading or server.unmanaged or server.holders), None) if name == "gpu-training" else None
+                         if server.loading or server.unmanaged or server.holders), None) if exclusive else None
             starting = next((value for key, value in self.claims.items()
-                             if key.startswith(MODEL_START) and self.alive(value["pid"])), None) if name == "gpu-training" else None
-            first = next(key for key, value in self.claim_waiters.items() if value["name"] == name)
-            if first == ticket and busy is None and starting is None and (held is None or not self._claim_alive(held)):
+                             if key.startswith(MODEL_START) and self.alive(value["pid"])), None) if exclusive else None
+            blocker = self.gpu_blocker(pid) if exclusive else None
+            first = next((key for key, value in self.claim_waiters.items() if value["name"] == name
+                          and (name != GPU_CLAIM or not self.reserved_out(value["pid"]))), None)
+            if first == ticket and busy is None and starting is None and blocker is None and (
+                    held is None or not self._claim_alive(held)):
                 lease = self._gpu_for(name, pid)
                 if lease is not None:
                     if not self._waiter_alive(waiter, connected):
                         if lease:
                             self.table.release(lease)
                         raise RuntimeError("The compute requester disappeared before admission.")
-                    self.claims[name] = {**{key: waiter[key] for key in ("pid", "started", "info", "since")}, "lease": lease}
+                    self.claims[name] = {**{key: waiter[key] for key in ("pid", "started", "info", "since")}, "lease": lease,
+                                         **({"reserves_device": True} if name == JOB_CLAIM else {})}
                     return {"granted": True, **self.claims[name]}
                 held = {"pid": 0, "info": {"purpose": "a request or another claim holds the GPU"}, "since": time.time()}
             if busy is not None:
@@ -104,6 +132,8 @@ class BrokerHolds:
                 held = {"pid": holder[0], "info": {"purpose": self._held_said(busy)}, "since": time.time()}
             elif starting is not None:
                 held = starting
+            elif blocker is not None:
+                held = blocker
             left = None if deadline is None else deadline - time.monotonic()
             if left is not None and left <= 0:
                 return {"granted": False, **(held or {"pid": 0, "info": {"purpose": "an earlier claim is queued"}})}
@@ -111,11 +141,16 @@ class BrokerHolds:
 
     def _gpu_for(self, name: str, pid: int) -> str | None:
         """The id of the node's lease of the GPU for the claim ``name`` of ``pid`` ("" for a claim that holds nothing of the node's),
-        or None when the GPU is in use."""
-        if name != "gpu-training":
+        or None when the GPU is in use. A job's reservation takes the lease to prove the GPU is free and gives it back at once."""
+        if name not in (GPU_CLAIM, JOB_CLAIM):
             return ""
         got = self.table.acquire([leasetable.gpu()], leasetable.Terms(tag=f"claim.{name}", pid=pid, ttl_s=admission.KEEP_S, wait=False))
-        return str(got["id"]) if got["state"] == "held" else None
+        if got["state"] != "held":
+            return None
+        if name == JOB_CLAIM:
+            self.table.release(str(got["id"]))
+            return ""
+        return str(got["id"])
 
     def unclaim(self, name: str, pid: int) -> bool:
         """Let go of ``name`` if ``pid`` holds it."""
@@ -172,3 +207,13 @@ class BrokerHolds:
         for lease in leases:
             with contextlib.suppress(Refused, OSError):
                 self.table.renew(lease, ttl_s=admission.KEEP_S)
+
+
+def _under(pid: int, holder: int) -> bool:
+    """Whether the process ``pid`` is ``holder`` or runs under it."""
+    if pid == holder:
+        return True
+    try:
+        return any(parent.pid == holder for parent in psutil.Process(pid).parents())
+    except (psutil.Error, ValueError):
+        return False
