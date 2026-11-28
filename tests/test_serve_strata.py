@@ -26,6 +26,7 @@ from poolhouse.serve import (
     ops,
     python_runtime,
     unmanaged,
+    weights,
 )
 from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerSpec
 from poolhouse.serve.fitted import fitted
@@ -307,6 +308,28 @@ class TestEngine:
         assert got.loaded and got.own == "mtp" and "why" in got.note
         none = ops._drafting("http://127.0.0.1:9", {"backend": "strata", "mtp": "", "mtp_note": "no drafting: why"}, None, None)
         assert not none.loaded and "no drafting" in none.note
+
+
+class TestRoom:
+    """What the broker makes room for, for an engine with a figure of its own: that figure, not what the weights come to."""
+
+    def test_weights_over_the_room_do_not_make_a_start_wait_when_the_engine_takes_less(self, canned, monkeypatch):
+        manager, files = canned
+        monkeypatch.setattr(weights, "weight_of", lambda _model: 100 * GIB)
+        made = broker.Broker(manager, idle_s=3600.0, room=lambda: 2 * GIB, scan=lambda: [])
+        made.servers[1] = broker.Held(port=1, model="/PLUMBING/held.gguf", holders={"PLUMBING": (os.getpid(), "PLUMBING")})
+        ask = broker.Ask(purpose="coding", models=(str(files[0]),), pid=os.getpid(), spec={"engine": "strata", "context": 131072})
+        got = made.lease(ask, timeout=20)
+        assert made.servers[got.port].weight == 1 << 20
+
+    def test_an_idle_server_makes_room_for_what_the_engine_says_it_takes(self, canned, monkeypatch):
+        manager, files = canned
+        monkeypatch.setattr(config, "estimate_bytes", lambda *_: 3 * GIB)
+        made = broker.Broker(manager, idle_s=3600.0, room=lambda: 2 * GIB, scan=lambda: [])
+        idle = made.servers[1] = broker.Held(port=1, model="/PLUMBING/idle.gguf", weight=2 * GIB)
+        ask = broker.Ask(purpose="coding", models=(str(files[0]),), pid=os.getpid(), weight=GIB,
+                         spec={"engine": "strata", "context": 131072})
+        assert made._fit(ask, []) == (None, [idle], "")
 
 
 class TestProof:
