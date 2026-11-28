@@ -113,6 +113,8 @@ def git_identity(root: Path) -> str:
 
 
 MOVED = "This project folder moved or changed. Choose it again in Projects."
+TERMINAL_ONLY = ("The app cannot join a submodule, a separate git directory or a worktree of a bare repository: "
+                 "start work from a terminal agent in this folder.")
 
 
 def _git_line(path: Path) -> str:
@@ -123,10 +125,11 @@ def _git_line(path: Path) -> str:
 def own_worktree(root: Path) -> Path:
     """``root`` while it is still the very folder recorded and the top of a working tree of its own; the main working tree.
 
-    Read from the files alone. A link, a folder that lost its ``.git`` (git would then answer for a repository around it)
-    and a ``.git`` file that leads into a repository which does not name this folder back are refused. The main working tree
-    is ``root`` itself for its own ``.git`` directory and for a git directory kept elsewhere that is no folder's ``.git`` (a
-    submodule, a separate git directory), and for a linked worktree the folder around the common ``.git``.
+    Read from the files alone, for the two layouts they show the folder owns: its own ``.git`` directory (the main working
+    tree is ``root``), and a linked worktree whose record in a repository's ``.git`` names this folder's ``.git`` back, as
+    written and with no link followed (the main working tree is the folder around that ``.git``). A link, a folder that lost
+    its ``.git`` (git would then answer for a repository around it) and a ``.git`` file leading anywhere else that is no such
+    record are `MOVED`; a git directory kept elsewhere that is no folder's ``.git`` is `TERMINAL_ONLY`.
     """
     refused = source.ProjectError(MOVED)
     try:
@@ -146,20 +149,17 @@ def own_worktree(root: Path) -> Path:
         if not os.path.lexists(own / "commondir"):
             if own.name == ".git" or not own.is_dir():
                 raise refused
-            return root
+            raise source.ProjectError(TERMINAL_ONLY)
         common = (own / _git_line(own / "commondir")).resolve(strict=True)
-        back = (own / _git_line(own / "gitdir")).resolve(strict=True)
-        main = common.parent
-        if (own.parent != common / "worktrees" or common != main / ".git" or back != dot
+        back = os.path.normpath(own / _git_line(own / "gitdir"))
+        if (own.parent != common / "worktrees" or os.path.normcase(back) != os.path.normcase(dot)
                 or os.path.lexists(common / "commondir")):
             raise refused
-        return main
+        if common.name != ".git":
+            raise source.ProjectError(TERMINAL_ONLY)
+        return common.parent
     except (OSError, UnicodeError) as exc:
         raise refused from exc
-
-
-def _git_directory(root: Path) -> str:
-    return git.run(["rev-parse", "--absolute-git-dir"], cwd=root, protocols="").stdout.rstrip("\r\n")
 
 
 @dataclass(frozen=True)
@@ -188,12 +188,10 @@ class Project:
     """The person picked this folder; a row the app only found is not chosen."""
     git_id: str = ""
     """Git's own identity of the folder when it was chosen or shared, whatever a metadata file in it claims."""
-    git_dir: str = ""
-    """The folder's git directory when it was chosen or shared."""
 
     def public(self) -> dict:
         result = asdict(self)
-        for private in ("root", "chosen", "git_id", "git_dir"):
+        for private in ("root", "chosen", "git_id"):
             result.pop(private)
         return result
 
@@ -243,7 +241,7 @@ class ProjectRegistry:
                 project = Project(id=identifier, name=top.name, root=str(top), source_machine=self.machine)
                 self._projects[identifier] = project
             if Path(project.root) == top:
-                project.chosen, project.git_id, project.git_dir = True, git_identity(top), _git_directory(top)
+                project.chosen, project.git_id = True, git_identity(top)
             self._candidates[identifier] = top
             self._save()
             return self._board(project)
@@ -270,10 +268,7 @@ class ProjectRegistry:
             main = own_worktree(root)
             try:
                 top = git.run(["rev-parse", "--show-toplevel"], cwd=root, protocols="").stdout.rstrip("\r\n")
-                # Nothing names a git directory kept elsewhere back, so it is the one the folder had when it was chosen.
-                elsewhere = main == root and (root / ".git").is_file()
-                if (Path(top) != root or git_identity(root) != (project.git_id or project.id)
-                        or (elsewhere and _git_directory(root) != project.git_dir)):
+                if Path(top) != root or git_identity(root) != (project.git_id or project.id):
                     raise source.ProjectError(MOVED)
                 protected = source_snapshot.protected_roots(dict(os.environ))
                 for folder in {root, main}:
@@ -387,7 +382,6 @@ class ProjectRegistry:
             source.verify(packed, identifier, manifest["source_hash"])
             project = Project(id=identifier, name=name.strip() or root.name, root=str(root),
                               source_machine=self.machine, shared=True, chosen=True, git_id=git_identity(root),
-                              git_dir=_git_directory(root),
                               source_hash=manifest["source_hash"],
                               archive_sha256=hashlib.sha256(packed).hexdigest(), size_bytes=manifest["size_bytes"],
                               files=len(manifest["files"]), excluded_files=manifest["excluded_files"])

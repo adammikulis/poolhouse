@@ -23,8 +23,7 @@ built and tested alone. The shipping section below puts it in every runtime and 
   source contains the path; a linked git worktree resolves through the repository's common
   directory, so every worktree of a repo is the same project; a directory that matches nothing
   gets `denied: this directory is not part of a project`, never another project's board. A git
-  source is stored as the repository's main working tree; a working tree whose `.git` file leads
-  to no repository's `.git` (a submodule, a separate git directory) is its own main working tree. A place is never the same as, inside or
+  source is stored as the repository's main working tree. A place is never the same as, inside or
   around a place of another project (`invalid`), so no project takes over where another's sessions
   land. A place is never the user's home, a directory around it or the root of the disk, and a folder that
   is not a git repository never holds a git repository of its own (a search three levels deep, with no

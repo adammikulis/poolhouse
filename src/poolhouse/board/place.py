@@ -37,10 +37,7 @@ def board_id(path: Path) -> tuple[str, Path] | None:
     if not common:
         return None
     common_dir = Path(common).resolve()
-    if common_dir.name == ".git":
-        tree = common_dir.parent
-    else:   # a submodule's or a separate git directory serves the tree that points at it; a bare repository has none
-        tree = Path(_git(path, "rev-parse", "--path-format=absolute", "--show-toplevel") or common_dir).resolve()
+    tree = common_dir.parent if common_dir.name == ".git" else common_dir
     word = re.sub(r"[^a-z0-9]+", "-", tree.name.lower()).strip("-")[:30] or "project"
     return f"{word}-{hashlib.sha256(str(common_dir).encode()).hexdigest()[:6]}", tree
 
