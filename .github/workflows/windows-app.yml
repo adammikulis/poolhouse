@@ -1,0 +1,80 @@
+name: windows app
+
+# The Windows installer built from this commit, installed and used on a throwaway Windows machine: first run, every
+# screen, founding a pool, a second device joining it, installing over it and uninstalling (packaging/windows_proof.py).
+# It publishes nothing; the setup it built is kept with the run for seven days.
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "packaging/**"
+      - "src/poolhouse/fleet/**"
+      - "src/poolhouse/node*.py"
+      - "src/poolhouse/serve/**"
+      - "src/poolhouse/jobs.py"
+      - "src/poolhouse/platform.py"
+      - "src/poolhouse/win32.py"
+      - ".github/workflows/windows-app.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installed-app:
+    name: build, install and use the Windows app
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
+
+      - name: build the installer
+        run: |
+          python -m pip install --upgrade pip build
+          python packaging/build.py --bundle
+
+      # Kept even when a later step fails, so a build can be tried by hand.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: poolhouse-windows-setup
+          path: dist/bundle/*-setup.exe
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: what Windows itself answers
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pip install pytest pytest-timeout pytest-xdist numpy psutil keyring cryptography pyyaml pywin32 packaging huggingface_hub playwright
+          $env:PYTHONPATH = "src"
+          python -m pytest tests/test_windows_serving.py tests/test_windows_native.py tests/test_windows_firewall.py tests/test_packaged_app.py tests/test_node_windows.py -q -n 0 -p no:cacheprovider
+          if ($LASTEXITCODE -ne 0) { throw "the Windows tests failed" }
+
+      - name: install it and use it
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: |
+          python -m playwright install chromium
+          python packaging/windows_proof.py dist/bundle
+          if ($LASTEXITCODE -ne 0) { throw "the installed app did not work" }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: windows-app-screens
+          path: dist/windows-*.png
+          if-no-files-found: ignore
+          retention-days: 7
