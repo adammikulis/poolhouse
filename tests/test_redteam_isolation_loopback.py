@@ -127,7 +127,10 @@ def test_a_program_of_the_box_serves_on_loopback_and_its_children_do_too(box):  
     assert windows.FIRST <= port <= windows.LAST, out
 
 
-def test_the_box_listens_on_no_other_address_and_reaches_no_listener_outside_its_window_even_one_started_later(box):  # noqa: F811
+def test_the_box_listens_on_no_other_address_and_reaches_this_machines_loopback_but_nothing_beyond_it(box):  # noqa: F811
+    """Owner-order: "can't you just make the sandbox just like the rest of things so the agent can test whatever they need safely?", "No agent
+    should be inhibited from doing their work that is given them." A loopback listener outside the window is reached, one started after the box
+    included; no bind and no host beyond this machine is."""
     (box.project / "attack.py").write_text(ATTACK)
     listeners: list[socket.socket] = []
     watching: list[threading.Thread] = []
@@ -155,7 +158,9 @@ def test_the_box_listens_on_no_other_address_and_reaches_no_listener_outside_its
 
     try:
         out, _, confinement = shelled(box, f"{shlex.quote(os.path.realpath(sys.executable))} attack.py\n", look=look)
-        assert "OPEN " not in out and out.count("shut ") == 18 and heard == [], (heard, out)
+        reached = [line for line in out.splitlines() if line.startswith("OPEN ")]
+        assert reached == [f"OPEN the {name} listener outside the window at {host}" for name in ("early", "late") for host in ("127.0.0.1", "::1")], out
+        assert out.count("shut ") == 14 and sorted(heard) == ["early", "early", "late", "late"], (heard, out)
         first, last = (int(out.split(f"{word} ", 1)[1].split()[0]) for word in ("first", "last"))
         assert (first, last) == (confinement.profile.policy.net.accept[0], confinement.profile.policy.net.accept[-1])
         assert all(int(each.getsockname()[1]) not in range(first, last + 1) for each in listeners)

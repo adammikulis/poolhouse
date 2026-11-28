@@ -43,6 +43,11 @@ class Spec:
     binds itself."""
     window_socket: str = ""
     """The Unix socket on which the launcher hands those ports over."""
+    temp: str = ""
+    """The session's own temporary folder, its ``TMPDIR``: on macOS a short one in the shared temporary folder, so the path of a socket made in
+    it fits; empty where the agent home holds the temporary files."""
+    withheld: tuple[int, ...] = ()
+    """Loopback ports of this machine's services that a box which reaches its loopback may still not reach: the model server's."""
 
     @property
     def read_only_stage(self) -> bool:

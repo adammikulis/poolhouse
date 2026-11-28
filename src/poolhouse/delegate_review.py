@@ -49,8 +49,8 @@ TOKEN is the verdict token the message gives you, as a JSON string. Reject with 
 only when you tried to prove it wrong and could not: an accept has an empty findings list and at least one check you made yourself.
 """
 SHELL = """\
-shell runs in a throwaway copy of the project with the change applied, in a sandbox with no network: run the tests you can, and say which you
-could not. What you write there is thrown away: you cannot change the project or the work.
+shell runs in a throwaway copy of the project with the change applied, in a sandbox that reaches no network beyond this computer: run the
+tests you can, and say which you could not. What you write there is thrown away: you cannot change the project or the work.
 """
 NO_SHELL = "You have no shell and no tool that changes a file: you cannot change the project or the work.\n"
 CHECK = """\

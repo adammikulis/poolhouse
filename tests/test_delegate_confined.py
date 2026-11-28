@@ -569,7 +569,10 @@ def test_the_model_sees_only_the_delegates_tools_and_opencode_is_bounded_by_its_
     assert rendering.files["session/bounded.py"] == delegate_confined.BOUNDED
     brief = agent["system"]
     assert "You have no shell" not in brief and "name every test you could not run" in brief
-    for limit in ("no network", "no localhost port", "no Poolhouse node", "no nested sandbox", "no real model", "at most 600s"):
+    # Owner-order: "No agent should be inhibited from doing their work that is given them." The brief says what the box allows and refuses.
+    told = ("GPU compute", "headless", "loopback", "any network beyond this computer", "no other program can listen", "sandbox-exec") \
+        if sys.platform == "darwin" else ("no network", "no localhost port", "no Poolhouse node", "no nested sandbox", "no real model")
+    for limit in (*told, "at most 600s"):
         assert limit in brief, limit
     assert "lead_ask(question)" in brief and "lead_note(text)" in brief and set(session_verbs.LEAD) == {"ask", "note"}
     reading = rendered(tmp_path, edit=False)
