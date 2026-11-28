@@ -17,7 +17,7 @@ from poolhouse.testfarm.model import ConfigError
 FARM = ROOT / "testfarm"
 L0 = ("files", "lock", "platform", "redact", "sandbox", "errors", "log")
 """The modules of poolhouse the runner's core may import, and no others."""
-LEGACY = frozenset({"client.py", "consent.py", "dev.py", "devices.py", "farm.py", "ledger.py", "report.py"})
+LEGACY = frozenset({"client.py", "consent.py", "devices.py", "ledger.py", "report.py"})
 """The files of the carriers and the farm that the generalised path replaces; they hold the old imports until they are deleted."""
 NEVER = ("scripts", "tests", "poolhouse.board", "poolhouse.workspace", "poolhouse.home", "poolhouse.serve", "poolhouse.fleet")
 PLUGINS = {"presets": (), "transports": (), "resources": ("poolhouse.leases", "poolhouse.serve.grant")}

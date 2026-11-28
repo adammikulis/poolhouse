@@ -8,13 +8,12 @@ machine the build is exactly what it was, and says so in one line."""
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import executable_libraries, home, platform as host
+from poolhouse import executable_libraries, home, platform as host, safelaunch
 
 __all__ = ["ABSENT", "LANGUAGES", "MAX_SIZE", "Ccache", "find"]
 
@@ -139,7 +138,7 @@ class Ccache:
 
 def find() -> Ccache | None:
     """The ccache on this machine with its cache directory made, or None when there is none."""
-    found = shutil.which("ccache")
+    found = safelaunch.which("ccache")
     if not found:
         return None
     exe = os.path.realpath(found)

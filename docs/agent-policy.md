@@ -851,9 +851,32 @@ no shape this repository has decided to live with. Budgets and red-team debt onl
   (`scripts/gates/refusal_stubs.py`, metric `refusal-stubs`) is a feature nobody built, refusing every caller for ever; it
   blocked every local coding harness until the isolated launcher replaces it. A feature that cannot be built yet is not
   merged behind a refusal: either its entry points do not exist, or it works. The metric only falls.
-- Writes are refused when they add a function whose body already exists elsewhere, a raw HTTP call, a docstring over
-  twelve lines, a signature over eight parameters, or a write that takes a file over its line limit or makes an
-  already-over file longer (`scripts/install-hooks.sh` installs the pre-commit chain).
+- **Install what can be installed.** Nothing fails, refuses or quietly does less for want of a library, tool, browser,
+  runtime or built artifact that Poolhouse can install or build: it does so the first time it is needed, with the
+  installers it has (`poolhouse.provision` for a declared extra, `serve.build_recover` for llama.cpp,
+  `opencode_install.keep` for a pinned release asset, `fleet.environment.provide` for the job environment). It goes
+  into Poolhouse's state or the project's environment (never a system Python or the account's own settings), says what
+  it is doing, is done by one process while the others go on with what is already here, works offline once cached, and
+  never happens at upgrade time. `POOLHOUSE_INSTALL_AT_NEED=off` and a LAN-only download source stop every download
+  that starts by itself. A status check, anything an outside page sets off and what outside content chooses (a picture's
+  format reader, a browser for a page that comes back thin) install nothing (`provision.nothing_installed`); what a
+  model's tool needs whatever the content is (the browser, Pillow, the PDF readers) is installed when the tool is called. An
+  interpreter or installer is started isolated from an empty directory
+  (`poolhouse.safelaunch`), never from where the caller stands. What only the account holder can add is reported with
+  why. `scripts/gates/install_instructions.py` (metric `install-instructions`) counts installer commands
+  written out in messages under `src/poolhouse`; it only falls.
+- **What is fetched and then run is pinned.** Nothing is installed at need without a version and a digest this
+  repository records, and a mismatch fails the install: Python libraries from `src/poolhouse/requirements.lock`
+  (`poolhouse.pinned`; `scripts/lock-requirements` writes it, run after changing a dependency), llama.cpp and its
+  converter from `patches/llama.cpp/verified.json`, release assets from the tables beside their installers. Chromium is
+  the revision the locked Playwright release names and the Silero voice detector one commit, with no digest held here. What cannot be pinned (no prebuilt wheel,
+  a source address, another package index) is not installed unless somebody asks for it by name. A pinned download is
+  kept on a device with no virus scanner unless somebody set the archive policy to refuse; one a scanner flags, or one
+  a scanner failed on, is judged by the policy as any other file is.
+- A write is never held back for code quality. Claude Code's edit guard (`scripts/hooks/claude-edit-guard`) tells the
+  agent beside the edit when it adds a function whose body already exists elsewhere, a raw HTTP call, a docstring over
+  twelve lines or a signature over eight parameters, or takes a file over its line limit or makes an already-over file
+  longer; the gates judge it before the work merges (`scripts/install-hooks.sh` installs the pre-commit chain).
 
 ## 6. Models and GPU
 

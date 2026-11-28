@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from packaging.requirements import InvalidRequirement, Requirement
 
+from poolhouse import safelaunch
 from poolhouse.httpguard import Refused
 from poolhouse.net import git, policy
 
@@ -20,8 +21,10 @@ OPTIONS = {"-i": "index-url", "--index-url": "index-url",
 
 
 def _pip(python, args, environment, timeout):
-    return subprocess.run([str(python), "-m", "pip", *args], capture_output=True,
-                          text=True, timeout=timeout, env=environment)
+    """Pip in ``python``, isolated and started from an empty directory: nothing beside the caller is imported or read."""
+    with safelaunch.empty_directory() as nowhere:
+        return subprocess.run([safelaunch.absolute(python), "-I", "-m", "pip", *args], capture_output=True,
+                              text=True, timeout=timeout, env=environment, cwd=nowhere)
 
 
 def _config(python, command, environment, timeout):
@@ -96,8 +99,9 @@ def _admit(value, hosts):
     hosts.admit(value, "Python packages")
 
 
-def run(python, args, *, timeout, env=None):
-    """Run pip after admitting its configured package sources."""
+def run(python, args, *, timeout, env=None, locked: Path | None = None):
+    """Run pip after admitting its configured package sources. ``locked``, for an install only, names a requirements file
+    with digests that the caller wrote: exactly its releases are installed as well, and a file that does not match fails."""
     environment = dict(os.environ if env is None else env)
     if not args or args[0] not in NETWORK:
         if not args or args[0] not in {"inspect", "uninstall", "check", "show"}:
@@ -146,6 +150,10 @@ def run(python, args, *, timeout, env=None):
         for value in entries:
             rewritten.extend(["--" + name, value])
     rewritten.extend(remaining[1:])
+    if locked is not None:
+        if rewritten[0] != "install":
+            raise Refused("a locked requirements file is only installed")
+        rewritten.extend(["--require-hashes", "--no-deps", "--only-binary=:all:", "--requirement", str(locked)])
     with tempfile.TemporaryDirectory(prefix="poolhouse-pip-") as temporary:
         guarded = git.environment("https", Path(temporary))
         for name in list(environment):

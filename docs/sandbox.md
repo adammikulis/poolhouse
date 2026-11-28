@@ -110,6 +110,12 @@ macOS (Seatbelt), checked by `tests/test_sandbox_seatbelt.py` against the real `
   `Result.denials` entry, a `sandbox.denied` event and a `SandboxViolation` naming the operation
   and path.
 
+**The open box** (`Policy(open=True)`, macOS) is the one policy that allows by default: the coding box of the isolated launcher. It
+refuses named harms instead (`sandbox/seatbelt_open.py`): writes outside `write`, the `private` trees, other processes, a network
+beyond loopback and every IP bind, unnamed system services and devices. A write grant of a folder every program shares (`SHARED`, `/tmp`
+among them) reaches no unix socket under it. `sandbox.confined()` knows it by the service it refuses.
+What it allows and refuses, and why, is in [design-isolated-launcher.md](design-isolated-launcher.md) 5.2.
+
 Known limits:
 
 - Metadata (existence, size) is readable only for the allow-listed trees and their ancestor

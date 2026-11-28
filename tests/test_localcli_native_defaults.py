@@ -64,14 +64,12 @@ def test_native_task_dispatch_derives_own_identity_and_reuses_its_session(native
     assert len(seen) == 1 and seen == resolved
 
 
-@pytest.mark.parametrize('conflict', ['unknown', 'retired', 'explicit', 'inherited'])
+@pytest.mark.parametrize('conflict', ['unknown', 'explicit', 'inherited'])
 def test_native_task_stop_refuses_bad_context_before_any_dispatch_or_person_fallback(native, monkeypatch, conflict, tmp_path):
-    node, actor = native
+    node, _actor = native
     extra = []
     if conflict == 'unknown':
         monkeypatch.setenv('CODEX_THREAD_ID', 'unknown-native')
-    elif conflict == 'retired':
-        node.session(actor).retire()
     else:
         other = node.member('another-cli-owner', harness='codex')
         if conflict == 'explicit':
@@ -82,6 +80,16 @@ def test_native_task_stop_refuses_bad_context_before_any_dispatch_or_person_fall
     monkeypatch.setattr(localcli.person, 'on', lambda *_a, **_k: pytest.fail('person fallback'))
     with pytest.raises(client.Denied):
         localcli.run(args('stop', *extra), tmp_path)
+
+
+def test_a_retired_codex_context_registers_again_under_its_name_and_stops_as_itself(native, monkeypatch, tmp_path):
+    node, actor = native
+    node.session(actor).retire()
+    stopped = []
+    monkeypatch.setattr(localcli, '_stop', lambda _a, _b, caller=None: stopped.append(caller.whoami()) or 0)
+    monkeypatch.setattr(localcli.person, 'on', lambda *_a, **_k: pytest.fail('person fallback'))
+    assert localcli.run(args('stop'), tmp_path) == 0
+    assert [(who.name, who.retired) for who in stopped] == [(actor.name, False)]
 
 
 def test_native_task_management_does_not_register_an_unknown_project(native, monkeypatch, tmp_path):

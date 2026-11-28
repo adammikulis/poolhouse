@@ -25,6 +25,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+import real_node_guard  # noqa: F401 - importing it keeps every socket of the test process from the account's own node
 
 from poolhouse.testing import live
 

@@ -182,13 +182,13 @@ def asset_for(release: Release, key: str = "") -> dict[str, Any] | None:
 
 
 def download(asset: dict[str, Any], into: Path | str, *, on_progress: Any = None,
-             allow_unscanned: bool = False) -> Path:
-    """Fetch one asset through the net pipeline and check it against the digest GitHub reports
-    for it; an asset with no digest, or a name that is not one plain file name, is refused
-    before anything is fetched.
+             allow_unscanned: bool = False, pinned: bool = False) -> Path:
+    """Fetch one asset through the net pipeline and check it against its ``digest`` (a ``pinned`` one, which this project
+    records, or the one GitHub reports for it); an asset with no digest, or a name that is not one plain file name, is
+    refused before anything is fetched.
 
-    The file is format-checked and virus-scanned; an archive that no
-    scanner could look at is kept only with ``allow_unscanned``.
+    The file is format-checked and virus-scanned; an archive that no scanner could look at is kept only with
+    ``allow_unscanned``, or when it is ``pinned``, there is no scanner and no saved policy refuses it.
     """
     want = str(asset.get("digest") or "").removeprefix("sha256:").strip().lower()
     if not re.fullmatch(r"[0-9a-f]{64}", want):
@@ -205,11 +205,11 @@ def download(asset: dict[str, Any], into: Path | str, *, on_progress: Any = None
     try:
         net.download(str(asset["browser_download_url"]), target, net.Want(
             sha256=want, size=int(asset.get("size") or 0), require_digest=True,
-            allow_unscanned=allow_unscanned,
+            allow_unscanned=allow_unscanned, pinned=pinned,
             max_bytes=8 << 30, purpose="release download"),
             pipeline=net.default(), hooks=hooks)
     except net.ChecksumMismatch:
-        raise UpdateError("the download does not match the digest GitHub reports for it") from None
+        raise UpdateError("the download does not match its sha256 digest") from None
     except (net.Blocked, net.Truncated, ServerError, OSError, Refused) as exc:
         raise UpdateError(f"download failed: {exc}") from None
     return target

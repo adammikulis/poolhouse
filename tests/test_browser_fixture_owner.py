@@ -1,7 +1,12 @@
 """Worker-owned browser lifetime and isolation between application journeys."""
 
 import asyncio
+import os
+import signal
+import subprocess
+import sys
 from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -187,6 +192,47 @@ def test_page_creation_failure_closes_its_context(browser_owner, studio_browser,
         with pytest.raises(RuntimeError, match='page creation failed'), studio_browser():
             pytest.fail('a page must not be yielded')
         assert client.contexts == before
+
+
+INTERRUPTED_WAIT = """
+import os, signal
+import signal_guard  # noqa: F401 - what conftest imports into every test process
+from playwright.sync_api import sync_playwright
+
+
+class Interrupt(BaseException):
+    pass
+
+
+def interrupt(*_):
+    raise Interrupt
+
+
+page = sync_playwright().start().chromium.launch(headless=True).new_page()
+signal.signal(signal.SIGALRM, interrupt)
+signal.setitimer(signal.ITIMER_REAL, 2)
+try:
+    page.wait_for_function('() => false', timeout=60_000)
+except Interrupt:
+    print('interrupted', flush=True)
+try:
+    page.title()
+except Exception as error:
+    print(error, flush=True)
+os._exit(0)
+"""
+
+
+@pytest.mark.skipif(not hasattr(signal, 'SIGALRM'), reason='the signal test timeout is POSIX')
+def test_a_timeout_that_interrupts_the_driver_fails_the_next_call_instead_of_spinning():
+    """A test timeout raised inside Playwright's dispatcher left every later call of that worker looping for ever."""
+    pytest.importorskip('playwright.sync_api')
+    tests = Path(__file__).parent
+    env = {**os.environ, 'PYTHONPATH': os.pathsep.join([str(tests), str(tests.parent / 'src'), *sys.path])}
+    done = subprocess.run([sys.executable, '-c', INTERRUPTED_WAIT], env=env, capture_output=True, text=True,
+                          timeout=60, check=False)
+    assert done.stdout.startswith('interrupted'), done.stderr
+    assert 'the Playwright connection of this process stopped' in done.stdout, done.stdout + done.stderr
 
 
 def test_completed_journey_allows_asyncio_and_an_independent_driver(browser_owner, studio_browser):  # noqa: F811

@@ -11,6 +11,7 @@ import hashlib
 import importlib
 import json
 import os
+import re
 import shlex
 import shutil
 import socket
@@ -27,6 +28,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import coding_policy, harnesshook, isolation, opencode, sandbox
+from poolhouse.isolation import history, toolchain
 from poolhouse.isolation.notices import Notice
 from poolhouse.isolation.reports import Reporter
 from tests.isolation_kit import MODEL, Canned
@@ -302,6 +304,15 @@ def test_the_preflight_reports_at_once_in_the_brief_and_in_the_result_what_the_b
     assert said in config[0] and "THE BRIEF" in config[0], config
 
 
+def test_the_preflight_finds_an_index_that_names_an_object_the_stage_lacks_which_status_and_diff_do_not_show(box, monkeypatch):
+    """The stage as it was before its trees left out credential names: the index keeps `HEAD`'s entry for one, and its bytes are not there."""
+    monkeypatch.setattr(history, "_leave_out", lambda *_: None)
+    fresh_worktree(box)
+    out, _, confinement = shelled(box, "git status --short >/dev/null && git diff HEAD --stat >/dev/null && echo 'status and diff work'\n")
+    said = " ".join(confinement.said())
+    assert "status and diff work" in out and "git does not show the project" in said and "write-tree" in said and ".env" in said, (out, said)
+
+
 def test_a_project_with_no_usable_environment_is_told_so_in_the_brief_and_in_the_result(box):
     (box.project / "pyproject.toml").write_text('[project]\nname = "pkg"\nversion = "0"\n')
     shutil.rmtree(box.project / "tests")
@@ -358,6 +369,7 @@ def test_a_shell_in_the_box_reaches_nothing_it_was_not_given(box):
         out, _, confinement = shelled(box, look=beside, script=f"""\
             cat {shlex.quote(str(house / "id_ed25519"))} 2>/dev/null; tried canary 'cat {house / "id_ed25519"}'
             tried connect '{python} -I -c "import socket; socket.create_connection((\\"127.0.0.1\\", {bystander.getsockname()[1]}), 2)"'
+            tried model-server '{python} -I -c "import socket; socket.create_connection((\\"127.0.0.1\\", {box.port}), 2)"'
             tried bind '{python} -I -c "import socket; socket.socket().bind((\\"127.0.0.1\\", 0))"'
             tried outbound '{python} -I -c "import socket; socket.create_connection((\\"192.0.2.1\\", 443), 2)"'
             tried nested "/usr/bin/sandbox-exec -p '(version 1)(allow default)' /usr/bin/true"
@@ -373,7 +385,9 @@ def test_a_shell_in_the_box_reaches_nothing_it_was_not_given(box):
             tried script-reads-outside './a-script {shlex.quote(str(house / "id_ed25519"))}'
             tried script-writes-outside 'printf "#!/bin/sh\\necho x > %s\\n" {shlex.quote(str(house / "planted"))} > w && chmod +x w && ./w'
             """)
-        assert "OPEN " not in out and out.count("shut ") == 13 and "NOT-A-REAL-KEY" not in out, out
+        # Owner-order: "No agent should be inhibited from doing their work that is given them." A service on this machine's loopback is reached
+        # on macOS, as from a shell there; the model server's port is not, and neither is anything beyond the machine.
+        assert re.findall(r"^OPEN (\S+)", out, re.M) == ["connect"] and out.count("shut ") == 13 and "NOT-A-REAL-KEY" not in out, out
         assert "binary ran" in out and "script ran" in out and "home script ran" in out and not (house / "planted").exists(), out
         assert outsider.poll() is None and boxed.poll() is None and siblings[0].process.poll() is None
         later = {path for path, _ in confinement.turn.runs_later}
@@ -447,6 +461,58 @@ def test_the_box_looks_up_its_user_and_groups_and_reaches_no_other_directory_ser
     assert "OPEN " not in out and out.count("shut ") == 5, out
 
 
+def test_apples_git_runs_for_every_program_of_the_box_whatever_environment_it_is_given(box):
+    """A program that names `/usr/bin/git`, or runs `git` with its own short `PATH` or no environment at all, as a test suite does: Apple's
+    selector finds the developer tools the machine has selected, with nothing set for it.
+
+    Owner-order: "can't you just make the sandbox just like the rest of things so the agent can test whatever they need safely?" So the
+    selector answers in the box as it does outside it."""
+    outside = subprocess.run(["/usr/bin/xcrun", "--find", "git"], capture_output=True, text=True, check=True, env={"PATH": "/usr/bin:/bin"})
+    python = shlex.quote(os.path.realpath(sys.executable))
+    out, _, confinement = shelled(box, f"""\
+        /usr/bin/env -i /usr/bin/git init -q "$TMPDIR/made" && echo "absolute path runs"
+        /usr/bin/env -i PATH=/usr/bin:/bin git -C "$TMPDIR/made" status --short && echo "short path runs"
+        {python} -I -c 'import os, subprocess; subprocess.run(["git", "--version"], env={{"PATH": os.defpath}}, check=True)' && echo "subprocess runs"
+        /usr/bin/xcrun --find git
+        tried selected 'ls /var/db/xcode_select_link/usr'
+        tried write-selection 'ln -sfh /tmp /var/db/xcode_select_link'
+        """)
+    assert all(each in out for each in ("absolute path runs", "short path runs", "subprocess runs", "git version")), out
+    assert outside.stdout.strip() in out and "shut write-selection" in out, out
+    assert confinement.said() == [], confinement.said()
+
+
+def test_the_preflight_finds_a_git_that_a_program_with_no_environment_cannot_run(box, monkeypatch):
+    held = toolchain.private_trees
+    developer = ("/Library/Developer", "/Applications/Xcode.app")
+    monkeypatch.setattr(toolchain, "private_trees", lambda: (*held(), *developer))   # a box that can find no developer tools
+    monkeypatch.setattr(toolchain, "COMMAND_LINE_TOOLS", "/nonexistent")
+    _, _, confinement = shelled(box, "true\n")
+    said = " ".join(confinement.said())
+    assert "git does not show the project" in said and "env -i" in said, said
+
+
+def test_openssl_and_node_start_in_the_box_and_of_the_systems_settings_it_reads_only_openssls_public_files(box):
+    """Both end at once when they may not open OpenSSL's configuration, so no certificate was made and no node program ran."""
+    files, _ = toolchain.system_settings()
+    script = """\
+        command -v openssl >/dev/null && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -keyout "$TMPDIR/k.pem" \\
+            -out "$TMPDIR/c.pem" -days 1 -subj /CN=box 2>/dev/null && grep -q CERTIFICATE "$TMPDIR/c.pem" && echo "a certificate is made"
+        command -v node >/dev/null && node -e 'console.log("node runs")'
+        """
+    for each in ("/opt/homebrew/etc", "/usr/local/etc"):
+        script += f"""
+        tried listing-{each.split('/')[1]} 'ls {each}'
+        for folder in {each}/openssl*; do [ -d "$folder/private" ] && tried keys "ls $folder/private"; done
+        tried write "echo x >> {files[0] if files else each + '/x'}"
+        """
+    out, _, confinement = shelled(box, script)
+    for program, expected in (("openssl", "a certificate is made"), ("node", "node runs")):
+        assert expected in out or not shutil.which(program), out
+    assert "OPEN " not in out, out
+    assert confinement.said() == [], confinement.said()
+
+
 def test_what_the_box_has_of_the_systems_programs(box):
     out, _, _ = shelled(box, """\
         tried system-python '/usr/bin/python3 -c pass'
@@ -457,6 +523,7 @@ def test_what_the_box_has_of_the_systems_programs(box):
         git init -q probe && git -C probe status >/dev/null && echo "git runs"
         """)
     assert "git runs" in out and "OPEN zsh" in out and "OPEN python3" in out and "quiet-shell=[ok]" in out, out
-    assert "shut system-python" in out, f"Apple's /usr/bin/python3 is a shim that does not run in the box (docs/design-isolated-launcher.md): {out}"
+    selected = Path("/Library/Developer/CommandLineTools/usr/bin/python3").is_file()
+    assert ("OPEN system-python" in out) == selected, f"Apple's /usr/bin/python3 runs the command-line tools' own (docs/design-isolated-launcher.md): {out}"
     if Path("/opt/homebrew/bin/python3").exists():
         assert "python3=/opt/homebrew/bin/python3" in out, out

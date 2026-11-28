@@ -2,9 +2,9 @@
 connection lost while the device slept.
 
 The pass's changes stay in the held work and its conversation is carried into the next attempt, which starts once the model answers again; the model
-is leased again when its server is gone. A harness that cannot take the conversation up starts a new one, told what the last one said. The attempts
-are bounded by the run's `resumes` and share the pass's limit of turns, and each is kept in the run's record with what broke it. A pass that cannot
-be continued failed and says why: nothing of an interrupted run is published.
+is leased again when its server is gone. Only a harness that itself cannot take the conversation up starts a new one, told what the last one said.
+The attempts are bounded by the run's `resumes` and share the pass's limit of turns, and each is kept in the run's record with what broke it. A
+pass that cannot be continued failed and says why: nothing of an interrupted run is published.
 """
 
 from __future__ import annotations
@@ -32,6 +32,8 @@ ANSWER_WAIT_S = 900.0
 """Seconds an attempt waits for the model to answer again before the pass is given up: as long as a launch waits for a server to start."""
 STALLED = "showed no progress"
 """The words of the launcher's own end of a run that went silent (`delegate_confined.follow`)."""
+HARNESS_FAILED = "the harness"
+"""How the words of a break the harness itself reported begin (`broke`)."""
 CONTINUE = """\
 Your last step was interrupted from outside the task: {why}. The files hold your changes so far. Continue from where you were and finish as you
 were told to.
@@ -59,8 +61,8 @@ def broke(error: str, status: int, ended: str, passed: str, url: str) -> str:
     if ended:
         return f"{ended}, and the model server does not answer" if STALLED in ended and not answers(url) else ""
     if error:
-        return f"the harness reported an error: {error}"
-    return f"the harness ended with status {status} and no final answer" if status else ""
+        return f"{HARNESS_FAILED} reported an error: {error}"
+    return f"{HARNESS_FAILED} ended with status {status} and no final answer" if status else ""
 
 
 class Model:
@@ -129,6 +131,13 @@ def carry_conversation(source: Path, into: Path) -> bool:
     return copied
 
 
+def _not_taken_up(ran: delegate_review.Ran) -> bool:
+    """Whether a continuation that ran no step shows that the harness cannot take the conversation up, so the next starts a new one: the harness
+    itself failed (`broke`). An error of the model's (the harness's `provider.` errors: busy, gone) and a box that could not be made say nothing
+    of the conversation, which the next attempt takes up again."""
+    return ran.broke.startswith(HARNESS_FAILED) and not ran.answer.spent.subtype.startswith("provider.")
+
+
 def _given_up(ran: delegate_review.Ran, why: str) -> delegate_review.Ran:
     said = f"interrupted: {ran.broke}; not continued: {why}"
     return delegate_review.Ran(dataclasses.replace(ran.answer, is_error=True, why=said), ran.calls)
@@ -156,8 +165,10 @@ def carried_on(rec: store.Delegate, ask: delegate_review.Pass, ran: delegate_rev
         ran = attempt(dataclasses.replace(ask, attempt=number, session=session, message=message, max_turns=left))
         turns, calls = turns + ran.answer.spent.turns, calls + ran.calls
         said = ran.answer.text or said
-        if session and ran.answer.is_error and not ran.answer.spent.turns:   # the conversation could not be taken up: the next starts anew
-            session, ran = "", dataclasses.replace(ran, broke=ran.broke or before)
+        if session and ran.answer.is_error and not ran.answer.spent.turns:   # no step ran: the pass is still broken off
+            if _not_taken_up(ran):
+                session = ""
+            ran = dataclasses.replace(ran, broke=ran.broke or before)
         else:
             session = ran.answer.spent.session_id or session
         if not ran.broke:

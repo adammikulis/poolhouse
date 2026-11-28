@@ -1,4 +1,4 @@
-"""The Claude Code hook that refuses an edit writing what src/poolhouse already has."""
+"""The Claude Code hook that reports, as an edit is made, what src/poolhouse already has: the edit goes ahead and the gates decide at merge."""
 
 from __future__ import annotations
 
@@ -68,6 +68,10 @@ def run(given: dict, *, tool: str = "Write", cache: Path, guard: Path = GUARD, *
     said = done.stderr if done.returncode == BLOCKED else done.stdout
     if done.returncode == BLOCKED:
         assert said.startswith("blocked: "), "a refusal has to say what to do instead"
+    elif said.startswith("{"):
+        output = json.loads(said)["hookSpecificOutput"]
+        assert set(output) == {"hookEventName", "additionalContext"}, "a note reaches the agent and decides nothing"
+        said = output["additionalContext"]
     return done.returncode, said
 
 
@@ -81,19 +85,19 @@ def edit(tree: Path, name: str, added: str) -> dict:
             "new_string": "from __future__ import annotations\n\n" + added}
 
 
-def test_a_body_the_tree_already_holds_is_refused(tree, tmp_path):
+def test_a_body_the_tree_already_holds_is_reported(tree, tmp_path):
     code, said = run(write(tree, "three.py", RENAMED), cache=tmp_path / "cache")
-    assert code == BLOCKED
+    assert code == ALLOWED
     assert "`count_kinds` has the same body as `tally`" in said
     assert "src/poolhouse/one.py:4" in said
 
 
-def test_the_same_body_arriving_through_multiedit_is_refused(tree, tmp_path):
+def test_the_same_body_arriving_through_multiedit_is_reported(tree, tmp_path):
     given = {"file_path": str(tree / "src" / "poolhouse" / "two.py"),
              "edits": [{"old_string": "from __future__ import annotations",
                         "new_string": "from __future__ import annotations\n\n" + RENAMED}]}
     code, said = run(given, tool="MultiEdit", cache=tmp_path / "cache")
-    assert code == BLOCKED
+    assert code == ALLOWED
     assert "src/poolhouse/one.py" in said
 
 
@@ -118,9 +122,9 @@ def test_editing_a_function_that_is_already_there_is_not_a_duplicate(tree, tmp_p
      + '\n    """\n    return a', "docstring"),
     ("def wide(a, b, c, d, e, f, g, h, i):\n    return a", "9 parameters"),
 ])
-def test_the_routines_that_have_an_owner_are_refused(tree, tmp_path, added, expected):
+def test_the_routines_that_have_an_owner_are_reported(tree, tmp_path, added, expected):
     code, said = run(edit(tree, "two.py", added), tool="Edit", cache=tmp_path / "cache")
-    assert code == BLOCKED
+    assert code == ALLOWED
     assert expected in said
 
 
@@ -163,10 +167,10 @@ def test_a_corrupt_index_is_rebuilt_rather_than_believed(tree, tmp_path):
     cache.mkdir()
     for stale in ("index.json",):
         (cache / stale).write_text("{not json", encoding="utf-8")
-    assert run(write(tree, "three.py", RENAMED), cache=cache)[0] == BLOCKED
+    assert "has the same body" in run(write(tree, "three.py", RENAMED), cache=cache)[1]
     for held in cache.glob("*.json"):
         held.write_text("{not json", encoding="utf-8")
-    assert run(write(tree, "three.py", RENAMED), cache=cache)[0] == BLOCKED
+    assert "has the same body" in run(write(tree, "three.py", RENAMED), cache=cache)[1]
 
 
 def test_a_guard_that_cannot_run_does_not_stop_the_work(tree, tmp_path):
@@ -179,6 +183,49 @@ def test_a_guard_that_cannot_run_does_not_stop_the_work(tree, tmp_path):
                      guard=alone / GUARD.name)
     assert code == ALLOWED
     assert "claude-edit-guard did not run" in said
+
+
+def test_a_guard_that_cannot_run_says_so_where_the_agent_reads_it(tree, tmp_path):
+    alone = tmp_path / "elsewhere" / "hooks"
+    alone.mkdir(parents=True)
+    shutil.copy2(GUARD, alone / GUARD.name)
+    shutil.copy2(GUARD.parent / "rules_loader.py", alone / "rules_loader.py")
+    done = subprocess.run([str(alone / GUARD.name)], text=True, capture_output=True,
+                          env={**os.environ, "POOLHOUSE_GUARD_CACHE": str(tmp_path / "cache")},
+                          input=json.dumps({"tool_name": "Write", "tool_input": write(tree, "three.py", RENAMED)}))
+    said = json.loads(done.stdout)["hookSpecificOutput"]
+    assert done.returncode == ALLOWED and "claude-edit-guard did not run" in said["additionalContext"]
+
+
+def test_what_was_found_before_a_check_broke_is_still_reported(tree, tmp_path):
+    """The duplicate detector is missing beside this copy, after the line limit has been read and counted."""
+    copy = tmp_path / "copy"
+    shutil.copytree(REPO / "scripts" / "hooks", copy / "hooks")
+    shutil.copytree(REPO / "scripts" / "gates", copy / "gates", ignore=shutil.ignore_patterns("duplicates.py", "__pycache__"))
+    code, said = run(write(tree, "long.py", lines(FILE_LIMIT + 1)), cache=tmp_path / "cache", guard=copy / "hooks" / GUARD.name)
+    assert code == ALLOWED
+    assert f"the limit is {FILE_LIMIT}" in said and "claude-edit-guard did not run" in said
+
+
+def checkout(where: Path, branch: str) -> Path:
+    (where / "scripts" / "hooks").mkdir(parents=True)
+    (where / "src" / "poolhouse").mkdir(parents=True)
+    (where / "scripts" / "hooks" / "primary-only").write_text("x\n")
+    (where / "src" / "poolhouse" / "one.py").write_text("x = 1\n")
+    subprocess.run(["git", "init", "-q", "-b", branch], cwd=where, check=True)
+    return where
+
+
+@pytest.mark.redteam
+def test_a_link_from_a_development_checkout_into_main_does_not_take_a_write(tmp_path):
+    held, working = checkout(tmp_path / "held", "main"), checkout(tmp_path / "working", "dev")
+    (working / "src" / "poolhouse" / "link.py").symlink_to(held / "src" / "poolhouse" / "one.py")
+    (working / "src" / "poolhouse" / "folder").symlink_to(held / "src" / "poolhouse")
+    for name in ("link.py", "folder/two.py"):
+        code, said = run({"file_path": str(working / "src" / "poolhouse" / name), "content": "x = 2\n"}, cache=tmp_path / "cache")
+        assert code == BLOCKED and "is on main" in said, (name, said)
+    assert run({"file_path": str(working / "src" / "poolhouse" / "one.py"), "content": "x = 2\n"},
+               cache=tmp_path / "cache")[0] == ALLOWED
 
 
 def test_only_the_writing_tools_are_guarded(tree, tmp_path):
@@ -202,9 +249,9 @@ def lines(count: int) -> str:
     return "\n".join(f"x{i} = {i}" for i in range(count)) + "\n"
 
 
-def test_a_write_that_crosses_the_line_limit_is_refused(tree, tmp_path):
+def test_a_write_that_crosses_the_line_limit_is_reported(tree, tmp_path):
     code, said = run(write(tree, "long.py", lines(FILE_LIMIT + 1)), cache=tmp_path / "cache")
-    assert code == BLOCKED
+    assert code == ALLOWED
     assert "src/poolhouse/long.py" in said
     assert f"{FILE_LIMIT + 1} lines" in said and f"the limit is {FILE_LIMIT}" in said
     assert "scripts/budgets --show deep-files" in said
@@ -215,12 +262,12 @@ def test_a_file_at_exactly_the_limit_is_written(tree, tmp_path):
                cache=tmp_path / "cache") == (ALLOWED, "")
 
 
-def test_a_write_that_lengthens_a_file_already_over_the_limit_is_refused(tree, tmp_path):
+def test_a_write_that_lengthens_a_file_already_over_the_limit_is_reported(tree, tmp_path):
     where = tree / "src" / "poolhouse" / "deep.py"
     where.write_text(lines(FILE_LIMIT + 500), encoding="utf-8")
     code, said = run(write(tree, "deep.py", lines(FILE_LIMIT + 501)),
                      cache=tmp_path / "cache")
-    assert code == BLOCKED
+    assert code == ALLOWED
     assert f"is {FILE_LIMIT + 500} lines and this write leaves it {FILE_LIMIT + 501}" in said
 
 
@@ -239,23 +286,23 @@ def test_deleting_lines_is_always_allowed(tree, tmp_path):
                    cache=tmp_path / "cache") == (ALLOWED, "")
 
 
-def test_a_component_is_refused_at_its_own_limit(tree, tmp_path):
+def test_a_component_is_reported_at_its_own_limit(tree, tmp_path):
     web = tree / "src" / "poolhouse" / "web"
     web.mkdir()
     given = {"file_path": str(web / "screen.html"), "content": lines(COMPONENT_LIMIT + 1)}
     code, said = run(given, cache=tmp_path / "cache")
-    assert code == BLOCKED
+    assert code == ALLOWED
     assert f"the limit is {COMPONENT_LIMIT}" in said
     assert "scripts/budgets --show deep-components" in said
     given["content"] = lines(COMPONENT_LIMIT)
     assert run(given, cache=tmp_path / "cache") == (ALLOWED, "")
 
 
-def test_an_edit_that_grows_an_over_limit_file_is_refused(tree, tmp_path):
+def test_an_edit_that_grows_an_over_limit_file_is_reported(tree, tmp_path):
     where = tree / "src" / "poolhouse" / "deep.py"
     where.write_text("from __future__ import annotations\n" + lines(FILE_LIMIT + 500),
                      encoding="utf-8")
     code, said = run(edit(tree, "deep.py", "added = 1\n"), tool="Edit",
                      cache=tmp_path / "cache")
-    assert code == BLOCKED
+    assert code == ALLOWED
     assert f"the limit is {FILE_LIMIT}" in said

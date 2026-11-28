@@ -262,6 +262,14 @@ impl Shards {
             }
             job.dir.clone()
         };
+        // The watcher is started before what it watches, so a device with no thread for it starts no shard.
+        let (hand, handed) = std::sync::mpsc::channel::<(std::process::Child, String, String)>();
+        let (host, id, allowed_s) = (self.clone(), spec.id.clone(), spec.timeout_s + GRACE_S);
+        std::thread::Builder::new().name("shard-watch".into()).spawn(move || {
+            if let Ok((child, owner, lease)) = handed.recv() {
+                host.watch(&id, (child, owner), &lease, allowed_s);
+            }
+        })?;
         let lease = self.take_slots(node, &spec)?;
         let child = match launch(&consent, &spec, &dir) {
             Ok(c) => c,
@@ -275,9 +283,7 @@ impl Shards {
         if let Some(j) = lock(&self.jobs)?.get_mut(&spec.id) {
             j.phase = Phase::Running;
         }
-        let (host, id) = (self.clone(), spec.id.clone());
-        let owner = fp.to_string();
-        std::thread::spawn(move || host.watch(&id, (child, owner), &lease, spec.timeout_s + GRACE_S));
+        hand.send((child, fp.to_string(), lease)).map_err(|_| Error::Damaged("the shard watcher ended".into()))?;
         Ok(json!({"id": req["id"], "state": "running", "python": version}))
     }
 

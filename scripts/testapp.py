@@ -4,7 +4,6 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
-import os
 import shutil
 import stat
 import subprocess
@@ -94,12 +93,13 @@ def ensure(root, *, admit=contextlib.nullcontext, say=lambda text: None):
             temporary = Path(work)
             isolated = temporary / 'home'
             isolated.mkdir()
-            environment = {name: value for name, value in os.environ.items()
+            environment = {name: value for name, value in testnode.account_environment().items()
                            if not name.startswith(('CARGO_', 'RUSTFLAGS', 'RUSTC_WRAPPER', 'RUSTC_WORKSPACE_WRAPPER'))}
             account = testnode.account()
             environment.update(HOME=str(isolated), TMPDIR=str(temporary), POOLHOUSE_HOME=str(temporary / 'state'),
                                RUSTUP_HOME=str(account / '.rustup'), CARGO_HOME=str(account / '.cargo'),
                                CARGO_TARGET_DIR=str(build.target), CARGO_BUILD_JOBS='1')
+            testnode.fetch(testnode.tool('cargo'), build.staged, environment)
             argv = [testnode.tool('cargo'), 'test', '--no-run', '--locked', '--offline',
                     '-p', 'poolhouse-app', '--bin', 'poolhouse-app', '--message-format=json']
             made = executable(run(argv, build.staged, environment), build.target)

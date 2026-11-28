@@ -81,6 +81,7 @@ class _Ollama:
 
     base_url = "http://127.0.0.1:11434"
     api = "ollama"
+    streams = False   # what `poolhouse.client.chat` answers for this api
 
     def __init__(self):
         self.calls = []

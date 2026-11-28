@@ -20,9 +20,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from poolhouse import safelaunch
 from poolhouse.isolation.refusals import IsolationRefused, sentence
 from poolhouse.isolation.spec import Spec
-from poolhouse.sandbox import bubblewrap, seatbelt
+from poolhouse.sandbox import bubblewrap, seatbelt, seatbelt_open
 from poolhouse.sandbox.backend import Backend
 from poolhouse.sandbox.confinement import confined
 from poolhouse.sandbox.run import backend as platform_backend
@@ -30,19 +31,20 @@ from poolhouse.sandbox.run import backend as platform_backend
 __all__ = ["GUARANTEES", "WATCHABLE", "Entry", "Report", "Seen", "capability", "cause_of", "drop_cache", "lan_address", "require_capable"]
 
 GUARANTEES = {
-    "G1": "Nothing is readable outside the stage, the agent home, the harness's install tree, the interpreter, the system toolchain and the grants.",
-    "G2": "Nothing is writable outside the stage and the agent home.",
+    "G1": "Nothing private is readable: no home folder, other volume, other program's temporary files or settings of an installed service, beyond "
+          "the stage, the agent home, the harness's install tree, the installed programs and libraries and the grants.",
+    "G2": "Nothing is writable outside the stage, the agent home and temporary files.",
     "G3": "A control name cannot be created or changed in the stage.",
-    "G4": "The only network reachable is the model bridge, and the egress proxy for granted hosts.",
-    "G5": "No unix, abstract or other socket is reachable except the session bridge.",
+    "G4": "No network beyond this computer's loopback is reachable, no model server's port is, and no address is bound.",
+    "G5": "No unix, abstract or other socket of another program is reachable, only those the session makes and its bridges.",
     "G6": "No process outside the session can be signalled or traced, or have its arguments, environment or memory read.",
     "G7": "The person's terminal and desktop cannot be driven.",
-    "G8": "No credential store is reachable.",
-    "G9": "No GPU, camera, microphone or input device.",
+    "G8": "No credential store or credential service is reachable.",
+    "G9": "No camera, microphone, screen, clipboard or input device.",
     "G10": "The session's processes end with the session, and nothing is scheduled to run after it.",
     "G11": "Process count, memory, descriptors, CPU and disk are bounded.",
     "G12": "No new user namespace or nested sandbox can be entered to regain capabilities.",
-    "G13": "No hardware or machine identifier is readable.",
+    "G13": "No hardware serial number or machine identifier is readable.",
 }
 """The thirteen guarantees of 5.1, by id."""
 WATCHABLE = ("G10", "G11")
@@ -60,16 +62,21 @@ ENFORCED_BY = {
     "linux": ("bubblewrap namespaces", "PREDICTED"),
 }
 HOW = {
-    "G1": "file reads are denied by default and granted by path", "G2": "file writes are denied by default and granted by path",
+    "G1": "reads of the private trees are refused unless a tree inside them is granted", "G2": "file writes are denied by default and granted by path",
     "G3": "the control names are frozen in the stage, in every case and through every ancestor",
-    "G4": "the network is denied except the model bridge's port", "G5": "no socket is reachable but the session bridge's",
-    "G6": "signals, tracing and reads of other processes are refused", "G7": "no terminal device and no desktop service is reachable",
-    "G8": "no home folder and no credential service is reachable", "G9": "no GPU or input device is reachable",
+    "G4": "the network is denied except loopback, every bind of an address is denied, and each model server's port is",
+    "G5": "no unix socket is reachable but in the writable trees and the bridges",
+    "G6": "signals, tracing and reads of other processes are refused", "G7": "no terminal of another and no desktop service is reachable",
+    "G8": "no home folder and no credential service is reachable", "G9": "no device or device service but the GPU's is reachable",
     "G10": "the parent ends the session by walking its processes",
     "G11": "limits are set by the kernel where it counts them and watched by the parent where it does not",
     "G12": "a nested sandbox or user namespace is refused", "G13": "the hardware identifier channels are refused",
 }
-FLAVOUR = {"G10": {"linux": "the pid namespace ends with the session"}}
+FLAVOUR = {"G1": {"linux": "file reads are denied by default and granted by path"},
+           "G4": {"linux": "the network is a namespace with the model bridge's port alone"},
+           "G5": {"linux": "no socket is reachable but the session bridge's"},
+           "G9": {"linux": "no device node is bound"},
+           "G10": {"linux": "the pid namespace ends with the session"}}
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,7 +218,7 @@ def _entries(family: str, blocked: str, remedy: str) -> tuple[Entry, ...]:
 
 
 def _exposures(family: str) -> tuple[Seen, ...]:
-    held = seatbelt.EXPOSURES if family == "darwin" else bubblewrap.EXPOSURES if family == "linux" else ()
+    held = seatbelt_open.EXPOSURES if family == "darwin" else bubblewrap.EXPOSURES if family == "linux" else ()
     return tuple(Seen(each.id, each.platform, each.what) for each in held)
 
 
@@ -226,7 +233,7 @@ def _wsl() -> str:
 
 def _trusted_git() -> bool:
     """Whether a git is found that is not Apple's `/usr/bin/git` shim, which asks a service the confinement refuses."""
-    found = shutil.which("git")
+    found = safelaunch.which("git")
     if not found:
         return False
     if sys.platform == "darwin" and os.path.realpath(found) == "/usr/bin/git":
@@ -265,7 +272,7 @@ def _computed(via: Backend | None) -> Report:
     blocked = sentence(key) if key else ""
     build = f"{platform.mac_ver()[0] or platform.release()} {platform.version()}"
     return Report(family, chosen.name, " ".join(_identity(chosen.name)[1:]) or chosen.name, build, _entries(family, blocked, remedy),
-                  _exposures(family), unchecked=() if lan_address() else ("P08",))
+                  _exposures(family), unchecked=() if family == "darwin" or lan_address() else ("P08",))
 
 
 def capability(spec: Spec | None = None, *, via: Backend | None = None, stage_free: int = 0, need: int = 0) -> Report:

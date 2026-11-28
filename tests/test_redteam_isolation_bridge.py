@@ -16,11 +16,13 @@ import dataclasses
 import http.client
 import json
 import os
+import selectors
 import socket
 import sys
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -57,7 +59,8 @@ FIELDS_SENT_UPSTREAM = {"host", "connection", "content-type", "accept", "anthrop
 
 class Upstream:
     """A plumbing server that is not a model: it keeps every request it is sent, byte for byte, and answers 200 with the canned marker and two
-    response fields (a cookie and a secret) the bridge must not pass on. With ``hold`` set it does not answer until the event is set."""
+    response fields (a cookie and a secret) the bridge must not pass on. With ``hold`` set it sends nothing, not even a head, until the event is set,
+    and counts in ``hung_up`` each caller that leaves while it waits."""
 
     def __init__(self, hold: threading.Event | None = None) -> None:
         self.requests: list[bytes] = []
@@ -68,6 +71,7 @@ class Upstream:
         self.port = self.sock.getsockname()[1]
         self.base_url = f"http://127.0.0.1:{self.port}"
         self.entered = threading.Event()
+        self.hung_up = threading.Semaphore(0)
         threading.Thread(target=self._accept, daemon=True).start()
 
     def _accept(self) -> None:
@@ -93,12 +97,23 @@ class Upstream:
                 return
             self.requests.append(head + b"\r\n\r\n" + rest)
             self.entered.set()
-            if self.hold is not None:
-                self.hold.wait(10)
+            if self.hold is not None and not self._held(connection):
+                self.hung_up.release()
+                return
             body = json.dumps({"x_canned": CANNED_MARKER, "model": CANNED_MODEL_ID}).encode()
             connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + str(len(body)).encode()
                                + b"\r\n" + f"{CANNED_HEADER}: {CANNED_HEADER_VALUE}\r\n".encode()
                                + b"Set-Cookie: stolen=1\r\nX-Server-Secret: leaked\r\n\r\n" + body)
+
+    def _held(self, connection: socket.socket) -> bool:
+        """Wait for ``hold`` (at most 10 s); False once the caller has closed the connection instead."""
+        until = time.monotonic() + 10
+        with selectors.DefaultSelector() as watch:
+            watch.register(connection, selectors.EVENT_READ)
+            while not self.hold.wait(0.02) and time.monotonic() < until:
+                if watch.select(0) and not connection.recv(1, socket.MSG_PEEK):
+                    return False
+        return True
 
     def close(self) -> None:
         self.sock.close()
@@ -176,25 +191,115 @@ def test_every_other_route_is_404_here_and_never_reaches_the_server(bridge, upst
     assert bridge.summary()["refused"] >= 1
 
 
-def test_health_is_answered_by_the_bridge_without_the_server_and_without_a_slot():
+def sent(port: int, data: bytes) -> socket.socket:
+    """A connection to the service at ``port`` with ``data`` written to it, left open for the test to read or to close."""
+    sock = socket.create_connection(("127.0.0.1", port), timeout=10)
+    sock.sendall(data)
+    return sock
+
+
+def heard(sock: socket.socket) -> bytes:
+    """Everything answered on ``sock`` until the service closes it."""
+    got = bytearray()
+    with contextlib.suppress(TimeoutError, ConnectionResetError):
+        while more := sock.recv(65536):
+            got.extend(more)
+    sock.close()
+    return bytes(got)
+
+
+def until(holds, seconds: float = 5.0) -> bool:
+    """Whether ``holds`` becomes true within ``seconds``."""
+    over = time.monotonic() + seconds
+    while not holds() and time.monotonic() < over:
+        time.sleep(0.01)
+    return holds()
+
+
+@pytest.fixture
+def held():
+    """A bridge with one slot in front of a plumbing server (NOT A MODEL) that answers nothing until ``held.hold`` is set."""
     hold = threading.Event()
     server = Upstream(hold)
-    made = ModelBridge(server.base_url, LEASE, key=KEY, idle=5.0)
+    made = ModelBridge(server.base_url, LEASE, key=KEY, idle=1.0)
     made.start()
-    try:
-        taken = threading.Thread(target=talk, args=(made.port, asked("POST", "/v1/messages", made.token, BODY)), daemon=True)
-        taken.start()
-        assert server.entered.wait(5), "the one slot is in use"
-        assert status_of(talk(made.port, asked("GET", "/health", made.token, auth=False))) == 200
-        assert len(server.requests) == 1, "the health route never reached the server"
-        assert status_of(talk(made.port, asked("POST", "/v1/messages", made.token, BODY))) == 429, "a second request is refused, not queued"
-        hold.set()
-        taken.join(10)
-        assert status_of(talk(made.port, asked("POST", "/v1/messages", made.token, BODY))) == 200, "the slot is free again"
-    finally:
-        hold.set()
-        made.stop()
-        server.close()
+    yield SimpleNamespace(hold=hold, server=server, bridge=made,
+                          ask=lambda say="hello": asked("POST", "/v1/messages", made.token, BODY.replace(b"hello", say.encode())))
+    hold.set()
+    made.stop()
+    server.close()
+
+
+def said(server: Upstream) -> list[str]:
+    """The words of each request the server has been sent, in order."""
+    return [server.body(at)["messages"][0]["content"] for at in range(len(server.requests))]
+
+
+def test_health_is_answered_by_the_bridge_without_the_server_and_without_a_slot(held):
+    taken = sent(held.bridge.port, held.ask())
+    assert held.server.entered.wait(5), "the one slot is in use"
+    assert status_of(talk(held.bridge.port, asked("GET", "/health", held.bridge.token, auth=False))) == 200
+    assert len(held.server.requests) == 1, "the health route never reached the server"
+    held.hold.set()
+    assert status_of(heard(taken)) == 200
+    assert status_of(talk(held.bridge.port, held.ask())) == 200, "the slot is free again"
+
+
+def test_requests_that_find_every_slot_busy_wait_their_turn_and_are_served_in_the_order_they_came(held):
+    """The wait is longer than the bridge's idle limit (1 s here) and than the 2 s a busy slot was once given: the client is there, so it waits."""
+    first = sent(held.bridge.port, held.ask("first"))
+    assert held.server.entered.wait(5)
+    waiting = []
+    for number, say in enumerate(("second", "third"), 2):
+        waiting.append(sent(held.bridge.port, held.ask(say)))
+        assert until(lambda number=number: held.bridge.busy() == number)
+    time.sleep(2.5)
+    assert held.bridge.busy() == 3 and said(held.server) == ["first"], "no more requests are with the server than it has slots, and none was refused"
+    held.hold.set()
+    assert [status_of(heard(each)) for each in (first, *waiting)] == [200, 200, 200]
+    assert said(held.server) == ["first", "second", "third"]
+    assert held.bridge.summary()["statuses"] == {"200": 3} and held.bridge.busy() == 0
+
+
+def test_a_client_that_leaves_while_the_server_reads_its_prompt_frees_its_slot_at_once_and_the_server_hears_it_left(held):
+    """The server has sent nothing yet, not even a head: it is still reading the prompt."""
+    first = sent(held.bridge.port, held.ask("first"))
+    assert held.server.entered.wait(5)
+    second = sent(held.bridge.port, held.ask("second"))
+    assert until(lambda: held.bridge.busy() == 2)
+    first.close()
+    assert held.server.hung_up.acquire(timeout=3), "the bridge closed its request to the server, which can then stop working on it"
+    assert until(lambda: said(held.server) == ["first", "second"], 3), "the slot went to the one that waited"
+    held.hold.set()
+    assert status_of(heard(second)) == 200
+    assert until(lambda: held.bridge.summary()["statuses"] == {"499": 1, "200": 1}), held.bridge.summary()
+
+
+def test_a_request_whose_client_leaves_while_it_waits_never_reaches_the_server_and_the_next_has_its_turn(held):
+    first = sent(held.bridge.port, held.ask("first"))
+    assert held.server.entered.wait(5)
+    leaves = sent(held.bridge.port, held.ask("leaves"))
+    assert until(lambda: held.bridge.busy() == 2)
+    stays = sent(held.bridge.port, held.ask("stays"))
+    assert until(lambda: held.bridge.busy() == 3)
+    leaves.close()
+    assert until(lambda: held.bridge.busy() == 2) and until(lambda: held.bridge.summary()["statuses"] == {"499": 1}), "it left the queue"
+    held.hold.set()
+    assert [status_of(heard(each)) for each in (first, stays)] == [200, 200]
+    assert said(held.server) == ["first", "stays"]
+
+
+def test_a_stopped_bridge_ends_every_wait_and_sends_the_server_nothing_more(held):
+    first = sent(held.bridge.port, held.ask("first"))
+    assert held.server.entered.wait(5)
+    waiting = sent(held.bridge.port, held.ask("second"))
+    assert until(lambda: held.bridge.busy() == 2)
+    held.bridge.stop()
+    assert status_of(heard(waiting)) == 0
+    first.close()
+    assert held.server.hung_up.acquire(timeout=3)
+    assert until(lambda: held.bridge.busy() == 0), "no request is left waiting or with the server"
+    assert said(held.server) == ["first"]
 
 
 def _forms(token: str) -> dict[str, tuple[bytes, set[int]]]:

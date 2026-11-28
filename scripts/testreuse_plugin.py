@@ -153,6 +153,18 @@ def _from_conftest() -> bool:
     return False
 
 
+def _naming_the_foreign() -> bool:
+    """Whether the listing is the one a coding box's profile is made from (`isolation.toolchain.private_trees`): the names in the shared
+    ``/tmp`` are only refused to the box, so no result of a test depends on which they are."""
+    own = str(ROOT / "src" / "poolhouse" / "isolation" / "toolchain.py")
+    frame = sys._getframe(2)
+    while frame is not None:
+        if frame.f_code.co_filename == own and frame.f_code.co_name == "private_trees":
+            return True
+        frame = frame.f_back
+    return False
+
+
 def _note_path(bucket: dict, absolute: str, kind: str) -> None:
     """Record a path the test read or probed, and the target of a symlink on the way to it."""
     lexical = Path(absolute)
@@ -206,7 +218,7 @@ def _audit(event: str, args: tuple) -> None:
             rel = _source_of(listed + "/x")
             if rel:
                 bucket["dirs"].add(Path(rel).parent.as_posix())
-            if _foreign(listed):
+            if _foreign(listed) and not _naming_the_foreign():
                 bucket["violations"].add(f"listed {listed}, in the shared /tmp and not made by this run")
         elif event in MUTATING:
             fds = DIR_FDS.get(event, ())
@@ -214,6 +226,8 @@ def _audit(event: str, args: tuple) -> None:
                 if len(args) > index and isinstance(args[index], PATHS):
                     fd = args[fds[place]] if place < len(fds) and len(args) > fds[place] else None
                     absolute = _resolve(args[index], fd)
+                    if absolute and event == "os.remove" and Path(absolute).is_symlink():
+                        absolute = str(Path(absolute).parent)   # removing a link writes the folder that holds it, never what it names
                     if absolute and not _write_ok(absolute) and not (event == "os.mkdir" and Path(absolute).is_dir()):
                         bucket["violations"].add(f"{event.split('.')[-1]} {absolute}")
     finally:

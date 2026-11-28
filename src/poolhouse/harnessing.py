@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import (
+    codex_install,
     coding_policy,
     harnesshook,
     harnessid,
@@ -30,6 +31,7 @@ from poolhouse import (
     isolation,
     lead_bridge,
     opencode_install,
+    provision,
     runtime,
     safetext,
     serverkeys,
@@ -76,6 +78,8 @@ __all__ = [
     "checked",
     "config_for",
     "default_model",
+    "installable",
+    "installed_binary",
     "parser",
     "serve_and_run",
     "serving",
@@ -135,8 +139,8 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
     ap.add_argument("--execution-mode", choices=coding_policy.EXECUTION_MODES, default=coding_policy.EXECUTE,
                     help="plan inspects without applying changes; execute uses the selected permissions")
     ap.add_argument("--sandbox", action="store_true",
-                    help="run on a copy of the git project inside an operating-system sandbox with no network but the model; changes are published "
-                         "when the turn ends (default: on the project folder itself, with your own settings and network)")
+                    help="run on a copy of the git project inside an operating-system sandbox that reaches no network beyond this computer; changes are "
+                         "published when the turn ends (default: on the project folder itself, with your own settings and network)")
     ap.add_argument("--protect", action="append", default=[], help="with --sandbox: additional launcher-owned paths tools cannot access")
     ap.add_argument("--read", action="append", default=[], metavar="DIR", help="with --sandbox: a folder the session may read and never change")
     ap.add_argument("--toolchain", action="append", default=[], metavar="DIR", help="with --sandbox: a folder of programs the session may run")
@@ -155,7 +159,7 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
                          "the smallest one on this machine, 'none' serves without one, or name one "
                          "(default: %(default)s)")
     ap.add_argument(f"--{name}", default="", metavar="PATH",
-                    help=f"the {name} binary (default: the one on PATH)")
+                    help=f"the {name} binary (default: the one on PATH, else the one Poolhouse keeps)")
     return ap
 
 
@@ -183,11 +187,37 @@ def binary_for(name: str, *, pinned: bool = False) -> str:
         return binary
     if name == "opencode":
         return opencode_install.kept()
+    if name == "codex":
+        return codex_install.kept()
     if name == "claude" and (spec := importlib.util.find_spec("claude_agent_sdk")) and spec.origin:
         binary = Path(spec.origin).parent / "_bundled" / ("claude.exe" if os.name == "nt" else "claude")
         if binary.is_file() and os.access(binary, os.X_OK):
             return str(binary)
     return ""
+
+
+FETCHED: dict[str, Callable[[], object]] = {
+    "claude": lambda: provision.ensure("claude", "claude_agent_sdk"),
+    "codex": lambda: codex_install.ensure(),
+    "opencode": lambda: opencode_install.ensure(),
+}
+"""The harnesses Poolhouse can install, each with what installs it. Pi has none: it is an npm package with no lock here."""
+
+
+def installable(name: str) -> bool:
+    """Whether `binary_for` finds ``name`` or `installed_binary` could try to install it."""
+    return bool(binary_for(name)) or (name in FETCHED and not provision.download_refusal())
+
+
+def installed_binary(name: str) -> str:
+    """`binary_for` the harness, installing it first when it is not here; '' for one Poolhouse cannot install. Raises
+    ImportError or RuntimeError saying why an install did not complete."""
+    if found := binary_for(name):
+        return found
+    if name not in FETCHED:
+        return ""
+    FETCHED[name]()
+    return binary_for(name)
 
 def admitted(found: str, ctx: int, say: Callable[[str], None], *, plan: Callable[..., object] | None = None, kv: str = KV) -> bool:
     """Whether the wired-memory limit now holds ``found`` at ``ctx``; when it does not, what it needs is said and the limit is left as it is."""

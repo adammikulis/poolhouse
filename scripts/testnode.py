@@ -25,6 +25,7 @@ from typing import NamedTuple
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import testartifacts
+import testsecrets
 
 from poolhouse import home, node_binary, worktreerules
 from poolhouse.files import writing
@@ -70,8 +71,9 @@ def tool(name: str) -> str:
 
 
 def account_environment() -> dict[str, str]:
-    """This environment with HOME the account's, where rustup keeps its toolchains (a test run moves HOME)."""
-    return {**os.environ, "HOME": str(account())}
+    """This environment without its credentials (a build's output is printed when it fails) and with HOME the account's, where
+    rustup keeps its toolchains (a test run moves HOME)."""
+    return {**testsecrets.build_environment(os.environ), "HOME": str(account())}
 
 
 def version(name: str, executable: str, arguments: list[str]) -> str:
@@ -242,6 +244,20 @@ def shared_build(app: Path, *, root: Path | None = None, source_key_extra: str =
         prune(base / "targets", locked)
         testartifacts.prune_when_due(target, app, files, IDLE_S)
     return SharedBuild(staged, target)
+
+
+def fetch(cargo: str, work: Path, environment: dict[str, str]) -> None:
+    """Download what the lock file of ``work`` names and the cargo home lacks (the exact versions, by their checksums), so the
+    ``--offline`` builds that follow find it. Nothing lacking takes no network."""
+    argv = [cargo, "fetch", "--locked"]
+    try:
+        for command in ([*argv, "--offline"], argv):
+            done = subprocess.run(command, cwd=work, capture_output=True, text=True, timeout=BUILD_TIMEOUT_S, env=environment, check=False)
+            if not done.returncode:
+                return
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise BuildError(f"cargo fetch did not run: {error}") from error
+    raise BuildError(f"cargo fetch failed:\n{done.stderr.strip()[-2000:]}")
 
 
 def compile_node(work: Path, target: Path, cargo: str) -> Path:

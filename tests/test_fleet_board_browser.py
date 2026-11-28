@@ -23,7 +23,7 @@ def open_direct(page, agent):
     page.locator('#conversation-directory').get_by_title(agent, exact=True).click()
 
 
-def test_person_channel_thread_dm_drafts_and_live_reply(board, playwright):  # noqa: F811
+def test_person_channel_thread_dm_drafts_and_live_reply(board, playwright, tmp_path):  # noqa: F811
     from playwright.sync_api import expect
 
     server, node, worker = board
@@ -64,7 +64,7 @@ def test_person_channel_thread_dm_drafts_and_live_reply(board, playwright):  # n
         assert me.token not in page.content() and node.worker.token not in page.content()
         page.set_viewport_size({'width': 390, 'height': 844})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-        page.screenshot(path='/private/tmp/poolhouse-board-audit-mobile.png', full_page=True)
+        page.screenshot(path=str(tmp_path / 'board-audit-mobile.png'), full_page=True)
         page.evaluate("window.fleetModel.go('training')")
         expect(viewer).to_be_hidden()
         assert not errors

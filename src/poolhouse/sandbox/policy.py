@@ -119,7 +119,7 @@ class NetMode(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Net:
-    """Network access: none, this machine's loopback, or loopback on the named ports only. On macOS no mode lets a process bind or listen on an
+    """Network access: none, this machine's loopback (``refused`` ports of it excepted), or loopback on the named ports only. On macOS no mode lets a process bind or listen on an
     address of its own: a Seatbelt rule that names a port of this machine matches that port on every address of it, the wildcard and the network
     address included, so a rule that allowed a bind would allow a listener the network reaches. A process there serves on a Unix socket
     (`Policy.unix_namespaces`) or on ``accept``: ports of the loopback it reaches over TCP and serves on only through a socket its parent bound
@@ -128,14 +128,15 @@ class Net:
     mode: NetMode = NetMode.DENY
     ports: tuple[int, ...] = ()
     accept: tuple[int, ...] = ()
+    refused: tuple[int, ...] = ()
 
     @classmethod
     def deny(cls) -> Net:
         return cls()
 
     @classmethod
-    def loopback(cls) -> Net:
-        return cls(NetMode.LOOPBACK)
+    def loopback(cls, *, accept: tuple[int, ...] = (), refused: tuple[int, ...] = ()) -> Net:
+        return cls(NetMode.LOOPBACK, (), tuple(sorted(set(accept))), tuple(sorted(set(refused))))
 
     @classmethod
     def only(cls, *ports: int, accept: tuple[int, ...] = ()) -> Net:
@@ -144,11 +145,11 @@ class Net:
     def __post_init__(self) -> None:
         if self.mode == NetMode.PORTS and not self.ports:
             raise PolicyError("net: ports mode names no port")
-        if self.mode != NetMode.PORTS and (self.ports or self.accept):
+        if (self.mode != NetMode.PORTS and self.ports) or (self.mode == NetMode.DENY and self.accept) or (self.mode != NetMode.LOOPBACK and self.refused):
             raise PolicyError(f"net: {self.mode} mode takes no ports")
-        if set(self.accept) & set(self.ports):
-            raise PolicyError("net: an accept port is also named to be reached another way")
-        for port in (*self.ports, *self.accept):
+        if set(self.accept) & {*self.ports, *self.refused}:
+            raise PolicyError("net: an accept port is also named to be reached another way or refused")
+        for port in (*self.ports, *self.accept, *self.refused):
             if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
                 raise PolicyError(f"net: {port!r} is not a port")
 
@@ -216,9 +217,20 @@ class Policy:
     binds: tuple[tuple[str, str, bool], ...] = ()
     """Linux and WSL only: (source, target, writable), a directory bound at another path inside the namespace, such as the stage at the person's
     own project path. Another platform refuses a policy that holds one."""
+    open: bool = False
+    """macOS only: an open box. The process may do what it could in a shell, the GPU, browsers, the installed programs and this machine's loopback
+    among it, and is refused named harms (`sandbox.seatbelt_open`): it writes only ``write``, reads nothing of a ``private`` tree that no tree of
+    ``read``, ``write`` or ``exec`` inside it names, and reaches no network beyond loopback."""
+    private: tuple[str, ...] = ()
+    """The trees an open box may not read, write, link, run from or reach a socket in. Of the trees that hold a path, ``private`` or granted, the
+    longest decides."""
 
     def validated(self) -> Policy:
         """This policy with every path checked, or `PolicyError`."""
+        if self.private and not self.open:
+            raise PolicyError("private: only an open box has private trees; every other policy refuses what it does not grant")
+        if self.open and sys.platform != "darwin":
+            raise PolicyError("open: only the macOS backend has an open box")
         if self.binds and sys.platform != "linux":
             raise PolicyError("binds: only the Linux and WSL backends can bind a directory at another path")
         for source, target, _ in self.binds:
@@ -247,6 +259,7 @@ class Policy:
         return replace(
             self, read=checked_paths(self.read, what="read"),
             deny_read=_exclusions(self.deny_read), deny_write=_exclusions(self.deny_write),
+            private=tuple(dict.fromkeys(checked_path(path, what="private", future=True) for path in self.private)),
             read_files=checked_paths(self.read_files, what="read file"),
             read_dirs=checked_paths(self.read_dirs, what="read directory"),
             unix_sockets=checked_paths(self.unix_sockets, what="Unix endpoint"),

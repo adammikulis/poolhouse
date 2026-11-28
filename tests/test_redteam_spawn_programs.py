@@ -85,7 +85,7 @@ def test_the_port_listing_is_the_systems_whatever_the_callers_path_and_folder_ho
 @pytest.mark.parametrize("program", ["/usr/bin/false", "/nowhere/netstat"])
 def test_a_port_listing_that_cannot_be_made_opens_no_window(tmp_path, monkeypatch, program):
     monkeypatch.setattr(ports, "NETSTAT", program)
-    bridge = ports.PortBridge(str(tmp_path), tmp_path / "locks")
+    bridge = ports.PortBridge(str(tmp_path), tmp_path / "locks", admit=lambda _pid: False)
     with pytest.raises(OSError):
         bridge.start()
     assert list(bridge.ports) == [] and not Path(bridge.path).exists(), "no window over a port nobody looked at"

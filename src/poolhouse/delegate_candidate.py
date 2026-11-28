@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import secretpaths
+from poolhouse import safelaunch, secretpaths
 from poolhouse.activity import source_snapshot
 from poolhouse.activity.source_snapshot import Capture
 from poolhouse.coding_workspace import Change, between
@@ -183,7 +183,7 @@ def git(folder: str | Path, *words: str, env: Mapping[str, str] | None = None) -
     """What git says of ``words`` in ``folder``, with ``env`` added to a closed environment: no hook, file monitor, external diff, text
     conversion, global configuration or optional lock, and a nested repository is compared by its commit alone. A content filter the
     repository's own configuration names does run: it decides what git compares and commits. ValueError when there is no git or it fails."""
-    program = shutil.which("git")
+    program = safelaunch.which("git")
     if not program:
         raise ValueError("git is not installed")
     at = _command(words)

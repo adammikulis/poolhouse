@@ -15,6 +15,8 @@ delegates-view .delegate-detail { min-width:0; }
 delegates-view .delegate-detail h2 { margin:0; overflow-wrap:anywhere; }
 delegates-view .delegate-now { margin:14px 0 4px; font-size:1.143rem; font-weight:650; overflow-wrap:anywhere; }
 delegates-view .delegate-tests { margin:0 0 12px; color:var(--muted); overflow-wrap:anywhere; }
+delegates-view .delegate-why { margin:0 0 12px; overflow-wrap:anywhere; white-space:pre-wrap; }
+delegates-view .delegate-empty { color:var(--muted); }
 delegates-view .delegate-detail dl { display:grid; grid-template-columns:110px minmax(0,1fr); gap:6px 8px; font-size:0.929rem; margin:12px 0; }
 delegates-view .delegate-detail dt { color:var(--muted); } delegates-view .delegate-detail dd { margin:0; overflow-wrap:anywhere; white-space:pre-wrap; }
 delegates-view .delegate-timeline { list-style:none; margin:16px 0 0; padding:0; }
@@ -40,8 +42,10 @@ delegates-view .delegate-event summary { cursor:pointer; color:var(--muted); fon
       <div class="delegate-top"><h2 id="delegate-name"></h2><span class="delegate-state" id="delegate-state"></span></div>
       <p class="delegate-now" id="delegate-now"></p>
       <p class="delegate-tests" id="delegate-tests"></p>
+      <p class="delegate-why" id="delegate-why" hidden></p>
       <details id="delegate-about"><summary>Task and settings</summary><dl id="delegate-facts"></dl></details>
       <h3>Timeline</h3>
+      <p class="delegate-empty" id="delegate-empty" hidden></p>
       <ol class="delegate-timeline" id="delegate-timeline"></ol>
     </article>
   </div>
@@ -81,6 +85,7 @@ delegates-view .delegate-event summary { cursor:pointer; color:var(--muted); fon
    this.host=this.querySelector('section');this.note=find('delegates-status');this.list=find('delegate-list');this.card=find('delegate-detail');
    this.heading=find('delegate-name');this.badge=find('delegate-state');this.now=find('delegate-now');this.tests=find('delegate-tests');
    this.facts=find('delegate-facts');this.timeline=find('delegate-timeline');this.buttons=new Map();this.selected='';this.next=0;
+   this.why=find('delegate-why');this.empty=find('delegate-empty');this.about=find('delegate-about');
    W.route(this.host,'delegates',()=>this.load());
    this.timer=setInterval(()=>{if(!this.host.hidden&&!document.hidden)this.load();},2000);
   }
@@ -108,7 +113,8 @@ delegates-view .delegate-event summary { cursor:pointer; color:var(--muted); fon
     }
     this.badged(held.state,run);
     held.task.textContent=run.task.length>120?run.task.slice(0,120)+'…':run.task;
-    held.doing.textContent=run.doing;held.tests.textContent=run.tests_said;held.tests.hidden=!run.tests_said;
+    const outcome=run.tests_said||(run.live||run.state==='done'?'':run.detail.length>160?run.detail.slice(0,160)+'…':run.detail);
+    held.doing.textContent=run.doing;held.tests.textContent=outcome;held.tests.hidden=!outcome;
     held.node.setAttribute('aria-pressed',String(run.name===this.selected));
     if(this.list.children[index]!==held.node)this.list.insertBefore(held.node,this.list.children[index]||null);
    });
@@ -116,6 +122,7 @@ delegates-view .delegate-event summary { cursor:pointer; color:var(--muted); fon
   choose(name){
    if(name===this.selected)return;
    this.selected=name;this.next=0;this.timeline.replaceChildren();this.card.hidden=true;this.factsKey='';
+   this.empty.hidden=true;this.about.open=false;this.unrecorded=false;
    for(const [each,button] of this.buttons)button.node.setAttribute('aria-pressed',String(each===name));
   }
   async follow(){
@@ -129,17 +136,26 @@ delegates-view .delegate-event summary { cursor:pointer; color:var(--muted); fon
     this.timeline.append(...found.events.map(event=>this.row(event)));
     this.next=found.next;more=found.more;
     if(atEnd&&found.events.length)this.timeline.lastElementChild?.scrollIntoView({block:'end'});
+    if(!more)this.paintEmpty(found.run);
    }
+  }
+  /** A run with no step to show says why, and opens what it did leave, once. */
+  paintEmpty(run){
+   const none=!this.timeline.childElementCount;this.empty.hidden=!none;
+   if(!none)return;
+   this.empty.textContent=run.live?'Nothing is recorded yet.':'No steps are recorded for this run. Its task, outcome and answer are under Task and settings.';
+   if(!run.live&&!this.unrecorded){this.unrecorded=true;this.about.open=true;}
   }
   paintRun(run){
    this.card.hidden=false;this.heading.textContent=run.name;this.badged(this.badge,run);
    this.now.textContent=run.live?`Now: ${run.doing}`:`${run.doing.charAt(0).toUpperCase()}${run.doing.slice(1)}, after ${span(run.seconds)}`;
-   this.tests.textContent=run.tests_said||'No test run yet.';
+   this.tests.textContent=run.tests_said||(run.live?'No test run yet.':'No test run recorded.');
+   const why=run.state==='working'?'':run.detail;this.why.textContent=why;this.why.hidden=!why;
    const spent=run.spent||{},prompt=(spent.input_tokens||0)+(spent.cache_read_tokens||0);
    const values={Task:run.task,Lead:run.lead,Model:run.model,Permissions:run.tier,Branch:run.branch,Started:new Date(run.started*1000).toLocaleString(),
     'Time':span(run.seconds),Turns:run.turns||'',Tokens:prompt?`${spent.input_tokens||0} read, ${spent.cache_read_tokens||0} from cache, ${spent.output_tokens||0} written`:'',
     'Prompt reuse':prompt?`${Math.round(100*(spent.cache_read_tokens||0)/prompt)}%`:'',Speed:spent.model_seconds>=0.5&&spent.output_tokens?`${(spent.output_tokens/spent.model_seconds).toFixed(1)} tokens/s of model time`:'',
-    Detail:run.state==='working'?'':run.detail,Answer:run.answer};
+    Answer:run.answer};
    const key=JSON.stringify(values);if(key===this.factsKey)return;this.factsKey=key;
    this.facts.replaceChildren(...Object.entries(values).filter(([,value])=>value!==''&&value!=null).flatMap(([name,value])=>[E('dt',{},name),E('dd',{},String(value))]));
   }

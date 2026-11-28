@@ -22,8 +22,9 @@ and never limits (docs/claude-subagents.md, "Tool-call milestones").
   by hand, `poolhouse-serve up` flags that skip the lease, a push to `main` without the person's approval (docs/agent-policy.md,
   section 1, "The owner's `main`"; `POOLHOUSE_PUSH_MAIN=yes` opens nothing), and a force push, a remote ref deletion, `--all` or `--tags`
   pushes, past any `NAME=value` written in front of the command.
-- The edit guard refuses, at the moment it is written, the writes docs/agent-policy.md, section 5, "The gates" lists. It reads the two
-  limits from the checkers.
+- The edit guard reports, beside the edit as it is made, what docs/agent-policy.md, section 5, "The gates" lists, and lets the
+  edit through. It reads the two limits from the checkers. It refuses a write of a protected path, of the person folder, and of a
+  file on `main`, judged by the path as named and by the path a link resolves to.
 - A subagent's Bash and Monitor commands are stamped in the hook: its own board name and native id are set, and the names by
   which the harness names the session that started it (`CLAUDE_CODE_SESSION_ID`, `POOLHOUSE_SESSION_ID`,
   `POOLHOUSE_SESSION_HARNESS`, `CODEX_THREAD_ID`) are removed, so a program that drops the subagent's own marker has no

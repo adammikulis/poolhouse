@@ -10,6 +10,8 @@ from html import unescape
 from html.parser import HTMLParser
 from typing import Any
 
+from poolhouse import provision
+
 __all__ = ["clean", "cut", "extract"]
 
 
@@ -68,9 +70,9 @@ class _Stripper(HTMLParser):
 
 
 def extract(html: str, url: str = "") -> tuple[str, str]:
-    """``(title, text)`` read out of a page: trafilatura when installed, tags stripped when not."""
+    """``(title, text)`` read out of a page: trafilatura, installed at first use, and tags stripped where it cannot be."""
     try:
-        import trafilatura
+        trafilatura = provision.module("trafilatura", "web")
     except ImportError:
         trafilatura = None
     title, text = "", ""

@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import pytest
 from browser_expect import expect
-from test_fleet_ui import Serving
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: a real daemon reads this test's own node)
+    alone,
+    unfounded_node,
+)
+from test_studio_canvas_browser import studio_daemon
 
 from poolhouse.scrape.browser import Window, browser
 
+pytest_plugins = ('testfarm_kit',)  # the `node_binary` fixture
 pytestmark = pytest.mark.slow
 
 
@@ -16,12 +21,10 @@ def _needs_playwright():
     pytest.importorskip("playwright.sync_api", reason="poolhouse[scrape]")
 
 
-def test_data_library_upload_preview_and_fine_tune(tmp_path):
-    served = Serving(tmp_path)
-    served.ui.root = tmp_path / "traind"
-    served.ui.settings.setup_done = True
+def test_data_library_upload_preview_and_fine_tune(tmp_path, alone):  # noqa: F811
+    served = studio_daemon(tmp_path)
     try:
-        with browser(Window(profile=tmp_path / 'browser', headless=True)) as page:
+        with browser(Window(profile=tmp_path / 'browser', headless=True, own_pages=True)) as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/#data')
             page.get_by_role('button', name='+ Add dataset').click()
             page.get_by_label('Dataset name', exact=True).fill('sample')
@@ -51,12 +54,10 @@ def test_data_library_upload_preview_and_fine_tune(tmp_path):
             served.close()
 
 
-def test_data_file_source_and_filter(tmp_path):
-    served = Serving(tmp_path)
-    served.ui.root = tmp_path / "traind"
-    served.ui.settings.setup_done = True
+def test_data_file_source_and_filter(tmp_path, alone):  # noqa: F811
+    served = studio_daemon(tmp_path)
     try:
-        with browser(Window(profile=tmp_path / 'browser', headless=True)) as page:
+        with browser(Window(profile=tmp_path / 'browser', headless=True, own_pages=True)) as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/#data')
             page.get_by_role('button', name='+ Add dataset').click()
             page.get_by_role('button', name='Choose a file', exact=True).click()
@@ -82,10 +83,8 @@ def test_data_file_source_and_filter(tmp_path):
             served.close()
 
 
-def test_evaluate_selection_review_status_and_recorded_results(tmp_path, monkeypatch):
-    served = Serving(tmp_path)
-    served.ui.root = tmp_path / "traind"
-    served.ui.settings.setup_done = True
+def test_evaluate_selection_review_status_and_recorded_results(tmp_path, monkeypatch, alone):  # noqa: F811
+    served = studio_daemon(tmp_path)
     fleet = {
         'models': ['sample-qwen.gguf'],
         'members': [{'name': 'studio', 'is_self': True, 'models': ['sample-qwen.gguf']}],
@@ -104,7 +103,7 @@ def test_evaluate_selection_review_status_and_recorded_results(tmp_path, monkeyp
          'seconds_per_question': 1.5, 'questions': 8},
     ]})
     try:
-        with browser(Window(profile=tmp_path / 'browser', headless=True)) as page:
+        with browser(Window(profile=tmp_path / 'browser', headless=True, own_pages=True)) as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/#benchmarks')
             run = page.get_by_role('button', name='Start sweep', exact=True)
             expect(run).to_be_disabled()
@@ -132,17 +131,15 @@ def test_evaluate_selection_review_status_and_recorded_results(tmp_path, monkeyp
 
 
 @pytest.mark.parametrize('theme', ['light', 'dark', 'custom'])
-def test_studio_surfaces_follow_theme_and_keep_text_contrast(tmp_path, monkeypatch, theme):
-    served = Serving(tmp_path)
-    served.ui.root = tmp_path / "traind"
-    served.ui.settings.setup_done = True
+def test_studio_surfaces_follow_theme_and_keep_text_contrast(tmp_path, monkeypatch, theme, alone):  # noqa: F811
+    served = studio_daemon(tmp_path)
     served.files.joinpath('examples.jsonl').write_text('{"prompt":"Sample"}\n')
     monkeypatch.setattr(served.ui, 'fleet', lambda: {
         'models': ['sample-qwen.gguf'],
         'members': [{'name': 'studio', 'is_self': True, 'models': ['sample-qwen.gguf']}],
     })
     try:
-        with browser(Window(profile=tmp_path / 'browser', headless=True)) as page:
+        with browser(Window(profile=tmp_path / 'browser', headless=True, own_pages=True)) as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/#data')
             expect(page.locator('data-view .data-file:not(.folder)')).to_have_count(1)
             page.evaluate('''theme => {

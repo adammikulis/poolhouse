@@ -4,15 +4,16 @@
 
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
+use std::net::{Shutdown, TcpStream};
 use std::os::windows::ffi::OsStrExt;
-use std::os::windows::io::AsRawHandle;
+use std::os::windows::io::{AsRawHandle, AsRawSocket};
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Storage::FileSystem::{LockFileEx, MoveFileExW, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH};
-use windows_sys::Win32::System::IO::OVERLAPPED;
+use windows_sys::Win32::System::IO::{CancelIoEx, OVERLAPPED};
 
 use crate::error::Result;
 
@@ -73,6 +74,15 @@ pub(crate) fn wide(text: impl AsRef<OsStr>) -> Vec<u16> {
 /// A directory entry is on disk once the rename that made it was written through; nothing to flush.
 pub fn sync_dir(_path: &Path) -> Result<()> {
     Ok(())
+}
+
+/// End ``stream`` both ways: a read another thread is waiting in returns.
+pub fn hang_up(stream: &TcpStream) -> std::io::Result<()> {
+    let ended = stream.shutdown(Shutdown::Both);
+    // A shutdown refuses later receives and leaves one that is already waiting in place, so that one is cancelled.
+    // SAFETY: the socket is open while `stream` is borrowed; a null OVERLAPPED cancels every transfer this process has on it.
+    unsafe { CancelIoEx(stream.as_raw_socket() as usize as HANDLE, std::ptr::null()) };
+    ended
 }
 
 /// Move ``from`` over ``to`` in one step and write it through to disk. ``MoveFileExW`` refuses a target that is open, and a board's

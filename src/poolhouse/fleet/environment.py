@@ -12,7 +12,10 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from email.parser import BytesParser
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -20,14 +23,15 @@ from typing import Any
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
-from poolhouse import maintenance, net
+from poolhouse import home, maintenance, net, pinned, provision, safelaunch
 from poolhouse.files import promote
 from poolhouse.http import ServerError
 from poolhouse.httpguard import Refused
 from poolhouse.lock import only_one
+from poolhouse.log import warn
 from poolhouse.net import packages
 
-from . import compute_artifact, compute_install, dependency_proof
+from . import compute_artifact, compute_install, dependency_proof, python_pins
 from .managed_compute import process_environment
 from .runtime_wheel import cache_wheel, current_wheel, wheel_commit
 
@@ -37,8 +41,10 @@ METADRIVE_SOURCE = ("metadrive-simulator @ git+https://github.com/metadriverse/"
                     "metadrive.git@85e5dadc6c7436d324348f6e3d8f8e680c06b4db")
 
 PYTHON = "3.13"
+PROVIDE_WAIT_S = 3600.0
+"""How long a second process waits for the one already installing libraries for the same environment."""
 STANDALONE = ("https://api.github.com/repos/astral-sh/"
-              "python-build-standalone/releases/latest")
+              f"python-build-standalone/releases/tags/{python_pins.RELEASE}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,7 +156,7 @@ class Environment:
 
     @property
     def path(self) -> Path:
-        return Path(self.root).expanduser() / "env"
+        return Path(self.root).expanduser().absolute() / "env"
 
     @property
     def python(self) -> Path:
@@ -169,21 +175,22 @@ class Environment:
         if not getattr(sys, "frozen", False) and self.python_version == current:
             return Path(sys.executable)
         name = f"python{self.python_version}"
-        candidates = [shutil.which(name)]
-        pyenv = shutil.which("pyenv")
+        candidates = [safelaunch.which(name)]
+        pyenv = safelaunch.which("pyenv")
         if pyenv:
-            with contextlib.suppress(OSError, subprocess.SubprocessError):
+            with contextlib.suppress(OSError, subprocess.SubprocessError), safelaunch.empty_directory() as nowhere:
                 installed = subprocess.run([pyenv, "whence", "--path", name],
-                                           capture_output=True, text=True, timeout=10)
+                                           capture_output=True, text=True, timeout=10, cwd=nowhere)
                 if installed.returncode == 0:
                     candidates.extend(installed.stdout.splitlines())
         for found in candidates:
             if not found:
                 continue
             try:
-                checked = subprocess.run(
-                    [found, "-c", "import json,sys;print(json.dumps([sys.executable,sys.version_info[:2]]))"],
-                    capture_output=True, text=True, timeout=10)
+                with safelaunch.empty_directory() as nowhere:
+                    checked = subprocess.run(
+                        [found, "-I", "-c", "import json,sys;print(json.dumps([sys.executable,sys.version_info[:2]]))"],
+                        capture_output=True, text=True, timeout=10, cwd=nowhere)
                 if checked.returncode:
                     continue
                 executable, version = json.loads(checked.stdout)
@@ -196,7 +203,7 @@ class Environment:
     # -- fetching one --------------------------------------------------
     def standalone_python(self) -> Path | None:
         """A Python this app downloaded for itself, if it has one."""
-        base = Path(self.root).expanduser() / "python"
+        base = Path(self.root).expanduser().absolute() / "python"
         found = base / ("python.exe" if sys.platform == "win32" else "bin/python3")
         return found if found.exists() else None
 
@@ -212,6 +219,8 @@ class Environment:
         found = self.standalone_python()
         if found:
             return found
+        if refused := provision.download_refusal():
+            raise OSError(f"Python {self.python_version} was not downloaded: {refused}")
         if on_progress:
             on_progress("Downloading Python")
 
@@ -230,12 +239,15 @@ class Environment:
         base = Path(self.root).expanduser() / "python"
         base.parent.mkdir(parents=True, exist_ok=True)
         asset = assets[0]
-        digest = str(asset.get("digest") or "").removeprefix("sha256:")
+        digest = python_pins.SHA256.get(asset["name"], "")
+        if not digest:
+            raise OSError(f"no SHA-256 is pinned for {asset['name']}, so it is not downloaded")
         with tempfile.TemporaryDirectory() as tmp:
             archive = Path(tmp) / "python.tar.gz"
             try:
                 net.download(asset["browser_download_url"], archive, net.Want(
-                    sha256=digest, require_digest=True, size=int(asset.get("size") or 0),
+                    sha256=digest, require_digest=True, size=int(asset.get("size") or 0), pinned=True,
+                    nested=True,   # a Python carries pip's own wheel
                     max_bytes=2 << 30, purpose="python download"), pipeline=net.default())
             except (net.Blocked, net.Truncated, ServerError, Refused) as exc:
                 raise OSError(f"could not download Python: {exc}") from None
@@ -269,8 +281,9 @@ class Environment:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if on_progress:
             on_progress("Creating the environment")
-        made = subprocess.run([str(base), "-m", "venv", str(self.path)],
-                              capture_output=True, text=True)
+        with safelaunch.empty_directory() as nowhere:
+            made = subprocess.run([safelaunch.absolute(base), "-I", "-m", "venv", str(self.path)],
+                                  capture_output=True, text=True, cwd=nowhere)
         if made.returncode != 0:
             raise OSError(
                 f"could not build the environment: {_last_error(made.stderr)}")
@@ -295,7 +308,7 @@ class Environment:
         return None
 
     @maintenance.reading
-    def pip(self, args: list[str], *, timeout: float = 3600.0
+    def pip(self, args: list[str], *, timeout: float = 3600.0, locked: Path | None = None
             ) -> subprocess.CompletedProcess:
         installing = bool(args and args[0] == "install")
         wheel = None
@@ -309,14 +322,12 @@ class Environment:
             except ValueError:
                 continue
             if canonicalize_name(requirement.name) == "poolhouse":
-                wheels = list(found.glob("poolhouse-*.whl")) if found else []
-                if len(wheels) != 1:
-                    raise OSError("the current poolhouse wheel is required to install managed libraries")
-                wheel = wheels[0].resolve()
+                wheel = self._own_wheel().resolve()
                 extras = f"[{','.join(sorted(requirement.extras))}]" if requirement.extras else ""
                 rewritten[index] = f"poolhouse{extras} @ {wheel.as_uri()}"
         environment = self.build_environment() if installing else dict(os.environ)
-        output = packages.run(self.python, rewritten, timeout=timeout, env=environment)
+        output = packages.run(self.python, rewritten, timeout=timeout, env=environment,
+                              **({"locked": locked} if locked else {}))
         if output.returncode == 0 and wheel is not None:
             refreshed = packages.run(self.python, ["install", "--force-reinstall", "--no-deps", "--no-index", str(wheel)],
                                      timeout=timeout, env=environment)
@@ -459,12 +470,48 @@ class Environment:
                 stack.enter_context(only_one(target.parent / ".env-install.lock"))
             yield
 
-    def install(self, names: list[str], *, on_progress: Any = None) -> dict[str, Any]:
-        """Install libraries under shared target-environment mutation leases."""
-        with self._mutation(names):
-            return self._install(names, on_progress=on_progress)
+    def locked_install(self, library: Library) -> subprocess.CompletedProcess:
+        """Install ``library`` from the project's hashed lock alone: what it and the app's own wheel declare, each release
+        held to its digest, then that wheel without resolving anything. Raises OSError or ValueError for a library the lock
+        cannot hold at digests."""
+        if refused := provision.download_refusal():
+            raise OSError(f"{library.title} was not installed: {refused}")
+        if library.index or library.bootstrap_packages:
+            raise OSError(f"{library.title} needs packages the project's lock cannot hold at digests, so it is not "
+                          "installed unless somebody asks for it in Libraries")
+        asked, ours = [], set()
+        for spec in library.packages:
+            want = Requirement(spec)
+            if canonicalize_name(want.name) == "poolhouse":
+                ours |= want.extras
+            else:
+                asked.append(spec)
+        wheel = any(canonicalize_name(Requirement(spec).name) == "poolhouse" for spec in library.packages)
+        chosen = pinned.select(asked + (wheel_requirements(self._own_wheel(), ours) if wheel else []))
+        if chosen:
+            with tempfile.TemporaryDirectory(prefix="poolhouse-locked-") as scratch:
+                locked = Path(scratch) / "requirements.txt"
+                locked.write_text(pinned.text(chosen), encoding="utf-8")
+                done = self.pip(["install"], locked=locked)
+            if done.returncode or not wheel:
+                return done
+        return self.pip(["install", "--no-deps", "poolhouse"])
 
-    def _install(self, names: list[str], *, on_progress: Any = None) -> dict[str, Any]:
+    def _own_wheel(self) -> Path:
+        """The one poolhouse wheel this app installs into a managed environment. Raises OSError when there is not one."""
+        found = self.wheels()
+        wheels = list(found.glob("poolhouse-*.whl")) if found else []
+        if len(wheels) != 1:
+            raise OSError("the current poolhouse wheel is required to install managed libraries")
+        return wheels[0]
+
+    def install(self, names: list[str], *, on_progress: Any = None, locked: bool = False) -> dict[str, Any]:
+        """Install libraries under shared target-environment mutation leases. ``locked``, for an install nobody asked for
+        by name, takes only the releases of the project's hashed lock."""
+        with self._mutation(names):
+            return self._install(names, on_progress=on_progress, locked=locked)
+
+    def _install(self, names: list[str], *, on_progress: Any = None, locked: bool = False) -> dict[str, Any]:
         """Install the named libraries. Returns what happened, per library."""
         wanted = {lib.name: lib for lib in CATALOG}
         done: dict[str, Any] = {}
@@ -485,12 +532,12 @@ class Environment:
             if lib.index:
                 args += ["--index-url", lib.index]
             try:
-                if lib.bootstrap_packages:
+                if lib.bootstrap_packages and not locked:
                     prepared = target.pip(["install", *lib.bootstrap_packages])
                     if prepared.returncode:
                         done[name] = {"ok": False, "error": _last_error(prepared.stderr)}
                         continue
-                out = target.pip(args)
+                out = target.locked_install(lib) if locked else target.pip(args)
                 if out.returncode == 0 and (name in {"core", "train-mlx", "bench"} or name.startswith("gym")):
                     directory = target.wheels()
                     if directory is None:
@@ -543,6 +590,53 @@ class Environment:
 
     def remove(self) -> None:
         shutil.rmtree(self.path, ignore_errors=True)
+
+
+def provide(environment: Environment, names: list[str], ready: Callable[[], None]) -> None:
+    """Make ``ready`` pass: when it raises, the ``names`` libraries are installed first (one process at a time, the
+    others find it done) and it is asked again. Raises OSError with what was wrong and why nothing could be installed."""
+    try:
+        ready()
+        return
+    except (OSError, subprocess.SubprocessError) as exc:
+        if refused := provision.download_refusal():
+            raise OSError(f"{exc}; it was not installed: {refused}") from exc
+    lock = home.expand(environment.root) / ".env-provide.lock"
+    with only_one(lock, wait=True, timeout=PROVIDE_WAIT_S, announce=warn, note="installing libraries"):
+        with contextlib.suppress(OSError, subprocess.SubprocessError):
+            ready()
+            return
+        warn(f"installing the {', '.join(names)} libraries, needed for the first time")
+        changed = environment.install(names, on_progress=warn, locked=True)
+        if failed := [f"{name}: {one.get('error')}" for name, one in changed.items() if not one.get("ok")]:
+            raise OSError("the libraries could not be installed: " + "; ".join(failed))
+        ready()
+
+
+def wheel_requirements(wheel: Path, extras: set[str]) -> list[str]:
+    """What installing ``wheel`` with ``extras`` asks of an index on this system: its own metadata's requirements, the
+    extras it names of itself followed. Markers are dropped, and the wheel itself is never among them."""
+    with zipfile.ZipFile(wheel) as archive:
+        records = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
+        if len(records) != 1:
+            raise OSError(f"{wheel.name} holds no one distribution metadata record")
+        declared = BytesParser().parsebytes(archive.read(records[0])).get_all("Requires-Dist") or []
+    out, followed, waiting = [], set(), ["", *sorted(extras)]
+    while waiting:
+        extra = waiting.pop(0)
+        if extra in followed:
+            continue
+        followed.add(extra)
+        for want in map(Requirement, declared):
+            if want.marker is not None and not want.marker.evaluate({"extra": extra}):
+                continue
+            if canonicalize_name(want.name) == "poolhouse":
+                waiting.extend(sorted(want.extras))
+                continue
+            want.marker = None
+            if str(want) not in out:
+                out.append(str(want))
+    return out
 
 
 def _base(spec: str) -> str:

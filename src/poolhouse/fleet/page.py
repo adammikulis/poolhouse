@@ -68,18 +68,28 @@ def components(names: Sequence[str | Component] = COMPONENTS) -> list[Component]
 
 
 
+def _notice(*, app: bool, measures: bool) -> tuple[str, str]:
+    """The experimental notice as ``(above the page, in the footer)``: the app fills the window, so there it opens from the footer;
+    the measurement screen shown alone carries it outright."""
+    if not measures:
+        return "", ""
+    title = escape(notice_copy.TITLE)
+    text = "".join(f"<p>{escape(line)}</p>" for line in notice_copy.PARAGRAPHS) \
+        + f'<a href="{escape(GIT_URL + "/issues")}" target="_blank" rel="noopener noreferrer">Report bugs on GitHub</a>'
+    if app:
+        return "", f'<details class="experimental-note"><summary>{title}</summary><div class="card">{text}</div></details>'
+    return f'<aside class="card wide calculation-notice" aria-label="Experimental software"><h1>{title}</h1>{text}</aside>', ""
+
+
 def render(parts: Sequence[str | Component] = COMPONENTS) -> str:
     """The whole page, as one string."""
     shell = (WEB / "shell.html").read_text(encoding="utf-8")
     for name in sorted(EXPERIMENTAL):
         if _absent(name):
             shell = shell.replace(f"<{name}></{name}>", "")
-    notice = "".join(f"<p>{escape(text)}</p>" for text in notice_copy.PARAGRAPHS)
     names = {part.name if isinstance(part, Component) else part for part in parts}
-    calculation = (f'<aside class="card wide calculation-notice" aria-label="Experimental software"><h1>{escape(notice_copy.TITLE)}</h1>'
-                   + notice + f'<a href="{escape(GIT_URL + "/issues")}" target="_blank" rel="noopener noreferrer">Report bugs on GitHub</a></aside>') \
-        if "fit-view" in names else ""
-    shell = shell.replace("__CALCULATION_NOTICE__", calculation)
+    above, footer = _notice(app="fleet-nav" in names, measures="fit-view" in names)
+    shell = shell.replace("__CALCULATION_NOTICE__", above).replace("__FOOTER_NOTICE__", footer)
     shell = shell.replace("__RUNNING_VERSION__", escape(current_version() or "version unavailable"))
     page = assemble(shell, components(parts))
     return page.replace("__VOCABULARY_DATA__", vocabulary.payload()).replace("__VOCAB__", vocabulary.default_vocabulary())
