@@ -244,7 +244,9 @@ the operating system itself asks for a password (the macOS administrator prompt 
 system's own prompt: Poolhouse never shows a generic confirm dialog of its own, never accepts a fabricated approval and never makes anyone
 type a command to continue.
 
-**Nothing blocks on a person.** No queue, batch, landing request, gate, design or agent stops to wait for a human yes. A protection is
+**Nothing blocks on a person.** No queue, batch, landing request, gate, design or agent stops to wait for a human yes. The one
+exception is an action a person chose to approve in the app: every choice starts off, only that action waits, no answer means it
+does not happen, and the rest of the work goes on. An approval never overrides a protection. A protection is
 decided at once: allowed by a rule, or refused immediately with the reason (and audited with who asked), so there is nothing to park. A
 decision the owner alone can make (product direction, spending, an outward-facing or irreversible choice) is asked once through the question
 tool, and everything that does not depend on the answer goes on at once with the safe default in force, never holding another item. A step that is not a floor (a reap, a retry, a rebase, a stale request, a timeout, a

@@ -2,7 +2,7 @@
 
 The backlog, highest priority first. Take work from the numbered tiers top down; a paused tier starts only when the owner asks. Delete a row in the change that lands it and add nothing finished. A row under the later headings is reconciled against the code before anyone acts on it.
 
-A branch named below without a pull request is on GitHub and unmerged. Every item needs an accepting review of its exact commit before it lands; security items also need an attack pass.
+A branch named below without a pull request is on GitHub and unmerged, except one called local. Every item needs an accepting review of its exact commit before it lands; security items also need an attack pass.
 
 ## 1. Speed of the local model (active)
 
@@ -11,7 +11,7 @@ The local delegate takes no work until every row here is landed and installed, o
 | Order | Item | Next | Where |
 |---|---|---|---|
 | 1 | A long delegate run keeps the server's prompt cache | Review, checks, merge, install, restart the model server, rerun a long delegate task as the live proof | #113 |
-| 2 | Current llama.cpp with the newest draft head serves Qwen3.8-Flash-Next by default | Start it through the broker from the branch, compare clean speed with the older fork, attack pass on the automatic head download, settle overlap with the Strata change | #120, branch `feat/bench-engines` |
+| 2 | Current llama.cpp with the newest draft head serves Qwen3.8-Flash-Next by default | Start it through the broker from the branch, compare clean speed with the older fork, attack pass on the automatic head download, settle overlap with the Strata change | #120, branch `backup/bench-engines` |
 | 3 | Strata engine | Run its tests, attack pass, merge, install; measure on the Apple silicon computer, then on a Windows computer with a 24 GB card and 64 GB of memory. Publishers ISTA-DASLab and incoai are not admitted for agent downloads: the owner decides | #116 |
 | 4 | Faster serving settings the measurements show, then the 27B quant comparisons | Scheduled jobs first need three failing tests settled and an attack pass | #107, `docs/examples/qwen3.8-27b-quants.queue` |
 | 5 | Delegate work resumes, one small testable task at a time | The two runtime selection tests that fail on development, the test-node build test that needs `cargo`, and `scripts/test quick --explain` running tests | `tests/test_runtime_selection.py`, `tests/test_testnode.py`, `scripts/test` |
@@ -28,10 +28,10 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 
 | Item | Next | Where |
 |---|---|---|
-| What another device or a local program can do without a signed-in window or beyond its own work | Finish before member compute lands: remaining unsigned routes on a device with no pool, member jobs running as the serving user, stopping other members' jobs, remote tests without a sandbox | branch `worktree-agent-ae3737d798aecbad8`, #110 |
+| Access rules for member compute and for a device with no pool | Finish before member compute lands | branch `worktree-agent-ae3737d798aecbad8`, #110 |
 | Pool founding, sync and joining by code | Attack pass again; land with or through #118 | #110 |
-| Remote jobs, files and chat between members | Rest of the tests, pull request | branch `worktree-agent-ae3737d798aecbad8` |
-| Windows runs natively, without WSL | Pull request, green Windows installer check, install over an older release, then confinement of the model server and agents | branch `worktree-agent-adc2b4ba43534d41d`, #112 |
+| Remote jobs, files and chat between members (on development nothing but tests calls `service_draft` or `service_bind`) | Rest of the tests, pull request | branch `worktree-agent-ae3737d798aecbad8` |
+| Windows runs natively, without WSL (the branch also holds the macOS telemetry fix, #112) | Pull request, green Windows installer check, install over an older release, then confinement of the model server and agents | branch `worktree-agent-adc2b4ba43534d41d` |
 | Phone linking to a computer, including native Windows | Attack pass of the Windows permission changes; take its Windows fixes into the native branch | #111 |
 | Android app | Join or found a pool from the app, guest and device-uses screens, then a test on a phone | #114, branch `feat/android-node-mode` |
 | Approvals in the app for the actions a person chooses (the rule is in `AGENTS.md`) | Build it in the new app: choices all start off, a request shows exactly what will happen, no answer means no action. Keep the node's approval protocol; #114 removes the old approval app and its native library | `docs/phone-approval.md`, `app/poolhouse-node/src/gov/`, #114 |
@@ -56,11 +56,10 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | No hook rewrites a command | Second reader; afterwards a running session needs a restart | #106 |
 | Hook failures reach the agent | Attack pass again | #108 |
 | Risk-tiered reviews in the merge check, then reviewed branches editing guard code | Pull request and attack pass for the first; the second lands after it | branch `worktree-agent-a46c203791603610b`, branch `backup/guard-rule` |
-| Guards let an agent edit a person's global settings, which the rules forbid | The owner decides | `tests/test_protected_writes.py` |
+| The guard and the rule on a person's global settings agree | The owner decides | `tests/test_protected_writes.py` |
 | Comparison of agent-to-agent protocols (the tried protocol did not pass; its code stays unmerged) | Land only the comparison document | branch `backup/acp-trial` |
 | Failing on development | Red-team coverage floor, `cargo-audit`, `npm-audit`, the macOS affected-tests job's Swift toolchain error | CI |
-| The real-name list the commit hooks read is not readable, so those names are unchecked; the guard refuses `llama-server --help` | Fix both | `scripts/hooks` |
-| Example network addresses in documents | Review and merge | #121 |
+| The commit hooks' name list and the guard's handling of `llama-server --help` | Fix both | `scripts/hooks` |
 | `docs/access-widening-person-files.patch` targets files that do not exist | Delete it | `docs/` |
 
 ## 6. Later
@@ -82,14 +81,14 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 
 | Item | State | Where |
 |---|---|---|
-| Lead agents installing login units | Decided, not built; findings F1 to F16 are open, F15 and F1 first | `docs/agent-login-unit-install.md` |
+| Lead agents installing login units | Decided, not built; open findings are in the document | `docs/agent-login-unit-install.md` |
 | A refused or shut-down pool is deleted after 3 days; a compromised pool is sealed read-only and never restorable | Not built | `docs/design-phone-free-pools.md` |
-| Session credential sandbox | Not proven: the generated Codex configuration has no read-deny rules, a hard link made before confinement stays readable, and the installed wrappers are untested. Do not claim S1 or S7 credentials are protected | `docs/agent-sandbox.md` |
-| Registration of a retired session's native id | A different terminal can register it and spend its grants; do not reclaim sessions until revival creates authority that cannot inherit them | `docs/design-session-capabilities.md` |
-| Design reviews | Second attack notes open: session capabilities N1 to N3, pool keys G1, G2, G4 and G10, signed ordering N2 to N8 (revise before building) | `docs/notes/attack-*.md` |
+| Session credential sandbox | Finish and prove it | `docs/agent-sandbox.md` |
+| Retired session registration | Finish the revival design | `docs/design-session-capabilities.md` |
+| Design reviews | Open notes on session capabilities, pool keys and signed ordering | `docs/notes/attack-*.md` |
 | Model sharing between devices | No node design: add-device with a model, join-with-code sharing, accept, remove and `fetch` | `docs/pool.md` |
 | Test shards between two real devices | Not driven on real hardware, including the Windows inbound-rule prompt | `docs/test-farm.md` |
-| Isolated launcher and delegates | Linux and Windows confinement; harder delegate tasks unmeasured; a refused write a program makes without its shell line naming it is not seen; no `--allow-net` for the egress proxy; the `workspace.task_caps` hook module is not wired; a refused write ending a run `partial` or `unapplied`, and the `--on` key proof, lack a live run on the installed runtime; older failures to re-run (`test_workspace_local_agent`, the testfarm approval's session quota, setup-preparation context, saved-models picker) | `docs/design-isolated-launcher.md`, `docs/harnesses.md` |
+| Isolated launcher and delegates | Linux and Windows confinement, harder delegate tasks, refusal reporting, egress wiring, the unwired `workspace.task_caps` module, live proof on the installed runtime, older test failures to re-run | `docs/design-isolated-launcher.md`, `docs/harnesses.md` |
 | Canned node replies in tests | `test_fleet_plan.py`, `test_setup.py`, `test_fleet_tls.py`, `test_node_health_deadline.py`, `test_node_service_pool.py`, `test_fleet_pausing.py` and `test_fleet_roster.py` answer for the node; replacing them with `two_nodes` needs node-side service unbind | `tests/` |
 | `node_key.migrate` passphrase branch | Reported unreachable (the `elif passphrase` arm), not proved. Delete it with its test once confirmed | `src/poolhouse/node_key.py` |
 | `bench` builds a `telemetry.Call` itself | `Call.from_reply(reply, 0.0)` in the backend instead of the client's own record | `src/poolhouse/bench/backends.py` |
