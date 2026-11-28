@@ -280,9 +280,9 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
             why = f"holds {each:,} tokens a slot and {asked:,} were asked for"
         elif held < want.slots:
             why = f"serves {held} slot(s) and {want.slots} were asked for"
-        elif want.engine and str(entry.get("backend") or "") != want.engine:
+        elif want.engine and str(entry.get("engine") or "") != want.engine:
             why = f"is not served by the {want.engine} engine"
-        elif (patched is not None and not _renders_late_system(str(entry.get("backend") or ""))
+        elif (patched is not None and not _renders_late_system(str(entry.get("engine") or ""))
               and not _same_file(entry.get("chat_template_file"), patched)):
             why = "renders the model's own chat template, which refuses a system message after the first"
         elif want.draft.lower() not in ("auto", "none") and Path(want.draft).name != Path(str(entry.get("draft") or "-")).name:
@@ -293,20 +293,19 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
             # asked on that server's own port: the broker shares a `serve:` lease only with an ask for the same port;
             # the head it runs is asked for by name, and no say on `mtp` is made over a server that drafts, or the
             # lease would claim no head over one that has one
-            engine = str(entry.get("backend") or "")
             return Config(serving=Serving(model=found, port=port, slots=held, slot_context=each,
                                           cache_type=cache or KV, draft=head, spec_type=kind,
                                           mtp=None if entry.get("mtp") or head or kind else False,
-                                          engine=engine if engine in engines.ENGINES else ""))
+                                          engine=str(entry.get("engine") or "")))
         declined.append(f"{up} {why}; leasing its own")
     for line in declined:
         say(line)
     return None
 
 
-def _renders_late_system(backend: str) -> bool:
-    """Whether the engine a lease record names renders a system message after the first by itself."""
-    engine = engines.ENGINES.get(backend)
+def _renders_late_system(name: str) -> bool:
+    """Whether the engine ``name`` renders a system message after the first by itself."""
+    engine = engines.ENGINES.get(name)
     return engine is not None and engine.renders_late_system
 
 

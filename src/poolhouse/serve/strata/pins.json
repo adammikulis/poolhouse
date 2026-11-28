@@ -19,7 +19,7 @@
   "url": "https://github.com/Niko1221/Strata/releases/download/v0.2.23/strata-engine-0.1.70-windows-x86_64-cuda-cuda13.tar.gz",
   "bytes": 494708298,
   "sha256": "b8a45d1c495af4ff37fe7a1db530646214ffee80a99145aefd856f2d9cfd6757",
-  "provenance": "none: uploaded by hand to the release, no build attestation and no CI run that builds it; the tag is unsigned",
+  "provenance": "none: uploaded by hand to the release, no build attestation and no CI run that builds it; the tag is unsigned and the release mutable",
   "minimum_driver": 580
  },
  "mtp": {

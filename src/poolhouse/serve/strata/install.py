@@ -28,6 +28,8 @@ __all__ = ["Engine", "content_digest", "ensure", "existing", "extract", "home_of
 KEPT = ("engine", "terminal", "notices", "LICENSE")
 """The parts of the repository Poolhouse keeps: the engine, its server and tools, and the licences."""
 RECORD = "INSTALL.json"
+RELEASE = "release"
+"""Where the files of the prebuilt Windows release are unpacked."""
 MOST_BYTES = 1 << 30
 Say = Callable[[str], None]
 
@@ -68,14 +70,14 @@ def content_digest(entries: Iterable[tuple[str, str]]) -> str:
     return whole.hexdigest()
 
 
-def _tree(source: Path) -> Iterable[tuple[str, str]]:
-    for where, folders, names in os.walk(source):
+def _tree(folder: Path) -> Iterable[tuple[str, str]]:
+    for where, folders, names in os.walk(folder):
         for name in (*folders, *names):
             if (Path(where) / name).is_symlink():
-                raise ServerFailed(f"the installed Strata source has an alias at {Path(where) / name}")
+                raise ServerFailed(f"the installed Strata files have an alias at {Path(where) / name}")
         for name in names:
             path = Path(where) / name
-            yield path.relative_to(source).as_posix(), sha256_file(path)
+            yield path.relative_to(folder).as_posix(), sha256_file(path)
 
 
 def extract(archive: Path, into: Path, keep: tuple[str, ...] = ()) -> None:
@@ -118,6 +120,10 @@ def existing(pin: dict | None = None) -> Engine | None:
         raise ServerFailed(f"the Strata source in {source} is not the pinned one any more; remove {where} and it is installed again")
     if not binary.is_file() or sha256_file(binary) != record["binary_sha256"]:
         raise ServerFailed(f"the Strata engine {binary} changed since it was installed; remove {where} and it is installed again")
+    release = where / RELEASE
+    if platform_kind() == "cuda" and (not binary.is_relative_to(release)   # every file the program may load, the libraries beside it too
+                                      or content_digest(_tree(release)) != held["windows"]["content_sha256"]):
+        raise ServerFailed(f"the files in {release} are not the pinned release's any more; remove {where} and it is installed again")
     return Engine(where, source, binary)
 
 
@@ -193,11 +199,11 @@ def _windows(where: Path, pin: dict, say: Say) -> Path:
     archive = where / release["asset"]
     say(f"downloading the prebuilt Strata engine ({release['bytes'] / 1e6:.0f} MB, checked by SHA-256)")
     fetch.whole(release["url"], archive, fetch.pinned(release["sha256"], "prebuilt Strata engine", size=release["bytes"]))
-    staged = where / "release"
+    unpacked = where / RELEASE
     with tarfile.open(archive) as opened:
-        opened.extractall(staged, filter="data")
+        opened.extractall(unpacked, filter="data")
     archive.unlink()
-    found = sorted(staged.rglob("strata.exe"))
+    found = sorted(unpacked.rglob("strata.exe"))
     if len(found) != 1:
         raise ServerFailed(f"the Strata release {release['asset']} holds {len(found)} strata.exe files, not one")
     return found[0]

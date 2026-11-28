@@ -178,7 +178,7 @@ class ServerManager(Admitting):
         """The backend that serves ``spec``: the engine it names, tree decoding for MLX
         weights, anything else this manager's own."""
         if engine := engines.named(spec.engine):
-            return engine
+            return engine.sandboxing(self.backend.sandboxed)
         if is_mlx(spec.model):
             return self.tree
         return llamacpp_provider.for_model(self.backend, spec.model, self._format_backends)

@@ -71,7 +71,7 @@ def _shape_of(settings: Mapping[str, Any]) -> dict[str, Any]:
     """The settings of a server that decide whether it can be shared, from an ask's spec, a
     `ServerSpec` as a dict or a lease record."""
     out: dict[str, Any] = {"device": admission.device_of(settings)}
-    for key in ("context", "parallel", "cache_type_k", "cache_type_v", "spec_type", "mtp",
+    for key in ("engine", "context", "parallel", "cache_type_k", "cache_type_v", "spec_type", "mtp",
                 "embedding", "reranking", "draft", "chat_template_file", "spec_draft_max", "spec_p_min"):
         if key in settings and settings[key] is not None:
             out[key] = settings[key]
@@ -189,6 +189,8 @@ class Held:
         speculation kind asked for, on the device asked for. Sharing by model alone served a 256K request from a
         32K server."""
         have = self.shape
+        if other := admission.engine_difference(str(asked.get("engine") or ""), have):
+            return f"port {self.port}: {other}"
         if (device := admission.device_of(asked)) != have.get("device", device):
             return f"port {self.port} computes on {have['device']}, {device} asked"
         for key, what in (("context", "tokens of context"), ("parallel", "slot(s)")):

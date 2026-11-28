@@ -16,13 +16,24 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import delegate_review, harnessing, ownership, serverkeys
-from poolhouse.serve import cli as serve_cli, engines, lifecycle_cli, ops, python_runtime
-from poolhouse.serve.backend import ServerFailed, ServerSpec
+from poolhouse import delegate_review, harnessing, ownership, secretpaths, serverkeys
+from poolhouse.serve import (
+    admission,
+    broker,
+    cli as serve_cli,
+    engines,
+    lifecycle_cli,
+    ops,
+    python_runtime,
+    unmanaged,
+)
+from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerSpec
 from poolhouse.serve.fitted import fitted
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.serving import Serving
 from poolhouse.serve.strata import backend, config, fetch, install, pins, prepare, proof
+from poolhouse.testing.canned import Canned, CannedServer
+from poolhouse.testing.registry import record_server
 
 pytest_plugins = ["serve_node"]
 
@@ -96,7 +107,7 @@ class TestPins:
         digests = [f.sha256 for one in pins.model_sets() for f in one.files] + list(held["mtp"]["tensors"].values())
         digests += [f["sha256"] for f in held["dflash2"]["files"]]
         digests += [held["engine"]["source_sha256"], held["engine"]["source_content_sha256"], held["windows"]["sha256"],
-                    held["metal_cpp"]["sha256"]]
+                    held["windows"]["content_sha256"], held["metal_cpp"]["sha256"]]
         assert digests and all(len(d) == 64 and int(d, 16) >= 0 for d in digests)
         assert len(held["engine"]["commit"]) == 40 and held["engine"]["commit"] in held["engine"]["source_url"]
 
@@ -129,7 +140,29 @@ class TestInstall:
             install.extract(got, tmp_path / "out")
         assert not (tmp_path / "escaped").exists()
 
-    def test_an_installed_engine_that_changed_is_refused(self, tmp_path):
+    @pytest.mark.parametrize("change", ["strata.exe's library replaced", "a library added"])
+    def test_every_file_of_the_windows_release_is_checked_at_each_start(self, tmp_path, monkeypatch, change):
+        monkeypatch.setattr(install, "platform_kind", lambda: "cuda")
+        engine = {"commit": "b" * 40}
+        where = install.home_of(engine)
+        (where / "source").mkdir(parents=True)
+        held = where / "release" / "bin"
+        held.mkdir(parents=True)
+        files = {"strata.exe": b"CANNED program\n", "needed.dll": b"CANNED library\n"}
+        for name, body in files.items():
+            (held / name).write_bytes(body)
+        engine["source_content_sha256"] = install.content_digest([])
+        windows = {"content_sha256": install.content_digest([(f"bin/{n}", hashlib.sha256(b).hexdigest()) for n, b in files.items()])}
+        (where / install.RECORD).write_text(json.dumps({"commit": engine["commit"], "binary": "release/bin/strata.exe",
+                                                        "binary_sha256": hashlib.sha256(files["strata.exe"]).hexdigest()}))
+        pin = {"engine": engine, "windows": windows}
+        assert install.existing(pin).binary == held / "strata.exe"
+        (held / ("needed.dll" if "replaced" in change else "planted.dll")).write_bytes(b"another library\n")
+        with pytest.raises(ServerFailed, match="not the pinned release"):
+            install.existing(pin)
+
+    def test_an_installed_engine_that_changed_is_refused(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(install, "platform_kind", lambda: "metal")
         engine = {"commit": "a" * 40}
         where = install.home_of(engine)
         (where / "source" / "terminal").mkdir(parents=True)
@@ -342,7 +375,7 @@ class TestSessions:
     def test_a_session_asking_for_an_engine_does_not_take_another_ones_server(self, canned, monkeypatch):
         _manager, files, first = self.up(canned, monkeypatch, 18436)
         held = harnessing.recorded_servers()
-        monkeypatch.setattr(harnessing, "recorded_servers", lambda: {first.port: {**held[first.port], "backend": "llama.cpp"}})
+        monkeypatch.setattr(harnessing, "recorded_servers", lambda: {first.port: {**held[first.port], "engine": ""}})
         said: list[str] = []
         assert harnessing.adopted(str(files[0]), harnessing.Want(port=first.port, engine="strata"), None, said.append) is None
         assert any("not served by the strata engine" in line for line in said)
@@ -374,11 +407,54 @@ class TestSessions:
         assert got["settings"]["engine"] == "strata"
 
 
+class TestSharing:
+    """One engine's server never answers a lease for another, whatever else matches."""
+
+    def test_a_llama_cpp_lease_is_not_given_the_strata_server_on_its_port(self, canned):
+        manager, files = canned
+        manager.lease(ServerSpec(model=files[0], engine="strata", port=18438, context=131072), timeout=60)
+        with pytest.raises(ServerFailed, match="the server runs strata"):
+            manager.adopt(ServerSpec(model=files[0], port=18438, context=131072))
+
+    def test_a_strata_lease_is_not_given_a_llama_cpp_server_of_the_same_file(self, canned):
+        manager, files = canned
+        server = CannedServer(Canned(served_path=str(files[0]), context=131072))
+        try:
+            record_server(manager.state_file, server.port, model=str(files[0]), context=131072, parallel=1)
+            with pytest.raises(ServerFailed, match=r"the server runs llama\.cpp"):
+                manager.adopt(ServerSpec(model=files[0], engine="strata", port=server.port, context=131072))
+        finally:
+            server.close()
+
+    def test_a_server_found_running_is_not_taken_for_an_engine(self, canned, monkeypatch):
+        manager, files = canned
+        server = CannedServer(Canned(served_path=str(files[0]), context=131072))
+        monkeypatch.setenv(unmanaged.ENV, "auto")
+        monkeypatch.setattr(unmanaged, "examine", lambda _port: unmanaged.Examined(True, pid=os.getpid(), model=str(files[0])))
+        said: list[str] = []
+        try:
+            spec = ServerSpec(model=files[0], engine="strata", port=server.port, context=131072)
+            assert manager._unmanaged_on(spec, said.append) is None
+            assert any("strata was asked for" in line for line in said)
+        finally:
+            server.close()
+
+    @pytest.mark.parametrize(("asked_for", "running"), [("strata", ""), ("", "strata")])
+    def test_neither_a_loading_server_nor_a_held_one_stands_in_for_another_engine(self, asked_for, running):
+        entry = {"context": 131072, "parallel": 1, "engine": running}
+        spec = ServerSpec(model="m", engine=asked_for, context=131072)
+        assert not admission.pending_serves(spec, entry)
+        assert admission.pending_serves(spec, {**entry, "engine": asked_for})
+        held = broker.Held(port=18999, model="m", shape={**entry, "device": "gpu"})
+        assert "engine" in held.short_of({"context": 131072, "engine": asked_for})
+        assert held.short_of({"context": 131072, "engine": running}) == ""
+
+
 class TestLease:
     def test_the_server_starts_on_loopback_with_the_issued_key_offline_and_stops_with_its_lease(self, canned):
         manager, files = canned
         info = manager.lease(ServerSpec(model=files[0], engine="strata", port=18431), timeout=60)
-        run = install.root() / "runs" / str(info.port)
+        run = serverkeys.run_folder(info.port)
         argv = json.loads((run / "argv.json").read_text())
         held = json.loads((run / "config.json").read_text())
         assert argv[argv.index("--host") + 1] == "127.0.0.1" and "--offline" in argv
@@ -394,16 +470,42 @@ class TestLease:
         assert (info.backend, info.mtp) == ("strata", "mtp") and "drafting with mtp" in info.mtp_note
         assert held["model_name"] == "qwen3.8-flash-next-iq3_s" and files[0].name in held["aliases"]
         record = json.loads(manager.state_file.read_text())[str(info.port)]
-        assert record["backend"] == "strata" and record["mtp"] == "mtp"
+        assert record["backend"] == "strata" and record["engine"] == "strata" and record["mtp"] == "mtp"
         manager.stop_all()
         with pytest.raises(OSError):
             asked(info.port, "/health")
+
+    def test_the_run_folder_is_protected_and_keeps_no_key_after_the_server_stops(self, canned):
+        manager, files = canned
+        info = manager.lease(ServerSpec(model=files[0], engine="strata", port=18439), timeout=60)
+        run = serverkeys.run_folder(info.port)
+        assert secretpaths.path_hit(str(run / "config.json")), "the guard keeps an agent off the file that holds the key"
+        (run / "config.json.bak").write_bytes((run / "config.json").read_bytes())   # as Strata's own settings route copies it
+        manager.stop_all()
+        assert not list(run.glob("config.json*"))
+
+    def test_what_a_client_stored_through_an_earlier_server_is_gone_at_the_next_start(self, canned):
+        manager, files = canned
+        stored = serverkeys.run_folder(18440) / "config.shared-settings.json"
+        stored.parent.mkdir(parents=True)
+        stored.write_text('{"max_tokens": 1}', encoding="utf-8")
+        manager.lease(ServerSpec(model=files[0], engine="strata", port=18440), timeout=60)
+        assert not stored.exists()
+
+    def test_a_manager_asked_to_run_sandboxed_starts_no_unconfined_strata(self, canned):
+        manager, files = canned
+        confined = ServerManager(LlamaServerBackend(sandboxed=True), state_file=manager.state_file)
+        try:
+            with pytest.raises(ServerFailed, match="sandbox cannot hold"):
+                confined.lease(ServerSpec(model=files[0], engine="strata", port=18441), timeout=60)
+        finally:
+            confined.stop_all()
 
     def test_a_dflash2_start_keeps_the_window_and_confidence_the_spec_names(self, canned):
         manager, files = canned
         info = manager.lease(ServerSpec(model=files[0], engine="strata", port=18437, context=131072, spec_type="dflash2",
                                         spec_draft_max=8, extra_args=("--draft-conf", "0.6")), timeout=60)
-        held = json.loads((install.root() / "runs" / str(info.port) / "config.json").read_text())
+        held = json.loads((serverkeys.run_folder(info.port) / "config.json").read_text())
         assert held["drafting"] == "dflash2" and held["user_args"] == ["--spec", "8", "--draft-conf", "0.6"]
         assert info.mtp == "dflash2"
 
@@ -422,4 +524,4 @@ class TestLease:
         manager, files = canned
         with pytest.raises(ServerFailed, match="not offered"):
             manager.lease(ServerSpec(model=files[0], engine="strata", port=18432, **asking), timeout=30)
-        assert not (install.root() / "runs" / "18432" / "argv.json").exists()
+        assert not (serverkeys.run_folder(18432) / "argv.json").exists()

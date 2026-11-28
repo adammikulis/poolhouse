@@ -29,7 +29,9 @@ Everything is fetched the first time a Strata server starts, never at an upgrade
 | Model files | each by size and SHA-256 |
 
 **The Windows engine is a prebuilt third-party binary.** It is uploaded to the release by hand: it carries no build attestation,
-no CI run builds it, and the release tag is unsigned. Its SHA-256 pins which bytes run, not how they were made.
+no CI run builds it, the release tag is unsigned, and the release is mutable, so its publisher can replace the file. Poolhouse takes
+only the archive with the pinned SHA-256 and checks one digest over every unpacked file, the libraries beside the program included,
+at every start. That pins which bytes run, not how they were made.
 
 Strata's installers, desktop app, `strata launch` command and signed update feed are never run.
 
@@ -38,7 +40,15 @@ Strata's installers, desktop app, `strata launch` command and signed update feed
 The broker starts Strata's server through the same launch as llama-server: on loopback, with the key Poolhouse issues (in a
 private run configuration, never on the command line), with `--offline`, and holding the same lease. The server starts the engine
 as its child, and stopping the lease stops both. The run configuration names no MCP server and no command, and the server's
-per-user records go to the run folder.
+per-user records go to the run folder. That folder, `engine-runs/PORT` in the state folder, is protected as the key files are, is
+emptied before every start, so settings a client stored through the server do not outlive it, and loses the configuration and its
+copies when the server stops. The pool proxy does not pass on `/v1/load`, `/v1/unload` or `/v1/vram`; a program of this computer that
+holds the key can still call them and the server's settings routes.
+
+A server is shared only with a lease for the same engine: a llama.cpp lease is never given a Strata server, nor the reverse.
+
+Strata reads a reply's length from `max_tokens`, which Poolhouse's client sends beside llama.cpp's `n_predict`. It has no raw
+`/completion` or `/tokenize` route, so grammar completions are llama.cpp's.
 
 Memory admission and the context fit use Strata's own rules. One compute job runs per device, as with every engine.
 
@@ -63,8 +73,8 @@ refused.
 
 - Pictures. The server is started without an image encoder and a request holding a picture is refused. Strata's server reads a
   picture named by a file path or an address, so vision stays off until it is limited to picture data sent in the request.
-- The model server sandbox (`POOLHOUSE_SANDBOX_SERVE`): a lease asking for it is refused for this engine, which listens on a TCP
-  port. On Windows the server runs unconfined.
+- The model server sandbox: a start that asks for it, by `POOLHOUSE_SANDBOX_SERVE` or from the manager or broker, is refused for
+  this engine, which listens on a TCP port. On Windows the server runs unconfined.
 - Embeddings, reranking, slot save and restore, escalating slots, chat template files, tensor placement flags and RoPE scaling are
   llama.cpp's.
 - Long contexts on a Mac: Strata publishes quality measurements there only to 32,768 tokens.

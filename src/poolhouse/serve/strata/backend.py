@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -110,6 +111,10 @@ class StrataBackend(ServerBackend):
     def __init__(self, *, sandboxed: bool | None = None) -> None:
         self.sandboxed = sandboxed
 
+    def sandboxing(self, sandboxed: bool | None) -> StrataBackend:
+        """A backend that knows confinement was asked for, so that its start refuses rather than run the server unconfined."""
+        return StrataBackend(sandboxed=True) if sandboxed else self
+
     @staticmethod
     def model_of(spec: ServerSpec) -> tuple[pins.ModelSet, tuple[Path, ...]]:
         """The pinned set ``spec.model`` is the first file of, and its files; `ServerFailed` for any other file."""
@@ -146,7 +151,7 @@ class StrataBackend(ServerBackend):
 
     @staticmethod
     def _config_path(port: int) -> Path:
-        return install.root() / "runs" / str(int(port)) / "config.json"
+        return serverkeys.run_folder(port) / "config.json"
 
     def _refuse_unserved(self, spec: ServerSpec) -> None:
         for field, what in _UNSERVED:
@@ -196,10 +201,13 @@ class StrataBackend(ServerBackend):
         python = python_runtime.interpreter(NAME)
         grant.require(lease, Lease)
         claim_port(spec, lease)
-        key = serverkeys.issue(spec.port)
         path = self._config_path(spec.port)
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        path.unlink(missing_ok=True)
+        # every start begins with an empty folder: Strata keeps what a client set (its shared settings) there and would serve it again
+        if path.parent.exists():
+            shutil.rmtree(path.parent)
+        path.parent.mkdir(parents=True, mode=0o700)
+        path.parent.parent.chmod(0o700)
+        key = serverkeys.issue(spec.port)
         path.touch(mode=0o600)
         libraries = _cuda_libraries(python) if job.kind == "cuda" else []
         write_json(path, {**self.written(spec, job, made, shaped), "api_key": key, "lib_dirs": libraries})

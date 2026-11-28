@@ -420,6 +420,12 @@ class ServerBackend(ABC):
     escalates: bool = True
     #: whether the engine renders a system message after the first by itself, so no replacement chat template is given to it
     renders_late_system: bool = False
+    #: whether the model server was asked to run confined; None leaves it to the person's setting (`confined.wanted`)
+    sandboxed: bool | None = None
+
+    def sandboxing(self, sandboxed: bool | None) -> ServerBackend:
+        """This engine's backend for a manager asked to run its model servers ``sandboxed``: itself unless the engine answers it."""
+        return self
 
     def estimate_bytes(self, spec: ServerSpec) -> int | None:
         """What serving ``spec`` takes of this device's memory, for an engine that says; None for the estimate read off a GGUF."""

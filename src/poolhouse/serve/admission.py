@@ -123,11 +123,21 @@ def live(entry: Mapping[str, Any]) -> bool:
 def pending_serves(spec: ServerSpec, entry: Mapping[str, Any]) -> bool:
     """Whether the server being started on ``entry`` will serve ``spec`` when it is up."""
     held = max(1, int(entry.get("parallel") or 1))
-    return (int(entry.get("context") or 0) // held >= int(spec.context) // max(1, int(spec.parallel or 1))
+    return (not engine_difference(spec.engine, entry)
+            and int(entry.get("context") or 0) // held >= int(spec.context) // max(1, int(spec.parallel or 1))
             and held >= max(1, int(spec.parallel or 1))
             and bool(entry.get("embedding")) == bool(spec.embedding)
             and bool(entry.get("reranking")) == bool(spec.reranking)
             and not (spec.mmproj and not entry.get("mmproj")))
+
+
+def engine_difference(asked: str, entry: Mapping[str, Any]) -> str:
+    """How the engine of the server on ``entry`` differs from the one ``asked`` for ("" is llama.cpp, or tree decoding), or
+    "" when it is that one. One engine never answers for another, whatever else matches."""
+    running = str(entry.get("engine") or "")
+    if running == asked:
+        return ""
+    return f"engine: {asked or 'llama.cpp'} was asked for and the server runs {running or 'llama.cpp'}"
 
 
 def differences(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str]) -> list[str]:
@@ -135,6 +145,8 @@ def differences(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str
     (from `serving_mismatch`) and then the recorded settings that were asked for and are not
     the server's. Empty when it can serve ``spec`` as it is."""
     out = list(mismatches)
+    if other := engine_difference(spec.engine, entry):
+        out.append(other)
     if bool(entry.get("embedding")) != bool(spec.embedding):
         out.append("embedding: the server " + ("serves embeddings" if entry.get("embedding") else "does not"))
     if bool(entry.get("reranking")) != bool(spec.reranking):

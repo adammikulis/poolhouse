@@ -206,6 +206,8 @@ class Admitting:
             told(f"port {spec.port}: not adopting pid {seen.pid} -- it refuses this build's key")
             return None
         mismatch = serving_mismatch(spec, reported_models(base_url), serving_params(base_url))
+        if other := admission.engine_difference(spec.engine, {}):   # a server found running is a llama-server
+            mismatch.append(other)
         if mismatch:
             told(f"port {spec.port}: not adopting pid {seen.pid} -- " + "; ".join(mismatch))
             return None

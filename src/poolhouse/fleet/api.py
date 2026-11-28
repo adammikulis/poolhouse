@@ -82,6 +82,8 @@ PROXIED = re.compile(r"/(v1/[A-Za-z0-9/_.-]*|completions?|chat/completions|token
                      r"embeddings?|infill|apply-template|props|health|models|metrics|slots)"
                      r"(\?[^\s#]*)?")
 """The paths of a model server the proxy passes on; nothing else, and no way up out of them."""
+CONTROLS = ("/v1/load", "/v1/unload", "/v1/vram")
+"""Routes under ``/v1`` that change a model server itself (Strata's), which the proxy never passes on: a member uses the model."""
 AGENT = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
@@ -262,7 +264,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             rest = self.path[len("/infer"):] or "/"
             rest = "/" + rest if rest.startswith("?") else rest
             route = rest.split("?")[0]
-            if (not PROXIED.fullmatch(rest) or ".." in route.split("/")
+            if (not PROXIED.fullmatch(rest) or ".." in route.split("/") or route.rstrip("/") in CONTROLS
                     or (route.startswith(READ_ONLY) and self.command not in ("GET", "HEAD"))):
                 self._send(403, {"error": "that path is not one the proxy passes on"})
                 return True
