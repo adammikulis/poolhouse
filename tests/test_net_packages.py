@@ -88,7 +88,7 @@ def test_standard_package_provider_is_scoped_and_keeps_distrust_refusals(monkeyp
 
     calls = capture(monkeypatch, tmp_path)
     packages.run("python", ["install", "tensor"], timeout=5, env={})
-    assert calls[-1][0][4:6] == ["--index-url", "https://pypi.org/simple"]
+    assert calls[-1][0][5:7] == ["--index-url", "https://pypi.org/simple"]
     assert not policy.default().listed("pypi.org")
     monkeypatch.setattr(observers, "gate", lambda kind, key: SimpleNamespace(since=time.time(), state="bad", reason="distrusted"))
     calls.clear()
@@ -137,7 +137,7 @@ def test_configured_find_links_splits_whitespace_and_preserves_each_path(monkeyp
     sources = [r"C:\wheelhouse", r"D:\packages"]
     calls = capture(monkeypatch, tmp_path, f"global.find-links={chr(10).join(sources)!r}\n")
     packages.run("python", ["install", "--no-index", "tensor"], timeout=5, env={})
-    assert calls[-1][0][4:] == ["--no-index", "--find-links", sources[0], "--find-links", sources[1], "tensor"]
+    assert calls[-1][0][5:] == ["--no-index", "--find-links", sources[0], "--find-links", sources[1], "tensor"]
 
 
 @pytest.mark.parametrize("args", [["index", "versions", "tensor"], ["list", "--outdated"], ["list", "--uptodate"]])
