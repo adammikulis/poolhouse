@@ -255,6 +255,12 @@ def checks(args: Any, url: str, keep: Callable[[dict[str, Any]], None]) -> None:
               "text": reply.content or ""})
 
 
+def opened(args: Any, pids: Sequence[int]) -> gpuwatch.Span:
+    """A watch opened once the processor is free, or after the wait allowed for one request."""
+    gpuwatch.cpu_free(args.cpu_wait)
+    return gpuwatch.watch(pids, platform=sys.platform)
+
+
 def measure(args: Any, config: Mapping[str, Any], arm: Arm, turn: int) -> None:
     """One session of ``arm`` in round ``turn``: leased, asked, released, kept."""
     files = plan_files.required(config, [k for k in (arm.model, arm.head) if k])
@@ -287,7 +293,7 @@ def measure(args: Any, config: Mapping[str, Any], arm: Arm, turn: int) -> None:
                        "checkout": plan_files.commit(ROOT), "corpus": plan_files.digest_of(text)})
         try:
             workload.session(asker(url), plan, workload.Material(
-                ROOT, keep, lambda: gpuwatch.watch(pids, platform=sys.platform), f"r{turn}", text))
+                ROOT, keep, lambda: opened(args, pids), f"r{turn}", text))
             if turn == args.first_round and not args.no_checks:
                 checks(args, url, keep)
             record["completed"] = True
@@ -415,7 +421,7 @@ def _tune_load(args: Any, where: Path, loaded: Loaded, text: str) -> None:
         order = list(depths) if repeat % 2 == 0 else list(reversed(depths))
         for depth in order:
             for number, prompt in enumerate(TUNE_WRITES):
-                span = gpuwatch.watch(pids, platform=sys.platform)
+                span = opened(args, pids)
                 reply = ask([*base, {"role": "user", "content": prompt}],
                             workload.Turn("tune", 8192, args.tune_tokens), lambda *_: None, depth=depth)
                 watched = span.close()
@@ -448,6 +454,8 @@ def figures(rows: Sequence[Mapping[str, Any]]) -> dict[tuple[str, str, int], dic
             reads[(row["arm"], row["session"])].append(row)
         if row.get("foreign_share") is not None:
             out[(row["arm"], row["kind"], row.get("level") or 0)]["foreign_share"].append(100 * row["foreign_share"])
+        if row.get("foreign_cpu") is not None:
+            out[(row["arm"], row["kind"], row.get("level") or 0)]["foreign_cpu"].append(100 * row["foreign_cpu"])
         if row.get("contended"):
             out[(row["arm"], row["kind"], row.get("level") or 0)]["contended"].append(1.0)
             continue
@@ -485,7 +493,7 @@ def report(args: Any, config: Mapping[str, Any]) -> int:
     got = figures(rows)
     for (arm, kind, level), held in sorted(got.items()):
         say(f"{arm} {kind} @{level}")
-        for name in ("read_tps", "cold_tps", "cold_s", "write_tps", "accepted", "reread", "ttft_s", "foreign_share"):
+        for name in ("read_tps", "cold_tps", "cold_s", "write_tps", "accepted", "reread", "ttft_s", "foreign_share", "foreign_cpu"):
             if held.get(name):
                 say(f"    {name}: {spread(held[name], 2 if name == 'ttft_s' else 1)}")
         if held.get("correct"):
@@ -511,6 +519,8 @@ def add_arguments(sub: Any) -> argparse.ArgumentParser:
     one.add_argument("--context", type=int, default=262144, help="served context (default: %(default)s)")
     one.add_argument("--serve-port", type=int, default=8099)
     one.add_argument("--wait", type=float, default=5.0, metavar="MIN", help="minutes to wait for a quiet machine")
+    one.add_argument("--cpu-wait", type=float, default=120.0, metavar="S",
+                     help="seconds to wait before each request for the processor to be free (default: %(default)s)")
     one.add_argument("--until", default="", metavar="HH:MM", help="start no new session after this")
     one.add_argument("--hard-until", default="", metavar="HH:MM", help="end a session at this")
     one.add_argument("--tune-tokens", type=int, default=192, metavar="N", help="tokens a tuning write writes")

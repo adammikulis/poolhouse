@@ -62,7 +62,8 @@ def test_gpu_time_is_summed_per_process_from_apples_listing():
     assert gpuwatch.apple_times(text) == {(41, "llama-server"): 12, (9, "Other"): 0}
 
 
-def test_another_processes_gpu_time_marks_the_span_and_its_own_does_not():
+def test_another_processes_gpu_time_marks_the_span_and_its_own_does_not(monkeypatch):
+    monkeypatch.setattr(gpuwatch, "cpu_seconds", lambda own: (0.0, 0.0))
     reads = iter([{(1, "server"): 0, (2, "browser"): 0}, {(1, "server"): 10**12, (2, "browser"): 0}])
     alone = gpuwatch.Span([1], lambda: next(reads), "apple").close()
     assert alone["contended"] is False
@@ -71,8 +72,20 @@ def test_another_processes_gpu_time_marks_the_span_and_its_own_does_not():
     assert shared["contended"] is True and shared["foreign"] == ["browser"]
 
 
-def test_a_machine_with_no_counter_claims_nothing():
-    assert gpuwatch.Span([1], None, "none").close() == {"gpu_watched": False, "contended": None}
+def test_a_machine_with_no_gpu_counter_claims_nothing_about_the_gpu(monkeypatch):
+    monkeypatch.setattr(gpuwatch, "cpu_seconds", lambda own: (0.0, 0.0))
+    assert gpuwatch.Span([1], None, "none").close() == {"gpu_watched": False, "contended": None, "foreign_cpu": 0.0}
+
+
+def test_a_busy_processor_contends_a_span_whatever_the_gpu_says(monkeypatch):
+    reads = iter([(0.0, 0.0), (1e9, 0.0)])
+    monkeypatch.setattr(gpuwatch, "cpu_seconds", lambda own: next(reads))
+    assert gpuwatch.Span([1], None, "none").close()["contended"] is True
+
+
+def test_processor_time_of_other_processes_is_their_share_of_every_core():
+    assert gpuwatch.foreign_cpu((100.0, 10.0), (180.0, 50.0), 10.0, 16) == 0.25
+    assert gpuwatch.foreign_cpu((100.0, 10.0), (101.0, 20.0), 10.0, 16) == 0.0
 
 
 def test_nvidia_processes_without_a_memory_figure_hold_none():
