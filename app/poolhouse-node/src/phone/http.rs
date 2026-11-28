@@ -16,10 +16,10 @@ use serde_json::{json, Map, Value};
 use crate::approvals::calls::pending;
 use crate::approvals::decide::{decide, sweep, view, Decision};
 use crate::error::{Error, Result};
+use crate::gate::{Gate, Permit, Timed};
 use crate::grants::authority::Authority;
 use crate::node::Node;
 use crate::phone::enrol::{ask_to_remove, enrol, make_offer_from_phone, offer_open_for_another};
-use crate::phone::gate::{Gate, Permit};
 use crate::phone::{shown, ACTIVE, PENDING};
 
 const MOST_HEAD: usize = 16 * 1024;
@@ -279,46 +279,10 @@ fn write_response<S: Write>(s: &mut S, status: u16, body: &Value) -> std::io::Re
     s.flush()
 }
 
-/// A connection with a deadline on the whole of a stage, not on each read: a host that sends a byte every few seconds is cut off
-/// all the same.
-struct Timed {
-    tcp: TcpStream,
-    until: Instant,
-}
-
-impl Timed {
-    fn arm(&mut self, span: Duration) {
-        self.until = Instant::now() + span;
-    }
-
-    fn left(&self) -> std::io::Result<Duration> {
-        let left = self.until.saturating_duration_since(Instant::now());
-        if left.is_zero() { Err(std::io::ErrorKind::TimedOut.into()) } else { Ok(left) }
-    }
-}
-
-impl Read for Timed {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.tcp.set_read_timeout(Some(self.left()?))?;
-        self.tcp.read(buf)
-    }
-}
-
-impl Write for Timed {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.tcp.set_write_timeout(Some(self.left()?))?;
-        self.tcp.write(buf)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.tcp.flush()
-    }
-}
-
 fn serve_one(node: &Mutex<Node>, config: Arc<ServerConfig>, tcp: TcpStream, place: &Permit) -> Result<()> {
     let ip = tcp.peer_addr()?.ip();
     let mut conn = ServerConnection::new(config).map_err(|e| Error::Invalid(format!("tls: {e}")))?;
-    let mut tcp = Timed { tcp, until: Instant::now() + HEAR_FOR };
+    let mut tcp = Timed::within(tcp, HEAR_FOR);
     while conn.is_handshaking() {
         conn.complete_io(&mut tcp).map_err(|e| Error::Denied(format!("the handshake failed: {e}")))?;
     }
@@ -369,7 +333,8 @@ pub(crate) fn start_locked(held: &mut Node, node: Arc<Mutex<Node>>, listen: Sock
                     let Some(place) = gate.enter(from.ip()) else { continue };
                     let _ = tcp.set_nonblocking(false);
                     let (node, config) = (node.clone(), config.clone());
-                    std::thread::spawn(move || {
+                    // A connection no thread can be started for is closed.
+                    let _ = std::thread::Builder::new().name("phone".into()).spawn(move || {
                         let _ = serve_one(&node, config, tcp, &place);
                     });
                 }
@@ -418,43 +383,5 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert_eq!(node.lock().unwrap().phone_port, 0, "stopped endpoint is not advertised");
-    }
-
-    fn connected() -> (TcpStream, TcpStream) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-        (client, listener.accept().unwrap().0)
-    }
-
-    #[test]
-    fn a_peer_that_says_nothing_is_cut_off_at_the_deadline() {
-        let (_client, server) = connected();
-        let mut timed = Timed { tcp: server, until: Instant::now() + Duration::from_millis(300) };
-        let began = Instant::now();
-        assert!(timed.read(&mut [0u8; 16]).is_err());
-        assert!(began.elapsed() < Duration::from_secs(2), "{:?}", began.elapsed());
-    }
-
-    #[test]
-    fn a_peer_that_sends_a_byte_at_a_time_is_cut_off_at_the_same_deadline() {
-        let (client, server) = connected();
-        let sender = std::thread::spawn(move || {
-            let mut client = client;
-            for _ in 0..40 {
-                if client.write_all(b"x").is_err() {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(100));
-            }
-        });
-        let mut timed = Timed { tcp: server, until: Instant::now() + Duration::from_millis(600) };
-        let (began, mut got) = (Instant::now(), 0);
-        while let Ok(n) = timed.read(&mut [0u8; 16]) {
-            got += n;
-            assert!(n > 0, "the peer did not close");
-        }
-        assert!(began.elapsed() < Duration::from_millis(1500) && (3..15).contains(&got), "{:?} {got}", began.elapsed());
-        drop(timed);
-        sender.join().unwrap();
     }
 }
