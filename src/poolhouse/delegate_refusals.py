@@ -6,6 +6,9 @@ which the hook denied, unless an editing tool later completed on the same path. 
 box lets nothing write and that says it could not: the system's refusal on a line that names the path, or, of an editing tool, the harness's own
 word that the write itself failed (`UNWRITTEN`). A command or an edit that merely failed (a search with no match, text an edit does not find) is
 neither. What a program writes without the line saying so is not seen here.
+
+Every one is recorded and said. `lost` names those that say something of the work was left out, which the sandbox's refusal of git's own folder
+does not once changes were applied: that folder is read-only there by design, and the launcher publishes and commits the files itself.
 """
 
 from __future__ import annotations
@@ -23,7 +26,7 @@ from poolhouse import safetext
 from poolhouse.guard import unboxed
 from poolhouse.isolation.publication import NAME
 
-__all__ = ["RULES", "SANDBOX", "Refused", "Writes", "said", "writes"]
+__all__ = ["RULES", "SANDBOX", "Refused", "Writes", "lost", "said", "writes"]
 
 SANDBOX, RULES = "sandbox", "rules"
 BY = {SANDBOX: "the sandbox", RULES: "Poolhouse's tool rules"}
@@ -60,6 +63,16 @@ class Refused:
     path: str
     tool: str
     by: str
+
+    @property
+    def of_git(self) -> bool:
+        """Whether the sandbox refused it in the git folder of the folder the run works in."""
+        return self.by == SANDBOX and Path(self.path).parts[:1] == (".git",)
+
+
+def lost(refused: Collection[Refused], applied: Collection[str]) -> tuple[Refused, ...]:
+    """The refused writes that count against a run that had ``applied`` published: every one, except those of git's own folder when something was."""
+    return tuple(each for each in refused if not (applied and each.of_git))
 
 
 def _named(arguments: Mapping[str, Any]) -> str:

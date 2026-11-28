@@ -50,6 +50,14 @@ def test_two_delegates_of_one_lead_start_from_the_same_system_prompt_and_differ_
     assert one.message() != two.message() and "claude-aaaaaa" in one.message() and "read the tests" in one.message()
 
 
+def test_a_sandboxed_editing_delegate_is_told_that_git_writes_are_refused_and_who_commits():
+    here = a_delegate("claude-aaaaaa", edit=True)
+    brief = delegate_confined.brief_of(here)
+    assert "git commands that write to it (add, rm, mv and commit among them) are refused" in brief and "committed for you" not in brief
+    treed = delegate_confined.brief_of(dataclasses.replace(here, branch="delegate/claude-aaaaaa"))
+    assert "the files you change are committed for you" in treed and "claude-aaaaaa" not in treed
+
+
 def test_warm_hands_a_delegate_the_trivial_task_and_nothing_else(monkeypatch):
     seen = []
     monkeypatch.setattr(delegate, "start", lambda args: seen.append(args) or 0)

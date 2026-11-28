@@ -236,7 +236,8 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
   reads only OpenSSL's `openssl.cnf` and public `cert.pem` (`toolchain.system_settings`). git does not read the system configuration.
 - **GPU and browsers** (macOS). A command computes on the GPU (Metal, MLX) and runs a headless Chromium, with the browser's inner
   sandbox off inside the box.
-- **git.** `.git` is read-only: `git status` and `git diff` work; `git add` and `git commit` fail.
+- **git.** `.git` is read-only: `git status` and `git diff` work; `git add`, `git rm`, `git mv` and `git commit` fail. The brief says so, and that
+  the launcher commits the files of a delegate that has a branch of its own.
 - **Time and output.** A command ends at its timeout (180 s unless it asks for another, at most 600 s) with everything it left running: the
   plugin runs each one under `delegate_confined.BOUNDED`, since OpenCode itself would move a command that overruns to the background. The model
   is given at most as many bytes of a tool's output as the served window has tokens (OpenCode's `tool_output`, docs/limits.md). The delegate's
@@ -261,7 +262,9 @@ A run that called an editing tool, or a shell line that asks to change files (`d
 command that changes the tree or a configuration), and applied nothing ends `unapplied`.
 
 **A refused write** (`poolhouse.delegate_refusals`) of a delegate that edits ends the run `partial`, or `unapplied` when nothing was applied,
-whatever the model says of it. The result lists each under `refused_writes` (path, tool, `sandbox` or `rules`), and `detail`, `status`, `result` and
+whatever the model says of it. One exception: the sandbox's refusal of a write to the run's own `.git` folder, beside changes that were applied,
+does not count against the run (`delegate_refusals.lost`), since that folder is read-only by design and the launcher publishes and commits the
+files itself; it is listed and said like any other. The result lists each under `refused_writes` (path, tool, `sandbox` or `rules`), and `detail`, `status`, `result` and
 the lead's notice say how many and the first paths. It is decided from the harness's tool events and the hook's answers:
 
 - by the sandbox: a call that writes a path the box lets nothing write (`Profile.refuses_write`) and says it could not. A shell line: a line of

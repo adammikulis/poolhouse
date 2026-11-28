@@ -30,6 +30,7 @@ from poolhouse import (
     delegate,
     delegate_confined,
     delegate_record,
+    delegate_refusals,
     delegate_run,
     delegate_store as store,
     harness,
@@ -179,6 +180,9 @@ if "mode:refused" in task:
     step()
     if "mode:refused-beside" in task:
         really_writes(cfg["root"] + "/src/feature.py", "x = 1\\n")
+    if "tool:git" in task:   # as a model deletes a file: `git rm` is refused, a plain `rm` is not
+        really_shells("git rm -q source.py")
+        really_shells("rm source.py")
     if "tool:write" in task:
         really_writes(cfg["root"] + "/.claude/settings.local.json", "{{}}\\n")
     if "tool:shell" in task:
@@ -744,18 +748,33 @@ def test_a_shell_call_that_writes_counts_as_trying_to_change_files_and_one_that_
     assert run.row["state"] == state and run.row["applied"] == [], run.row
 
 
-@pytest.mark.parametrize(("tool", "refused"), [("tool:write", ".claude/settings.local.json"), ("tool:shell", ".claude"),
-                                               ("tool:redirect", ".git/planted"), ("tool:outside", "direct.py"),
-                                               ("tool:wrapped", ".git/wrapped")])
-def test_a_write_the_box_refuses_beside_an_applied_one_ends_partial_and_the_result_and_the_notice_say_it(editing, tool, refused):
+@pytest.mark.parametrize(("tools", "refused"), [
+    ("tool:write", [".claude/settings.local.json"]), ("tool:shell", [".claude"]), ("tool:outside", ["direct.py"]),
+    ("tool:wrapped tool:write", [".claude/settings.local.json", ".git/wrapped"])], ids=["write", "shell", "outside", "beside-one-to-git"])
+def test_a_write_the_box_refuses_beside_an_applied_one_ends_partial_and_the_result_and_the_notice_say_it(editing, tools, refused):
     """Decided from the harness's tool events and the box's own limits: the stand-in's last words claim all of it was done."""
-    run = ran(editing, f"refused-beside {tool}")
+    run = ran(editing, f"refused-beside {tools}")
     assert run.row["applied"] == ["src/feature.py"] and run.row["refused"] == [], run.row
     assert run.status == 1 and run.row["state"] == "partial" == store.status(run.name)["state"], run.row
+    assert sorted((each["path"], each["by"]) for each in run.row["refused_writes"]) == [(each, "sandbox") for each in refused], run.row
+    said = f"{'1 write' if len(refused) == 1 else f'{len(refused)} writes'} refused by the sandbox: "
+    assert said in run.row["detail"] and said in run.told and "partial: " in run.told, (run.row["detail"], run.told)
+    assert all(f'"{each}"' in run.row["detail"] for each in refused), run.row["detail"]
+    assert not (run.project / ".claude").exists() and not (run.project / ".git" / "wrapped").exists() and not (run.project / "direct.py").exists()
+
+
+@pytest.mark.parametrize(("tool", "refused", "applied"), [
+    ("tool:git", ".git", ["source.py", "src/feature.py"]), ("tool:redirect", ".git/planted", ["src/feature.py"]),
+    ("tool:wrapped", ".git/wrapped", ["src/feature.py"])], ids=["git-rm", "redirect", "wrapped"])
+def test_a_refused_write_to_gits_own_folder_beside_applied_work_leaves_the_run_done_and_is_still_said(editing, tool, refused, applied):
+    run = ran(editing, f"refused-beside {tool}")
+    assert sorted(run.row["applied"]) == applied and run.row["refused"] == [], run.row
+    assert run.status == 0 and run.row["state"] == "done" == store.status(run.name)["state"], run.row
     assert [(each["path"], each["by"]) for each in run.row["refused_writes"]] == [(refused, "sandbox")], run.row
     said = f'1 write refused by the sandbox: "{refused}"'
-    assert said in run.row["detail"] and said in run.told and "partial: " in run.told, (run.row["detail"], run.told)
-    assert not (run.project / ".claude").exists() and not (run.project / ".git" / "planted").exists() and not (run.project / "direct.py").exists()
+    assert said in run.row["detail"] and said in run.told and "done: " in run.told, (run.row["detail"], run.told)
+    assert "not every change" not in run.row["detail"], run.row["detail"]
+    assert not (run.project / ".git" / "planted").exists() and not (run.project / ".git" / "wrapped").exists()
 
 
 def test_a_run_whose_only_write_the_box_refused_ends_unapplied(editing):
@@ -791,6 +810,19 @@ def test_a_delegate_in_the_worktree_made_for_it_is_confined_there_and_its_change
     assert not tree.exists() and not (project / "src").exists()
 
 
+def test_a_worktree_delegate_whose_git_rm_was_refused_is_done_and_its_deletion_is_committed(editing):
+    node, lead, project = editing
+    assert started("--task", "mode:refused mode:refused-beside tool:git", "--project", str(project), "--edit", tree=True) == 0
+    [name] = agent_names(node, lead)
+    assert delegate_run.run(name) == 0, store.result(name)
+    row = store.result(name)
+    changed = subprocess.run(["git", "-C", str(project), "show", "--name-status", "--format=", row["tree"]["commit"]], check=True,
+                             capture_output=True, text=True).stdout.split()
+    assert changed == ["D", "source.py", "A", "src/feature.py"], row
+    assert row["state"] == "done" and "a review is waiting for you" in row["detail"], row
+    assert '1 write refused by the sandbox: ".git"' in row["detail"] and (project / "source.py").exists(), row
+
+
 def test_a_harness_that_ends_while_its_child_holds_the_pipe_ends_the_run_and_the_child(editing):
     began = time.monotonic()
     run = ran(editing, "orphan")
@@ -819,3 +851,15 @@ def test_an_edit_run_that_could_not_test_does_not_end_as_plainly_done():
     tested = harness.Answer("done", harness.Usage(), published=applied)
     untested = harness.Answer("done", harness.Usage(), published=applied, untested="`python -m pytest` failed")
     assert delegate_run.ended(tested) == "done" and delegate_run.ended(untested) == "partial"
+
+
+def test_only_the_sandboxs_refusal_of_a_write_to_gits_own_folder_beside_applied_work_is_not_counted():
+    def ended(path, by="sandbox", applied=("src/app.py",)):
+        published = isolation.workspace.Published(applied=applied)
+        refused = (delegate_refusals.Refused(path, "shell", by),)
+        return delegate_run.ended(harness.Answer("done", harness.Usage(), published=published, refused_writes=refused, tried=True))
+
+    assert [ended(".git"), ended(".git/planted")] == ["done", "done"]
+    assert ended(".git", applied=()) == "unapplied", "nothing was applied"
+    assert ended(".git", by="rules") == "partial", "what the tool rules refuse is not explained by the sandbox's design"
+    assert [ended(each) for each in (".gitignore", ".claude", "sub/.git", "/elsewhere/.git")] == ["partial"] * 4
