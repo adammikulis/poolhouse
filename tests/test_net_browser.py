@@ -239,11 +239,11 @@ def nested(monkeypatch):
     guarded window); every other launch option is the window's."""
     real = browser._context
 
-    def launched(play, profile, window, guard=None):
+    def launched(play, *rest):
         launch = play.chromium.launch_persistent_context
         monkeypatch.setattr(play.chromium, "launch_persistent_context",
                             lambda *a, **k: launch(*a, **{**k, "chromium_sandbox": False, "timeout": 30_000}))
-        return real(play, profile, window, guard)
+        return real(play, *rest)
 
     monkeypatch.setattr(browser, "_context", launched)
 
