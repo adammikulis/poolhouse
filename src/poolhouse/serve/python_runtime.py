@@ -4,7 +4,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
-from poolhouse import maintenance
+from poolhouse import maintenance, provision
 from poolhouse.fleet.environment import Environment, provide
 from poolhouse.fleet.managed_compute import process_environment
 from poolhouse.fleet.runtime_paths import default_root
@@ -16,9 +16,11 @@ _MODULES = {
     'vllm': ('vllm.entrypoints.openai.api_server', ('vllm',)),
     'sglang': ('sglang.launch_server', ('sglang',)),
 }
-_LIBRARIES = {'mlx-tree': 'serve-mlx'}
+_LIBRARIES = {'mlx-tree': 'serve-mlx', 'strata': 'serve-strata'}
 """The engines with a managed library, installed the first time one starts. vLLM and SGLang have none: they run on
 Linux with NVIDIA or AMD cards, which this build does not install for."""
+_CHECKOUT = {'strata': ('serve-strata', ('numpy', 'jinja2', 'regex'))}
+"""The engines run as scripts of their own installed source: the extra a source checkout's environment is given."""
 _PROBE = """import importlib.util,json,sys
 assert all(importlib.util.find_spec(n) is not None for n in json.loads(sys.argv[1]))
 if sys.argv[2]=='mlx-tree':
@@ -30,11 +32,29 @@ if sys.argv[2]=='mlx-tree':
 @maintenance.reading
 def command(engine: str) -> list[str]:
     """Return the fixed engine module under its verified compute interpreter."""
-    import json
-
     module, required = _MODULES[engine]
     if source_checkout():
         return [sys.executable, '-m', module]
+    return [*_managed(engine, required), '-m', module]
+
+
+@maintenance.reading
+def interpreter(engine: str) -> list[str]:
+    """Return the isolated Python that runs the scripts of ``engine``, its libraries installed first when they are missing."""
+    extra, required = _CHECKOUT[engine]
+    if source_checkout():
+        try:
+            provision.ensure(extra, *required)
+        except ImportError as exc:
+            raise ServerFailed(str(exc)) from exc
+        return [sys.executable, '-B', '-I']
+    return _managed(engine, required)
+
+
+def _managed(engine: str, required: tuple[str, ...]) -> list[str]:
+    """The verified compute interpreter holding ``required``, as the command line every module and script of it starts with."""
+    import json
+
     environment = Environment(default_root())
 
     def ready() -> None:
@@ -54,7 +74,7 @@ def command(engine: str) -> list[str]:
             ready()
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         raise ServerFailed(str(exc)) from exc
-    return [str(environment.python), '-B', '-I', '-m', module]
+    return [str(environment.python), '-B', '-I']
 
 
 def environment_for_child(extra: dict[str, str] | None = None) -> dict[str, str]:

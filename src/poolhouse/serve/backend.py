@@ -23,6 +23,7 @@ from poolhouse.ownership import listens_on, recorded_servers
 from poolhouse.platform import end_child, process_group_kwargs
 from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, startup
 from poolhouse.serve.binary import child_env, require_binary, vetted
+from poolhouse.serve.contextsize import trained_context
 from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
 from poolhouse.serve.logs import prune, tail
@@ -181,46 +182,6 @@ def _load_mode(spec: ServerSpec) -> str:
     if spec.mlock:
         return "mlock" if no_mmap else "mmap+mlock"
     return "none" if no_mmap else ""
-
-
-_CONTEXT_SUFFIX = {"": 1, "k": 1_000, "m": 1_000_000}
-
-
-def parse_context(text: str | int) -> int:
-    """A context size the way a person names it: ``32768``, ``256k``, ``1m``.
-
-    ``k`` and ``m`` are the plain decimal multipliers a model card's own round figures
-    use -- 1,000 and 1,000,000 -- not a file size's binary kibi/mebi, so ``1m`` is
-    1,000,000 tokens, not 1,048,576.
-    """
-    if isinstance(text, int):
-        return text
-    raw = str(text).strip().lower()
-    match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*([km]?)", raw)
-    if not match:
-        raise ValueError(f"not a context size: {text!r} (want e.g. 32768, 256k, 1m)")
-    number, suffix = match.groups()
-    return int(float(number) * _CONTEXT_SUFFIX[suffix])
-
-
-def trained_context(model: str | Path) -> int:
-    """The context this model trained at, off its own GGUF header.
-
-    0 when that cannot be read -- an ``hf:`` reference not yet on disk, or a header that
-    does not name one -- which is unknown, not zero: a caller asking whether a context is
-    beyond it must treat 0 as no opinion rather than as a real training length.
-    """
-    if isinstance(model, str) and model.startswith("hf:"):
-        return 0
-    path = Path(model)
-    if not path.is_file():
-        return 0
-    try:
-        from poolhouse.serve.layout import layout
-
-        return layout(path).context_length
-    except Exception:  # noqa: BLE001 - an unreadable header names no trained length
-        return 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -453,6 +414,16 @@ class ServerBackend(ABC):
     """One way of putting a model behind an HTTP endpoint."""
 
     name: str
+    #: whether the engine chooses and starts its own drafter, so no llama.cpp draft head is planned for it
+    drafts_itself: bool = False
+
+    def estimate_bytes(self, spec: ServerSpec) -> int | None:
+        """What serving ``spec`` takes of this device's memory, for an engine that says; None for the estimate read off a GGUF."""
+        return None
+
+    def fit(self, spec: ServerSpec) -> tuple[ServerSpec, str] | None:
+        """``spec`` with its context answered and a line saying how, for an engine that fits its own; None for the GGUF fit."""
+        return None
 
     @abstractmethod
     def start(self, spec: ServerSpec, *, lease: Lease, timeout: float = 300.0) -> ServerInfo:

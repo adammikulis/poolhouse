@@ -27,6 +27,7 @@ from poolhouse.lock import only_one
 from poolhouse.ownership import lease_file, recorded_servers, same_process
 from poolhouse.serve import (
     admission,
+    engines,
     exit_guard,
     guarded,
     inuse,
@@ -72,7 +73,6 @@ from poolhouse.serve.process import (
     pid_exists,
     self_or_ancestor,
 )
-from poolhouse.serve.python_engines import ENGINES
 from poolhouse.serve.slotdump import default_slot_save_path
 from poolhouse.serve.weights import resident_of, scaled_timeout, weight_of
 
@@ -177,11 +177,8 @@ class ServerManager(Admitting):
     def backend_for(self, spec: ServerSpec) -> ServerBackend:
         """The backend that serves ``spec``: the engine it names, tree decoding for MLX
         weights, anything else this manager's own."""
-        if spec.engine:
-            if spec.engine not in ENGINES:
-                raise ServerFailed(f"no serving engine {spec.engine!r}; there are "
-                                   f"{', '.join(sorted(ENGINES))}")
-            return ENGINES[spec.engine]
+        if engine := engines.named(spec.engine):
+            return engine
         if is_mlx(spec.model):
             return self.tree
         return llamacpp_provider.for_model(self.backend, spec.model, self._format_backends)
@@ -384,6 +381,8 @@ class ServerManager(Admitting):
         A head the default picked is verified against sentinel's pin like the weights; one
         that fails is left out and the lease goes on without it.
         """
+        if self.backend_for(spec).drafts_itself:
+            return spec, mtp.Plan()
         try:
             binary = self.backend_for(spec).binary  # type: ignore[attr-defined]
         except (BinaryNotFound, OSError, AttributeError):

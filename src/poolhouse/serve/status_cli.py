@@ -13,8 +13,9 @@ from poolhouse.command import flag, option
 from poolhouse.hub import pretty_name
 from poolhouse.log import say
 from poolhouse.serve import holding, lease_cli, ops, provenance
-from poolhouse.serve.backend import ServerSpec, logs_of, parse_context
+from poolhouse.serve.backend import ServerSpec, logs_of
 from poolhouse.serve.broker import BrokerError
+from poolhouse.serve.contextsize import parse_context
 from poolhouse.serve.ops import base_url_for
 from poolhouse.serve.quant_guard import status_note
 from poolhouse.units import human_bytes
@@ -102,6 +103,8 @@ def _drafting_lines(drafting: ops.Drafting | None) -> list[str]:
     """What `status` says about a server's draft head: what it is, and how much is kept."""
     if drafting is None:
         return []
+    if drafting.own:
+        return [f"  drafting {drafting.own}, the engine's own", "           " + drafting.note]
     if not drafting.loaded:
         return ["  drafting no draft head -- " + (drafting.note
                 or "every token is written by the model itself")]
@@ -187,6 +190,8 @@ def cmd_status(args: argparse.Namespace) -> int:
         quant = f"  ({snapshot.quant})" if snapshot.quant else ""
         say(snapshot.base_url)
         say(f"  model    {snapshot.model or 'not reported'}{quant}")
+        if snapshot.engine:
+            say(f"  engine   {snapshot.engine}")
         say(f"  context  {snapshot.context if snapshot.context is not None else 'not reported'}"
             " per slot")
         say(f"  slots    {snapshot.slots if snapshot.slots is not None else 'not reported'}")
