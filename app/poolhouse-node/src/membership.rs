@@ -84,6 +84,50 @@ pub enum Standing {
     Unknown,
 }
 
+/// Whether ``c`` is left out of a name wherever it is shown: a control, a quote (with which a name could close the quotes a sentence puts
+/// around it), or a mark that reorders the text after it (bidirectional controls, line separators).
+fn never_shown(c: char) -> bool {
+    c.is_control() || matches!(c, '\'' | '"' | '`' | '\u{b4}' | '\u{ab}' | '\u{bb}' | '\u{2018}'..='\u{201f}' | '\u{2032}'..='\u{2037}' | '\u{2039}' | '\u{203a}'
+        | '\u{300c}'..='\u{300f}' | '\u{301d}'..='\u{301f}' | '\u{ff02}' | '\u{ff07}' | '\u{ff40}' | '\u{61c}' | '\u{200b}' | '\u{200e}' | '\u{200f}'
+        | '\u{2028}'..='\u{202e}' | '\u{2066}'..='\u{206f}' | '\u{feff}')
+}
+
+/// A name a device or a person chose, as a list or a refusal shows it: at most ``most`` characters, none of them `never_shown`.
+pub fn shown_name(name: &str, most: usize) -> String {
+    name.chars().filter(|c| !never_shown(*c)).take(most).collect::<String>().trim().to_string()
+}
+
+/// The plain letters of an accented Latin one; None for any other character.
+fn plain_letters(c: char) -> Option<&'static str> {
+    const LETTERS: [(&str, &str); 38] = [
+        ("àáâãäåāăą", "a"), ("ÀÁÂÃÄÅĀĂĄ", "A"), ("çćĉċč", "c"), ("ÇĆĈĊČ", "C"), ("ďđð", "d"), ("ĎĐÐ", "D"), ("èéêëēĕėęě", "e"), ("ÈÉÊËĒĔĖĘĚ", "E"),
+        ("ĝğġģ", "g"), ("ĜĞĠĢ", "G"), ("ĥħ", "h"), ("ĤĦ", "H"), ("ìíîïĩīĭįı", "i"), ("ÌÍÎÏĨĪĬĮİ", "I"), ("ñńņň", "n"), ("ÑŃŅŇ", "N"), ("òóôõöøōŏő", "o"),
+        ("ÒÓÔÕÖØŌŎŐ", "O"), ("ŕŗř", "r"), ("ŔŖŘ", "R"), ("śŝşšș", "s"), ("ŚŜŞŠȘ", "S"), ("ţťŧț", "t"), ("ŢŤŦȚ", "T"), ("ùúûüũūŭůűų", "u"),
+        ("ÙÚÛÜŨŪŬŮŰŲ", "U"), ("ýÿŷ", "y"), ("ÝŸŶ", "Y"), ("źżž", "z"), ("ŹŻŽ", "Z"), ("ł", "l"), ("Ł", "L"), ("ß", "ss"), ("æ", "ae"), ("Æ", "AE"),
+        ("œ", "oe"), ("Œ", "OE"), ("þ", "th"),
+    ];
+    LETTERS.iter().find(|(many, _)| many.contains(c)).map(|(_, plain)| *plain)
+}
+
+/// A device's name inside a text the node writes for a person to sign, which is printable ASCII: accented letters lose their accents, and
+/// anything but letters, digits, spaces, dots, dashes and underscores is left out, so a name adds no words of its own to the sentence. A
+/// name with no letter or digit left is the start of the device's fingerprint.
+pub fn sentence_name(name: &str, fingerprint: &str) -> String {
+    let mut out = String::new();
+    for c in name.chars() {
+        match plain_letters(c) {
+            Some(plain) => out.push_str(plain),
+            None if c.is_ascii_alphanumeric() || matches!(c, ' ' | '.' | '-' | '_') => out.push(c),
+            None => {}
+        }
+    }
+    if out.chars().any(|c| c.is_ascii_alphanumeric()) {
+        out.trim().to_string()
+    } else {
+        fingerprint.chars().take(12).collect()
+    }
+}
+
 /// One device's standing in the pool.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Device {
@@ -169,7 +213,7 @@ impl Pool {
             return;
         }
         let fingerprint = cert_fingerprint(der);
-        let name: String = name.chars().filter(|c| !c.is_control()).take(80).collect();
+        let name = shown_name(name, 80);
         self.devices.insert(fingerprint.clone(), Device { fingerprint, cert: hex(der), name, status: Status::Active, at: now_ms, by: "self".into() });
     }
 

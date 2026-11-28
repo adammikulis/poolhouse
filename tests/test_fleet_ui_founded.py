@@ -78,8 +78,9 @@ def test_a_pool_nobody_founded_answers_this_machine_without_a_sign_in(alone, ui)
 def test_a_page_started_without_the_pool_actions_refuses_every_pool_route(alone, ui):
     """The daemon may not import the pool actions: the command that starts it hands them in, and a page without them says so."""
     ui.ui.pool_actions = None
+    cookie = ui.ticket_session()[2]["Set-Cookie"].split(";")[0]  # changing the pool takes the app's window
     for method, path in (("GET", "/ui/pool"), ("POST", "/ui/pool/found"), ("POST", "/ui/pool/add-device"), ("DELETE", "/ui/pool")):
-        status, body, _ = ui.call(path, method=method, body={"name": "home"} if method == "POST" else None)
+        status, body, _ = ui.call(path, method=method, body={"name": "home"} if method == "POST" else None, cookie=cookie)
         assert status == 501 and "pool actions" in body["error"], (method, path, status, body)
     assert ui.call("/ui/fleet")[0] == 200
 

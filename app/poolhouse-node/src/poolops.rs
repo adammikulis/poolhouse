@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 
 use crate::error::Result;
 use crate::gov::charter::MOST_DEVICE_NAME;
-use crate::membership::Device;
+use crate::membership::{shown_name, Device};
 use crate::row::Kind;
 
 /// The board that carries the pool's own history (members added and put out, policy changes).
@@ -31,13 +31,13 @@ fn host_name() -> String {
     if name.is_empty() { "device".into() } else { name }
 }
 
-/// The name the person gave the device of the state directory ``dir``, as a pool can list it; None when they gave none.
+/// The name the person gave the device of the state directory ``dir``, as a pool can list it; None when they gave none. Only a regular
+/// file is read: a link is not followed, and a pipe holds nobody.
 fn typed_name(dir: &Path) -> Option<String> {
     let mut bytes = Vec::new();
-    std::fs::File::open(dir.join(NAME_FILE)).ok()?.take(MOST_NAME_BYTES).read_to_end(&mut bytes).ok()?;
-    let text: String = String::from_utf8_lossy(&bytes).chars().filter(|c| !c.is_control()).collect();
-    let name: String = text.trim().chars().take(MOST_DEVICE_NAME).collect();
-    Some(name.trim_end().to_string()).filter(|n| !n.is_empty())
+    crate::sys::open_regular(&dir.join(NAME_FILE))?.take(MOST_NAME_BYTES).read_to_end(&mut bytes).ok()?;
+    let name = shown_name(String::from_utf8_lossy(&bytes).trim(), MOST_DEVICE_NAME);
+    Some(name).filter(|n| !n.is_empty())
 }
 
 impl crate::node::Node {

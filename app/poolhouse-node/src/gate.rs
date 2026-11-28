@@ -255,9 +255,14 @@ impl Timed {
 
     /// End the deadline: each read and each write from now on may take ``each``.
     pub fn disarm(&mut self, each: Duration) -> std::io::Result<()> {
+        self.rest(Some(each), each)
+    }
+
+    /// End the deadline: each read from now on may take ``read`` (any time at all when None) and each write ``write``.
+    pub fn rest(&mut self, read: Option<Duration>, write: Duration) -> std::io::Result<()> {
         self.until = None;
-        self.tcp.set_read_timeout(Some(each))?;
-        self.tcp.set_write_timeout(Some(each))
+        self.tcp.set_read_timeout(read)?;
+        self.tcp.set_write_timeout(Some(write))
     }
 
     pub fn into_inner(self) -> Arc<TcpStream> {

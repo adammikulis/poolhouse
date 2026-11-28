@@ -876,7 +876,15 @@ listener is the one network port.
   is admitted on its first contact from the same segment and the admit is recorded with the certificate fingerprint (`by: open`).
   A device joins only if it is alone in a pool that no admin governs (`Pool::can_join_other`); a governed pool is left by its own
   `leave` act and never merged into another. A pool lists a device by the name the person gave it, which the page writes to
-  `<state>/device-name` (`node_pool.name_device`), else by its host name; the name is fixed when the device founds or joins.
+  `<state>/device-name` (`node_pool.name_device`), else by its host name; the name is fixed when the device founds or joins. The node
+  reads that file only when it is a regular one, never through a link, and shows no quote or bidirectional control of any name
+  (`membership::shown_name`); in the ASCII text a key signs, a name loses its accents and every other character but letters, digits,
+  spaces, dots, dashes and underscores (`sentence_name`).
+- **Deadlines.** A dial has 5 s to connect and `tls::HANDSHAKE_FOR` for the handshake, a request and its reply `peer::CALL_FOR`, and one
+  sync with a member 300 s (`net::SYNC_FOR`), however slowly the bytes come. Each member is synced on a thread of its own, so a slow one
+  holds up no other.
+- **The page.** Founding, joining, adding or removing a device and leaving take a window that signed in with a launch ticket, also before
+  there is a pool. Without a session, a page on this computer answers only a request addressed to an address or `localhost`.
 
 `poolhouse-node run --state DIR --listen 127.0.0.1:0 --beacon-bind ADDR --beacon-send ADDR
 --advertise IP --sync-ms N` starts the network; tests use real sockets on loopback with injected

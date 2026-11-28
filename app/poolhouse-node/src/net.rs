@@ -33,6 +33,8 @@ use crate::tls::{server_config, StandingFn};
 
 /// How often a node on a network swaps pool records and boards with every member, unless it is started with another interval.
 pub const SYNC_EVERY: Duration = Duration::from_secs(20);
+/// The longest one exchange with a member takes, however it paces its replies; each request in it has `peer::CALL_FOR`.
+const SYNC_FOR: Duration = Duration::from_secs(300);
 /// How long a device does not ask again a pool that refused it a join.
 const REFUSED_FOR: Duration = Duration::from_secs(10);
 /// The connections the peer listener holds together: half of the 256 descriptors macOS gives a process by default, so that peers
@@ -74,6 +76,8 @@ pub struct Net {
     pub shards: Arc<Shards>,
     window: Mutex<Option<Window>>,
     joining: Mutex<BTreeSet<String>>,
+    /// Members the periodic sync has an exchange out with.
+    syncing: Mutex<BTreeSet<String>>,
     /// Devices whose pool refused this one a join lately, and when.
     refused: Mutex<BTreeMap<String, std::time::Instant>>,
     beacon_stats: OnceLock<Arc<BeaconStats>>,
@@ -183,7 +187,7 @@ impl Net {
         let port = listener.local_addr()?.port();
         let net = Arc::new(Net {
             node, activity, server_config: server_config(&me, standing)?, me, port, stop, shards,
-            window: Mutex::new(None), joining: Mutex::new(BTreeSet::new()), refused: Mutex::new(BTreeMap::new()), beacon_stats: OnceLock::new(), last_join: Mutex::new(Value::Null),
+            window: Mutex::new(None), joining: Mutex::new(BTreeSet::new()), syncing: Mutex::new(BTreeSet::new()), refused: Mutex::new(BTreeMap::new()), beacon_stats: OnceLock::new(), last_join: Mutex::new(Value::Null),
             reverse: Mutex::new(BTreeMap::new()), attaching: Mutex::new(BTreeMap::new()),
             places: Gate::new(MOST_PEER_CONNECTIONS, MOST_PEER_PER_ADDRESS, PEER_RESERVED),
             lingering: Gate::new(MOST_LINGERING, MOST_LINGERING, 0), this: OnceLock::new(),
@@ -546,46 +550,66 @@ impl Net {
     }
     fn sync_once_admitted(&self, force: bool, effect: &AdmittedEffect) -> Result<usize> {
         let _child=self.activity.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
-        let targets: Vec<(String, String)> = {
-            let mut n = tracked_node(&self.node, Source::Network)?;
-            n.gov_tick()?;
-            let me = self.me.fingerprint();
-            let now = wall_ms();
-            n.members.active().into_iter().filter(|d| d.fingerprint != me)
-                .filter(|d| force || n.facts.peers.get(&d.fingerprint).is_none_or(|f| f.retry_at_ms <= now))
-                .filter_map(|d| n.facts.peers.get(&d.fingerprint).and_then(|f| f.addr.clone()).map(|a| (d.fingerprint, a))).collect()
-        };
-        let mut reached = 0;
-        for (fp, addr) in targets {
-            if !tracked_node(&self.node, Source::Network)?.members.is_active(&fp) {
-                continue;
+        let targets = self.sync_targets(force)?;
+        // each member on a thread of its own: one that is slow to answer holds up no other
+        let reached = std::thread::scope(|scope| -> Result<usize> {
+            let mut dials = Vec::new();
+            for (fp, addr) in &targets {
+                dials.push(std::thread::Builder::new().name("peer-dial".into()).spawn_scoped(scope, move || self.sync_member(fp, addr, effect))?);
             }
-            let result = addr.parse::<SocketAddr>().map_err(|e| Error::Invalid(e.to_string()))
-                .and_then(|a| self.dial_member(&fp, a))
-                .and_then(|mut c| self.compatible(&mut c).and_then(|()| sync_all_admitted(&self.node, &mut c, effect)));
-            let mut n = tracked_node(&self.node, Source::Network)?;
-            if !n.members.is_active(&fp) {
-                continue;
-            }
-            let f = n.facts.peer(&fp);
-            match result {
-                Ok(reports) => {
-                    (f.last_sync_ms, f.last_seen_ms, f.last_error, f.fails, f.retry_at_ms) = (wall_ms(), wall_ms(), crate::netsync::refused_note(&reports), 0, 0);
-                    reached += 1;
-                    drop(n);
-                    if let Ok(a) = addr.parse::<SocketAddr>() {
-                        self.attach(&fp, a);
-                    }
-                }
-                Err(e) => {
-                    f.fails = f.fails.saturating_add(1);
-                    f.retry_at_ms = wall_ms() + (1000u64 << f.fails.min(6)).min(60_000);
-                    f.last_error = refusal_hint(&e);
-                }
-            }
-        }
+            dials.into_iter().try_fold(0, |reached, dial| -> Result<usize> {
+                let answered = dial.join().map_err(|_| Error::Damaged("a sync thread ended early".into()))??;
+                Ok(reached + usize::from(answered))
+            })
+        })?;
         self.drop_removed();
         Ok(reached)
+    }
+
+    /// The members to sync with now and where each is: every active one with an address, less (unless ``force``) those still in backoff.
+    fn sync_targets(&self, force: bool) -> Result<Vec<(String, String)>> {
+        let mut n = tracked_node(&self.node, Source::Network)?;
+        n.gov_tick()?;
+        let me = self.me.fingerprint();
+        let now = wall_ms();
+        Ok(n.members.active().into_iter().filter(|d| d.fingerprint != me)
+            .filter(|d| force || n.facts.peers.get(&d.fingerprint).is_none_or(|f| f.retry_at_ms <= now))
+            .filter_map(|d| n.facts.peers.get(&d.fingerprint).and_then(|f| f.addr.clone()).map(|a| (d.fingerprint, a))).collect())
+    }
+
+    /// Dial the member ``fp`` at ``addr``, exchange with it within `SYNC_FOR` and record how that went; whether it was reached. What one
+    /// exchange did not finish the next takes up.
+    fn sync_member(&self, fp: &str, addr: &str, effect: &AdmittedEffect) -> Result<bool> {
+        if !tracked_node(&self.node, Source::Network)?.members.is_active(fp) {
+            return Ok(false);
+        }
+        let result = addr.parse::<SocketAddr>().map_err(|e| Error::Invalid(e.to_string()))
+            .and_then(|a| self.dial_member(fp, a))
+            .and_then(|mut c| {
+                c.done_within(SYNC_FOR);
+                self.compatible(&mut c).and_then(|()| sync_all_admitted(&self.node, &mut c, effect))
+            });
+        let mut n = tracked_node(&self.node, Source::Network)?;
+        if !n.members.is_active(fp) {
+            return Ok(false);
+        }
+        let f = n.facts.peer(fp);
+        match result {
+            Ok(reports) => {
+                (f.last_sync_ms, f.last_seen_ms, f.last_error, f.fails, f.retry_at_ms) = (wall_ms(), wall_ms(), crate::netsync::refused_note(&reports), 0, 0);
+                drop(n);
+                if let Ok(a) = addr.parse::<SocketAddr>() {
+                    self.attach(fp, a);
+                }
+                Ok(true)
+            }
+            Err(e) => {
+                f.fails = f.fails.saturating_add(1);
+                f.retry_at_ms = wall_ms() + (1000u64 << f.fails.min(6)).min(60_000);
+                f.last_error = refusal_hint(&e);
+                Ok(false)
+            }
+        }
     }
 
     /// Keep one connection open to ``fp`` for it to send this device requests down, unless one is already kept: this device may be behind
@@ -729,7 +753,7 @@ impl Net {
                 other => return other,
             }
         }
-        let addr = addr.ok_or_else(|| Error::Invalid("this device has no address for it and it has not connected to this device: a device behind NAT cannot be dialed, it connects to the members whose address it has; wait for its next sync, or run `sync_now` on it".into()))?;
+        let addr = addr.ok_or_else(|| Error::Invalid("this device has no address for it and it has not connected to this device: a device behind NAT cannot be dialed, it connects to the members whose address it has; wait for it to sync, which it does by itself".into()))?;
         let mut c = self.dial_member(fp, addr).map_err(|e| match e {
             Error::Io(io) => Error::Invalid(format!("{io} at {addr}, and it has not connected to this device: a device behind NAT cannot be dialed, it connects to the members whose address it has; wait for its next sync")),
             other => other,
@@ -751,9 +775,34 @@ impl Net {
         Ok(())
     }
 
+    /// One round of the periodic sync: a thread for each member due, none waited for, and none for a member whose last is still out.
+    fn sync_due(self: &Arc<Net>) -> Result<()> {
+        let _round = self.activity.admit_effect(Source::Sync, EffectFlow::Sync).map_err(activity_error)?;
+        for (fp, addr) in self.sync_targets(false)? {
+            if !locked(&self.syncing)?.insert(fp.clone()) {
+                continue;
+            }
+            let admitted = self.activity.admit_effect(Source::Sync, EffectFlow::Sync).map_err(activity_error)?;
+            let (net, member) = (self.clone(), fp.clone());
+            let started = std::thread::Builder::new().name("peer-dial".into()).spawn(move || {
+                let _ = net.sync_member(&member, &addr, &admitted);
+                net.drop_removed();
+                if let Ok(mut out) = net.syncing.lock() {
+                    out.remove(&member);
+                }
+            });
+            // A member no thread could be started for is taken up at a later round.
+            if started.is_err() {
+                locked(&self.syncing)?.remove(&fp);
+            }
+        }
+        self.drop_removed();
+        Ok(())
+    }
+
     fn sync_loop(self: Arc<Net>, every: Duration) {
         while !self.stop.load(Ordering::SeqCst) {
-            let _ = self.sync_once(false);
+            let _ = self.sync_due();
             let mut waited = Duration::ZERO;
             while waited < every && !self.stop.load(Ordering::SeqCst) {
                 std::thread::sleep(Duration::from_millis(50));

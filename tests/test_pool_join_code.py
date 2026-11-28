@@ -14,6 +14,8 @@ from testfarm_kit import until
 import poolhouse as ph
 from poolhouse import pool_cli
 from poolhouse.api import pool
+from poolhouse.board import approval
+from poolhouse.board.client import Client
 from poolhouse.fleet.service_pool import Pool
 from poolhouse.fleet.ui import UI
 
@@ -146,6 +148,49 @@ def test_an_open_pool_is_joined_by_the_page_with_the_fingerprint_and_no_code(two
         serving.close()
     assert status == 200, answer
     assert ph.pool.status().name == "home"
+
+
+# -- names in what a key signs -----------------------------------------------------------
+@pytest.mark.parametrize(("typed", "listed"), [("büro", "büro"), ("büro\u2019s rechner", "büros rechner"), ("書斎", "書斎")],
+                         ids=["an accented letter", "a curly apostrophe", "no Latin letter"])
+def test_a_request_is_made_on_a_computer_with_any_typed_name(alone, typed, listed):
+    UI(pool=Pool(alone.state)).set_name(typed)
+    ph.pool.found("home")
+    assert alone.names() == {listed}, "the pool shows the name as typed"
+    client = Client(alone.state)
+    asker = client.call("register", BOARD, "", model="claude-sonnet-5-5", harness="claude-code", session="asker")["token"]
+    made = client.call("approval_request", BOARD, asker, **approval.wire([approval.Ask("pool_leave", uses=1)]))
+    assert made["state"] and made["text"].isascii(), made
+
+
+# -- who may change the pool through the page --------------------------------------------
+CHANGES = [("POST", "/ui/pool/found", {"name": "theirs", "policy": "open"}), ("POST", "/ui/pool/join", {"host": "127.0.0.1", "code": "123456"}),
+           ("POST", "/ui/pool/add-device", {}), ("POST", "/ui/pool/remove-device", {"device": "other"}), ("DELETE", "/ui/pool", None)]
+
+
+@pytest.mark.parametrize(("method", "path", "body"), CHANGES, ids=[f"{method} {path}" for method, path, _ in CHANGES])
+def test_only_a_signed_in_window_changes_the_pool_even_before_there_is_one(alone, tmp_path, method, path, body):
+    serving = Serving(tmp_path)
+    try:
+        status, answer, _ = serving.call(path, method=method, body=body)
+    finally:
+        serving.close()
+    assert status == 403 and "its own window" in answer["error"], (status, answer)
+    assert alone.status()["governance"]["mode"] == "unfounded"
+
+
+@pytest.mark.parametrize("name", ["rebound.local", "intranet"])
+def test_a_name_somebody_points_at_this_computer_reaches_nothing_without_a_session(alone, tmp_path, name):
+    serving = Serving(tmp_path)
+    try:
+        where = f"{name}:{serving.port}"
+        for method, path in (("GET", "/ui/pool"), ("GET", "/ui/settings"), ("POST", "/ui/settings"), ("POST", "/ui/setup/prefs")):
+            status, answer, _ = serving.call(path, method=method, body={} if method == "POST" else None, headers={"Host": where})
+            assert status == 403, (method, path, status, answer)
+        for plain in (f"127.0.0.1:{serving.port}", f"localhost:{serving.port}"):
+            assert serving.call("/ui/pool", headers={"Host": plain})[0] == 200
+    finally:
+        serving.close()
 
 
 # -- what a person types -----------------------------------------------------------------

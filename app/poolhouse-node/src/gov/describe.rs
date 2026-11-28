@@ -10,9 +10,9 @@ use super::keys::{fingerprint_of, AdminKey, Role};
 use super::pool::GovPool;
 use crate::membership::Policy;
 
-/// ``name`` as one line a person reads: at most 40 characters, no control character, in quotes.
+/// ``name`` as one line a person reads: at most 40 characters (`membership::shown_name`), in quotes it cannot close.
 pub fn quoted(name: &str) -> String {
-    format!("'{}'", name.chars().filter(|c| !c.is_control()).take(40).collect::<String>())
+    format!("'{}'", crate::membership::shown_name(name, 40))
 }
 
 fn short(fingerprint: &str) -> String {

@@ -45,22 +45,28 @@ class PoolRoutes:
     def route(self) -> bool:
         if self.path == "/ui/pool" and self.method == "GET":
             return self._guarded(self._status)
-        if self.path == "/ui/pool/found" and self.method == "POST":
-            return self._guarded(self._found)
-        if self.path == "/ui/pool/add-device" and self.method == "POST":
-            return self._guarded(self._add_device)
-        if self.path == "/ui/pool/join" and self.method == "POST":
-            return self._guarded(self._join)
-        if self.path == "/ui/pool/remove-device" and self.method == "POST":
-            return self._guarded(self._remove)
-        if self.path == "/ui/pool" and self.method == "DELETE":
-            return self._guarded(lambda: {"left": self.ui.pool_actions.leave()})
+        changes = {("POST", "/ui/pool/found"): self._found, ("POST", "/ui/pool/add-device"): self._add_device,
+                   ("POST", "/ui/pool/join"): self._join, ("POST", "/ui/pool/remove-device"): self._remove,
+                   ("DELETE", "/ui/pool"): self._leave}
+        if act := changes.get((self.method, self.path)):
+            return self._by_a_window(act)
         if self.path == "/ui/fleet" and self.method == "GET":
             self.send(200, self.ui.fleet())
             return True
         if self.path == "/ui/fleet/pause" and self.method == "POST":
             return self._pause_fleet()
         return super().route()
+
+    def _by_a_window(self, act) -> bool:
+        """Change the pool only for a window that signed in with a launch ticket, whether or not the pool is founded: reaching this
+        computer's loopback is not enough, which any program here and a web page that points a name at it can do."""
+        if not self.ui.credentialed(self.cookie):
+            self.send(403, {"error": "Open Poolhouse from its own window to change which pool this computer is in."})
+            return True
+        return self._guarded(act)
+
+    def _leave(self) -> dict[str, Any]:
+        return {"left": self.ui.pool_actions.leave()}
 
     def _guarded(self, act) -> bool:
         """Answer with what ``act`` returns, or the one sentence the node or the request gave for refusing."""
