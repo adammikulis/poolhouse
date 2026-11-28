@@ -22,8 +22,12 @@ object PoolNode {
     /** The worker, using `connection` for its calls to the computer from now on. */
     @Synchronized
     fun worker(context: Context, connection: ComputerLink): PoolWorker {
+        val replaced = link !== connection
         link = connection
-        worker?.let { return it }
+        worker?.let {
+            if (replaced) it.relinked()
+            return it
+        }
         val application = context.applicationContext
         val models = LocalModels.of(application)
         val made = PoolWorker(

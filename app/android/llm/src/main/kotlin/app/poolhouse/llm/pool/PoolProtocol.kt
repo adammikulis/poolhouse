@@ -29,7 +29,7 @@ const val MOST_OUTPUT = 8192
 const val MOST_BLOCKED_CHARS = 120
 
 /** The largest piece one post of an answer carries, in characters: at most 16 KiB of UTF-8. */
-const val MOST_DELTA_CHARS = 4000
+const val MOST_PIECE_CHARS = 4000
 
 /** The model the phone offers, as each poll describes it; `context` is the window it really serves. */
 data class Offered(val id: String, val name: String, val runtime: String, val context: Int)
@@ -96,15 +96,15 @@ object PoolProtocol {
         Json.parseToJsonElement(result).jsonObject.text("computer")?.filterNot { it.isISOControl() }?.trim()?.take(48)
             ?.ifEmpty { null }
 
-    fun delta(seq: Int, text: String): String = buildJsonObject {
+    fun part(seq: Int, text: String): String = buildJsonObject {
         put("seq", seq)
-        put("delta", text)
+        put("text", text)
         put("done", false)
     }.toString()
 
     fun done(seq: Int, text: String, result: GenerationResult): String = buildJsonObject {
         put("seq", seq)
-        put("delta", text)
+        put("text", text)
         put("done", true)
         put("finish_reason", if (result.finish == Finish.LENGTH) Finish.LENGTH.wire else Finish.STOP.wire)
         putJsonObject("usage") {
@@ -131,7 +131,7 @@ object PoolProtocol {
         val out = mutableListOf<String>()
         var from = 0
         while (from < text.length) {
-            var to = (from + MOST_DELTA_CHARS).coerceAtMost(text.length)
+            var to = (from + MOST_PIECE_CHARS).coerceAtMost(text.length)
             if (to < text.length && text[to - 1].isHighSurrogate()) to--
             out += text.substring(from, to)
             from = to

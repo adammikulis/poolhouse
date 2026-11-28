@@ -74,7 +74,7 @@ class PoolWorker(
     private val sending = Mutex()
 
     /** The linked computer's name, once it has said it. */
-    private var computer: String? = null
+    @Volatile private var computer: String? = null
     private val asker: String get() = computer ?: "your computer"
 
     private fun initial() = if (store.enabled) say(WorkerPhase.STARTING, "Starting.") else off("Only you use this phone's model.")
@@ -82,6 +82,20 @@ class PoolWorker(
     /** Takes up the work when the switch was left on; the app calls it once it can reach the computer. */
     fun resume() {
         if (store.enabled) start()
+    }
+
+    /**
+     * The app reaches a computer through another link now: what was learnt and asked through the old one is dropped, and
+     * the work starts again through the new one without waiting out a retry.
+     */
+    fun relinked() {
+        synchronized(guard) {
+            serving?.cancel("The phone is linked to another computer.")
+            loop?.cancel()
+            loop = null
+            computer = null
+        }
+        resume()
     }
 
     override fun setEnabled(on: Boolean) {
@@ -208,7 +222,7 @@ class PoolWorker(
             show(say(WorkerPhase.BUSY, "Answering a request from $asker.", model.name))
             var seq = 0
             // The first post says the phone has the request, before a model that is not loaded yet is read in.
-            if (!post(request.id, PoolProtocol.delta(seq++, ""))) cancel.cancel("The computer stopped asking.")
+            if (!post(request.id, PoolProtocol.part(seq++, ""))) cancel.cancel("The computer stopped asking.")
             val reply = scope.async(compute) {
                 runCatching {
                     check(!cancel.cancelled) { cancel.reason ?: TURNED_OFF }
@@ -226,7 +240,7 @@ class PoolWorker(
                 if (text.isEmpty() && quiet < timing.keepAlive) continue
                 quiet = 0
                 for (piece in PoolProtocol.pieces(text).ifEmpty { listOf("") }) {
-                    if (!post(request.id, PoolProtocol.delta(seq++, piece))) cancel.cancel("The computer stopped asking.")
+                    if (!post(request.id, PoolProtocol.part(seq++, piece))) cancel.cancel("The computer stopped asking.")
                 }
             }
             val outcome = reply.await()
@@ -236,7 +250,7 @@ class PoolWorker(
                 post(request.id, PoolProtocol.error(seq, reason))
             } else {
                 val pieces = PoolProtocol.pieces(take())
-                for (piece in pieces.dropLast(1)) post(request.id, PoolProtocol.delta(seq++, piece))
+                for (piece in pieces.dropLast(1)) post(request.id, PoolProtocol.part(seq++, piece))
                 post(request.id, PoolProtocol.done(seq, pieces.lastOrNull() ?: "", result))
             }
         } finally {

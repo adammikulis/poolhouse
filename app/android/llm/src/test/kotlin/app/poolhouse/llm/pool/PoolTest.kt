@@ -22,6 +22,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -41,7 +42,7 @@ private const val SECRET = "the-source-of-another-computer"
 private fun parse(text: String) = Json.parseToJsonElement(text).jsonObject
 private fun JsonObject.text(key: String) = this[key]?.jsonPrimitive?.content
 
-private class Computer : ComputerLink {
+private class Computer(private val name: String = "Studio") : ComputerLink {
     val calls = CopyOnWriteArrayList<Pair<String, String?>>()
     val requests = Channel<String>(Channel.UNLIMITED)
     @Volatile var enabled = false
@@ -52,7 +53,7 @@ private class Computer : ComputerLink {
         calls += op to body
         if (away) throw java.io.IOException("away")
         return when {
-            op == "me" -> """{"computer":"Studio"}"""
+            op == "me" -> """{"computer":"$name"}"""
             op == "pool-use" -> {
                 if (body != null) enabled = parse(body).text("enabled").toBoolean()
                 """{"enabled":$enabled}"""
@@ -112,7 +113,7 @@ class PoolWorkerTest {
         """{"id":"$id","model":"CANNED-NOT-A-MODEL","messages":[{"role":"user","content":"$SECRET"}],"max_tokens":64}"""
 
     private fun until(what: String, met: () -> Boolean) = runBlocking {
-        withTimeout(10_000) { while (!met()) delay(5) }
+        withTimeoutOrNull(10_000) { while (!met()) delay(5) }
         assertTrue(what, met())
     }
 
@@ -129,7 +130,7 @@ class PoolWorkerTest {
         until("answered") { computer.answers("r-1").any { it.text("done") == "true" } }
         val posts = computer.answers("r-1")
         assertEquals(posts.indices.map { it.toString() }, posts.map { it.text("seq") })
-        assertEquals("$MARK first second", posts.joinToString("") { it.text("delta") ?: "" })
+        assertEquals("$MARK first second", posts.joinToString("") { it.text("text") ?: "" })
         assertEquals("stop", posts.last().text("finish_reason"))
         assertEquals("3", posts.last()["usage"]!!.jsonObject.text("completion_tokens"))
         val offered = parse(computer.calls.first { it.first == "model/next" }.second!!)["model"]!!.jsonObject
@@ -146,6 +147,25 @@ class PoolWorkerTest {
         until("busy") { worker.state.value.phase == WorkerPhase.BUSY }
         assertEquals("Answering a request from Studio.", worker.state.value.detail)
         lender.release.countDown()
+    }
+
+    @Test fun aReplacedLinkIsAskedAtOnceAndItsComputerIsNamed() {
+        var link: ComputerLink = ComputerLink { _, _, _ -> throw java.io.IOException("No computer is linked.") }
+        // A long wait between retries: only being told of the new link reaches it in time.
+        val relinking = PoolWorker(
+            { operation, body, timeout -> link.call(operation, body, timeout) },
+            store, lender, { condition }, scope, Dispatchers.IO, Timing(20, 100, 20, 60_000, 60_000),
+        )
+        relinking.setEnabled(true)
+        until("not answered") { relinking.state.value.phase == WorkerPhase.FAILED }
+        link = computer
+        relinking.relinked()
+        until("the first computer") { relinking.state.value.detail == "Waiting for work from Studio." }
+        val other = Computer("Laptop").apply { enabled = true }
+        link = other
+        relinking.relinked()
+        until("the other computer") { relinking.state.value.detail == "Waiting for work from Laptop." }
+        until("the other computer polled") { other.calls.any { it.first == "model/next" } }
     }
 
     @Test fun aRequestIsNeitherKeptNorShownAfterItsAnswer() {
@@ -286,7 +306,7 @@ class PoolProtocolTest {
     }
 
     @Test fun aLongPieceIsSplitWithoutBreakingACharacter() {
-        val text = "a".repeat(MOST_DELTA_CHARS - 1) + "😀" + "b"
+        val text = "a".repeat(MOST_PIECE_CHARS - 1) + "😀" + "b"
         val pieces = PoolProtocol.pieces(text)
         assertEquals(text, pieces.joinToString(""))
         assertTrue(pieces.all { it.toByteArray().size <= 16 * 1024 && !it.last().isHighSurrogate() })
