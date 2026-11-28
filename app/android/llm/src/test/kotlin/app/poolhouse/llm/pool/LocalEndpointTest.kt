@@ -33,13 +33,12 @@ private class Canned : Lender {
 
     override fun answer(request: PoolRequest, cancel: CancelToken, onText: (String) -> Unit): GenerationResult {
         asked = request
+        val release = CountDownLatch(1)
+        // Listening before the caller hears anything, so a stop that follows at once is heard when it is made.
+        if (held) cancel.onCancel { stopped = cancel.reason; release.countDown() }
         onText("$MARK hello")
         started.countDown()
-        if (held) {
-            val release = CountDownLatch(1)
-            cancel.onCancel { stopped = cancel.reason; release.countDown() }
-            release.await(20, TimeUnit.SECONDS)
-        }
+        if (held) release.await(20, TimeUnit.SECONDS)
         return GenerationResult(if (cancel.cancelled) Finish.CANCELLED else Finish.STOP, GenerationStats(5, 2, null, null, null, 7, 8192))
     }
 }

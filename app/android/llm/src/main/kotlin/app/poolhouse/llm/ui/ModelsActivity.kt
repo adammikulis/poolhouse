@@ -3,6 +3,8 @@ package app.poolhouse.llm.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import app.poolhouse.llm.android.DownloadService
 import app.poolhouse.llm.android.DownloadState
 import app.poolhouse.llm.android.LocalModels
+import app.poolhouse.llm.android.folderPicker
 import app.poolhouse.llm.android.metered
 import app.poolhouse.llm.android.phoneRoom
 import app.poolhouse.llm.model.Catalog
@@ -47,15 +50,35 @@ class ModelsActivity : ModelScreen() {
         var changed by remember { mutableIntStateOf(0) }
         val download by DownloadService.state.collectAsState()
         var asking by remember { mutableStateOf<Pair<String, CatalogModel>?>(null) }
+        val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            result.data?.data?.takeIf { result.resultCode == RESULT_OK }?.let { DownloadService.reuse(context, it) }
+        }
+        // Read here, so the list itself is rebuilt when a job ends.
+        val left = remember(changed, download) { models.left() }
         LazyColumn(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 val room = remember(changed, download?.running) { phoneRoom(context, models.store.freeSpace()) }
                 Text("Phone models", style = MaterialTheme.typography.headlineSmall)
                 Text(
                     "${gigabytes(room.availableMemory)} of ${gigabytes(room.totalMemory)} memory free · " +
-                        "${gigabytes(room.freeStorage)} storage free. Nothing downloads until you ask.",
+                        "${gigabytes(room.freeStorage)} storage free. Nothing downloads until you ask, " +
+                        "and downloaded models stay on the phone if the app is removed.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                download?.takeIf { it.model.isEmpty() }?.failure?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+            if (left.isNotEmpty()) {
+                item {
+                    Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Models from before are still on this phone.")
+                            Button(enabled = download?.running != true, onClick = { picker.launch(folderPicker(elsewhere = false)) }) {
+                                Text("Use them")
+                            }
+                            Text("Tap \"Use this folder\", then \"Allow\".", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
             }
             items(Catalog.models, key = { it.id }) { model ->
                 val mine = download?.takeIf { it.model == model.id }
@@ -72,6 +95,11 @@ class ModelsActivity : ModelScreen() {
                     changed++
                 }
             }
+            item {
+                TextButton(enabled = download?.running != true, onClick = { picker.launch(folderPicker(elsewhere = true)) }) {
+                    Text("Add model files from another folder", style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
         asking?.let { (question, model) ->
             val deleting = question == "delete"
@@ -80,7 +108,8 @@ class ModelsActivity : ModelScreen() {
                 title = { Text(if (deleting) "Delete ${model.title}?" else "This network is metered") },
                 text = {
                     Text(
-                        if (deleting) "Its ${gigabytes(models.store.stored(model))} leave the phone. You can download it again."
+                        if (deleting) "Its file, ${models.store.file(model)?.name ?: model.file.name} " +
+                            "(${gigabytes(models.store.stored(model))}), leaves the phone. You can download it again."
                         else "${model.title} is ${gigabytes(model.bytes - models.store.stored(model))} to download, and this connection may cost money.",
                     )
                 },
@@ -132,13 +161,17 @@ class ModelsActivity : ModelScreen() {
                 download?.failure?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (download?.running == true) {
                     LinearProgressIndicator(progress = { download.held.toFloat() / model.bytes }, modifier = Modifier.fillMaxWidth())
-                    Text("${gigabytes(download.held)} of ${gigabytes(model.bytes)}", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "${if (download.copying) "Copying: " else ""}${gigabytes(download.held)} of ${gigabytes(model.bytes)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     when {
                         download?.running == true -> Button(onClick = { act("stop") }) { Text("Stop") }
                         installed && models.chosen()?.id == model.id -> Text("In use", Modifier.padding(vertical = 12.dp))
                         installed -> Button(onClick = { act("use") }) { Text("Use") }
+                        models.store.left(model) -> Text("On the phone from before", Modifier.padding(vertical = 12.dp))
                         else -> Button(enabled = !anyRunning && verdict.downloadable, onClick = { act("download") }) {
                             Text(if (stored > 0) "Continue download" else "Download ${gigabytes(model.bytes)}")
                         }

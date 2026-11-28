@@ -23,6 +23,7 @@ import app.poolhouse.llm.android.batteryCelsius
 import app.poolhouse.llm.android.metered
 import app.poolhouse.llm.android.phoneCondition
 import app.poolhouse.llm.android.phoneRoom
+import app.poolhouse.llm.android.phoneStore
 import app.poolhouse.llm.engine.Accelerator
 import app.poolhouse.llm.engine.CancelToken
 import app.poolhouse.llm.engine.ChatTurn
@@ -35,7 +36,6 @@ import app.poolhouse.llm.model.CatalogModel
 import app.poolhouse.llm.model.Downloader
 import app.poolhouse.llm.model.Licence
 import app.poolhouse.llm.model.ModelFile
-import app.poolhouse.llm.model.ModelStore
 import com.google.ai.edge.litertlm.ActivationDataType
 import java.io.File
 import kotlin.concurrent.thread
@@ -90,7 +90,7 @@ class BenchRunner : Instrumentation() {
         sendStatus(1, Bundle().apply { putString(REPORT_KEY_STREAMRESULT, "BENCH $line\n") })
     }
 
-    private fun store() = ModelStore(File(targetContext.filesDir, "llm-models"))
+    private fun store() = phoneStore(targetContext)
 
     /** A catalogue model by id, or one file named by `repository`, `revision`, `file`, `bytes` and `sha256`. */
     private fun model(): CatalogModel {
@@ -150,7 +150,9 @@ class BenchRunner : Instrumentation() {
 
     private fun measure() {
         val model = model()
-        val weights = store().file(model) ?: throw IllegalStateException("The model is not downloaded.")
+        val checking = System.nanoTime()
+        val weights = store().verified(model)
+        say(JSONObject().put("event", "checked").put("path", weights.path).put("seconds", (System.nanoTime() - checking) / 1e9))
         val accelerator = if (text("accelerator", "gpu") == "cpu") Accelerator.CPU else Accelerator.GPU
         val context = number("context", 4096)
         val pictures = text("image", "no") == "yes"
@@ -172,7 +174,7 @@ class BenchRunner : Instrumentation() {
             "int16" -> LiteRtEngine(ActivationDataType.INT16)
             else -> throw IllegalArgumentException("No such activation.")
         }
-        val drafting = text("drafting", "no") == "yes"
+        val drafting = text("drafting", "yes") == "yes"
         val action = text("action", "run")
         try {
             val loading = System.nanoTime()
@@ -181,7 +183,8 @@ class BenchRunner : Instrumentation() {
             engine.load(weights, settings).use { loaded ->
                 say(
                     JSONObject().put("event", "loaded").put("accelerator", loaded.accelerator.label).put("activation", activation)
-                        .put("drafting", drafting).put("images", loaded.acceptsImages)
+                        .put("drafting", loaded.drafting).put("draftingAsked", drafting).put("draftingRefused", loaded.draftingRefused)
+                        .put("images", loaded.acceptsImages)
                         .put("temperature", temperature ?: "model").put("seconds", (System.nanoTime() - loading) / 1e9)
                         .put("memory", watch.report()),
                 )

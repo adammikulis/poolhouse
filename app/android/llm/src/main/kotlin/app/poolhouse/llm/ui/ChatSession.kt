@@ -8,7 +8,6 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.poolhouse.llm.android.LocalModels
-import app.poolhouse.llm.engine.Accelerator
 import app.poolhouse.llm.engine.Caller
 import app.poolhouse.llm.engine.CancelToken
 import app.poolhouse.llm.engine.ChatTurn
@@ -28,7 +27,8 @@ object ChatSession {
         private set
     var status by mutableStateOf("")
         private set
-    var accelerator by mutableStateOf<Accelerator?>(null)
+    /** What the last model was loaded on, and whether it drafts. */
+    var runningOn by mutableStateOf<String?>(null)
         private set
     var last by mutableStateOf<GenerationStats?>(null)
         private set
@@ -65,7 +65,14 @@ object ChatSession {
             val outcome = runCatching {
                 models.generate(
                     Caller.PERSON, model, turns, GenerationOptions(), cancel,
-                    onLoaded = { screen.post { if (running === cancel) { accelerator = it; status = "Answering…" } } },
+                    onLoaded = { loaded ->
+                        val how = loaded.accelerator.label + when {
+                            loaded.drafting -> " · drafting"
+                            loaded.draftingRefused != null -> " · without drafting, which this processor refused"
+                            else -> ""
+                        }
+                        screen.post { if (running === cancel) { runningOn = how; status = "Answering…" } }
+                    },
                 ) { piece ->
                     val soFar = reply.append(piece).toString()
                     screen.post { if (running === cancel) writing = soFar }

@@ -76,14 +76,20 @@ class LocalChatActivity : ModelScreen() {
                 TextButton(onClick = { startActivity(Intent(context, ModelsActivity::class.java)) }) { Text("Models") }
             }
             if (model == null) {
-                Text("Download a model once. After that it answers here with no computer and no network.")
-                Button(onClick = { startActivity(Intent(context, ModelsActivity::class.java)) }) { Text("Choose a model") }
+                val left = remember(seen) { models.left().isNotEmpty() }
+                Text(
+                    if (left) "A model from before is still on this phone. Two taps make it answer here again."
+                    else "Download a model once. After that it answers here with no computer and no network.",
+                )
+                Button(onClick = { startActivity(Intent(context, ModelsActivity::class.java)) }) {
+                    Text(if (left) "Use it" else "Choose a model")
+                }
                 return@Column
             }
             val used = ChatSession.last?.contextUsed ?: 0
             Text(
                 "Answers on this phone, with no computer. Context $used of $size tokens" +
-                    (ChatSession.accelerator?.let { " · ${it.label}" } ?: ""),
+                    (ChatSession.runningOn?.let { " · $it" } ?: ""),
                 style = MaterialTheme.typography.bodySmall,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
