@@ -32,8 +32,9 @@ def interpreter(environment=None):
 
 
 def python_environment():
-    """The UTF-8 environment for Python JSONL workers."""
-    return {**os.environ, "PYTHONUTF8": "1"}
+    """The environment for Python JSONL workers: UTF-8, and no bytecode written into the interpreter's installation,
+    whose compute inventory refuses any file the app did not install."""
+    return {**os.environ, "PYTHONUTF8": "1", "PYTHONDONTWRITEBYTECODE": "1"}
 
 
 class Commands:

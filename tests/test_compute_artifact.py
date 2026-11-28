@@ -235,6 +235,84 @@ def test_install_clears_only_verified_source_bytecode_before_strict_probe(bundle
     assert artifact.probe(environment.python, environment=dict(os.environ)) == manifest['sha256']
 
 
+@pytest.mark.parametrize('locked', [True, False])
+def test_installing_another_library_after_core_keeps_the_compute_inventory(bundle, tmp_path, monkeypatch, locked):
+    import subprocess
+    import sys
+
+    from poolhouse import provision
+    from poolhouse.fleet.environment import Environment
+    from poolhouse.fleet.wheel_provenance import stamp
+
+    _, base, _, manifest = bundle
+    stamp(base, REVISION, tmp_path)
+    environment = Environment(tmp_path / 'managed')
+    subprocess.run([sys.executable, '-m', 'venv', str(environment.path)], check=True, capture_output=True)
+    monkeypatch.setattr(artifact, 'expected', lambda: manifest)
+    monkeypatch.setattr(environment, 'wheels', lambda: base.parent)
+    # The locked install is the one an engine start asks for; this wheel declares nothing, so it fetches nothing.
+    monkeypatch.delenv(provision.SWITCH, raising=False)
+
+    def bytecode():
+        return [path for path in environment.path.rglob('*.pyc')
+                if 'poolhouse' in path.relative_to(environment.path).parts]
+
+    assert environment.install(['core'], locked=locked) == {'core': {'ok': True}}
+    assert environment.require_compute() == manifest['sha256']
+    assert environment.install(['serve-strata'], locked=locked) == {'serve-strata': {'ok': True}}
+    assert environment.require_compute() == manifest['sha256']
+    assert not bytecode()
+    # An install that puts the wheel there for the first time compiles it, and the refresh removes that again.
+    subprocess.run([str(environment.python), '-I', '-m', 'pip', 'uninstall', '-y', 'poolhouse'],
+                   check=True, capture_output=True)
+    assert environment.install(['serve-strata'], locked=locked) == {'serve-strata': {'ok': True}}
+    assert not bytecode()
+    assert environment.require_compute() == manifest['sha256']
+
+
+@pytest.mark.parametrize('launch', ['daemon-job', 'gym-worker', 'bench-export'])
+def test_managed_launches_write_no_bytecode_into_the_verified_installation(bundle, tmp_path, monkeypatch, launch):
+    import subprocess
+    import sys
+
+    from poolhouse.fleet import measuring
+    from poolhouse.fleet.environment import Environment
+    from poolhouse.fleet.jobs import JobRunner
+    from poolhouse.fleet.wheel_provenance import stamp
+    from poolhouse.gym import catalog
+
+    source, base, _, _ = bundle
+    (source / 'src/poolhouse/gym/cli.py').write_text('print("[]")\n')
+    (source / 'src/poolhouse/bench/member_runs.py').write_text('print(\'{"runs": []}\')\n')
+    companion = artifact.build(source, base, REVISION)
+    manifest = artifact.from_wheel(base)
+    stamp(base, REVISION, source)
+    environment = Environment(tmp_path / 'managed')
+    subprocess.run([sys.executable, '-m', 'venv', str(environment.path)], check=True, capture_output=True)
+    subprocess.run([str(environment.python), '-m', 'pip', 'install', '--no-deps', '--no-index', '--no-compile', str(base), str(companion)],
+                   check=True, capture_output=True)
+    monkeypatch.setattr(artifact, 'expected', lambda: manifest)
+    # The test runner's own settings must not be what keeps the managed interpreter from writing.
+    for name in ('PYTHONDONTWRITEBYTECODE', 'PYTHONPYCACHEPREFIX', 'PYTHONPATH'):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(JobRunner, '_spawn', lambda self, upto: None)
+    if launch == 'daemon-job':
+        runner = JobRunner(tmp_path / 'runner', environment=environment)
+        job = runner.submit('training', [str(environment.python), '-c', 'import poolhouse.train, poolhouse.graph.payloads'],
+                            str(tmp_path))
+        runner._run_one(job)
+        assert job.state == 'done', runner.log_path(job.id).read_text()
+    elif launch == 'gym-worker':
+        assert catalog.probe(str(environment.python)) == []
+    else:
+        monkeypatch.setattr(measuring, 'bench_python', lambda _: environment.python)
+        host = measuring.BenchHost(JobRunner(tmp_path / 'runner'), home=tmp_path / 'bench')
+        host.home.mkdir(exist_ok=True)
+        (host.home / measuring.STORE).touch()
+        assert host.export()['runs'] == []
+    assert environment.require_compute() == manifest['sha256']
+
+
 @pytest.mark.parametrize('kind', ['unknown', 'loose', 'symlink', 'hardlink', 'changed-source'])
 def test_installer_does_not_clean_untrusted_bytecode_or_changed_source(bundle, tmp_path, monkeypatch, kind):
     import importlib.util

@@ -333,8 +333,7 @@ class Environment:
         output = packages.run(self.python, rewritten, timeout=timeout, env=environment,
                               **({"locked": locked} if locked else {}))
         if output.returncode == 0 and wheel is not None:
-            refreshed = packages.run(self.python, ["install", "--force-reinstall", "--no-deps", "--no-index", str(wheel)],
-                                     timeout=timeout, env=environment)
+            refreshed = compute_install.replace_wheel(self.python, wheel, environment=environment, timeout=timeout)
             if refreshed.returncode:
                 return refreshed
             commit = wheel_commit(wheel)
