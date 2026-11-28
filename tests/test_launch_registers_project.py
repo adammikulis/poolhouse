@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import time
 import uuid
@@ -118,6 +119,64 @@ def test_a_launch_in_a_repository_the_node_does_not_hold_registers_it_for_a_sess
     told = []
     decide_launch(Arguments(), project=sibling, on_event=lambda name, fields: told.append(name))
     assert held(sibling) == held(folder) and told == [], "a worktree of a registered project is that project"
+
+
+def test_a_launch_registers_nothing_outside_the_folder_it_names_whatever_its_git_config_points_at(lead, terminal, tmp_path):
+    victim = fresh(tmp_path, "victim")
+    named = tmp_path.resolve() / "named"
+    git(tmp_path, "init", "-q", "--separate-git-dir", str(named / "g"), str(named))
+    git(tmp_path, "config", "-f", str(named / "g" / "config"), "core.worktree", victim)
+    decide_launch(Arguments(), project=str(named))
+    assert held(str(named)) != "" and held(victim) == ""
+
+
+def test_a_submodule_launched_first_does_not_block_its_superproject(lead, terminal, tmp_path):
+    library = fresh(tmp_path, "library")
+    parent = Path(fresh(tmp_path, "parent"))
+    subprocess.run(["git", "-C", str(parent), "-c", "protocol.file.allow=always", "submodule", "add", "-q", library, "sub"],
+                   check=True, capture_output=True)
+    decide_launch(Arguments(), project=str(parent / "sub"))
+    decide_launch(Arguments(), project=str(parent))
+    assert held(str(parent)) == held(str(parent / "sub")) != ""
+
+
+def bare_layout(tmp_path: Path, layout: str) -> list[Path]:
+    """Two working trees of one repository whose git directory is not a folder's own `.git`."""
+    seed = fresh(tmp_path, "seed")
+    base = tmp_path.resolve() / "base"
+    base.mkdir()
+    if layout == "separate":
+        main = base / "main"
+        git(tmp_path, "init", "-q", "--separate-git-dir", str(tmp_path.resolve() / "kept.git"), str(main))
+        git(main, "commit", "-q", "--allow-empty", "-m", "m")
+        trees = [main, base / "two"]
+    else:
+        main = base / ".bare"
+        subprocess.run(["git", "clone", "-q", "--bare", seed, str(main)], check=True, capture_output=True)
+        if layout != "bare":  # `<base>/.git` names the bare repository: the worktrees sit inside `<base>`, or beside it
+            (base / ".git").write_text("gitdir: ./.bare\n")
+        trees = [base, tmp_path.resolve() / "two"] if layout == "container-outside" else [base / "one", base / "two"]
+    for tree in trees:
+        if not tree.exists():
+            git(main, "worktree", "add", "-q", "--detach", str(tree))
+    return trees
+
+
+@pytest.mark.parametrize("layout", ["container", "container-outside"])
+def test_the_worktrees_of_a_container_folder_share_one_board(lead, terminal, tmp_path, layout):
+    one, two = bare_layout(tmp_path, layout)
+    decide_launch(Arguments(), project=str(one))
+    decide_launch(Arguments(), project=str(two))
+    assert held(str(one)) == held(str(two)) != ""
+
+
+@pytest.mark.parametrize("layout", ["bare", "separate"])
+def test_worktrees_with_no_folder_around_their_git_directory_never_get_boards_of_their_own(lead, terminal, tmp_path, layout):
+    trees = bare_layout(tmp_path, layout)
+    for tree in trees:
+        with pytest.raises(IsolationRefused, match="could not make this folder a project"):
+            decide_launch(Arguments(), project=str(tree))
+    assert [held(str(tree)) for tree in trees] == ["", ""]
 
 
 def test_an_agent_the_node_cannot_place_gets_no_registration_and_a_plain_reason(terminal, tmp_path, monkeypatch):

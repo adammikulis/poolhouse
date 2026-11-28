@@ -26,6 +26,7 @@ import poolhouse
 from poolhouse import loopback_window
 from poolhouse.isolation import ports as windows
 from poolhouse.isolation.capability import lan_address
+from poolhouse.isolation.confinement import Admission
 from poolhouse.platform import start_process
 from poolhouse.sandbox import Net, Policy, policies, seatbelt as profiles
 from poolhouse.serve import free_port
@@ -127,7 +128,10 @@ def test_a_program_of_the_box_serves_on_loopback_and_its_children_do_too(box):  
     assert windows.FIRST <= port <= windows.LAST, out
 
 
-def test_the_box_listens_on_no_other_address_and_reaches_no_listener_outside_its_window_even_one_started_later(box):  # noqa: F811
+def test_the_box_listens_on_no_other_address_and_reaches_this_machines_loopback_but_nothing_beyond_it(box):  # noqa: F811
+    """Owner-order: "can't you just make the sandbox just like the rest of things so the agent can test whatever they need safely?", "No agent
+    should be inhibited from doing their work that is given them." A loopback listener outside the window is reached, one started after the box
+    included; no bind and no host beyond this machine is."""
     (box.project / "attack.py").write_text(ATTACK)
     listeners: list[socket.socket] = []
     watching: list[threading.Thread] = []
@@ -155,7 +159,9 @@ def test_the_box_listens_on_no_other_address_and_reaches_no_listener_outside_its
 
     try:
         out, _, confinement = shelled(box, f"{shlex.quote(os.path.realpath(sys.executable))} attack.py\n", look=look)
-        assert "OPEN " not in out and out.count("shut ") == 18 and heard == [], (heard, out)
+        reached = [line for line in out.splitlines() if line.startswith("OPEN ")]
+        assert reached == [f"OPEN the {name} listener outside the window at {host}" for name in ("early", "late") for host in ("127.0.0.1", "::1")], out
+        assert out.count("shut ") == 14 and sorted(heard) == ["early", "early", "late", "late"], (heard, out)
         first, last = (int(out.split(f"{word} ", 1)[1].split()[0]) for word in ("first", "last"))
         assert (first, last) == (confinement.profile.policy.net.accept[0], confinement.profile.policy.net.accept[-1])
         assert all(int(each.getsockname()[1]) not in range(first, last + 1) for each in listeners)
@@ -342,7 +348,7 @@ def test_a_confined_model_server_is_reached_on_loopback_and_binds_no_address_its
 def test_a_socket_the_launcher_hands_over_takes_its_first_connection_every_time(tmp_path, monkeypatch):
     """macOS breaks a socket now and then (about one in eight) when its sender closes it while it is still in flight."""
     root = tempfile.mkdtemp(prefix="pp-", dir="/tmp")
-    bridge = windows.PortBridge(root, tmp_path / "locks")
+    bridge = windows.PortBridge(root, tmp_path / "locks", admit=Admission())
     bridge.start()
     monkeypatch.setenv(loopback_window.ENV, bridge.setting)
     broken: list[str] = []
@@ -375,13 +381,13 @@ def test_a_window_holds_no_port_in_use_or_fixed_and_no_two_launches_share_one(tm
     roots = [tempfile.mkdtemp(prefix="pp-", dir="/tmp") for _ in range(2)]
     every = range(windows.FIRST, windows.LAST + 1)
     left = range(windows.FIRST, windows.FIRST + 2 * windows.SIZE)
-    first, second = (windows.PortBridge(root, locks, avoid=set(every) - set(left)) for root in roots)
+    first, second = (windows.PortBridge(root, locks, avoid=set(every) - set(left), admit=Admission()) for root in roots)
     try:
         first.start()
         second.start()
         assert not set(first.ports) & set(second.ports) and set(first.ports) | set(second.ports) <= set(left)
         with pytest.raises(OSError, match="in use"):
-            windows.PortBridge(roots[0], locks, avoid=set(every) - set(left)).start()
+            windows.PortBridge(roots[0], locks, avoid=set(every) - set(left), admit=Admission()).start()
     finally:
         first.stop()
         second.stop()

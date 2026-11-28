@@ -1,4 +1,4 @@
-"""The macOS backend: a deny-by-default Seatbelt profile run with ``sandbox-exec``.
+"""The macOS backend: a Seatbelt profile run with ``sandbox-exec``, deny-by-default here and allow-by-default for an open box (`seatbelt_open`).
 
 ``sandbox-exec`` is deprecated by Apple and is the only use of a deprecated tool in this
 repository (docs/sandbox.md records the exception). Nothing outside this module names it.
@@ -16,10 +16,20 @@ import threading
 from collections.abc import Sequence
 from pathlib import Path
 
-from poolhouse.sandbox import denial_log
+from poolhouse.sandbox import denial_log, seatbelt_open
 from poolhouse.sandbox.backend import LOST_REFUSAL_LOG, Availability, Exposure, Wrapped, program_of
 from poolhouse.sandbox.path_language import expressions
 from poolhouse.sandbox.policy import NetMode, Policy, PolicyError, checked_path
+from poolhouse.sandbox.seatbelt_text import (
+    SYMLINKS,
+    ProfileError,
+    accepted,
+    ancestors,
+    executable_links,
+    filters,
+    literal_rules,
+    quote,
+)
 
 __all__ = ["BINARY", "DEPRECATION", "EXPOSURES", "MACHINE_CLASS", "PROCESS_LIST", "ProfileError", "Seatbelt", "profile", "quote"]
 
@@ -36,8 +46,6 @@ SYSTEM_READ = ("/usr/lib", "/usr/share", "/System/Library", "/System/Cryptexes",
                "/private/var/db/timezone", "/usr/bin", "/bin", "/sbin", "/usr/sbin",
                "/usr/libexec", "/System/Volumes/Preboot/Cryptexes", "/private/var/select")
 """System trees every process reads: the dynamic linker, frameworks, locale and zoneinfo data."""
-
-SYMLINKS = ("/etc", "/var", "/tmp")  # noqa: S108 - the system symlinks, not a temp file
 
 DEVICES_READ = ("/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/dtracehelper",
                 "/dev/tty", "/dev/autofs_nowait")
@@ -81,55 +89,8 @@ GPU_IOKIT_CLASSES = ("IOGPUDeviceUserClient",)
 GPU_MACH_SERVICES = ("com.apple.MTLCompilerService",)
 
 
-class ProfileError(PolicyError):
-    """A string that cannot be put in a profile."""
-
-
-_BAD = re.compile(r"[\x00-\x1f\x7f]")
-
-
-def quote(text: str) -> str:
-    """``text`` as a Seatbelt string literal: quote and backslash escaped, control characters
-    refused."""
-    if _BAD.search(text):
-        raise ProfileError(f"{text!r} holds a control character")
-    return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def _ancestors(paths: Sequence[str]) -> list[str]:
-    seen: dict[str, None] = {"/": None}
-    for path in paths:
-        parts = path.strip("/").split("/")
-        for i in range(1, len(parts)):
-            seen["/" + "/".join(parts[:i])] = None
-    return list(seen)
-
-
-def _filter(kind: str, paths: Sequence[str]) -> str:
-    return " ".join(f"({kind} {quote(p)})" for p in paths)
-
-
-def _literal_rules(operation: str, paths: Sequence[str]) -> list[str]:
-    """Keep the same literal union without an unbounded compiler expression."""
-    unique = list(dict.fromkeys(paths))
-    return [f"(allow {operation} {_filter('literal', unique[index:index + 128])})"
-            for index in range(0, len(unique), 128)]
-
-
 def _existing(paths: Sequence[str]) -> list[str]:
     return [p for p in paths if os.path.lexists(p) and os.path.realpath(p) == p]
-
-
-def executable_links(program: str) -> list[str]:
-    links = []
-    path = Path(program)
-    while path.is_symlink():
-        if str(path) in links or len(links) >= 16:
-            raise ProfileError("command: executable symlink chain exceeds bound or loops")
-        links.append(checked_path(path, what="executable link", link=True))
-        target = path.readlink()
-        path = Path(os.path.normpath(target if target.is_absolute() else path.parent / target))
-    return links
 
 
 def profile(policy: Policy, program: str, tag: str) -> str:
@@ -137,6 +98,8 @@ def profile(policy: Policy, program: str, tag: str) -> str:
     is quoted."""
     if not re.fullmatch(r"[A-Za-z0-9:_-]{1,64}", tag):
         raise ProfileError(f"tag {tag!r} is not a plain token")
+    if policy.open:
+        return seatbelt_open.profile(policy, program, tag)
     real = os.path.realpath(program)
     execs = list(dict.fromkeys([program, real, *policy.exec]))
     writes = list(policy.write)
@@ -154,13 +117,13 @@ def profile(policy: Policy, program: str, tag: str) -> str:
         "(allow process-info-pidinfo (target self))",
         "(deny process-info-pidinfo)",
         *([] if policy.strict else ["(allow user-preference-read)"]),
-        f"(allow process-exec {_filter('subpath', execs)})",
-        f"(allow file-read* {_filter('subpath', reads)})",
+        f"(allow process-exec {filters('subpath', execs)})",
+        f"(allow file-read* {filters('subpath', reads)})",
 
         '(allow file-read-data (literal "/"))',
-        f"(allow file-read* {_filter('literal', tuple(p for p in DEVICES_READ if not policy.strict or p != '/dev/tty'))})",
-        f"(allow file-write* {_filter('literal', tuple(p for p in DEVICES_WRITE if not policy.strict or p != '/dev/tty'))})",
-        f"(allow file-ioctl {_filter('literal', tuple(p for p in DEVICES_WRITE if not policy.strict or p != '/dev/tty'))})",
+        f"(allow file-read* {filters('literal', tuple(p for p in DEVICES_READ if not policy.strict or p != '/dev/tty'))})",
+        f"(allow file-write* {filters('literal', tuple(p for p in DEVICES_WRITE if not policy.strict or p != '/dev/tty'))})",
+        f"(allow file-ioctl {filters('literal', tuple(p for p in DEVICES_WRITE if not policy.strict or p != '/dev/tty'))})",
 
         *([] if policy.strict else ['(allow ipc-posix-shm-read-data (ipc-posix-name "apple.shm.notification_center"))']),
         "(allow sysctl-read " + " ".join(
@@ -180,16 +143,16 @@ def profile(policy: Policy, program: str, tag: str) -> str:
         if policy.strict:
             out += ["(allow file-read* " + value + ")" for value in expressions(policy.read_files, quote)]
         else:
-            out += _literal_rules("file-read*", policy.read_files)
+            out += literal_rules("file-read*", policy.read_files)
     if policy.read_dirs:
-        out += _literal_rules("file-read-data", policy.read_dirs)
+        out += literal_rules("file-read-data", policy.read_dirs)
     literals = [*policy.read_files, *policy.read_dirs, *policy.read_metadata]
-    metadata = [*_ancestors(reads + writes), *executable_links(program), *SYMLINKS,
-                *policy.read_metadata, *policy.read_dirs, *_ancestors(literals)]
+    metadata = [*ancestors(reads + writes), *executable_links(program), *SYMLINKS,
+                *policy.read_metadata, *policy.read_dirs, *ancestors(literals)]
     covered = set(policy.read_files)
-    out += _literal_rules("file-read-metadata", [path for path in metadata if path not in covered])
+    out += literal_rules("file-read-metadata", [path for path in metadata if path not in covered])
     if writes:
-        out.append(f"(allow file-write* {_filter('subpath', writes)})")
+        out.append(f"(allow file-write* {filters('subpath', writes)})")
     for endpoint in policy.unix_sockets:
         out.append(f"(allow network-outbound (remote unix-socket (literal {quote(endpoint)})))")
     for namespace in policy.unix_namespaces:
@@ -204,10 +167,10 @@ def profile(policy: Policy, program: str, tag: str) -> str:
         protected = tuple(dict.fromkeys((*policy.deny_read, *policy.deny_write)))
         out += ["(deny file-link)", "(deny file-clone)"]
         if policy.deny_read:
-            out.append(f"(deny file-read* {_filter('subpath', policy.deny_read)})")
-        out.append(f"(deny file-write* {_filter('subpath', protected)})")
-        ancestors = tuple(dict.fromkeys(str(parent) for path in protected for parent in Path(path).parents))
-        out.append(f"(deny file-write-unlink {_filter('literal', ancestors)})")
+            out.append(f"(deny file-read* {filters('subpath', policy.deny_read)})")
+        out.append(f"(deny file-write* {filters('subpath', protected)})")
+        above = tuple(dict.fromkeys(str(parent) for path in protected for parent in Path(path).parents))
+        out.append(f"(deny file-write-unlink {filters('literal', above)})")
     return "\n".join(out) + "\n"
 
 
@@ -219,21 +182,9 @@ def _network(policy: Policy) -> list[str]:
     if net.mode == NetMode.DENY:
         return []
     if net.mode == NetMode.LOOPBACK:
-        return ['(allow network-outbound (remote ip "localhost:*"))']
-    return [*(f'(allow network-outbound (remote ip "localhost:{p}"))' for p in net.ports), *_accepted(net.accept)]
-
-
-def _accepted(ports: Sequence[int]) -> list[str]:
-    """TCP to ``ports`` of this machine and serving on a socket handed in, with every bind of them refused. The refusal follows the inbound rule,
-    which would otherwise carry the bind with it. UDP is left refused: it receives on a port its sender names."""
-    if not ports:
-        return []
-
-    def each(side: str, kind: str) -> str:
-        return " ".join(f'({side} {kind} "localhost:{port}")' for port in ports)
-
-    return [f"(allow network-outbound {each('remote', 'tcp')})", f"(allow network-inbound {each('local', 'tcp')})",
-            f"(deny network-bind {each('local', 'ip')})"]
+        return ['(allow network-outbound (remote ip "localhost:*"))', *(f'(deny network-outbound (remote ip "localhost:{p}"))' for p in net.refused),
+                *accepted(net.accept)]
+    return [*(f'(allow network-outbound (remote ip "localhost:{p}"))' for p in net.ports), *accepted(net.accept)]
 
 
 def _gpu() -> list[str]:

@@ -11,6 +11,8 @@ import hashlib
 from .service_pool import POOL_ID, Pool
 
 DOMAIN = b"poolhouse/studio-pool/v1\n"
+UNFOUNDED = hashlib.sha256(DOMAIN + b"unfounded").hexdigest()
+"""The identity of a device alone; no pool id (32 hexadecimal characters) digests to it."""
 
 
 def scope_of(pool: str) -> str:
@@ -23,6 +25,15 @@ def scope_of(pool: str) -> str:
 def current(pool: Pool) -> str:
     """The Studio identity of the pool the node of ``pool`` is in now."""
     return scope_of(pool.pool_id())
+
+
+def own(pool: Pool) -> str:
+    """The identity this device's own work is kept under: `current`, or `UNFOUNDED` while its node is in no founded pool.
+
+    Only what stays on the device uses it. Whatever another device takes part in asks `current`, which an unfounded node fails.
+    """
+    found = pool.pool_id(or_unfounded=True)
+    return scope_of(found) if found else UNFOUNDED
 
 
 def of_service(pool: Pool, fingerprint: str) -> str:

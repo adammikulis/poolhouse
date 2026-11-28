@@ -28,14 +28,12 @@ from testkit.kernel_regex import execute
 from poolhouse.sandbox import path_language
 from poolhouse.sandbox.policy import Net, Policy
 from poolhouse.sandbox.seatbelt import (
-    SYMLINKS,
     SYSTEM_READ,
-    _ancestors,
     _existing,
-    executable_links,
     profile,
     quote,
 )
+from poolhouse.sandbox.seatbelt_text import SYMLINKS, ancestors, executable_links
 
 
 @needs_confinement
@@ -558,7 +556,7 @@ def test_literal_metadata_compression_preserves_exact_permission_union(tmp_path)
         if line.startswith("(allow file-read-metadata "):
             metadata.update(json.loads(value) for value in re.findall(r'\(literal ("(?:[^"\\]|\\.)*")\)', line))
     reads = [*_existing(SYSTEM_READ), sys.executable, os.path.realpath(sys.executable)]
-    original = {*_ancestors(reads), *_ancestors([*policy.read_files, *policy.read_dirs, *policy.read_metadata]),
+    original = {*ancestors(reads), *ancestors([*policy.read_files, *policy.read_dirs, *policy.read_metadata]),
                 *executable_links(sys.executable), *SYMLINKS, *policy.read_metadata, *policy.read_dirs}
     assert original | set(policy.read_files) == metadata | set(policy.read_files)
     assert first not in metadata and second not in metadata
