@@ -73,7 +73,8 @@ def _saved(path: str) -> Path:
 def tools(*, engine: Engine | None = None, vision: bool = True
           ) -> list[tuple[dict[str, Any], Callable[[Mapping[str, Any]], Any]]]:
     """The datasheet tools; ``datasheet_outline`` only with ``vision``, since its answer is
-    images. Each callable returns ``{"none": reason}`` instead of raising."""
+    images. Each callable returns ``{"none": reason}`` instead of raising. The PDF readers a
+    call needs are installed the first time."""
     def finding(args: Mapping[str, Any]) -> Any:
         part = str(args.get("part") or "").strip()
         if not part:
@@ -94,12 +95,12 @@ def tools(*, engine: Engine | None = None, vision: bool = True
         try:
             where = _saved(str(args.get("path") or ""))
             found = datasheet.outline_pages(where)
+            images = [datasheet.render(where, o.page) for o in found[:MOST_IMAGES]]
         except (OSError, ValueError, RuntimeError, ImportError) as exc:
             return {"none": str(exc)}
         if not found:
             return {"none": "no package outline or land pattern page found"}
-        return {"pages": [asdict(o) for o in found[:6]],
-                "_images": [datasheet.render(where, o.page) for o in found[:MOST_IMAGES]]}
+        return {"pages": [asdict(o) for o in found[:6]], "_images": images}
 
     pairs = [(SCHEMAS[0], finding), (SCHEMAS[1], pins)]
     if vision:

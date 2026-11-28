@@ -393,7 +393,7 @@ def _parser() -> Any:
                          f"`python -m poolhouse.train run status|wait|stop` follow it")
     group = ap.add_argument_group(
         "lora", "train an adapter instead of every weight -- what makes an 8B base "
-                "trainable on one machine. Needs peft: pip install 'poolhouse[train-lora]'")
+                "trainable on one machine. Needs peft, installed the first time it is used")
     group.add_argument("--lora", action="store_true", help="train a LoRA adapter")
     group.add_argument("--lora-rank", type=int, default=None)
     group.add_argument("--lora-alpha", type=int, default=None)

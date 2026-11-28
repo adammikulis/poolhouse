@@ -579,15 +579,16 @@ def cmd_escalate(args: argparse.Namespace) -> int:
 
 OPTIONS_BUILD = [
     flag("--from", dest="source_kind", default="", choices=["source", "release"],
-         help="'source' compiles master with cmake, 'release' downloads the newest "
-              "GitHub release with an asset for this machine. Default: source when a "
+         help="'source' compiles the verified commit with cmake, 'release' downloads the "
+              "verified GitHub release's asset for this machine. Default: source when a "
               "compiler is on PATH, release otherwise"),
     flag("--commit", default="", metavar="SHA",
          help="build this commit instead of the newest one the llama.cpp patches are "
               "verified against (--from source only)"),
     flag("--upstream-head", action="store_true",
-         help="build master's tip instead of the newest verified commit; the patches may "
-              "not apply to it (--from source only)"),
+         help="take upstream's newest instead of the verified version: master's tip from "
+              "source (the patches may not apply to it), or the newest release, held only "
+              "to the digests GitHub reports"),
     flag("--jobs", type=int, default=0, metavar="N",
          help="parallel compile jobs (default: every core)"),
     flag("--source", default="", metavar="DIR",

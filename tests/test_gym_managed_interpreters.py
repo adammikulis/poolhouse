@@ -74,7 +74,7 @@ def test_incompatible_version_uses_matching_host_or_standalone(monkeypatch, tmp_
     monkeypatch.setattr('poolhouse.fleet.environment.subprocess.run',
                         lambda args, **kwargs: paths.append(args) or subprocess.CompletedProcess(args, 0))
     environment.create()
-    assert paths == [[str(executable), '-m', 'venv', str(environment.path)]]
+    assert paths == [[str(executable), '-I', '-m', 'venv', str(environment.path)]]
 
 
 def test_scoped_readiness_and_uninstall_preserve_other_environment(monkeypatch, tmp_path):

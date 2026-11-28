@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from poolhouse import provision
 from poolhouse.net.pdfread import Limits, engine, load
 from poolhouse.sources.units import (
     MAX_TOKENS,
@@ -95,20 +96,17 @@ with `PdfRefused`, never half read."""
 def _pymupdf() -> Any:
     """MuPDF, for the features only it has (pin tables, page pictures) and for the engine a
     person chose by name. Never imported unless asked for: it is AGPL-3.0, so an installed copy
-    is not enough, ``POOLHOUSE_PDF_ENGINE=pymupdf`` has to say so."""
+    is not enough, ``POOLHOUSE_PDF_ENGINE=pymupdf`` has to say so, and saying so installs it."""
     if engine() != "pymupdf":
         raise RuntimeError(
-            "this feature (datasheet pin tables, page pictures) needs the MuPDF engine, which is "
-            "AGPL-3.0 and opt-in: pip install 'poolhouse[pdf-agpl]' and set "
-            "POOLHOUSE_PDF_ENGINE=pymupdf")
+            "this feature (datasheet pin tables, page pictures) needs the MuPDF engine (the pdf-agpl extra), which is "
+            "AGPL-3.0 and so is used only when POOLHOUSE_PDF_ENGINE=pymupdf chooses it")
     try:
-        import pymupdf
+        return provision.module("pymupdf", "pdf-agpl")
     except ImportError as exc:  # pragma: no cover - depends on what is installed
         raise ImportError(
-            "this needs MuPDF (pymupdf), which is AGPL-3.0 and is not part of poolhouse[pdf]: "
-            "pip install 'poolhouse[pdf-agpl]' and read its licence first"
+            f"this needs MuPDF (pymupdf), which is AGPL-3.0 and is not part of poolhouse[pdf]: {exc}"
         ) from exc
-    return pymupdf
 
 
 def _open(where: Path, *, images: bool, max_width: int) -> tuple[Any, Any]:
