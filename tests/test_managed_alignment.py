@@ -59,7 +59,7 @@ def test_real_installed_bundle_updates_offline_and_preserves_other_distributions
     monkeypatch.setattr(environment, 'wheels', lambda: base.parent)
     monkeypatch.setattr(alignment.runtime, 'selected', lambda: SimpleNamespace(commit=manifest['source'], prefix=Path(sys.prefix)))
     calls = []
-    run = alignment.packages.run
+    run = alignment.compute_install.packages.run
     interrupted = []
     def tracked(python, args, **kwargs):
         if args[0] == 'install':
@@ -77,7 +77,7 @@ def test_real_installed_bundle_updates_offline_and_preserves_other_distributions
                 raise SystemExit('simulated updater crash after base install')
             return result
         return run(python, args, **kwargs)
-    monkeypatch.setattr(alignment.packages, 'run', tracked)
+    monkeypatch.setattr(alignment.compute_install.packages, 'run', tracked)
     if crash != 'none':
         with pytest.raises(SystemExit), maintenance.intent() as writer, writer.exclusive():
             alignment.synchronize(environment)
@@ -97,7 +97,7 @@ def test_real_installed_bundle_updates_offline_and_preserves_other_distributions
 
 def test_absent_environment_or_companion_never_installs(tmp_path, monkeypatch):
     environment = Environment(tmp_path)
-    monkeypatch.setattr(alignment.packages, 'run', lambda *a, **k: pytest.fail('No implicit setup'))
+    monkeypatch.setattr(alignment.compute_install.packages, 'run', lambda *a, **k: pytest.fail('No implicit setup'))
     with maintenance.intent() as writer, writer.exclusive():
         assert not alignment.synchronize(environment)
     environment.python.parent.mkdir(parents=True)
@@ -124,7 +124,7 @@ def test_invalid_current_bundle_is_refused_before_any_install(tmp_path, monkeypa
     else:
         companion.write_bytes(companion.read_bytes() + b'tampered')
     monkeypatch.setattr(alignment.runtime, 'selected', lambda: selected)
-    monkeypatch.setattr(alignment.packages, 'run', lambda *a, **k: pytest.fail('No install before integrity proof'))
+    monkeypatch.setattr(alignment.compute_install.packages, 'run', lambda *a, **k: pytest.fail('No install before integrity proof'))
     with pytest.raises((ValueError, OSError)), maintenance.intent() as writer, writer.exclusive():
         alignment.synchronize(environment)
 
@@ -300,7 +300,7 @@ def test_transaction_record_never_creates_target_or_installs_without_surviving_e
     environment.python.parent.mkdir(parents=True)
     environment.python.touch()
     monkeypatch.setattr(environment, 'installed', dict)
-    monkeypatch.setattr(alignment.packages, 'run', lambda *a, **k: pytest.fail('No record-selected setup'))
+    monkeypatch.setattr(alignment.compute_install.packages, 'run', lambda *a, **k: pytest.fail('No record-selected setup'))
     record = {'version': 1, 'source': 'a' * 40, 'artifact': 'a' * 64,
               'targets': {'default' if fault == 'no-survivor' else 'untrusted':
                           {'poolhouse': '0.1', artifact.DISTRIBUTION: '0.1'}}}

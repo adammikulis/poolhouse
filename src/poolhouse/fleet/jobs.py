@@ -398,6 +398,7 @@ class JobRunner:
                "POOLHOUSE_OUT": str(self.job_dir(job.id) / "out")}
         if self.environment is not None and self.environment.exists:
             env["POOLHOUSE_PYTHON"] = str(self.environment.python)
+            env["PYTHONDONTWRITEBYTECODE"] = "1"  # the compute inventory refuses any file the app did not install
             env["PATH"] = os.pathsep.join(
                 [str(self.environment.python.parent), env.get("PATH", "")])
         env.pop(FD_ENV, None)

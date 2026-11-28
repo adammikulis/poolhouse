@@ -239,7 +239,7 @@ def test_managed_install_uses_direct_cached_wheel_and_refreshes_same_version(tmp
     assert environment.pip(["install", "--upgrade", "poolhouse[train]"]).returncode == 0
     assert calls[0][-1] == f"poolhouse[train] @ {wheel.as_uri()}"
     assert calls[0][4:6] == ["--find-links", str(wheel.parent)]
-    assert calls[1][-5:] == ["install", "--force-reinstall", "--no-deps", "--no-index", str(wheel)]
+    assert calls[1][-6:] == ["install", "--no-index", "--no-deps", "--no-compile", "--force-reinstall", str(wheel)]
 
 
 def test_third_party_installs_keep_matching_bundled_wheels(tmp_path, monkeypatch):

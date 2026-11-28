@@ -507,7 +507,7 @@ class BenchHost:
             return out
         asked = {"store": str(store), "since": since, "full": full, "anyway": anyway}
         with safelaunch.empty_directory() as nowhere:
-            done = subprocess.run([str(bench_python(self.runner.environment)), "-P", "-m",
+            done = subprocess.run([str(bench_python(self.runner.environment)), "-B", "-P", "-m",
                                    "poolhouse.bench.member_runs"], input=json.dumps(asked),
                                   capture_output=True, text=True, timeout=300, cwd=nowhere)
         if done.returncode != 0:
