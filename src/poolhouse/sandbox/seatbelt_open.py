@@ -58,6 +58,8 @@ IOKIT_CLASSES = ("IOGPUDeviceUserClient", "AGXDeviceUserClient", "IOSurfaceRootU
 IDENTIFIER_PROPERTIES = ("IOPlatformSerialNumber", "IOPlatformUUID", "IOPlatformSystemSerialNumber", "serial-number", "mlb-serial-number",
                          "unique-chip-id", "IOMACAddress")
 """The registry properties that carry a serial number, the hardware UUID, the chip's own number or a network hardware address."""
+SHARED = ("/", "/private", "/private/tmp", "/private/var", "/private/var/tmp", "/private/var/folders")
+"""Folders every program of this computer uses: a grant of one, however it came, reaches no unix socket under it."""
 PREFERENCES = ("kCFPreferencesAnyApplication", ".GlobalPreferences", "org.chromium.Chromium", "com.google.chrome.for.testing")
 """The preference domains every open box reads: the system-wide settings and a headless browser's own."""
 REFUSED_OPERATIONS = ("appleevent-send", "lsopen", "job-creation", "nvram*", "system-kext*", "system-privilege",
@@ -112,9 +114,12 @@ def _files(policy: Policy, program: str, note: str) -> list[str]:
         out += _over("deny", "file-write* file-link", hidden, note)
         out += _sockets("deny", hidden, note)
         out += _over("allow", "file-write* file-link", shown)
-        out += _sockets("allow", shown)
-    named = [*readable, *policy.read_files, *policy.read_metadata, *policy.read_dirs]
-    out += literal_rules("file-read-metadata", [*ancestors(named), *executable_links(program), *SYMLINKS, *policy.read_metadata, *policy.read_dirs])
+        out += _sockets("allow", [each for each in shown if each not in SHARED])
+    named = [*readable, *policy.read_files, *policy.read_metadata, *policy.read_dirs, *policy.unix_sockets, *policy.unix_namespaces]
+    out += literal_rules("file-read-metadata", [*ancestors(named), *executable_links(program), *SYMLINKS, *policy.read_metadata, *policy.read_dirs,
+                                                *policy.unix_sockets])
+    if policy.unix_namespaces:
+        out += _over("allow", "file-read-metadata", policy.unix_namespaces)
     if policy.read_files:
         out += literal_rules("file-read*", policy.read_files)
     if policy.read_dirs:
@@ -133,10 +138,16 @@ def _devices(note: str) -> list[str]:
 
 
 def _network(policy: Policy, note: str) -> list[str]:
-    """This machine's loopback and the granted unix sockets. No rule allows a bind of an IP address: Seatbelt's `localhost` matches the wildcard
-    and the machine's network address too, so such a rule would allow a listener the network reaches. A socket on a window port is handed in, and
-    the one inbound rule, for those ports, is followed by the refusal of every bind."""
+    """The granted unix sockets, then this machine's loopback: a refused port is refused after every rule that allows a socket, since a later
+    allow of a socket's path can also answer for a loopback port an earlier rule refuses. No rule allows a bind of an IP address: Seatbelt's
+    `localhost` matches the wildcard and the machine's network address too, so such a rule would allow a listener the network reaches. A socket
+    on a window port is handed in, and the one inbound rule, for those ports, is followed by the refusal of every bind."""
     net, out = policy.net, []
+    for endpoint in policy.unix_sockets:
+        out.append(f"(allow network-outbound (remote unix-socket (literal {quote(endpoint)})))")
+    for namespace in policy.unix_namespaces:
+        out += _sockets("allow", [namespace])
+        out.append(f"(allow file-write-create (require-all (subpath {quote(namespace)}) (vnode-type SOCKET)))")   # a bind makes the socket's file
     if net.mode == NetMode.LOOPBACK:
         out.append('(allow network-outbound (remote ip "localhost:*"))')
     out += [f'(allow network-outbound (remote ip "localhost:{port}"))' for port in net.ports]
@@ -145,11 +156,6 @@ def _network(policy: Policy, note: str) -> list[str]:
     if net.accept:
         out.append("(allow network-inbound " + " ".join(f'(local tcp "localhost:{port}")' for port in net.accept) + ")")
     out.append(f'(deny network-bind (local ip "*:*"){note})')
-    for endpoint in policy.unix_sockets:
-        out.append(f"(allow network-outbound (remote unix-socket (literal {quote(endpoint)})))")
-    for namespace in policy.unix_namespaces:
-        out += _sockets("allow", [namespace])
-        out.append(f"(allow file-write-create (require-all (subpath {quote(namespace)}) (vnode-type SOCKET)))")   # a bind makes the socket's file
     return out
 
 

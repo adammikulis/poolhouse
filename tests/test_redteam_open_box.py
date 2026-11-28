@@ -12,6 +12,7 @@ in the harness's place is a shell script (NOT A MODEL and NOT A HARNESS) and the
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import pwd
 import shlex
@@ -19,12 +20,16 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
+import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from poolhouse.isolation import toolchain
-from poolhouse.sandbox import confinement
+from poolhouse import loopback_window
+from poolhouse.isolation import confinement as choke_point, toolchain
+from poolhouse.sandbox import confinement, process_tree, seatbelt_open
 from tests.test_redteam_isolation_shell import box, shelled  # noqa: F401  (box is a fixture)
 
 pytest_plugins = ["tests.confined_kit", "tests.sandbox_kit"]
@@ -76,9 +81,10 @@ def test_an_open_box_writes_its_worktree_temporary_files_and_caches_and_nothing_
         tried worktree 'echo x > made-here'
         tried agent-home 'echo x > "$HOME/mine"'
         tried tmpdir 'echo x > "$TMPDIR/mine"'
-        tried shared-temporary 'echo x > {made} && rm {made}'
+        tried here-document-of-zsh '/bin/zsh -c "cat <<END >/dev/null\nx\nEND"'
+        tried shared-temporary 'echo x > {made}'
         tried temporary-of-libraries 'f=$(/usr/bin/getconf DARWIN_USER_TEMP_DIR) && echo x > "$f/of-libraries"'
-        tried socket-of-its-own {run("import socket, tempfile; p = tempfile.mkdtemp(dir='/tmp') + '/s'; s = socket.socket(socket.AF_UNIX); s.bind(p); s.listen(); socket.socket(socket.AF_UNIX).connect(p)")}
+        tried socket-of-its-own {run("import socket, tempfile; p = tempfile.mkdtemp() + '/s'; s = socket.socket(socket.AF_UNIX); s.bind(p); s.listen(); socket.socket(socket.AF_UNIX).connect(p)")}
         tried write-person 'echo x > {house}/planted'
         tried change-person 'echo x >> {house}/notes'
         tried read-person 'cat {house}/notes'
@@ -95,12 +101,142 @@ def test_an_open_box_writes_its_worktree_temporary_files_and_caches_and_nothing_
         tried read-keychains 'ls /Library/Keychains'
         tried read-host-keys 'cat /private/etc/ssh/ssh_config'
         """)
-    expect(out, ("worktree", "agent-home", "tmpdir", "shared-temporary", "temporary-of-libraries", "socket-of-its-own"),
-           ("write-person", "change-person", "read-person", "list-home", "list-home-by-the-data-volume", "list-volumes", "write-system",
-            "read-other-temporary", "write-other-temporary", "move-other-temporary", "link-other-temporary", "link-person",
+    expect(out, ("worktree", "agent-home", "tmpdir", "here-document-of-zsh", "temporary-of-libraries", "socket-of-its-own"),
+           ("shared-temporary", "write-person", "change-person", "read-person", "list-home", "list-home-by-the-data-volume", "list-volumes",
+            "write-system", "read-other-temporary", "write-other-temporary", "move-other-temporary", "link-other-temporary", "link-person",
             "write-account-temporary", "read-keychains", "read-host-keys"))
     assert "NOT-A-REAL-SECRET" not in out and not (house / "planted").exists() and (earlier / "theirs").is_file(), out
     assert not os.path.lexists(made)
+
+
+def test_what_other_programs_make_in_the_shared_temporary_folder_after_the_launch_is_not_listed_read_written_or_reached(box):  # noqa: F811
+    later = Path(f"/private/tmp/later-{os.getpid()}")
+    listener = socket.socket(socket.AF_UNIX)
+
+    def made_meanwhile(_confinement) -> None:
+        """Another program's folder, file and socket, made once the box's profile stands and before its program runs."""
+        if not later.exists():
+            later.mkdir(mode=0o700)
+            (later / "theirs").write_text("NOT-A-REAL-SECRET another program's\n")
+            listener.bind(str(later / "s"))
+            listener.listen(4)
+
+    try:
+        out, _, _ = shelled(box, f"""\
+            tried list-shared 'ls /tmp/'
+            tried list-shared-by-its-real-path 'ls /private/tmp'
+            tried list-other-shared 'ls /private/var/tmp'
+            tried read-later 'cat {later}/theirs'
+            tried write-later 'echo x > {later}/planted'
+            tried replace-later 'rm {later}/theirs'
+            tried make-beside 'mkdir {later}-planted'
+            tried later-socket {run(f"import socket; socket.socket(socket.AF_UNIX).connect({str(later / 's')!r})")}
+            """, look=made_meanwhile)
+        expect(out, (), ("list-shared", "list-shared-by-its-real-path", "list-other-shared", "read-later", "write-later", "replace-later",
+                         "make-beside", "later-socket"))
+        assert "NOT-A-REAL-SECRET" not in out and (later / "theirs").is_file() and not os.path.lexists(f"{later}-planted"), out
+    finally:
+        listener.close()
+        for each in (later / "theirs", later / "s", later / "planted"):
+            each.unlink(missing_ok=True)
+        if later.is_dir():
+            later.rmdir()
+
+
+OUTSIDER = """\
+import json, os, socket, sys, time
+window, session, report, wait = sys.argv[1:5]
+while wait and os.getppid() != 1:
+    time.sleep(0.01)
+got = {}
+with socket.socket(socket.AF_UNIX) as asking:
+    asking.settimeout(10)
+    asking.connect(window)
+    asking.sendall(json.dumps({"family": 4, "port": 0, "reuse": False}).encode())
+    try:
+        said, handed, _, _ = socket.recv_fds(asking, 128, 1)
+    except OSError:
+        said, handed = b"", []
+    got["port"] = bool(handed)
+    for each in handed:
+        os.close(each)
+with socket.socket(socket.AF_UNIX) as asking:
+    asking.settimeout(10)
+    asking.connect(session)
+    try:
+        asking.sendall(b'{"verb": "tools"}\\n')
+        got["frame"] = bool(asking.recv(65536))
+    except OSError:
+        got["frame"] = False
+with open(report + ".part", "w") as out:
+    json.dump(got, out)
+os.rename(report + ".part", report)
+"""
+"""A process of this user that is none of the launch's: asks the window of a session for a port and its session bridge for an answer."""
+
+
+def reported(report: Path) -> dict:
+    deadline = time.monotonic() + 30
+    while not report.exists():
+        assert time.monotonic() < deadline, "the other process reported nothing"
+        time.sleep(0.02)
+    return json.loads(report.read_text())
+
+
+def test_a_sessions_port_window_and_bridge_answer_no_process_but_the_launchs_own(box):  # noqa: F811
+    """Before the harness runs, a process that left the launcher's tree; while it runs, any process outside the harness's tree, the launcher's
+    own among them. The box's own processes are given ports all along."""
+    outsider = box.root / "outsider.py"
+    outsider.write_text(OUTSIDER)
+    before, during = box.root / "before.json", box.root / "during.json"
+    seen: list[threading.Thread] = []
+
+    def attacked(confinement) -> None:
+        if seen:
+            return
+        window = confinement.env[loopback_window.ENV].partition("@")[2]
+        session = next(each for each in confinement.profile.policy.unix_sockets if each != window)
+        words = [sys.executable, "-I", str(outsider), window, session]
+        # a shell that starts it and ends at once, so the system's first process takes it over
+        subprocess.run(["/bin/sh", "-c", f"{shlex.join([*words, str(before), 'orphaned'])} >/dev/null 2>&1 &"], check=True)
+        reported(before)
+        stage = Path(confinement.profile.stage)
+
+        def meanwhile() -> None:
+            deadline = time.monotonic() + 30
+            while not (stage / "running").exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            subprocess.run([*words, str(during), ""], check=False, timeout=30)
+            (stage / "attacked").write_text("done\n")
+
+        seen.append(threading.Thread(target=meanwhile, daemon=True))
+        seen[0].start()
+
+    (box.project / "serve.py").write_text("import socket\nsocket.create_server(('127.0.0.1', 0))\n")
+    out, _, _ = shelled(box, f"""\
+        tried own-port-from-a-grandchild '/bin/sh -c "{PYTHON} serve.py; exit $?"'
+        : > running
+        n=0; while [ ! -f attacked ] && [ $n -lt 600 ]; do sleep 0.05; n=$((n+1)); done
+        tried own-port-afterwards '{PYTHON} serve.py'
+        """, look=attacked)
+    expect(out, ("own-port-from-a-grandchild", "own-port-afterwards"), ())
+    assert reported(before) == {"port": False, "frame": False}, "before the harness ran"
+    assert reported(during) == {"port": False, "frame": False}, "while the harness ran"
+
+
+def test_a_process_that_took_the_pid_of_an_ended_member_is_not_admitted():
+    member = subprocess.Popen([os.path.realpath(sys.executable), "-c", "import time; time.sleep(120)"])
+    tree = process_tree.follow(member.pid)
+    admission = choke_point.Admission()
+    admission.tree = tree
+    try:
+        assert admission(member.pid) and not admission(os.getpid())
+        tree.begin(member.pid, tree.began(member.pid) - 100.0)   # what the tree noted is an earlier process that had this pid
+        assert not admission(member.pid)
+    finally:
+        process_tree.release(tree)
+        member.kill()
+        member.wait()
 
 
 def test_an_open_box_runs_the_installed_tools_and_reads_none_of_their_credentials_or_the_persons_files(box):  # noqa: F811
@@ -158,6 +294,17 @@ def test_an_open_box_reaches_this_machines_loopback_and_nothing_beyond_it_and_bi
            ("model-server-port", "model-server-port-six", "beyond", "beyond-datagram", "names", "resolver-socket", "others-socket",
             "bind-loopback", "bind-everywhere", "bind-datagram", "listen-unbound"))
     assert box.port in confinement_.profile.policy.net.refused
+
+
+def test_every_rule_for_a_socket_stands_before_the_refusal_of_the_model_servers_port(box):  # noqa: F811
+    """An allow of a socket's path written after the refusal of a loopback port can answer for that port, the model server's among them."""
+    namespace = Path(tempfile.mkdtemp(prefix="pp-", dir="/tmp")).resolve()   # where a harness's own server listens (`Spec.server`)
+    try:
+        _, (text, _), _ = shelled(box, "true\n", look=lambda running: Path(running.profile.stage).is_dir() and seatbelt_open.profile(
+            replace(running.profile.policy, unix_namespaces=(str(namespace),)), "/bin/sh", "t"))
+    finally:
+        namespace.rmdir()
+    assert str(namespace) in text and text.rindex(" unix-socket ") < text.index(f'(deny network-outbound (remote ip "localhost:{box.port}")'), text
 
 
 def test_an_open_box_signals_traces_and_reads_its_own_processes_and_no_other(box):  # noqa: F811

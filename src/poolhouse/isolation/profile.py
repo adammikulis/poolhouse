@@ -1,10 +1,11 @@
 """The profile of one confinement: the engine policy a launch runs under, and a digest of everything in it.
 
 `build` turns a `Spec` and the grants in force into one `sandbox.Policy`: the stage and the agent home are writable (the stage is read-only
-for `read-only` and for plan mode, and a session with a writable stage runs the programs in both), the harness's install tree, the
-interpreter, the system toolchain, the derived toolchain folders and the granted reads are readable, and the control names are frozen in the
-stage. On macOS the box is open (`sandbox.seatbelt_open`): it also writes temporary files, reads and runs the installed tools and everything
-of the system but the private trees, reaches this machine's loopback except the model server's port, and uses the GPU. On Linux it refuses
+for `read-only` and for plan mode, and a session with a writable stage runs the programs in both), as is the session's own temporary folder,
+the harness's install tree, the interpreter, the system toolchain, the derived toolchain folders and the granted reads are readable, and the
+control names are frozen in the stage. On macOS the box is open (`sandbox.seatbelt_open`): it also reads and runs the installed tools and
+everything of the system but the private trees, the shared temporary folder among them, reaches this machine's loopback except the model
+server's port, and uses the GPU. On Linux it refuses
 what it does not grant, and the network is the model bridge's port and the egress proxy's. In both no address is bound by the session (an
 editing session serves on its window's ports, `isolation.ports`) and the unix sockets are those of writable trees on macOS, the session
 bridge's, the window's and those of a harness's own server. The same object runs the harness and the probe of the proof, so what the proof
@@ -120,7 +121,7 @@ def build(spec: Spec, grants: Sequence[Grant] = (), env: Mapping[str, str] | Non
     reads = [each for grant in grants if grant.kind in ("read", "toolchain") for each in (toolchain.reach(grant.subject) if grant.kind == "toolchain" else (grant.subject,))]
     runs = [each for grant in grants if grant.kind == "toolchain" for each in toolchain.reach(grant.subject)]
     settings, linked = toolchain.system_settings()
-    temporary = (*([spec.temp] if spec.temp else []), *([toolchain.TEMPORARY] if opened else []))
+    temporary = [spec.temp] if spec.temp else []
     writable = [spec.home, *temporary] if spec.read_only_stage else [spec.stage, spec.home, *temporary]
     own = () if spec.read_only_stage else (spec.stage, spec.home)
     """What an editing session runs of its own: the programs it wrote, a project's `scripts/test` among them. It already runs them through a shell

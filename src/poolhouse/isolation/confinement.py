@@ -30,6 +30,8 @@ from pathlib import Path
 from typing import IO, Any
 from urllib.parse import urlsplit
 
+import psutil
+
 from poolhouse import activity, coding_policy, home as state_home, loopback_window
 from poolhouse.isolation import client as client_module, history, preflight, toolchain
 from poolhouse.isolation.attestation import attest
@@ -151,14 +153,21 @@ class Plan:
 
 
 class Admission:
-    """Which processes the session bridge answers: before the harness exists, the proof's own probe is the only client; once it runs, a process
-    that is in the harness's tree (`sandbox.process_tree`, which follows every fork from the first instruction) and no other."""
+    """Which processes a launch's unix sockets answer, the session bridge's and its window's: the launch's own tree and no other. Before the
+    harness exists that is what the launcher itself runs (the proof's probe, the preflight); from then on a process of the harness's tree
+    (`sandbox.process_tree`, which follows every fork from the first instruction)."""
 
     def __init__(self) -> None:
         self.tree: process_tree.Tree | None = None
+        self.launcher = os.getpid()
 
     def __call__(self, pid: int) -> bool:
-        return self.tree is None or pid in self.tree
+        if self.tree is not None:
+            return process_tree.member(self.tree, pid)
+        try:
+            return pid == self.launcher or any(each.pid == self.launcher for each in psutil.Process(pid).parents())
+        except psutil.Error:
+            return False
 
 
 @dataclass(slots=True)
@@ -466,7 +475,7 @@ def _window(plan: Plan, parts: Parts, taken: tuple[int, ...]) -> PortBridge | No
     root = tempfile.mkdtemp(prefix="pp-", dir="/tmp")
     parts.scratch.append(root)
     avoid = (*taken, urlsplit(plan.upstream).port or 0, *leases.recorded_servers())
-    bridge = PortBridge(root, state_home.state("isolation") / "ports", avoid)
+    bridge = PortBridge(root, state_home.state("isolation") / "ports", avoid, admit=parts.admission)
     try:
         bridge.start()
     except OSError as why:
