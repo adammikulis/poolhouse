@@ -52,14 +52,14 @@ primary checkout is on; `main` is never it); promotion to `main`, tags, releases
   and no variable turns them on. A test child needing a working keystore uses the file keyring (tests/README.md,
   "The real keystore"). Tests run on an empty state root under their own `tmp_path`, never the real home
   (tests/README.md, "Nothing reads the machine").
-- `poolhouse.home` hands the account's own state and cache roots to the installed Poolhouse only: a copy under
-  `site-packages`, a packaged app, or an editable install run as its own command. A test run, a process one starts
-  (`POOLHOUSE_TEST_PROCESS`, which only takes access away) and a checkout, export or worktree on `PYTHONPATH` get
-  `RealRootRefused`, whatever folder their files are in; name scratch folders with `POOLHOUSE_HOME` and
-  `POOLHOUSE_CACHE`. A program of this repository that needs the roots declares `POOLHOUSE_ENTRY_POINT` at module level;
-  the list is pinned in `tests/test_real_roots_refused.py`. A real-model test names the downloaded llama.cpp build, tool
-  or classifier it reads with `home.machine_asset`. A literal path opened without `poolhouse.home` is held back only by
-  the write denial of `scripts/test`.
+- `poolhouse.home` hands the account's own state and cache roots to the installed Poolhouse (a copy under
+  `site-packages`, a packaged app, or an editable install run as its own command) and to a program of this repository
+  that declares `POOLHOUSE_ENTRY_POINT` at module level, run as itself; `tests/test_real_roots_refused.py` pins that
+  list. A test run, a process one starts (`POOLHOUSE_TEST_PROCESS`, which only takes access away) and any other run of a
+  checkout, export or worktree get `RealRootRefused`, whatever folder their files are in; name scratch folders with
+  `POOLHOUSE_HOME` and `POOLHOUSE_CACHE`. A real-model test names the downloaded llama.cpp build, tool or classifier it
+  reads with `home.machine_asset`. A path opened without `poolhouse.home` is held back only by the write denial of
+  `scripts/test`, which the `seatbelt` modules run without.
 - No test calls a paid or quota-limited API or a public endpoint on its own, whatever keys or logins the machine holds:
   such a test is marked `live_api` or `live_net` and skipped unless `POOLHOUSE_LIVE_API=1` or `POOLHOUSE_LIVE_NET=1` is
   set by a person (tests/README.md, *Live services*). Do not set either.

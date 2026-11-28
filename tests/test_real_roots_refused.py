@@ -148,7 +148,8 @@ def test_the_installed_copy_reaches_the_accounts_roots_unless_a_test_started_it(
 
 
 def test_a_test_run_hands_the_mark_to_the_processes_it_starts():
-    assert os.environ.get("POOLHOUSE_TEST_PROCESS") == "1"
+    mark = os.environ.get("POOLHOUSE_TEST_PROCESS")   # a local, so a failure prints the mark and not the environment
+    assert mark == "1"
 
 
 def test_only_a_declared_program_of_the_checkout_run_as_itself_gets_the_accounts_roots(account):
@@ -212,6 +213,7 @@ def test_a_file_outside_tests_is_given_no_downloaded_file(account):
 
 
 GRANTED = {
+    "examples/rbmk/__main__.py", "examples/rbmk/run.py",
     "scripts/agent-identity", "scripts/agent-sandbox", "scripts/board_tally.py", "scripts/ci_watch.py",
     "scripts/experiments/destructive_eval.py", "scripts/experiments/iq_vs_kquant.py", "scripts/github-protection-apply",
     "scripts/guard-eval", "scripts/hooks/claude-harness-bind", "scripts/hooks/claude-lead-attention",
@@ -237,6 +239,19 @@ def declares(path: Path) -> bool:
 
 
 def test_the_programs_granted_the_accounts_roots_are_these_and_no_others():
-    tracked = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "scripts", "src/poolhouse"],
+    tracked = subprocess.run(["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
                              cwd=REPO, capture_output=True, text=True, check=True).stdout.split("\0")
     assert {name for name in tracked if name and declares(REPO / name)} == GRANTED
+
+
+def test_listing_the_chat_tools_for_the_coverage_check_opens_nothing_of_the_account(account):
+    probe = account.script(account.base / "probe.py", f"""
+import sys
+sys.path[:0] = [{str(REPO / "scripts")!r}, {str(SRC)!r}]
+import redteam_coverage
+found = {{}}
+redteam_coverage.find_tools(found)
+print("TOOLS", len(found) > 0)
+""")
+    assert account.run(account.env(SRC), probe).splitlines()[-1] == "TOOLS True"
+    assert not (account.folder / ".poolhouse").exists()

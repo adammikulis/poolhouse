@@ -67,7 +67,7 @@ ENTRY_POINT = "POOLHOUSE_ENTRY_POINT"
 it cannot do its work from a checkout without them (a hook, the test runner, the landing check). The grant is this declaration in code:
 it counts only while that file is the program the process was started as, so importing it grants nothing, and no variable or argument
 stands in for it."""
-ENTRY_POINT_FOLDERS = ("scripts", "src/poolhouse")
+ENTRY_POINT_FOLDERS = ("scripts", "src/poolhouse", "examples")
 """Where a file that declares `ENTRY_POINT` must sit, in this copy of the code."""
 ASSETS = {"llama.cpp": 0, "tools": 0, "guard": 1}
 """What a real-model test may read from the account's roots, by first name: 0 is under the state root, 1 under the cache root."""

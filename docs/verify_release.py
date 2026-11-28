@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -52,6 +53,8 @@ def free_port() -> int:
 
 
 TMP = Path(tempfile.mkdtemp(prefix="poolhouse-verify-"))
+# every claim runs under scratch state and cache folders, in this process and the ones it starts
+os.environ.update(POOLHOUSE_HOME=str(TMP / "state"), POOLHOUSE_CACHE=str(TMP / "cache"))
 REPO = Path(__file__).resolve().parent.parent
 WORDS = "correct horse battery staple"
 

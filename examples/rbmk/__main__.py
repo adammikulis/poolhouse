@@ -4,4 +4,6 @@ import sys
 
 from .web.server import main
 
+POOLHOUSE_ENTRY_POINT = "leases a real model on this computer and keeps the runs in the local run store"
+
 sys.exit(main())
