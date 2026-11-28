@@ -27,7 +27,7 @@ import app.poolhouse.core.store.PoolStore
 import app.poolhouse.core.store.WorkKind
 import app.poolhouse.phone.platform.KeystoreKey
 import app.poolhouse.phone.platform.Prefs
-import app.poolhouse.phone.platform.ThemeChoice
+import app.poolhouse.theme.ThemeChoice
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob

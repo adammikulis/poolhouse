@@ -15,7 +15,8 @@ val pinnedArchives = mapOf(
 
 android {
     namespace = "app.poolhouse.llm"
-    compileSdk = providers.gradleProperty("androidApi").map { it.toInt() }.getOrElse(36)
+    compileSdk { version = release(37) { minorApiLevel = 0 } }
+    buildToolsVersion = "36.0.0"
     defaultConfig {
         minSdk = 31
         ndk { abiFilters += "arm64-v8a" }
@@ -48,6 +49,7 @@ tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(checkPinnedAr
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":theme"))
     implementation("com.google.ai.edge.litertlm:litertlm-android:$litertLm") { version { strictly(litertLm) } }
     implementation(libs.coroutines.android)
     implementation(libs.serialization.json)

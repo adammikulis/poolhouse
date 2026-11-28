@@ -4,16 +4,16 @@ import android.content.Context
 import app.poolhouse.core.link.Address
 import app.poolhouse.core.net.Link
 import app.poolhouse.core.store.SeenStore
+import app.poolhouse.theme.ThemeChoice
+import app.poolhouse.theme.ThemePreference
 import org.json.JSONArray
 import org.json.JSONObject
-
-enum class ThemeChoice(val label: String) { SYSTEM("System"), LIGHT("Light"), DARK("Dark") }
 
 /**
  * What the app keeps on the phone: the link (no secret: the key stays in the Keystore), what has been seen, and the theme. The app
  * is excluded from backups.
  */
-class Prefs(context: Context) : SeenStore {
+class Prefs(private val context: Context) : SeenStore {
     private val store = context.getSharedPreferences("poolhouse", Context.MODE_PRIVATE)
 
     var link: Link?
@@ -42,8 +42,8 @@ class Prefs(context: Context) : SeenStore {
         }
 
     var theme: ThemeChoice
-        get() = ThemeChoice.entries.firstOrNull { it.name == store.getString("theme", null) } ?: ThemeChoice.SYSTEM
-        set(value) = store.edit().putString("theme", value.name).apply()
+        get() = ThemePreference.read(context)
+        set(value) = ThemePreference.write(context, value)
 
     override fun load(): Map<String, Double> = runCatching {
         val o = JSONObject(store.getString("seen", "{}")!!)

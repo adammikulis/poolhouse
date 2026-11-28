@@ -75,7 +75,7 @@ import app.poolhouse.phone.ui.components.PrimaryButton
 import app.poolhouse.phone.ui.components.Tag
 import app.poolhouse.phone.ui.components.TopBar
 import app.poolhouse.phone.ui.theme.Icons
-import app.poolhouse.phone.ui.theme.Pool
+import app.poolhouse.theme.Pool
 
 private val stateWords = mapOf("working" to "working", "idle" to "idle", "asking" to "waiting for your answer", "ended" to "finished")
 

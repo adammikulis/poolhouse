@@ -22,14 +22,14 @@ import androidx.compose.ui.unit.dp
 import app.poolhouse.core.store.PoolState
 import app.poolhouse.phone.PhoneViewModel
 import app.poolhouse.phone.PoolSession
-import app.poolhouse.phone.platform.ThemeChoice
+import app.poolhouse.theme.ThemeChoice
 import app.poolhouse.phone.ui.components.Card
 import app.poolhouse.phone.ui.components.Chips
 import app.poolhouse.phone.ui.components.Fact
 import app.poolhouse.phone.ui.components.SecondaryButton
 import app.poolhouse.phone.ui.components.SectionLabel
 import app.poolhouse.phone.ui.components.TopBar
-import app.poolhouse.phone.ui.theme.Pool
+import app.poolhouse.theme.Pool
 
 @Composable
 fun SettingsScreen(model: PhoneViewModel, pool: PoolSession?, state: PoolState?) {

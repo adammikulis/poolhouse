@@ -19,7 +19,7 @@ import app.poolhouse.phone.ui.components.EmptyState
 import app.poolhouse.phone.ui.components.PrimaryButton
 import app.poolhouse.phone.ui.components.TopBar
 import app.poolhouse.phone.ui.theme.Icons
-import app.poolhouse.phone.ui.theme.Pool
+import app.poolhouse.theme.Pool
 
 /** The offer to link a computer, shown wherever it would add something. It is an offer: the app works without it. */
 @Composable

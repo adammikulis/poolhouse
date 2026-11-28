@@ -31,7 +31,7 @@ import app.poolhouse.phone.ui.components.SectionLabel
 import app.poolhouse.phone.ui.components.Tag
 import app.poolhouse.phone.ui.components.TopBar
 import app.poolhouse.phone.ui.theme.Icons
-import app.poolhouse.phone.ui.theme.Pool
+import app.poolhouse.theme.Pool
 
 /** What waits for the person and the newest notices: questions first, each one tap from its conversation. */
 @Composable

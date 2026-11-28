@@ -70,8 +70,9 @@ something it says so once and waits.
 | Module | What |
 |---|---|
 | `core` | plain Kotlin, no Android class: the phone API's shapes (`api/`), linking and signing (`link/`), pinned TLS and the stream (`net/`), the app's state (`store/`), the web UI's colours (`theme/`) and the on-device model's interface (`device/`) |
+| `theme` | Poolhouse's look in Compose, shared by every module that draws a screen, and the person's light or dark choice |
 | `app` | the screens (Jetpack Compose), the Keystore key, preferences |
-| `llm` | optional: a model on the phone. The app finds `app.poolhouse.llm.LlmPlugin` at run time; without the module it only directs |
+| `llm` | a model on the phone: its download, chat and pool use. The app finds `app.poolhouse.llm.LlmPlugin` at run time |
 
 ## Where a node goes
 

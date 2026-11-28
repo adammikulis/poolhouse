@@ -87,6 +87,13 @@ def test_the_brand_colours_are_the_web_ui_brand_colours():
         assert rgb(brand[name]) == rgb(values[f"--poolhouse-{name.lower()}"]), name
 
 
+def test_every_screen_of_the_app_takes_its_colours_from_the_shared_theme():
+    """A module that built a colour scheme of its own (or took the phone's) would not look like the rest of the app."""
+    own = [str(path.relative_to(APP)) for path in APP.glob("*/src/main/**/*.kt")
+           if path.relative_to(APP).parts[0] != "theme" and re.search(r"\b\w*(?:light|dark|Light|Dark)ColorScheme\b", path.read_text(encoding="utf-8"))]
+    assert not own, f"these build their own colours: {own}"
+
+
 def test_the_navigation_icons_are_the_web_rails_own_paths():
     web = (WEB / "components" / "fleet-nav.html").read_text(encoding="utf-8")
     table = re.search(r"const ICONS = \{(.*?)\n  \};", web, re.S).group(1)

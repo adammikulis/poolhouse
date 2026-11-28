@@ -43,7 +43,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.poolhouse.core.store.Phase
 import app.poolhouse.phone.ui.theme.Icons
-import app.poolhouse.phone.ui.theme.Pool
+import app.poolhouse.theme.Pool
 
 /** The flat header of every screen: back on a detail, a tight title, a quiet second line and the screen's own buttons. */
 @Composable

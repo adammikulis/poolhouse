@@ -7,18 +7,11 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
+import app.poolhouse.theme.PoolhouseScreen
+import app.poolhouse.theme.ThemePreference
 
-/** A screen in the phone's own colours, hidden from screenshots and recent apps in a release build. */
+/** A screen in Poolhouse's colours, hidden from screenshots and recent apps in a release build. */
 abstract class ModelScreen : ComponentActivity() {
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -26,14 +19,8 @@ abstract class ModelScreen : ComponentActivity() {
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
         enableEdgeToEdge()
-        setContent {
-            val colours = if (isSystemInDarkTheme()) dynamicDarkColorScheme(this) else dynamicLightColorScheme(this)
-            MaterialTheme(colorScheme = colours) {
-                Surface(Modifier.fillMaxSize()) {
-                    Box(Modifier.safeDrawingPadding()) { Content() }
-                }
-            }
-        }
+        val choice = ThemePreference.read(this)
+        setContent { PoolhouseScreen(choice) { Content() } }
     }
 
     @Composable

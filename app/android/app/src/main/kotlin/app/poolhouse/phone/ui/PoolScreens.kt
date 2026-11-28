@@ -54,8 +54,8 @@ import app.poolhouse.phone.ui.components.SectionLabel
 import app.poolhouse.phone.ui.components.Tag
 import app.poolhouse.phone.ui.components.TopBar
 import app.poolhouse.phone.ui.theme.Icons
-import app.poolhouse.phone.ui.theme.Pool
-import app.poolhouse.phone.ui.theme.tint
+import app.poolhouse.theme.Pool
+import app.poolhouse.theme.tint
 
 private fun Device.isThisPhone(phone: String): Boolean = id == "phone:$phone"
 

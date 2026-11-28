@@ -46,7 +46,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.poolhouse.phone.ui.components.PrimaryButton
 import app.poolhouse.phone.ui.components.SecondaryButton
-import app.poolhouse.phone.ui.theme.Pool
+import app.poolhouse.theme.Pool
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.DecodeHintType

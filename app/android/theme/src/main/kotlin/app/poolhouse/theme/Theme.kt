@@ -1,4 +1,4 @@
-package app.poolhouse.phone.ui.theme
+package app.poolhouse.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape

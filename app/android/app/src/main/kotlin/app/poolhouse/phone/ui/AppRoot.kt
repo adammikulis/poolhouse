@@ -10,7 +10,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,22 +46,17 @@ import app.poolhouse.phone.Linking
 import app.poolhouse.phone.PhoneViewModel
 import app.poolhouse.phone.Screen
 import app.poolhouse.phone.Tab
-import app.poolhouse.phone.platform.ThemeChoice
 import app.poolhouse.phone.ui.components.Banner
 import app.poolhouse.phone.ui.components.EmptyState
 import app.poolhouse.phone.ui.theme.Icons
-import app.poolhouse.phone.ui.theme.Pool
-import app.poolhouse.phone.ui.theme.PoolhouseTheme
-import app.poolhouse.phone.ui.theme.tint
+import app.poolhouse.theme.Pool
+import app.poolhouse.theme.PoolhouseTheme
+import app.poolhouse.theme.tint
 import kotlinx.coroutines.delay
 
 @Composable
 fun AppRoot(model: PhoneViewModel) {
-    val dark = when (model.theme) {
-        ThemeChoice.SYSTEM -> isSystemInDarkTheme()
-        ThemeChoice.LIGHT -> false
-        ThemeChoice.DARK -> true
-    }
+    val dark = model.theme.dark
     val pool = model.pool
     val home = model.linking is Linking.Off || model.linking is Linking.Replace
     val onTabs = home && model.screens.isEmpty()

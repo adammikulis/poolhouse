@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.sp
 import app.poolhouse.core.store.Block
 import app.poolhouse.core.store.blocks
 import app.poolhouse.core.store.spans
-import app.poolhouse.phone.ui.theme.Pool
+import app.poolhouse.theme.Pool
 
 @Composable
 private fun inline(text: String): AnnotatedString {

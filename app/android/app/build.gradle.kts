@@ -60,8 +60,9 @@ tasks.withType<Test>().configureEach {
 
 dependencies {
     implementation(project(":core"))
-    // The on-device model, when this build includes it: found at run time by name (core/device/PhonePlugin.kt).
-    if (rootProject.findProject(":llm") != null) runtimeOnly(project(":llm"))
+    implementation(project(":theme"))
+    // The model on the phone: found at run time by name (core/device/PhonePlugin.kt), so no screen of the app depends on it.
+    runtimeOnly(project(":llm"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

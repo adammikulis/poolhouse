@@ -40,7 +40,7 @@ BUILD_TOOLS = "36.0.0"
 PACKAGES = {f"platforms;android-{COMPILE_SDK}.0": (f"platforms/android-{COMPILE_SDK}.0", f"platforms/android-{COMPILE_SDK}"),
             f"build-tools;{BUILD_TOOLS}": (f"build-tools/{BUILD_TOOLS}",)}
 WORKERS = 3
-CHECKS = [":core:test", ":app:testDebugUnitTest"]
+CHECKS = [":core:test", ":llm:testDebugUnitTest", ":app:testDebugUnitTest"]
 TASKS = {"debug": [*CHECKS, ":app:assembleDebug"], "test": CHECKS,
          "lint": [*CHECKS, ":app:lintDebug", ":app:assembleDebug"], "release": [*CHECKS, ":app:assembleRelease"],
          "sample": [":core:sampleClasspath"]}

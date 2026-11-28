@@ -30,9 +30,9 @@ import androidx.compose.ui.unit.sp
 import app.poolhouse.core.theme.Brand
 import app.poolhouse.phone.Tab
 import app.poolhouse.phone.ui.theme.Icons
-import app.poolhouse.phone.ui.theme.Navy
-import app.poolhouse.phone.ui.theme.RailText
-import app.poolhouse.phone.ui.theme.tint
+import app.poolhouse.theme.Navy
+import app.poolhouse.theme.RailText
+import app.poolhouse.theme.tint
 
 private fun Tab.icon(): ImageVector = when (this) {
     Tab.CHATS -> Icons.Chat

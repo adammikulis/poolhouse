@@ -44,8 +44,8 @@ import app.poolhouse.phone.ui.components.Card
 import app.poolhouse.phone.ui.components.PrimaryButton
 import app.poolhouse.phone.ui.components.SecondaryButton
 import app.poolhouse.phone.ui.theme.Icons
-import app.poolhouse.phone.ui.theme.Navy
-import app.poolhouse.phone.ui.theme.Pool
+import app.poolhouse.theme.Navy
+import app.poolhouse.theme.Pool
 
 @Composable
 private fun Mark() {
