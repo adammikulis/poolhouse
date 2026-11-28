@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .extension_routes import load
 from .project_source import ProjectError
-from .projects import own_worktree
+from .projects import AppFolder, own_worktree
 from .session import parse_cookie
 
 
@@ -29,11 +29,6 @@ class BoardRoutes:
                 self.send(403, {"error": "board changes come from this page"})
                 return True
             project = projects.get(match[1])
-            try:
-                own_worktree(Path(project.root))
-            except ProjectError as exc:
-                self.send(403, {"error": str(exc)})
-                return True
 
             def joinable():
                 """The folder the node may take if the person joins it now, else why it may not."""
@@ -42,11 +37,15 @@ class BoardRoutes:
                 except ProjectError as exc:
                     return None, str(exc)
 
+            try:
+                folder = AppFolder(Path(project.root), own_worktree(Path(project.root)), joinable)
+            except ProjectError as exc:
+                self.send(403, {"error": str(exc)})
+                return True
             if match[2] == "tasks":
-                return load("tasks")(self, prefix=self.path, root=project.root, joinable=joinable,
-                                         project={"key": match[1], "name": project.name})
+                return load("tasks")(self, prefix=self.path, app=folder, project={"key": match[1], "name": project.name})
             opened = self.ui.sessions.get(parse_cookie(self.cookie))
-            return load("board")(self, root=project.root, prefix=f"/ui/projects/{match[1]}/board/", joinable=joinable,
+            return load("board")(self, app=folder, prefix=f"/ui/projects/{match[1]}/board/",
                                       audit=lambda name: self.ui.record("person.connect", actor=name, project=match[1],
                                                                         origin=getattr(opened, "origin", "")))
         except (PermissionError, ValueError, TypeError, KeyError) as exc:

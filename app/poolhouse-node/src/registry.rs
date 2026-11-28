@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 use crate::fsutil::write_atomic;
+use crate::project::common_root;
 use crate::row::valid_name;
 
 pub const KINDS: [&str; 4] = ["git", "folder", "gdrive", "onedrive"];
@@ -39,21 +40,9 @@ pub struct Projects {
     all: Vec<Project>,
 }
 
-/// The main working tree of the repository containing ``dir``, if it is in one.
+/// The main working tree of the repository containing ``dir``, if it is in one (`project::common_root`).
 pub fn git_root(dir: &Path) -> Option<PathBuf> {
-    let top = dir.ancestors().find(|d| d.join(".git").exists())?;
-    let git = top.join(".git");
-    if git.is_dir() {
-        return Some(top.to_path_buf());
-    }
-    let text = std::fs::read_to_string(&git).ok()?;
-    let gitdir = PathBuf::from(text.trim().strip_prefix("gitdir:")?.trim());
-    let gitdir = if gitdir.is_absolute() { gitdir } else { top.join(gitdir) };
-    let common = match std::fs::read_to_string(gitdir.join("commondir")) {
-        Ok(rel) => gitdir.join(rel.trim()).canonicalize().ok()?,
-        Err(_) => gitdir.canonicalize().ok()?,
-    };
-    common.parent().map(Path::to_path_buf)
+    common_root(dir.ancestors().find(|d| d.join(".git").exists())?).ok()
 }
 
 /// A place is never the user's home, a directory around it, or the root of the disk: it would hold every directory the user works in.

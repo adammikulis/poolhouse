@@ -44,11 +44,13 @@ def session(root: str | Path, client: Client | None = None, board: str = "") -> 
     return on(node, place.existing(node, Path(root), board))
 
 
-def app_project(root: str | Path, joinable: Callable[[], tuple[Path | None, str]], *, join: bool = False) -> sessions.Session:
-    """The person's session on the board of the project the app holds at ``root``.
+def app_project(root: str | Path, tree: Path, joinable: Callable[[], tuple[Path | None, str]], *,
+                join: bool = False) -> sessions.Session:
+    """The person's session on the board of the project the app holds at ``root``, whose main working tree is ``tree``.
 
     Nothing is registered unless ``join`` says this request is the person joining it. ``joinable()`` answers the folder the
-    node may take, or None and why not. `Unjoined` when the node holds no project there and the person may join it.
+    node may take, or None and why not. `Unjoined` when the node holds no project there and the person may join it. A board
+    registered at any other folder than ``tree`` is `Denied`, on a read as on a join.
     """
     node = _node()
     try:
@@ -59,7 +61,9 @@ def app_project(root: str | Path, joinable: Callable[[], tuple[Path | None, str]
             raise Denied("denied", why) from unknown
         if not join:
             raise Unjoined("denied", UNJOINED) from unknown
-        board = place.add(node, folder)
+        board = place.take(node, folder, tree)
+    else:
+        place.require(node, board, tree)
     return on(node, board)
 
 

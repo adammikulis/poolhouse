@@ -26,14 +26,17 @@ def _connect(request, session, audit):
     request.send(200, {'connected': True, 'name': name})
 
 
-def route(request, *, root=None, prefix="/ui/board/", audit=None, joinable=None) -> bool:
-    """Answer one request of the Board page for the board of the app's project at ``root`` (the working directory's when
-    none); only ``connect`` registers such a project, and ``audit(name)`` is told when the person's session is registered."""
+def route(request, *, app=None, prefix="/ui/board/", audit=None) -> bool:
+    """Answer one request of the Board page for the board of the app's folder ``app`` (`fleet.projects.AppFolder`; the
+    working directory's project when none); only ``connect`` registers such a project, and ``audit(name)`` is told when the
+    person's session is registered."""
     if not request.path.startswith(prefix):
         return False
 
     def theirs(join=False):
-        return person.app_project(root, joinable, join=join) if root else person.session(Path.cwd())
+        if app is None:
+            return person.session(Path.cwd())
+        return person.app_project(app.root, app.tree, app.joinable, join=join)
 
     headers = {key.lower(): value for key, value in request.handler.headers.items()}
     if request.path == prefix + "connect":

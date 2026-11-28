@@ -20,22 +20,31 @@ pub(crate) fn top(dir: &Path) -> Result<PathBuf> {
         .ok_or_else(|| Error::Invalid("this directory is not in a git repository".into()))
 }
 
-/// The main working tree of the repository that ``top`` belongs to: for a linked worktree, the
-/// parent of the common git directory.
+/// The main working tree of the repository that ``top`` belongs to: ``top`` itself where `.git` is a directory, and for a linked
+/// worktree the folder around the common `.git` directory. A `.git` file that leads to no repository's `.git` (a submodule, a
+/// separate git directory) makes ``top`` its own main working tree: the folder around a git directory kept elsewhere is not one.
 pub(crate) fn common_root(top: &Path) -> Result<PathBuf> {
     let git = top.join(".git");
     if git.is_dir() {
         return Ok(top.to_path_buf());
     }
     let text = std::fs::read_to_string(&git)?;
-    let gitdir = text.trim().strip_prefix("gitdir:").map(|p| PathBuf::from(p.trim()))
+    let gitdir = text.strip_prefix("gitdir: ").map(|p| PathBuf::from(line(p)))
         .ok_or_else(|| Error::Invalid("`.git` is neither a directory nor a gitdir file".into()))?;
-    let gitdir = if gitdir.is_absolute() { gitdir } else { top.join(gitdir) };
-    let common = match std::fs::read_to_string(gitdir.join("commondir")) {
-        Ok(rel) => gitdir.join(rel.trim()).canonicalize()?,
-        Err(_) => gitdir.canonicalize()?,
+    let gitdir = top.join(gitdir).canonicalize()?;
+    let Ok(common) = std::fs::read_to_string(gitdir.join("commondir")) else {
+        return Ok(top.to_path_buf());
     };
-    common.parent().map(Path::to_path_buf).ok_or_else(|| Error::Invalid("no repository root".into()))
+    let common = gitdir.join(line(&common)).canonicalize()?;
+    match common.parent() {
+        Some(main) if common.file_name().is_some_and(|name| name == ".git") => Ok(main.to_path_buf()),
+        _ => Ok(top.to_path_buf()),
+    }
+}
+
+/// A path written in one of git's pointer files, read as git reads it: only the line ending is not part of it.
+fn line(text: &str) -> &str {
+    text.trim_end_matches(['\r', '\n'])
 }
 
 /// The board id written in a project file's text.
