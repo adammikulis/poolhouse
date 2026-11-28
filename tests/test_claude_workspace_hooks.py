@@ -55,7 +55,10 @@ print('Authenticated parent brief: hello-model; claims and independent review re
     shutil.copytree(ROOT / 'scripts/hooks', tree / 'scripts/hooks')
     (tree / 'src').symlink_to(ROOT / 'src')
     monkeypatch.setitem(globals(), 'HOOKS', tree / 'scripts/hooks')
-    monkeypatch.chdir(tmp_path)  # outside any checkout, so the hooks report no worktrees of the real one
+    # Outside any checkout, so the hooks report no worktrees of the real one; beside the commands' folder, since a program is
+    # never looked up below the folder a process stands in.
+    (tmp_path / 'work').mkdir()
+    monkeypatch.chdir(tmp_path / 'work')
     monkeypatch.setenv('PATH', str(directory))
     monkeypatch.setenv('HOOK_CALLS', str(calls))
     monkeypatch.setenv('POOLHOUSE_HOOK_STATE', str(tmp_path / 'hookstate'))
