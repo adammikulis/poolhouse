@@ -456,7 +456,6 @@
   "tests/test_phone_attestation.py": 1.0,
   "tests/test_phone_friction.py": 0.0,
   "tests/test_phone_native_governance.py": 37.8,
-  "tests/test_phone_poolkey_enrollment.py": 3.4,
   "tests/test_pi_harness.py": 0.7,
   "tests/test_pool_check.py": 2.8,
   "tests/test_pool_found.py": 7.1,

@@ -42,7 +42,7 @@ CARGO_ENV = "DEV_TEST_CARGO_DIR"
 FIXTURES = ("tests/fixtures/phone-approval-vectors.json", "contracts/node/vectors.json",
             "contracts/node/native_boundaries/transcript-vectors.json")
 """Files of the repository, outside the Rust workspace, that a Rust test includes at compile time."""
-MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority", "poolhouse-manifest",
+MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "src-tauri","poolhouse-authority", "poolhouse-manifest",
            "native-host/NativeIdentity.c", "native-host/NativeIdentity.h", "native-host/NativeStaticImage.c", "native-host/NativeStaticImage.h", "native-host/NativeCaller.c", "native-host/NativeCaller.h",
            "native-host/MachCode.c", "native-host/MachCode.h", "native-host/MachSender.c", "native-host/MachSender.h", "native-host/NativeRequest.h",
            "native-host/AuthorityChannel.c", "native-host/AuthorityChannel.h",
