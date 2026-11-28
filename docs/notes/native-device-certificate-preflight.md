@@ -5,8 +5,8 @@ A Python observer attempted one bounded TCP connection to each candidate; neithe
 
 | Destination | Observation UTC | Elapsed | Result |
 | --- | --- | --- | --- |
-| `192.168.2.59:7447` | `2026-10-24T00:45:42.570547Z` | 5.002 s | Timeout before TCP connection |
-| `192.168.2.25:7447` | `2026-10-24T00:45:47.572774Z` | 5.002 s | Timeout before TCP connection |
+| `192.0.2.59:7447` | `2026-10-24T00:45:42.570547Z` | 5.002 s | Timeout before TCP connection |
+| `192.0.2.25:7447` | `2026-10-24T00:45:47.572774Z` | 5.002 s | Timeout before TCP connection |
 
 Private evidence `E-MAC/peer-certificate-preflight-result.json` records zero retries, no DNS/proxy, no TLS exchange,
 no certificate observed, zero product bytes, no client certificate loaded, no persistent key/device identity created,
