@@ -429,7 +429,8 @@ class ServerManager(Admitting):
         admitted = self._admitted(start.first.spec, on_event=on_event, reuse=reuse, load_s=timeout, asked=spec)
         if isinstance(admitted, ServerInfo):
             return admitted, spec
-        info, served = start.run(lease=admitted, timeout=timeout, **starting)
+        info, served = start.run(
+            lambda backend, tried: backend.start(tried, lease=admitted, timeout=timeout, **starting))
         emit(on_event, "ready", port=served.port, load_s=info.load_s, warmup_s=info.warmup_s)
         uploads.serving(served.model, served.draft or "", say=self.say or logger.warning)
         return info, served

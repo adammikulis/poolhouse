@@ -6,6 +6,9 @@ the strict reader of `wire` and writes the request upstream itself, so the sessi
 the leased alias; and it swaps the session's token for the server's key, which never leaves the parent. The server's own port is in no
 profile. Responses pass through as bytes, never parsed for anything but their framing. No more requests are with the server than it has slots:
 the others wait their turn, each for as long as its client stays, and a client that goes away leaves the line or frees its slot at once.
+
+Each prompt, as it goes to the server, is compared with those before it (`prompt_watch`): one that rewrites history the server has read is said,
+and `ModelBridge.look` tells that, whether a compaction is being asked for and, from the server's ``/slots``, how far it is in reading.
 """
 
 from __future__ import annotations
@@ -22,11 +25,12 @@ import threading
 import time
 import traceback
 from collections import Counter, deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from poolhouse.isolation import wire
+from poolhouse import http
+from poolhouse.isolation import prompt_watch, wire
 from poolhouse.isolation.gate import check_on
 from poolhouse.isolation.serving import IDLE_SECONDS, Server, tell
 from poolhouse.json_objects import unique_object
@@ -40,20 +44,30 @@ FORWARDED = ("content-type", "accept", "anthropic-version", "user-agent")
 """The request fields that reach the server; every other is dropped, and the server's key is added."""
 COMMON = ("model", "messages", "max_tokens", "stream", "temperature", "top_p", "tools", "tool_choice", "stop", "seed")
 FIELDS: dict[str, tuple[str, ...]] = {
-    "/v1/messages": (*COMMON, "system", "stop_sequences", "top_k", "thinking", "metadata"),
-    "/v1/messages/count_tokens": ("model", "messages", "system", "tools", "tool_choice", "thinking"),
+    "/v1/messages": (*COMMON, "system", "stop_sequences", "top_k", "thinking", "metadata", "chat_template_kwargs"),
+    "/v1/messages/count_tokens": ("model", "messages", "system", "tools", "tool_choice", "thinking", "chat_template_kwargs"),
     "/v1/chat/completions": (*COMMON, "max_completion_tokens", "stream_options", "parallel_tool_calls", "response_format", "frequency_penalty",
-                             "presence_penalty", "n", "reasoning_effort", "logprobs", "top_logprobs"),
+                             "presence_penalty", "n", "reasoning_effort", "logprobs", "top_logprobs", "chat_template_kwargs"),
     "/v1/responses": ("model", "input", "instructions", "max_output_tokens", "stream", "temperature", "top_p", "tools", "tool_choice",
-                      "parallel_tool_calls", "reasoning", "text"),
+                      "parallel_tool_calls", "reasoning", "text", "chat_template_kwargs"),
 }
 """The only top-level fields of a request that reach the server, by route: what the three message routes of the harnesses take. Every other field
 is dropped, a slot (`id_slot`, `slot_id`), an adapter (`lora`) and the server's own cache switch (`cache_prompt`) among them, and none is added by
 being unknown to a list kept here (the list is the allow-list, never a deny-list)."""
+EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
+SWITCHES: dict[str, tuple[object, ...]] = {"enable_thinking": (True, False), "preserve_thinking": (True, False), "reasoning_effort": EFFORTS}
+"""The only values of `chat_template_kwargs` that reach the server, by name: the template's thinking switches, which a harness turns thinking off
+by. A template reads any name it is given, so every other is dropped."""
 MEDIA = frozenset({"image_url", "image", "input_image", "input_audio", "audio", "audio_url", "file", "input_file", "video_url", "document"})
 """The content parts that carry a picture, a sound, a video or a file: each is read for a place the server could fetch from."""
 LOCATIONS = ("image_url", "audio_url", "video_url", "file_url", "url")
 DEPTH = 24
+PROMPTS = frozenset({"/v1/messages", "/v1/chat/completions", "/v1/responses"})
+"""The routes whose body holds a prompt."""
+PROGRESS_EVERY_S = 10.0
+"""Seconds between two reads of the server's ``/slots`` while a request is with it: the reply is made between two batches of its work."""
+REWRITES = 50
+"""The rewrites of one session that are kept, the newest."""
 LEFT = 499
 """The status counted for a request whose client went away before it was answered; nothing is written to it."""
 ANSWERED = ("content-type", "content-length", "cache-control")
@@ -103,9 +117,9 @@ def _remote(part: dict) -> bool:
 
 def pin(body: bytes, alias: str, route: str) -> bytes:
     """``body`` as the server gets it: one JSON object with each field once (a duplicate would be read one way here and another there), no
-    constant that is not a number (`NaN`, `Infinity`), only the fields ``route`` takes (`FIELDS`, an allow-list), its `model` set to ``alias``
-    when empty or absent and refused when it names another, and no picture, sound, video or file named by anything but its own bytes (a URL the
-    server fetched would be a request made from the one process that has the network)."""
+    constant that is not a number (`NaN`, `Infinity`), only the fields ``route`` takes (`FIELDS`, an allow-list) and of the template's own only the
+    `SWITCHES`, its `model` set to ``alias`` when empty or absent and refused when it names another, and no picture, sound, video or file named by
+    anything but its own bytes (a URL the server fetched would be a request made from the one process that has the network)."""
     def reject(constant: str) -> None:
         raise ValueError(constant)
 
@@ -120,6 +134,13 @@ def pin(body: bytes, alias: str, route: str) -> bytes:
         raise wire.Refusal(400, MESSAGES["pinned"])
     found = {name: value for name, value in found.items() if name in FIELDS[route]}
     found["model"] = alias
+    if "chat_template_kwargs" in found:
+        asked = found.pop("chat_template_kwargs")
+        # the type is matched too: 1 equals True, and a template would read it as another thing
+        switches = {name: value for name, value in (asked.items() if isinstance(asked, dict) else ())
+                    if isinstance(value, (bool, str)) and value in SWITCHES.get(name, ())}
+        if switches:
+            found["chat_template_kwargs"] = switches
     if any(_remote(part) for part in _media(found)):
         raise wire.Refusal(400, MESSAGES["remote"])
     try:
@@ -214,7 +235,8 @@ class _Turns:
 
 
 class ModelBridge:
-    """The bridge of one session: ``start()`` binds a loopback port and ``token`` is what the harness holds; the server's key stays here."""
+    """The bridge of one session: ``start()`` binds a loopback port and ``token`` is what the harness holds; the server's key stays here.
+    ``watch`` compares the session's prompts; for a conversation that goes on from another bridge the caller sets that one's before `start`."""
 
     def __init__(self, upstream: str, lease: Lease, *, key: str = "", events: Callable[[str, dict[str, object]], None] | None = None,
                  idle: float = IDLE_SECONDS) -> None:
@@ -228,6 +250,14 @@ class ModelBridge:
         self._totals = Totals(Counter(), Counter())
         self._lock = threading.Lock()
         self._busy = 0
+        self.watch = prompt_watch.Watch()
+        self._upstream_url = upstream.rstrip("/")
+        self._served = self._compacting = self._compactions = 0
+        self._rewrites: list[str] = []
+        self._markers: tuple[str, ...] = ()
+        """What tells the newest request that is with the server from another's in its ``/slots``; held only while it is there."""
+        self._progress: prompt_watch.Progress | None = None
+        self._asked_at: float | None = None
         self._upstreams: set[socket.socket] = set()
         self._stopped = False
         self._server = Server(socket.AF_INET, ("127.0.0.1", 0), self._connection,
@@ -256,6 +286,30 @@ class ModelBridge:
         """How many requests are with the model server now, those that wait for one of its slots among them."""
         with self._lock:
             return self._busy
+
+    def look(self) -> prompt_watch.Look:
+        """What is known now of the requests: whether all of them wait for a slot, whether one with the server asks for a compaction's summary,
+        how far the server is in reading it, as last heard (the question is put again from a thread of its own, so this never waits), and every
+        rewrite seen."""
+        with self._lock:
+            now = time.monotonic()
+            if self._served and (self._asked_at is None or now - self._asked_at >= PROGRESS_EVERY_S):
+                self._asked_at = now
+                threading.Thread(target=self._ask_progress, daemon=True).start()
+            return prompt_watch.Look(bool(self._busy) and not self._served, bool(self._compacting), self._progress if self._served else None,
+                                     tuple(self._rewrites), self._compactions)
+
+    def _ask_progress(self) -> None:
+        """Keep what the server's ``/slots`` says of the request it is at work on; a server that does not say leaves it unknown."""
+        headers = {"Authorization": f"Bearer {self._key}"} if self._key else {}
+        options = http.Options(headers=headers, timeout=self.idle, follow_redirects=False)   # the key goes to the server and nowhere it names
+        try:
+            found = http.request_json(f"{self._upstream_url}/slots", method="GET", options=options)
+        except (OSError, ValueError, RuntimeError):
+            return
+        with self._lock:
+            if self._served:
+                self._progress = prompt_watch.progress(found, self._markers)
 
     def summary(self) -> dict[str, object]:
         """What was served, for the end-of-session record: counts by route and status, the bytes answered and the routes refused."""
@@ -317,12 +371,33 @@ class ModelBridge:
             if not self._turns.take(sock):
                 return LEFT, 0
             try:
-                return self._relay(sock, head, path, body)
+                with self._watched(path, body):
+                    return self._relay(sock, head, path, body)
             finally:
                 self._turns.release()
         finally:
             with self._lock:
                 self._busy -= 1
+
+    @contextlib.contextmanager
+    def _watched(self, path: str, body: bytes) -> Iterator[None]:
+        """The block while the request has its slot: its prompt is compared, in the order the server is asked, and counted as being read."""
+        seen = self.watch.sent(path, body) if path in PROMPTS else prompt_watch.Seen()
+        with self._lock:
+            self._served += 1
+            self._compacting += seen.compaction
+            self._compactions += seen.compaction
+            self._markers = seen.markers
+            if seen.rewrite:
+                self._rewrites = [*self._rewrites, seen.rewrite][-REWRITES:]
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._served -= 1
+                self._compacting -= seen.compaction
+                if not self._served:
+                    self._progress, self._asked_at, self._markers = None, None, ()
 
     def _models(self) -> dict[str, object]:
         """The one model of this session as the lease names it: its alias and its window, and nothing the server would say of itself (the path
