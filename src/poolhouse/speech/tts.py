@@ -227,14 +227,14 @@ class SystemTTS:
                          "--data-format=LEI16@22050"]
                 if chosen := (voice or self.voice):
                     argv += ["-v", chosen]
-                argv.append(text)
             else:
                 argv += ["-w", str(out)]
                 if chosen := (voice or self.voice):
                     argv += ["-v", chosen]
-                argv.append(text)
+                argv.append("--stdin")
 
-            result = subprocess.run(argv, capture_output=True)
+            # the words go on the input: as an argument, words beginning with a dash are read as options that name files
+            result = subprocess.run(argv, input=text.encode("utf-8"), capture_output=True)
             if result.returncode != 0 or not out.is_file():
                 raise ProviderError(
                     f"system TTS produced no audio (exit {result.returncode})"

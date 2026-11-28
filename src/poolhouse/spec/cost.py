@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 import time
 from pathlib import Path
 
@@ -11,6 +10,7 @@ import numpy as np
 
 from poolhouse import home
 from poolhouse.files import read_json, write_json
+from poolhouse.platform import low_power
 from poolhouse.spec.layout import Layout
 from poolhouse.spec.tree import Tree
 from poolhouse.spec.verify import TreeVerifier
@@ -19,16 +19,6 @@ __all__ = ["SIZES", "calibration_tree", "load_curve", "measure"]
 
 SIZES = tuple(range(1, 33))
 CURVE_VERSION = 1
-
-
-def low_power() -> bool:
-    """Whether macOS Low Power Mode is on."""
-    try:
-        said = subprocess.run(["pmset", "-g"], capture_output=True, text=True, timeout=5,
-                              check=False).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return any(line.split()[:2] == ["lowpowermode", "1"] for line in said.splitlines())
 
 
 def calibration_tree(count: int, rng: np.random.Generator, vocab: int) -> Tree:
