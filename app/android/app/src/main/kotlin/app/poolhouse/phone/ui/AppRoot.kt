@@ -166,7 +166,8 @@ private fun Home(model: PhoneViewModel, pool: PoolSession) {
                     onClick = { directing = true },
                     containerColor = model.tab.section().tint(),
                     contentColor = Color(0xFF1B1F3A),
-                    icon = { Icon(Icons.Plus, contentDescription = null) },
+                    // The button's words are not read out on their own: the icon names it for a screen reader.
+                    icon = { Icon(Icons.Plus, contentDescription = "Direct") },
                     text = { Text("Direct") },
                     modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
                 )
