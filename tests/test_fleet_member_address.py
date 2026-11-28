@@ -48,6 +48,6 @@ def test_fleet_card_displays_authoritative_lan_address(tmp_path, monkeypatch, ad
             card.wait_for(state="visible")
             assert card.inner_text() == (advertised or f"http://127.0.0.1:{served.port}")
             assert page.locator("pool-view .member.self").get_by_text("test accelerator", exact=True).is_visible()
-            assert page.evaluate("async () => (await fleetModel.api('/ui/members')).members[0].base_url") == f"http://127.0.0.1:{served.port}"
+            assert page.evaluate("async () => (await fleetModel.api('/ui/fleet')).members[0].base_url") == f"http://127.0.0.1:{served.port}"
     finally:
         served.close()

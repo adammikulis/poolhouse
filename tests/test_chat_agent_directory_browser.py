@@ -1,10 +1,16 @@
 """Current authorized agents remain visible before the first direct message."""
 import pytest
 from browser_expect import expect
-from test_chat_workspace_discovery_browser import activity_workspace, chat_browser, team
+from test_chat_workspace_discovery_browser import (
+    activity_workspace,
+    chat_browser,
+    founded_node,
+    governed,
+    team,
+)
 
-__all__ = ['activity_workspace', 'chat_browser', 'team']
-pytest_plugins = ['node_kit']
+__all__ = ['activity_workspace', 'chat_browser', 'founded_node', 'governed', 'team']
+pytest_plugins = ['node_kit', 'testfarm_kit']
 pytestmark = pytest.mark.slow
 
 

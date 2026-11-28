@@ -7,6 +7,7 @@ import test_fleet_chat_browser as chat_fixtures
 from browser_expect import expect
 from person_kit import member_on
 
+from poolhouse.board import place
 from poolhouse.fleet import project_client
 from poolhouse.fleet.projects import ProjectRegistry, identity
 from poolhouse.net import git
@@ -27,6 +28,11 @@ def activity_workspace(chat_browser, team, tmp_path, monkeypatch):
     member = member_on(team, checkout, 'activity-helper')
     member.post('#general', 'note', 'Current authorized activity')
     member.room('create', '#experiments')
+    device = tmp_path / 'device-project'   # the device-local Board is the project of the folder the daemon runs in
+    device.mkdir()
+    git.run(['init', '-q'], cwd=device)
+    place.add(team.client, device)
+    monkeypatch.chdir(device)
     registry = ProjectRegistry(tmp_path / 'registry', 'fixture-device', (checkout,))
     monkeypatch.setattr(project_client, 'members', lambda ui: [])
     app, page = chat_browser

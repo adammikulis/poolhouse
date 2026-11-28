@@ -57,6 +57,9 @@ def test_large_library_keeps_search_and_actions_visible_across_discovery(invento
     last = results.locator('article').last
     last.locator('summary').filter(has_text='Context length').click()
     context = last.get_by_role('slider', name='Context length', exact=True)
+    fits = last.get_by_role('checkbox', name='Largest context that fits this machine', exact=True)
+    expect(context).to_be_disabled()   # the machine chooses until the person takes the slider
+    fits.uncheck()
     files = last.locator('summary').filter(has_text='Files and model details')
     files.click()
     context.focus()
