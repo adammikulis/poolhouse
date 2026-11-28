@@ -27,8 +27,8 @@ MIRROR = "https://dl-cdn.alpinelinux.org/alpine"
 REPOSITORIES = ("main", "community")
 #: What the system holds beside what these need.
 SYSTEM = ("alpine-baselayout", "alpine-baselayout-data", "busybox", "python3", "python3-tests", "py3-pytest",
-          "py3-psutil", "py3-cryptography", "py3-packaging", "py3-yaml", "gcc", "musl-dev", "make", "git", "rust",
-          "cargo")
+          "py3-psutil", "py3-cryptography", "py3-packaging", "py3-yaml", "py3-numpy", "gcc", "musl-dev", "make",
+          "git", "rust", "cargo")
 #: What the first disk holds: enough to make a filesystem and unpack the system.
 FIRST = ("busybox", "musl", "e2fsprogs")
 MODULES = ("virtio_mmio", "virtio_blk", "virtio_console", "ext4", "crc32c_generic")

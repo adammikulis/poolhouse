@@ -192,6 +192,12 @@
    "sha256": "2ec3dc4be953d842cc51193248367d86829ed699a1ed094fb5149b1b3fc62919"
   },
   {
+   "name": "libgfortran",
+   "version": "15.2.0-r5",
+   "url": "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main/aarch64/libgfortran-15.2.0-r5.apk",
+   "sha256": "a1980abe31404dd7b71c40e2cf9b1cc38b74deb5e69c222f932086422fee0dc4"
+  },
+  {
    "name": "libgomp",
    "version": "15.2.0-r5",
    "url": "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main/aarch64/libgomp-15.2.0-r5.apk",
@@ -306,6 +312,12 @@
    "sha256": "7ef451f4dcdc065aa872c2f3c78b9d9bb4348caa5bcc70dee0c9e1fcf8e4c1fd"
   },
   {
+   "name": "openblas",
+   "version": "0.3.30-r2",
+   "url": "https://dl-cdn.alpinelinux.org/alpine/latest-stable/community/aarch64/openblas-0.3.30-r2.apk",
+   "sha256": "ed19e3c1f0242b21462f551116a87a90bb24e4d440b4938dcf36e24e0b71ade4"
+  },
+  {
    "name": "pcre2",
    "version": "10.49-r0",
    "url": "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main/aarch64/pcre2-10.49-r0.apk",
@@ -334,6 +346,12 @@
    "version": "2.3.0-r1",
    "url": "https://dl-cdn.alpinelinux.org/alpine/latest-stable/main/aarch64/py3-iniconfig-2.3.0-r1.apk",
    "sha256": "2e6e7dfb5760522fefab22cd23f26378ee35c2b0e45df79281cbc5450b08abf1"
+  },
+  {
+   "name": "py3-numpy",
+   "version": "2.4.6-r0",
+   "url": "https://dl-cdn.alpinelinux.org/alpine/latest-stable/community/aarch64/py3-numpy-2.4.6-r0.apk",
+   "sha256": "c6b8e6576c4d06732a78732aa9e73ac2f11123a0d79dc89db3cd0af8e17350c6"
   },
   {
    "name": "py3-packaging",

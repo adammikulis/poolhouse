@@ -29,6 +29,7 @@ timed("write_read_3000_files", [sys.executable, "-c",
       "for i in range(3000): (root / str(i)).write_bytes(os.urandom(8192))\n"
       "print(sum(len(p.read_bytes()) for p in root.iterdir()))"])
 shutil.copytree("/opt/bench/lua-5.4.7", work / "lua")
+timed("c_compile_one_file", ["gcc", "-O2", "-std=gnu99", "-DLUA_USE_POSIX", "-c", "lua/src/lvm.c", "-o", "lvm.o"])
 timed("c_build_lua_j3", ["make", "-C", "lua/src", f"-j{JOBS}", "all", "SYSCFLAGS=-DLUA_USE_POSIX"])
 timed("c_built_program_runs", "lua/src/lua -e 'local s=0 for i=1,30000000 do s=s+i%7 end print(s)'")
 parts = []

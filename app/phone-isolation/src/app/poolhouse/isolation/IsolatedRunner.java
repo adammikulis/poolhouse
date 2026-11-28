@@ -141,12 +141,14 @@ public final class IsolatedRunner extends Service {
              ParcelFileDescriptor channel = descriptor(asked, "channel")) {
             List<String> argv = new ArrayList<>(List.of(library + "/libqemu.so",
                     "-nodefaults", "-no-user-config", "-nographic", "-no-reboot",
-                    "-machine", "virt", "-cpu", asked.getString("cpu", "max,pauth-impdef=on"),
+                    // A processor without the newest extensions: translating them costs several times the speed.
+                    "-machine", "virt", "-cpu", asked.getString("cpu", "cortex-a72"),
                     "-accel", "tcg,thread=multi,tb-size=" + asked.getInt("translations", 512),
                     "-smp", String.valueOf(asked.getInt("cpus", 4)),
                     "-m", String.valueOf(asked.getInt("memory", 2048)),
                     "-kernel", library + "/libkernel.so", "-initrd", library + "/libinitrd.so",
-                    "-append", "console=ttyAMA0 quiet panic=1 " + asked.getString("kernel", ""),
+                    // The guest's own mitigations guard its programs from each other, and one job has the machine.
+                    "-append", "console=ttyAMA0 quiet panic=1 " + asked.getString("kernel", "mitigations=off"),
                     "-serial", "stdio",
                     "-add-fd", "fd=3,set=1", "-add-fd", "fd=4,set=2",
                     "-blockdev", "driver=file,node-name=systemfile,filename=/dev/fdset/1,read-only=on,locking=off",

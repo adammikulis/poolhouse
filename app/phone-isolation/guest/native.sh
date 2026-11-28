@@ -6,7 +6,7 @@ set -eu
 folder=$1
 root=$folder/root
 mkdir -p "$root"
-tar -x -f "$folder/system.img" -C "$root"
+[ -f "$root/.unpacked" ] || { tar -x -f "$folder/system.img" -C "$root" && touch "$root/.unpacked"; }
 mkdir -p "$root/proc" "$root/sys" "$root/dev" "$root/tmp" "$root/root"
 mount -t proc proc "$root/proc"
 mount -o bind /dev "$root/dev"

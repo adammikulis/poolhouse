@@ -15,6 +15,24 @@ on an API 36 emulator only.
 | a translation layer (proot, a loader, a system-call shim) in the app's own user id | **no**: whatever it runs can leave it and is then the app |
 | the app's channel parser | the attack surface: the isolated side is assumed hostile |
 
+## The shape this argues for
+
+| piece | where it runs | what it holds |
+|---|---|---|
+| the node, the interface, keys, the network, the model server | the app's user id | everything secret; it never runs pool-supplied code |
+| one machine per job (`bindIsolatedService`, one instance each) | its own isolated user id | the job's tree, the read-only system image, a work disk wiped afterwards |
+| the channel (a virtio serial port over a socket pair the app made) | between the two | the job in (`spec.json`, `tree.tgz`), `result.json` out, size capped; model requests relayed with a quota |
+
+The guest never gets a credential, a network device or a path of the app. The app never mounts or reads a guest disk,
+parses only the channel, and ends a job by letting go of the service. Only the boundary above is proven here; the
+node, per-job instances, the relay and a pinned image download are not built.
+
+Rejected: the app's own user id (nothing separates hostile code from the keys, and running built files there needs
+`targetSdkVersion` 28); the Android Virtualization Framework (on the target chip only protected Microdroid machines,
+whose permission an ordinary install cannot hold, with no network and no execution of what the payload writes);
+WebAssembly (the tests start programs and compile with native toolchains); the SDK sandbox and Private Compute Core
+(not offered to an app for its own code).
+
 ## Build and run
 
 Every output goes to a folder outside the checkout.
@@ -58,9 +76,34 @@ Not measured: an app target of 37, an API 37 image (none is installed and none w
 
 ## Measured: speed
 
-See the table in the pull request or commit message; `guest/bench.sh` reproduces it. The native column is the same
-system under `chroot` on the same emulator, so the ratio is the cost of the machine; absolute times on a phone are
-unmeasured.
+`guest/bench.sh` is run by the machine in the isolated service and by `guest/native.sh`, which runs the same files
+under `chroot` on the same emulator. Seconds; the factor is against the native time of the same period.
+
+**The computer was heavily loaded by other work throughout (load average 37 to 82 on 16 cores)**, and the emulator
+is itself a virtual machine, where the machine's own thread wake-ups are costly. Native times alone moved by a factor
+of two. Read these as a size, not a figure: repeat them on an idle computer and on a phone.
+
+| workload | native | `-cpu max`, 4 | `-cpu max`, 1 | `cortex-a72`, `mitigations=off`, 1 | same, 4 |
+|---|---|---|---|---|---|
+| Python arithmetic (one thread) | 1.0 to 2.2 | 82 to 204 (49x to 93x) | | | 35 (36x) |
+| start 300 programs | 0.2 to 0.8 | 7.8 to 17.9 (about 40x) | 9.6 | 5.2 (7x) | |
+| write and read 3000 files | 0.3 to 0.4 | 23.0 (52x) | | | |
+| `gcc -O2` of one large C file (`lvm.c`) | 1.2 to 2.3 | 127 (94x) | 80 | 41 (18x) | 48 (39x) |
+| build Lua, `make -j3` | 3.0 to 6.8 | 510 (about 100x) | | over 290, stopped | 375 (123x) |
+| optimized `rustc` build of one generated file | 16 to 40 | not measured | | | |
+
+- The processor the guest sees decides much of it: `cortex-a72` was two to six times faster here than `max`. The
+  runner uses it, with `mitigations=off` in the guest.
+- A parallel build gained little from the machine's four processors here.
+- Letting go of the service ends the job: Android killed the runner ("isolated not needed") and the engine with it
+  within two seconds, in the middle of a build.
+- gVisor's released `runsc`, a possible native-speed route, did not start on this kernel even as root: it reads
+  `/proc/self/uid_map`, and the kernel has no user namespaces (nor process-id namespaces).
+- First start installs the system onto the work disk once (about 80 to 100 s); later starts reach the task in about
+  5 to 10 s.
+- Not measured: any phone, battery, heat, a Rust build or the repository's tests inside the machine (the guest lacks
+  `keyring`, so its tests did not run natively either).
+- At these factors a test shard that takes minutes on a computer takes hours here. Short commands are usable.
 
 ## Limits and open work
 
