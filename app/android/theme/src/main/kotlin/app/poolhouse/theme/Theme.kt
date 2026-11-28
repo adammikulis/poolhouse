@@ -124,7 +124,8 @@ fun PoolhouseTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable (
         surfaceContainerLow = c.surface,
         surfaceContainer = c.surface,
         surfaceContainerHigh = c.surface,
-        surfaceContainerHighest = c.sunken,
+        // A plain Material card takes this: the sunken colour here would also be `surfaceVariant`, whose text is the faded one.
+        surfaceContainerHighest = c.surface,
         outline = c.lineStrong,
         outlineVariant = c.line,
         error = c.bad,
