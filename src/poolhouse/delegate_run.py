@@ -67,7 +67,9 @@ def changes(state: str, found: Any, refused: Sequence[delegate_refusals.Refused]
     came to; empty when there is nothing to warn of."""
     writes = delegate_refusals.said(refused)
     if state == "rejected":
-        held = "nothing was applied to the project" if found is not None else review.where or "the answer is not accepted"
+        held = review.where or "the answer is not accepted"
+        if found is not None:
+            held = "the work is not accepted" if found.applied else "nothing was applied to the project"
         kept = f"; kept patches: {', '.join(found.patches)}" if found is not None and found.patches else ""
         return "; ".join(each for each in (review.said(), held, writes) if each) + kept
     if state == "done" or (found is None and not writes):
@@ -149,8 +151,8 @@ def run(name: str) -> int:
         detail = "; ".join(each for each in (f"untested: the sandbox could not start the project's tests ({answer.untested})", detail) if each)
     row = safetext.utf8({**_outcome(answer, why, began), "detail": detail})   # the model's text reaches the board
     row["phases"] = store.graded(name)["run"].get("phases", [])
-    if rec.branch:   # commit what stands to its branch, keep a patch of anything else, and remove the worktree
-        state, said, row["tree"] = delegate_tree.settled(rec, state, found.applied if found else ())
+    if rec.branch:   # commit the work to its branch, however the run ended, and remove the worktree
+        state, said, row["tree"] = delegate_tree.settled(rec, state, found.applied if found else None, answer.commits if answer else ())
         row["detail"] = "; ".join(each for each in (said, row["detail"]) if each)
     store.save_result(name, {**row, "state": state})
     delegate_grade.ended(name, state, row)

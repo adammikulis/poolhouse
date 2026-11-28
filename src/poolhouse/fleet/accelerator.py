@@ -7,6 +7,7 @@ import time
 from importlib.util import find_spec
 from typing import Any
 
+from poolhouse.backend import mlx_ops
 from poolhouse.fleet.hardware import detect_device
 from poolhouse.fleet.telemetry import gpu_telemetry
 from poolhouse.serve.python_requirements import installed_mlx
@@ -111,8 +112,7 @@ def apple_telemetry() -> dict[str, Any]:
 
 def mlx_report() -> dict[str, Any]:
     """Apple silicon, where the GPU has no separate memory pool."""
-    import mlx.core as mx
-
+    mx = mlx_ops.core()
     out: dict[str, Any] = {}
     try:
         device = mx.default_device()

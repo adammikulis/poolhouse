@@ -67,6 +67,8 @@ class Workspace:
         self.last: Capture | None = None
         self.changes: tuple[Change, ...] = ()
         self.persisted: dict | None = None
+        self.pinned: Path | None = None
+        """The index a stage is read by in place of its own (`pin`)."""
         snapshot = SourceSnapshot(self.source, self.directory, strict=False)
         try:
             self.initial = snapshot.capture(self.master, excluded=self._excluded(snapshot))
@@ -124,7 +126,7 @@ class Workspace:
             made.source_identity = tuple(receipt["source_identity"])
             made.directory_identity = tuple(receipt["directory_identity"])
             made.alias, made.lock, made.free = directory / "workspace", threading.Lock(), _free_bytes
-            made.revision, made.persisted = receipt["revision"], receipt
+            made.revision, made.persisted, made.pinned = receipt["revision"], receipt, None
             made.excluded = state.paths(receipt["initial"]["manifest"]["excluded"])
             made.initial = made._restore_capture(receipt["initial"])
             made.last = made._restore_capture(receipt["master"])
@@ -157,8 +159,8 @@ class Workspace:
         credentials = (name for name in snapshot.entries if secretpaths.name_hit(os.fsdecode(name)))
         return tuple(sorted({*self.excluded, *credentials, *(os.fsencode(path) for path in state.CONTROL_PREFIXES)}))
 
-    def _capture(self, root: Path, label: str, previous: Capture) -> Capture:
-        snapshot = SourceSnapshot(root, self.directory, known_paths=previous.missing, strict=False)
+    def _capture(self, root: Path, label: str, previous: Capture, index: Path | None = None) -> Capture:
+        snapshot = SourceSnapshot(root, self.directory, known_paths=previous.missing, strict=False, index=index)
         try:
             return snapshot.capture(self.directory / f"{label}-{uuid.uuid4().hex}",
                                     excluded=self._excluded(snapshot))
@@ -242,8 +244,16 @@ class Workspace:
         credential name the tool made is not carried and is returned by name, beside the capture, so the rest is published; `finish` is
         unchanged and still refuses the whole result for either. ``base`` is the capture the session last published."""
         present = {os.fsencode(prefix) for prefix in state.CONTROL_PREFIXES if os.path.lexists(stage.physical / prefix)}
-        captured = self._capture(stage.physical, "result", base)
+        captured = self._capture(stage.physical, "result", base, self.pinned)
         return captured, tuple(sorted(present | {name for name in captured.excluded if name not in base.excluded}))
+
+    def pin(self, stage: Stage) -> None:
+        """Keep the index of ``stage`` as it is now, outside every folder a session writes, and read the stage by that copy from here on
+        (`observe`): the index of a session that commits changes, and then decides nothing of what is captured."""
+        held = self.directory / f"index-{uuid.uuid4().hex}"
+        shutil.copyfile(stage.physical / ".git" / "index", held)
+        held.chmod(0o600)
+        self.pinned = held
 
     def adopt(self, kept: Path) -> Stage:
         """Take a stage an earlier launch of the same conversation kept (a directory of another private namespace of this account) as the working

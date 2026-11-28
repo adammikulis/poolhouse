@@ -44,7 +44,7 @@ UNREAD = "The run failed and the stage could not be read, so nothing more was pu
 @dataclass(frozen=True, slots=True)
 class Launch:
     """What one launch tells the workspace: the person's project, the state root, the session's name (the parent's own), the conversation whose kept
-    stage a re-launch reuses, where reports go and the activity log."""
+    stage a re-launch reuses, where reports go, the activity log and, for a session that commits in its copy, the name it commits under."""
 
     project: str
     state: str
@@ -52,6 +52,7 @@ class Launch:
     notice: Notice
     conversation: str = ""
     log: Log = activity.record
+    committer: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +173,8 @@ class Session:
         self.unread: list[tuple[str, str]] = []
         self.links = environment_links(self.root, stage.physical, self.unread)
         self.closed = False
+        self.start = ""
+        """The commit the project was at when the session began."""
 
     @classmethod
     def begin(cls, launch: Launch) -> Session:
@@ -184,8 +187,11 @@ class Session:
         resumed = cls._resume(launch, workspace)
         stage, base, reported = resumed or (workspace.begin(), workspace.initial, [])
         if not resumed:
-            history.give(root, stage.physical, workspace.excluded)   # what it could not give, the preflight finds in the box and says
+            history.give(root, stage.physical, workspace.excluded, launch.committer)   # what it could not give, the preflight finds in the box
+        if launch.committer:
+            workspace.pin(stage)
         session = cls(launch, workspace, stage, base)
+        session.start = history.head(root)
         session.reports.seen.update(reported)
         return session
 

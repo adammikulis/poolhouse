@@ -19,7 +19,7 @@ from poolhouse import sandbox
 from poolhouse.isolation.environment import SHELL, SHELL_DEFAULT_S
 from poolhouse.isolation.profile import Profile
 
-__all__ = ["Findings", "checks", "run"]
+__all__ = ["Findings", "checks", "run", "shell"]
 
 GIT = "git status --short >/dev/null && git diff --stat >/dev/null"
 HISTORY = f"{GIT} && git diff HEAD --stat >/dev/null && git log -1 --format=%h >/dev/null && git show --name-status HEAD >/dev/null"
@@ -87,11 +87,16 @@ def checks(stage: Path) -> tuple[tuple[str, str], ...]:
     return tuple(found)
 
 
+def shell(profile: Profile, command: str) -> sandbox.Result:
+    """``command`` run in the box in the stage, by its shell, within a shell call's default time."""
+    bounded = replace(profile.policy, limits=replace(profile.policy.limits, wall_seconds=SHELL_DEFAULT_S))
+    return sandbox.run([SHELL, "-c", command], bounded, cwd=profile.stage)
+
+
 def _failed(profile: Profile, command: str) -> str:
     """Why ``command``, run in the box in the stage, does not work: the command and its last words; empty when it ends well."""
-    bounded = replace(profile.policy, limits=replace(profile.policy.limits, wall_seconds=SHELL_DEFAULT_S))
     try:
-        done = sandbox.run([SHELL, "-c", command], bounded, cwd=profile.stage)
+        done = shell(profile, command)
     except (OSError, ValueError, RuntimeError) as why:
         return f"`{command}` did not run: {why}"
     if done.ok:

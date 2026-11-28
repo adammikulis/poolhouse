@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import home
-from poolhouse.backend import detect_backend, set_seeds
+from poolhouse.backend import detect_backend, mlx_ops, set_seeds
 from poolhouse.log import say, warn
 from poolhouse.optional import module
 
@@ -85,9 +85,7 @@ def peak_memory_bytes(backend: str) -> int:
     """The most memory the backend says it allocated, or 0 when it does not say."""
     try:
         if backend == "mlx":
-            import mlx.core as mx
-
-            return int(mx.get_peak_memory())
+            return int(mlx_ops.core().get_peak_memory())
         if backend == "torch":
             import torch
 

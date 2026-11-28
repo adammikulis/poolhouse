@@ -1,9 +1,10 @@
 """The worktree and branch of a delegate that edits a git project, which the launcher makes beside it from the commit it is at, so that the lead's
 checkout is never written.
 
-What the run changed, and its self-check accepted where one was asked for, is committed there by name; the branch is left for the session that started
-the delegate to review, grade and land. Anything else is kept as a patch. The worktree is removed either way, and so is a branch that got no commit.
-Nothing is merged or pushed, no hook of the repository runs and no git configuration is written.
+What the run changed is committed there by name, however it ended: a run that was done, or one that failed, was stopped or whose self-check did not
+accept it, whose commit says it is unfinished. The branch is left for the session that started the delegate to review, grade and land. The worktree
+is removed once what it held is committed, and so is a branch that got no commit; a worktree whose work git could not commit is left as it is, and a
+file git would not take is kept as a patch. Nothing is merged or pushed, no hook of the repository runs and no git configuration is written.
 """
 
 from __future__ import annotations
@@ -15,12 +16,15 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from poolhouse import delegate_candidate, delegate_store as store, secretpaths
+from poolhouse.isolation.history import IDENTITY
+from poolhouse.workspace import nudge_fence
 
 __all__ = ["BRANCHES", "changed", "committed", "made", "possible", "removed", "settled", "uncommitted"]
 
 BRANCHES = "delegate/"
 """What the name of every branch made here starts with."""
-IDENTITY = "poolhouse.invalid"
+FINISHED = ("done", "partial")
+"""The states of a run whose commit says only that it is not yet reviewed."""
 
 
 def _head(source: str) -> str:
@@ -64,9 +68,11 @@ def removed(source: str, folder: str, branch: str, *, keep_branch: bool) -> None
             delegate_candidate.git(source, "branch", "--quiet", "-D", branch)
 
 
-def committed(folder: str, rec: store.Delegate, paths: Sequence[str]) -> tuple[str, list[str]]:
+def committed(folder: str, rec: store.Delegate, paths: Sequence[str], unfinished: str = "",
+              said: Sequence[str] = ()) -> tuple[str, list[str]]:
     """Commit ``paths``, each by name, in the worktree ``folder`` as the delegate: the commit (empty when none of them differs) and the paths git
-    would not take. No hook of the repository runs and nothing is signed. ValueError when git cannot commit."""
+    would not take. ``unfinished`` is the state of a run that did not finish, which the message then says; ``said`` are the messages of the
+    delegate's own commits, kept in it. No hook of the repository runs and nothing is signed. ValueError when git cannot commit."""
     left = []
     for path in paths:
         try:
@@ -78,45 +84,46 @@ def committed(folder: str, rec: store.Delegate, paths: Sequence[str]) -> tuple[s
     who = {f"GIT_{role}_{field}": value for role in ("AUTHOR", "COMMITTER")
            for field, value in (("NAME", rec.name), ("EMAIL", f"{rec.name}@{IDENTITY}"))}
     subject = " ".join(rec.task.split())[:60]
-    message = f"delegate {rec.name}: {subject}\n\nWork of a local coding agent for {rec.lead}, not yet reviewed by it."
-    delegate_candidate.git(folder, "-c", "commit.gpgSign=false", "commit", "--quiet", "--no-verify", "-m", message, env=who)
+    head = f"delegate {rec.name}: {subject}"
+    standing = (f"UNFINISHED, the run ended {unfinished}: work of a local coding agent for {rec.lead}, kept as it stood, neither finished nor accepted."
+                if unfinished else f"Work of a local coding agent for {rec.lead}, not yet reviewed by it.")
+    own = "".join(f"\n\nA commit the delegate made, in its words:\n{nudge_fence.clean(each)}" for each in said)
+    delegate_candidate.git(folder, "-c", "commit.gpgSign=false", "commit", "--quiet", "--no-verify", "-m", f"{head}\n\n{standing}{own}", env=who)
     return _head(folder), left
 
 
-def _patched(rec: store.Delegate) -> str:
-    """A patch of what the worktree holds that was not committed, kept in the delegate's folder; empty when it holds nothing."""
-    names = changed(rec.workdir)
+def _patched(rec: store.Delegate, names: Sequence[str]) -> str:
+    """A patch of the files ``names`` of the worktree, which git would not commit, kept in the delegate's folder; empty when there is none."""
     if not names:
         return ""
-    delegate_candidate.git(rec.workdir, "--literal-pathspecs", "add", "--intent-to-add", "--", *names)
-    patch = store.folder(rec.name) / "unaccepted.patch"
+    with contextlib.suppress(ValueError):
+        delegate_candidate.git(rec.workdir, "--literal-pathspecs", "add", "--force", "--intent-to-add", "--", *names)
+    patch = store.folder(rec.name) / "uncommitted.patch"
     patch.write_bytes(delegate_candidate.git(rec.workdir, "--literal-pathspecs", "diff", "--binary", "HEAD", "--", *names))
     return str(patch)
 
 
-def settled(rec: store.Delegate, state: str, applied: Sequence[str]) -> tuple[str, str, dict[str, str]]:
-    """What becomes of the worktree of a run that ended in ``state`` having published ``applied``: ``(state, what the lead is told, the branch,
-    commit and patch kept)``. A run `done` or `partial` is committed; one that cannot be ends `unapplied` with a patch."""
-    kept, why = {"branch": "", "commit": "", "patch": ""}, ""
+def settled(rec: store.Delegate, state: str, applied: Sequence[str] | None, said: Sequence[str] = ()) -> tuple[str, str, dict[str, str]]:
+    """What becomes of the worktree of a run that ended in ``state``: ``(state, what the lead is told, the branch, commit and patch kept)``.
+    ``applied`` are the paths a sandboxed run published there, None when the run left no word of them, and ``said`` the messages of the
+    delegate's own commits. What it published (with no sandbox, or no word, all that differs) is committed on its branch; a `done` or `partial`
+    run whose work cannot be committed ends `unapplied`, and the worktree of work that is not committed is left."""
+    kept = {"branch": "", "commit": "", "patch": ""}
     if not Path(rec.workdir).is_dir():
         return state, "", kept
     try:
-        if state in ("done", "partial"):
-            paths = list(applied) if rec.sandboxed else changed(rec.workdir)
-            sha, left = committed(rec.workdir, rec, paths) if paths else ("", [])
-            if sha:
-                removed(rec.source, rec.workdir, rec.branch, keep_branch=True)
-                skipped = f"; {len(left)} file(s) git would not take are not in it" if left else ""
-                said = (f"a review is waiting for you: branch {rec.branch} at {sha}{skipped}. Review it, grade it (`poolhouse-delegate grade "
-                        f"{rec.name} ...`) and land it yourself: nothing was merged or pushed, and the worktree is removed")
-                return state, said, {**kept, "branch": rec.branch, "commit": sha}
-        if not rec.sandboxed:
-            kept["patch"] = _patched(rec)
+        paths = list(applied) if rec.sandboxed and applied is not None else changed(rec.workdir)
+        sha, left = committed(rec.workdir, rec, paths, "" if state in FINISHED else state, said) if paths else ("", [])
+        kept["patch"] = _patched(rec, left)
     except (OSError, ValueError) as error:
-        why = f"; it could not be committed: {error}"
-        state = "unapplied" if state in ("done", "partial") else state
-        with contextlib.suppress(OSError, ValueError):
-            kept["patch"] = _patched(rec)
-    removed(rec.source, rec.workdir, rec.branch, keep_branch=False)
-    patch = f"; what it changed is kept at {kept['patch']}" if kept["patch"] else ""
-    return state, f"nothing was committed, and its worktree and branch are removed{why}{patch}", kept
+        told = f"its work could not be committed ({error}), so it is left in the worktree {rec.workdir} on branch {rec.branch}"
+        return "unapplied" if state in FINISHED else state, told, {**kept, "branch": rec.branch}
+    removed(rec.source, rec.workdir, rec.branch, keep_branch=bool(sha))
+    patch = f"; {len(left)} file(s) git would not take are not in it, kept at {kept['patch']}" if left else ""
+    if not sha:
+        return state, f"nothing was committed, and its worktree and branch are removed{patch}", kept
+    review = (f"a review is waiting for you: branch {rec.branch} at {sha}" if state in FINISHED else
+              f"its unfinished work is committed, not accepted, on branch {rec.branch} at {sha}")
+    told = (f"{review}{patch}. Review it, grade it (`poolhouse-delegate grade {rec.name} ...`) and land it yourself: nothing was merged or "
+            "pushed, and the worktree is removed")
+    return state, told, {**kept, "branch": rec.branch, "commit": sha}

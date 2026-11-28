@@ -219,11 +219,12 @@ def _announce(rec: store.Delegate, pid: int, why: str) -> None:
         mode = f"{rec.permissions}, with no sandbox,"
     say(f"started {rec.name} (pid {pid}) for {rec.lead} on {Path(rec.model).name}: {mode} in {rec.workdir}")
     if rec.review_rounds:
-        held = "" if why or not rec.edit else ", and its change is applied only once accepted"
+        held = "" if why or not rec.edit or rec.branch else ", and its change is applied only once accepted"
         say(f"a fresh reviewer checks the work before delivery, in up to {rec.review_rounds} round(s){held}; --no-review turns it off")
     say(f"it asks you with a message from {rec.name}: read `poolhouse-workspace inbox`, answer with `poolhouse-workspace send {rec.name} answer TEXT`")
     if rec.branch:
-        say(f"it works on branch {rec.branch} in a worktree of its own; what stands is committed there for you to review and land")
+        say(f"it works on branch {rec.branch} in a worktree of its own; what it makes is committed there, however the run ends, for you to "
+            "review and land")
     say(f"poolhouse-delegate status {rec.name} | follow {rec.name} | wait {rec.name} | result {rec.name} | stop {rec.name}")
 
 
@@ -388,7 +389,7 @@ def stop(args: argparse.Namespace) -> int:
     with contextlib.suppress(Denied, NodeError, ValueError, OSError):
         harnessid.launcher(Client(node_launch.default_state()), rec.board, rec.lead).retire(rec.name)
     if rec.branch:   # a runner that ended removed its own; one that is gone left it
-        _state, said, _kept = delegate_tree.settled(rec, "stopped", ())
+        _state, said, _kept = delegate_tree.settled(rec, "stopped", None)
         if said:
             say(said)
     elif rec.workdir != rec.source:
