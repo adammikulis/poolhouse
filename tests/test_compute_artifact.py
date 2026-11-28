@@ -240,6 +240,7 @@ def test_installing_another_library_after_core_keeps_the_compute_inventory(bundl
     import subprocess
     import sys
 
+    from poolhouse import provision
     from poolhouse.fleet.environment import Environment
     from poolhouse.fleet.wheel_provenance import stamp
 
@@ -249,6 +250,8 @@ def test_installing_another_library_after_core_keeps_the_compute_inventory(bundl
     subprocess.run([sys.executable, '-m', 'venv', str(environment.path)], check=True, capture_output=True)
     monkeypatch.setattr(artifact, 'expected', lambda: manifest)
     monkeypatch.setattr(environment, 'wheels', lambda: base.parent)
+    # The locked install is the one an engine start asks for; this wheel declares nothing, so it fetches nothing.
+    monkeypatch.delenv(provision.SWITCH, raising=False)
 
     def bytecode():
         return [path for path in environment.path.rglob('*.pyc')
