@@ -152,7 +152,6 @@ def test_a_card_starts_on_a_branch_bound_to_the_releasing_lead_with_memory_and_o
     ({"waiting": 1}, "answering a request"),
     ({"queue": [{"pid": 77, "label": "poolhouse-chat"}]}, "waited for by poolhouse-chat"),
     ({"claim_waiters": [{"pid": 78, "name": "gpu-training", "info": {"purpose": "a benchmark"}}]}, "a benchmark"),
-    ({"measured": object()}, "a measurement"),
     ({"requests": {"gpu": [{"pid": 77, "running": False}]}}, "waits for the gpu"),
     ({"taken_up": False}, "never starts another"),
     ({"servers": {}}, "never loads a model"),
@@ -199,12 +198,14 @@ def test_the_runner_gives_the_model_up_to_someone_else_and_the_card_is_ready_aga
     assert states(root)["junk-card"] == "ready"
 
 
-@pytest.mark.parametrize("change", [
-    {"queue": [{"pid": 77, "label": "the app's chat"}]},
-    {"claim_waiters": [{"pid": 77, "name": "gpu-training", "info": {"purpose": "the app's chat"}}]},
-    {"claims": {"gpu-model-start:x": {"pid": 77, "info": {"purpose": "the app's chat"}}}},
+@pytest.mark.parametrize(("change", "said"), [
+    ({"queue": [{"pid": 77, "label": "the app's chat"}]}, "the app's chat"),
+    ({"claim_waiters": [{"pid": 77, "name": "gpu-training", "info": {"purpose": "a training run"}}]}, "a training run"),
+    ({"claims": {"gpu-model-start:x": {"pid": 77, "info": {"purpose": "another model"}}}}, "another model"),
+    ({"requests": {"gpu": [{"pid": 77, "running": False}]}}, "waits for the gpu"),
+    ({"measured": object()}, "a measurement"),
 ])
-def test_the_runner_yields_to_whoever_waits_for_the_model_or_the_device(root, change):
+def test_the_runner_yields_to_whoever_waits_for_the_model_or_the_device(root, change, said):
     release(root)
     computer = Computer()
     cards_run.step(root, computer.host())
@@ -213,7 +214,7 @@ def test_the_runner_yields_to_whoever_waits_for_the_model_or_the_device(root, ch
     for name, value in change.items():
         setattr(computer, name, value)
     kind, text = cards_run.step(root, computer.host())
-    assert kind == "waiting" and "the app's chat" in text and computer.asked[-1] == ["stop", "run-1"]
+    assert kind == "waiting" and said in text and computer.asked[-1] == ["stop", "run-1"]
 
 
 def test_a_hold_by_a_process_below_the_delegates_recorded_one_is_its_own(root):
