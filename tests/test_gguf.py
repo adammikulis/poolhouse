@@ -86,7 +86,7 @@ class TestToolDiscovery:
         monkeypatch.setenv("LLAMA_CPP_ROOT", str(tmp_path))
         assert find_converter() == script.resolve()
 
-    def test_require_names_what_it_tried_and_how_to_fix_it(self, tmp_path, monkeypatch):
+    def test_require_names_what_it_tried_and_a_named_path_is_not_stood_in_for(self, tmp_path, monkeypatch):
         """An error that only says 'not found' makes the reader go hunting."""
         monkeypatch.delenv("LLAMA_CPP_ROOT", raising=False)
         monkeypatch.delenv("LLAMA_CPP_DIR", raising=False)
@@ -96,7 +96,7 @@ class TestToolDiscovery:
             require_converter(tmp_path / "absent.py")
         message = str(excinfo.value)
         assert "LLAMA_CPP_ROOT" in message
-        assert "git clone" in message
+        assert "nothing was fetched in its place" in message and "git clone" not in message
 
     def test_quantize_is_found_in_a_build_dir(self, tmp_path, monkeypatch):
         """The quantiser ships as a binary, usually under build/bin."""

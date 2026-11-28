@@ -5,7 +5,9 @@ from __future__ import annotations
 import array
 import math
 import threading
+from pathlib import Path
 
+from poolhouse import provision
 from poolhouse.speech.protocols import (
     DEFAULT_SAMPLE_RATE,
     ProviderError,
@@ -85,6 +87,11 @@ class EnergyVAD:
         )
 
 
+SILERO_COMMIT = "63d4a2a7bfce8cd9bb39ed8fa0afcb5236d73e01"
+"""The commit of the detector's repository (its release v6.3) whose code and weights torch fetches and runs the first
+time. It is addressed by that commit; no digest of the download is held here."""
+
+
 class SileroVAD:
     """Silero VAD: small, fast, and actually distinguishes speech from noise."""
 
@@ -119,9 +126,12 @@ class SileroVAD:
             if self._model is None:
                 import torch
 
+                kept = Path(torch.hub.get_dir()) / f"snakers4_silero-vad_{SILERO_COMMIT}"
+                if not kept.is_dir() and (refused := provision.download_refusal()):
+                    raise ProviderError(f"silero VAD is not on this device and was not downloaded: {refused}")
                 try:
                     model, _utils = torch.hub.load(
-                        "snakers4/silero-vad", "silero_vad", trust_repo=True
+                        f"snakers4/silero-vad:{SILERO_COMMIT}", "silero_vad", trust_repo=True
                     )
                 except Exception as exc:
                     raise ProviderError(f"silero VAD would not load: {exc}") from exc

@@ -151,8 +151,11 @@ class TestFetchingPython:
     def _release(self, monkeypatch, tmp_path, assets):
         import json
 
+        from poolhouse import provision
         from poolhouse.fleet import environment as mod
         from tests.net_site import Site
+
+        monkeypatch.delenv(provision.SWITCH, raising=False)
 
         env = Environment(tmp_path)
         listed = [{**a, "name": f"cpython-{mod.PYTHON}.1{env._asset_name()}.tar.gz"} for a in assets]
@@ -173,6 +176,44 @@ class TestFetchingPython:
         finally:
             site.__exit__(None, None, None)
         assert env.standalone_python() is None
+
+
+    @pytest.mark.parametrize("pinned", [True, False])
+    def test_a_build_is_held_to_the_pinned_digest_not_the_one_reported_and_needs_no_virus_scanner(
+            self, monkeypatch, tmp_path, loopback_net, pinned):
+        import hashlib
+        import io
+        import json
+        import tarfile
+
+        from poolhouse.fleet import environment as mod, python_pins
+
+        loopback_net.scanners = []
+        made = io.BytesIO()
+        with tarfile.open(fileobj=made, mode="w:gz") as archive:
+            program = tarfile.TarInfo("python/python.exe" if sys.platform == "win32" else "python/bin/python3")
+            bundled = tarfile.TarInfo("python/lib/ensurepip/_bundled/pip-0-py3-none-any.whl")   # as a real Python has
+            for entry in (program, bundled):
+                entry.size = len(b"PLUMBING ONLY")
+                archive.addfile(entry, io.BytesIO(b"PLUMBING ONLY"))
+        body = made.getvalue()
+        digest = hashlib.sha256(body).hexdigest()
+        env, site = self._release(monkeypatch, tmp_path, [])
+        name = f"cpython-{mod.PYTHON}.1{env._asset_name()}.tar.gz"
+        monkeypatch.setitem(python_pins.SHA256, name, digest if pinned else "0" * 64)
+        site.add("/release", json.dumps({"assets": [
+            {"name": name, "browser_download_url": site.base + "/python.tar.gz", "size": len(body),
+             "digest": "sha256:" + digest}]}).encode(), headers={"Content-Type": "application/json"})
+        site.add("/python.tar.gz", body)
+        try:
+            if pinned:
+                assert env.fetch_python() == env.standalone_python()
+            else:
+                with pytest.raises(OSError, match="could not download Python"):
+                    env.fetch_python()
+                assert env.standalone_python() is None
+        finally:
+            site.__exit__(None, None, None)
 
 
 def test_requirement_names_support_direct_urls():
@@ -291,7 +332,7 @@ def test_unavailable_pyenv_shim_is_not_an_environment_builder(tmp_path, monkeypa
 
     from poolhouse.fleet import environment
     version = '3.12' if sys.version_info[:2] != (3, 12) else '3.13'
-    monkeypatch.setattr(environment.shutil, 'which', lambda _name: '/tmp/shims/python')
+    monkeypatch.setattr(environment.safelaunch, 'which', lambda _name: '/tmp/shims/python')
     monkeypatch.setattr(environment.subprocess, 'run', lambda *args, **kwargs:
                         subprocess.CompletedProcess(args[0], 127, '', 'pyenv: command not found'))
     assert Environment(tmp_path, python_version=version).host_python() is None
@@ -303,7 +344,7 @@ def test_python_builder_uses_verified_executable_not_shim(tmp_path, monkeypatch)
 
     from poolhouse.fleet import environment
     version = '3.12' if sys.version_info[:2] != (3, 12) else '3.13'
-    monkeypatch.setattr(environment.shutil, 'which', lambda _name: '/tmp/shims/python')
+    monkeypatch.setattr(environment.safelaunch, 'which', lambda _name: '/tmp/shims/python')
     monkeypatch.setattr(environment.subprocess, 'run', lambda *args, **kwargs:
                         subprocess.CompletedProcess(args[0], 0,
                             json.dumps(['/tmp/real/python', [int(v) for v in version.split('.')]]), ''))
@@ -317,7 +358,7 @@ def test_installed_pyenv_python_is_reused_when_current_shim_cannot_run(tmp_path,
     from poolhouse.fleet import environment
 
     version = '3.12' if sys.version_info[:2] != (3, 12) else '3.13'
-    monkeypatch.setattr(environment.shutil, 'which', lambda name:
+    monkeypatch.setattr(environment.safelaunch, 'which', lambda name:
                         '/tmp/pyenv' if name == 'pyenv' else '/tmp/shims/python')
 
     def run(argv, **_kwargs):

@@ -5,6 +5,7 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
+from poolhouse import provision
 from poolhouse.log import say
 
 
@@ -24,15 +25,36 @@ def chat_runtime():
     return import_module("poolhouse.fleet.sdk_chat")
 
 
-def problem():
-    """Return a dependency error when the local chat runtime cannot import."""
+def _absent(*, install: bool) -> str:
+    """Why the agent runtime, which is not here, cannot be had: empty when it is installed now (``install``) or, asked
+    without installing, when it will be at first use."""
+    needs = "Local chat and Qwen agents require the agent runtime (poolhouse[agents]), which could not be installed here: "
+    if not install:
+        why = provision.refusal()
+        return needs + why if why else ""
     try:
-        runtime = import_module("agents")
+        provision.ensure("agents", "agents")
+    except ImportError as exc:
+        return needs + str(exc)
+    return ""
+
+
+def problem(*, install=False):
+    """Return a dependency error when the local chat runtime cannot import. With ``install`` a runtime that is not here
+    is installed first; without it a runtime that can be installed at first use is no problem."""
+    try:
+        try:
+            runtime = import_module("agents")
+        except ModuleNotFoundError as exc:
+            if exc.name != "agents":
+                raise
+            said = _absent(install=install)
+            if said or not install:
+                return said
+            runtime = import_module("agents")
         for name in ("Agent", "ModelSettings", "OpenAIChatCompletionsModel", "RunConfig", "Runner"):
             getattr(runtime, name)
-    except (ImportError, AttributeError) as exc:
-        if isinstance(exc, ModuleNotFoundError) and exc.name == "agents":
-            return "Local chat and Qwen agents require the agent runtime: pip install 'poolhouse[agents]'."
+    except (ImportError, AttributeError):
         return "The installed chat runtime is incomplete or incompatible. Repair the app runtime."
     try:
         chat_runtime()

@@ -25,7 +25,7 @@ def catalogue() -> dict:
         with suppress(OSError, ValueError):
             context = localmodel.context_for(preferred)
     return {"can_start": report.can_start, "enforcement_error": report.enforcement_error, "isolation": report.to_dict(),
-            "harnesses": [{"name": name, "available": bool(harnessing.binary_for(name))} for name in coding.HARNESSES],
+            "harnesses": [{"name": name, "available": harnessing.installable(name)} for name in coding.HARNESSES],
             "roles": localagent.role_choices(), "default_role": roles.DEFAULT,
             "context": context, "default_model": preferred_path, "model_problem": preferred.problem,
             "model_hint": preferred.hint, "models": [{"name": model.name, "ref": str(model.path) if model.path else model.id}

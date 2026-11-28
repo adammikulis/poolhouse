@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from poolhouse import safelaunch
 from poolhouse.isolation.refusals import IsolationRefused, sentence
 from poolhouse.isolation.spec import Spec
 from poolhouse.sandbox import bubblewrap, seatbelt, seatbelt_open
@@ -232,7 +233,7 @@ def _wsl() -> str:
 
 def _trusted_git() -> bool:
     """Whether a git is found that is not Apple's `/usr/bin/git` shim, which asks a service the confinement refuses."""
-    found = shutil.which("git")
+    found = safelaunch.which("git")
     if not found:
         return False
     if sys.platform == "darwin" and os.path.realpath(found) == "/usr/bin/git":

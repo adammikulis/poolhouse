@@ -16,6 +16,7 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
+from poolhouse import lazy
 from poolhouse.files import promote
 
 if os.name == "posix":
@@ -166,10 +167,14 @@ def machine_id() -> str:
 def device_id():
     """Fail explicitly when the host provider cannot identify this device."""
     try:
-        machineid = import_module("machineid")
+        try:
+            machineid = import_module("machineid")
+        except ModuleNotFoundError:   # installed the first time a device is identified
+            lazy.load("poolhouse.provision", "ensure")("coordinator", "machineid")
+            machineid = import_module("machineid")
         identity = machineid.hashed_id("poolhouse")
     except (ImportError, OSError, RuntimeError) as exc:
-        raise RuntimeError("physical device identity unavailable; install poolhouse[coordinator]") from exc
+        raise RuntimeError(f"physical device identity unavailable: {exc}") from exc
     if not isinstance(identity, str) or len(identity) != 64 or any(c not in "0123456789abcdef" for c in identity):
         raise RuntimeError("physical device identity provider returned an invalid app-scoped hash")
     return identity

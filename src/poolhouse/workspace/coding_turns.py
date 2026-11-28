@@ -93,8 +93,12 @@ class Manager:
         if settings["harness"] not in coding.HARNESSES:
             raise ValueError("unsupported coding harness")
         coding_policy.Policy(settings["permissions"], settings["execution_mode"])
-        if not harnessing.binary_for(settings["harness"]):
-            raise ValueError("the selected tool runtime is not installed")
+        try:
+            found = harnessing.installed_binary(settings["harness"])
+        except (ImportError, RuntimeError, OSError) as why:
+            raise ValueError(f"the selected tool runtime could not be installed: {why}") from why
+        if not found:
+            raise ValueError(f"the selected tool runtime ({settings['harness']}) is not on this device, and Poolhouse cannot install it")
         folder = Path(settings["project"]).expanduser().resolve()
         if not settings["project"] or not folder.is_dir():
             raise ValueError("choose an existing project directory")

@@ -39,7 +39,7 @@ def test_lan_only_head_cannot_fall_back_to_internet(tmp_path):
 @pytest.mark.parametrize('policy', ['', 'lan'])
 def test_runtime_policy_blocks_release_network_before_fetch(tmp_path, policy):
     with (patch.object(llama, 'find_server', return_value=None), patch.object(llama, '_tokens', return_value=('ubuntu-x64',)),
-          patch.object(llama, 'latest') as releases, pytest.raises(llama.LlamaError, match='Choose Internet only or Both')):
+          patch.object(llama, 'pinned_release') as releases, pytest.raises(llama.LlamaError, match='Choose Internet only or Both')):
         llama.ensure_server(tmp_path, sources=policy)
     releases.assert_not_called()
 

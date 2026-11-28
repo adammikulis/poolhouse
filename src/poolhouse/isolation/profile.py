@@ -17,13 +17,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import home, secretpaths
+from poolhouse import home, safelaunch, secretpaths
 from poolhouse.coding_workspace_state import CONTROL_PREFIXES
 from poolhouse.isolation import toolchain
 from poolhouse.isolation.grants import Grant
@@ -92,7 +91,7 @@ def interpreter_programs() -> tuple[str, ...]:
 
 def _git_directory() -> tuple[str, ...]:
     """The directory of a git a confined shell runs first: not Apple's `/usr/bin/git`, a selector that only hands on to another one."""
-    found = shutil.which("git")
+    found = safelaunch.which("git")
     real = os.path.realpath(found) if found else ""
     return (str(Path(real).parent),) if real and real != "/usr/bin/git" else ()
 

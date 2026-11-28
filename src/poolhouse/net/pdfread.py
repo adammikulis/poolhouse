@@ -20,7 +20,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-__all__ = ["ENGINE_ENV", "Limits", "Pdf", "PdfRefused", "engine", "load"]
+from poolhouse import provision
+
+__all__ =["ENGINE_ENV", "Limits", "Pdf", "PdfRefused", "engine", "load"]
 
 ENGINE_ENV = "POOLHOUSE_PDF_ENGINE"
 ENGINES = ("pdfminer", "pymupdf")
@@ -85,6 +87,10 @@ def load(path: str | Path, *, limits: Limits | None = None, images: bool = False
         raise PdfRefused(f"cannot open {where.name}: {exc.strerror or exc}") from exc
     if size > limits.max_bytes:
         raise PdfRefused(f"the file is {size} bytes, over {limits.max_bytes}")
+    try:   # the child imports them from this environment, so they are put here first
+        provision.ensure("pdf", "pdfminer", *(("PIL",) if images else ()))
+    except ImportError as exc:
+        raise PdfRefused(f"reading a PDF needs pdfminer.six: {exc}") from exc
     request = {"path": str(where), "images": images, "max_width": max_width,
                "text_limit": text_limit, "limits": limits.__dict__}
     return Pdf(run_child(CHILD, request, timeout_s=limits.timeout_s, max_out=limits.max_out))

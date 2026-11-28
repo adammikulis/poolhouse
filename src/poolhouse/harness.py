@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import harnessing, hub
+from poolhouse import harnessing, hub, provision
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of, environment
 from poolhouse.guard import start
 from poolhouse.guard.hooks import sdk_guard, sdk_hooks
@@ -46,14 +46,13 @@ def confined_bash() -> dict[str, Any]:
 
 
 def sdk() -> Any:
-    """The SDK module. Every full install carries it, so its absence is a defect of this install."""
+    """The SDK module. Every full install carries it; one that lacks it installs it the first time it is used."""
     try:
-        import claude_agent_sdk
+        return provision.module("claude_agent_sdk", "claude")
     except ImportError as why:
         raise ImportError(
-            "this poolhouse install is defective: it lacks the Claude Agent SDK (claude-agent-sdk, "
-            "which bundles the Claude Code binary) that every full install carries") from why
-    return claude_agent_sdk
+            "this poolhouse install is defective: it lacks the Claude Agent SDK (claude-agent-sdk, which bundles the "
+            f"Claude Code binary) that every full install carries, and it could not be installed: {why}") from why
 
 
 @dataclass
