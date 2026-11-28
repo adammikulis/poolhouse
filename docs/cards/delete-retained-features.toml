@@ -7,6 +7,8 @@ with "path": "contracts/node/retained-features.json", together with its sha256 a
 those removed objects: "retained_inventory": "full_inventory" in contracts/node/operation-mapping.json, the sentences there and in
 contracts/node/domain-evidence/models.json that mention retained-features.json or whole_inventory (keep what else a sentence says), and the path from
 its entry in contracts/glossary-allowlist.toml. Change no other pin or hash. Check each edited JSON file with `python3 -m json.tool FILE`.
+tests/test_node_contract.py cannot run in your sandbox, which leaves out contracts/node/domains/credentials.toml: it is not in your check, so say so
+in your report, and your lead runs it.
 """
 read = [
   "contracts/node/retained-features.json:1-3",
@@ -43,6 +45,6 @@ write = [
   "contracts/node/operation-mapping.json",
   "contracts/glossary-allowlist.toml",
 ]
-check = "test ! -e contracts/node/retained-features.json && scripts/test all tests/test_node_contract.py tests/test_glossary.py"
+check = "test ! -e contracts/node/retained-features.json && scripts/test all tests/test_glossary.py"
 closes = true
 memory = false

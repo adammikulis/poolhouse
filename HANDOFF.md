@@ -102,7 +102,7 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | A test helper and two screenshots that nothing uses | Delete them | `tests/replica_server.py`, `docs/images/` |
 | Five functions that nothing calls (`reset_cache`, `raw_rows`, `byte_range`, `default_path`, `load_or_build`) | Delete them | `src/poolhouse` |
 | Three functions over 80 statements in the world and CSV import code (`consistency`, `_buckets`, `imported`) | Split each where it changes subject, behaviour unchanged | `src/poolhouse/world`, `src/poolhouse/ingest` |
-| A delegate's sandbox cannot run a test that opens a graph store: its full-text extension is downloaded at first use and the box has no network | Give the box the installed extension, then card the `absorb` and `tidy` splits | `src/poolhouse/graph/store.py` |
+| A delegate's sandbox cannot run a test that opens a graph store (its full-text extension is downloaded at first use and the box has no network), nor the node contract tests (the box leaves out `contracts/node/domains/credentials.toml`) | Give the box the installed extension and that source file, then card the `absorb` and `tidy` splits | `src/poolhouse/graph/store.py`, `src/poolhouse/isolation` |
 | `contracts/node/retained-features.json` | Mostly paths of deleted code; no script, source or test reads it, but other files in `contracts/` cite it with a sha256, so deleting it means rewriting those pins | `contracts/node/` |
 | `scripts/sync-dev` | Its own shell fast-forward beside `scripts/primary_sync.py`; merging them changes messages `tests/test_sync_dev.py` asserts and adds a Python dependency to a script for a plain clone | `scripts/sync-dev` |
 
