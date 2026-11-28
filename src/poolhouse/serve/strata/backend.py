@@ -87,9 +87,11 @@ def overridden(args: list[str], spec: ServerSpec) -> list[str]:
 
 
 def _cuda_libraries(python: list[str]) -> list[str]:
-    """The folders of the NVIDIA libraries in the managed environment of ``python``."""
-    site = Path(python[0]).parent.parent / "Lib" / "site-packages" / "nvidia"
-    return sorted({str(found.parent) for name in ("cublas64_13.dll", "cudart64_13.dll") for found in site.rglob(name)})
+    """The folders of the NVIDIA libraries installed for the Windows interpreter of ``python``: an environment keeps its program in
+    ``Scripts``, a plain installation beside ``Lib``."""
+    home = Path(python[0]).parent
+    return sorted({str(found.parent) for base in (home, home.parent) for name in ("cublas64_13.dll", "cudart64_13.dll")
+                   for found in (base / "Lib" / "site-packages" / "nvidia").rglob(name)})
 
 
 class StrataBackend(ServerBackend):

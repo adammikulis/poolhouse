@@ -329,8 +329,9 @@ def config_for(found: str, want: Want, say: Callable[[str], None]):
         raise ValueError("context must be 0 (automatic) or a positive token count")
     if want.engine:   # the engine fits its own context and picks its own drafter; llama.cpp's profiles do not apply
         say(f"serving with the {want.engine} engine")
+        named = draft.lower()
         return Config(serving=Serving(model=found, port=port, slots=slots, slot_context=requested // slots, engine=want.engine,
-                                      mtp=False if draft.lower() == "none" else None))
+                                      spec_type="" if named in ("auto", "none") else named, mtp=False if named == "none" else None))
     if not requested:
         fit = suggest.largest_fit(found, slots=slots)
         if fit.context <= 0 or fit.verdict not in {"green", "yellow"}:

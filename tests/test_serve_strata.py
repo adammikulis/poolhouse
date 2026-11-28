@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import delegate_review, harnessing, ownership, serverkeys
-from poolhouse.serve import admission, engines, ops, python_runtime
+from poolhouse.serve import admission, cli as serve_cli, engines, lifecycle_cli, ops, python_runtime
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.fitted import fitted
 from poolhouse.serve.manager import ServerManager
@@ -198,6 +198,14 @@ class TestConfig:
             with pytest.raises(ServerFailed, match="these options"):
                 backend.overridden([], ServerSpec(model="m", engine="strata", extra_args=extra))
 
+    @pytest.mark.parametrize("program", ["env/Scripts/python.exe", "env/python.exe"])
+    def test_the_nvidia_libraries_are_found_for_an_environment_and_a_plain_python(self, tmp_path, program):
+        held = tmp_path / "env" / "Lib" / "site-packages" / "nvidia"
+        for part, name in (("cublas", "cublas64_13.dll"), ("cuda_runtime", "cudart64_13.dll")):
+            (held / part / "bin").mkdir(parents=True)
+            (held / part / "bin" / name).write_bytes(b"CANNED library")
+        assert backend._cuda_libraries([str(tmp_path / program)]) == sorted(str(held / p / "bin") for p in ("cublas", "cuda_runtime"))
+
     @pytest.mark.parametrize(("spec", "want"), [
         (ServerSpec(model="m"), ""), (ServerSpec(model="m", draft="dflash2"), "dflash2"),
         (ServerSpec(model="m", spec_type="mtp"), "mtp"), (ServerSpec(model="m", mtp=False), "off")])
@@ -334,6 +342,18 @@ class TestSessions:
         got = harnessing.config_for(str(tmp_path / "set.gguf"), want, lambda _line: None).lease()
         assert (got["engine"], got["context"], got["parallel"]) == ("strata", 131072, 2)
         assert not {"draft", "spec_type", "mtp"} & set(got)
+
+    def test_a_drafter_named_to_a_session_is_the_engines_and_no_head_file(self, tmp_path):
+        want = harnessing.Want(engine="strata", ctx=131072, draft="dflash2")
+        got = harnessing.config_for(str(tmp_path / "set.gguf"), want, lambda _line: None).lease()
+        assert got["spec_type"] == "dflash2" and "draft" not in got
+
+    def test_a_drafter_named_to_up_is_the_engines_and_no_head_file(self, canned, monkeypatch):
+        _manager, files = canned
+        asked_for: list[ServerSpec] = []
+        monkeypatch.setattr(lifecycle_cli, "_lease", lambda _args, spec, *_a, **_k: asked_for.append(spec) or 0)
+        assert serve_cli.main(["up", str(files[0]), "--engine", "strata", "--draft", "dflash2", "--context", "32768"]) == 0
+        assert [(spec.engine, spec.draft, spec.spec_type) for spec in asked_for] == [("strata", None, "dflash2")]
 
     def test_the_coding_launchers_take_the_engine(self):
         ap = harnessing.parser("claude", "Claude Code", 8080, 1)

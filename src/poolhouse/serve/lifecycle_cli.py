@@ -406,6 +406,8 @@ def cmd_up(args: argparse.Namespace) -> int:
 def _up_engine(args: argparse.Namespace, model: str) -> int:
     """``up --engine``: the spec as asked, for an engine that takes none of llama.cpp's profiles, heads or placement."""
     extra = tuple(piece for one in args.engine_option for piece in one.split("=", 1))
+    if args.draft.lower() not in ("", "none"):   # an engine's drafter is a name, never a head's file to find or pin
+        args.spec, args.draft = args.draft, ""
     spec = replace(_asked_spec(args, model, extra), engine=args.engine)
     manager = ops.manager_for()
     try:
