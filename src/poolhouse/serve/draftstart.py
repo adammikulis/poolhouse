@@ -7,7 +7,6 @@ import os
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
 
 from poolhouse import home, hub
 from poolhouse.hub import hfstore
@@ -136,13 +135,14 @@ class Start:
         return LlamaServerBackend(build=attempt.build, sandboxed=getattr(backend, "sandboxed", None),
                                   policy=getattr(backend, "policy", None))
 
-    def run(self, **starting: Any) -> tuple[ServerInfo, ServerSpec]:
-        """The server that started and the spec it started with, trying each attempt in turn. Raises the first
-        attempt's failure when none starts. A head is remembered as failing only once another attempt starts."""
+    def run(self, start: Callable[[ServerBackend, ServerSpec], ServerInfo]) -> tuple[ServerInfo, ServerSpec]:
+        """The server that started and the spec it started with, giving ``start`` each attempt's backend and spec in
+        turn: the manager's own start, on its lease. Raises the first attempt's failure when none starts. A head is
+        remembered as failing only once another attempt starts."""
         attempt, failed = self.first, []
         while True:
             try:
-                info = self._on(attempt).start(attempt.spec, **starting)
+                info = start(self._on(attempt), attempt.spec)
                 break
             except (ServerFailed, UnknownFlag, PreflightFailed) as why:
                 failed.append((attempt, why))
