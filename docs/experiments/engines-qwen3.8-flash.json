@@ -26,7 +26,7 @@
       {"name": "fork-iq2", "engine": "llama.cpp", "build": "unsloth", "model": "iq2", "head": "shared-q4", "draft_n_max": 4, "extra_args": ["-ub", "2048"]},
       {"name": "main-iq2", "engine": "llama.cpp", "model": "iq2", "head": "full-q4", "draft_n_max": 4, "extra_args": ["-ub", "2048"],
        "tune": {"depths": [0, 1, 2, 3, 4, 6], "loads": [
-         {"head": "full-q4"}, {"head": "full-q4", "draft_p_min": 0.5}, {"head": "full-q8"}, {"head": "full-q4", "spec_type": "draft-mtp,ngram-mod"}]}},
+         {"head": "full-q4"}, {"head": "full-q4", "draft_p_min": 0.5}, {"head": "full-q4", "spec_type": "draft-mtp,ngram-mod"}, {"head": "full-q8"}]}},
       {"name": "main-iq3s", "engine": "llama.cpp", "model": "iq3s", "head": "full-q4", "draft_n_max": 4, "extra_args": ["-ub", "2048"],
        "tune": {"depths": [0, 1, 2, 3, 4, 6], "loads": [
          {"head": "full-q4"}, {"head": "full-q4", "draft_p_min": 0.5}, {"head": "full-q4", "spec_type": "draft-mtp,ngram-mod"}]}},
