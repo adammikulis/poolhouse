@@ -291,7 +291,8 @@ fn serve_one(node: &Mutex<Node>, config: Arc<ServerConfig>, tcp: TcpStream, plac
         Ok((method, path, token, body)) => {
             let reply = handle(node, ip, &method, &path, &token, &body);
             if reply.1["ok"] == json!(true) && path != "/phone/v1/hello" {
-                place.vouch();
+                // The endpoint forgets no phone before its hour is out, so which one answered is not told apart.
+                place.vouch("phone");
             }
             reply
         }

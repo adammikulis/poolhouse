@@ -86,12 +86,15 @@ def test_team_composer_survives_history_failure_and_retries_authenticated_send(c
     for number in range(105):
         session.post('#research', 'note', f'Existing research message {number}')
     served, page = chat_browser
+    # the live-update wait is never answered, so no background refresh asks for history beside the person's click
+    page.route('**/board/wait?**', lambda route: None)
     page.goto(f'http://127.0.0.1:{served.port}/ui#board')
     page.get_by_label('Workspace', exact=True).select_option('local')
     page.locator('#conversation-channels').get_by_role('button', name='#research').click()
     board = page.locator('chat-view poolhouse-board')
     editor = board.get_by_role('textbox', name='Message', exact=True)
     expect(editor).to_be_visible()
+    expect(board.get_by_role('region', name='Message focus').get_by_role('status')).to_be_visible()   # the history arrived
     capture(page, tmp_path, 'history-filtered')
     editor.fill('Keep this research draft')
     editor.evaluate('(node) => { window.retainedTeamEditor = node; }')
@@ -187,7 +190,7 @@ def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_b
     expect(page.locator('#conversation-model').get_by_role('textbox', name='Message', exact=True)).to_be_in_viewport()
     expect(page.locator('#chat-send')).to_be_in_viewport()
     expect(sidebar).to_be_visible()
-    page.screenshot(path='/private/tmp/poolhouse-unified-conversations.png', full_page=True)
+    page.screenshot(path=str(tmp_path / 'unified-conversations.png'), full_page=True)
 
 
 def test_project_selection_never_falls_back_to_local_board(chat_browser):
@@ -243,7 +246,7 @@ def test_new_dm_from_model_chat_opens_a_subagent_conversation_and_survives_reloa
     ('dark', '#242943', '#edf0fa', '#ff5fa2', '#1b1f3a', .8),
     ('custom', '#253d31', '#e8ffef', '#652891', '#ffffff', .65),
 ])
-def test_conversation_surfaces_consume_resolved_theme_tokens(chat_browser, team, theme_tokens):
+def test_conversation_surfaces_consume_resolved_theme_tokens(chat_browser, team, theme_tokens, tmp_path):
     from playwright.sync_api import expect
 
     theme, surface, ink, pink, pink_ink, density = theme_tokens
@@ -291,7 +294,7 @@ def test_conversation_surfaces_consume_resolved_theme_tokens(chat_browser, team,
     assert board.locator('main header').evaluate('node => getComputedStyle(node).backgroundColor') == expected[0]
     assert board.locator('.composer').evaluate('node => getComputedStyle(node).backgroundColor') == expected[0]
     assert board.get_by_label('Message', exact=True).evaluate('node => getComputedStyle(node).color') == expected[1]
-    page.screenshot(path=f'/private/tmp/poolhouse-conversations-theme-{theme}.png', full_page=True)
+    page.screenshot(path=str(tmp_path / f'conversations-theme-{theme}.png'), full_page=True)
 
 
 def test_unshared_workspace_is_selected_and_team_messages_render(chat_browser, team, monkeypatch, tmp_path):
@@ -345,7 +348,7 @@ def existing_dm_directory(team):
     return helpers, worker.name, display_name(session, worker.name)
 
 
-def test_sidebar_keeps_agent_directory_in_new_dm_and_searches_existing_conversations(chat_browser, team):
+def test_sidebar_keeps_agent_directory_in_new_dm_and_searches_existing_conversations(chat_browser, team, tmp_path):
     from playwright.sync_api import expect
 
     helpers, worker_id, worker_label = existing_dm_directory(team)
@@ -360,7 +363,7 @@ def test_sidebar_keeps_agent_directory_in_new_dm_and_searches_existing_conversat
     expect(direct.locator('[aria-label="1 unread messages"]')).to_be_visible()
     expect(page.locator('#chat-list').get_by_role('link', name='Experiment plan', exact=True)).to_be_visible()
     expect(page.locator('#conversation-models').get_by_role('button', name='● model-a', exact=True)).to_be_in_viewport()
-    page.screenshot(path='/private/tmp/poolhouse-sidebar-existing-dms.png', full_page=True)
+    page.screenshot(path=str(tmp_path / 'sidebar-existing-dms.png'), full_page=True)
     search = page.get_by_label('Search conversations and channels', exact=True)
     expect(search).to_have_attribute('placeholder', 'Search chats & channels')
     search.fill('Experiment')
@@ -436,7 +439,7 @@ def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(cha
         if height == 420:
             short_history_states(page, board, composer, tmp_path)
         composer.fill('Unsent channel draft')
-        page.screenshot(path=f'/private/tmp/poolhouse-channel-fixed-{width}-{height}.png')
+        page.screenshot(path=str(tmp_path / f'channel-fixed-{width}-{height}.png'))
         composer.fill('')
 
     page.get_by_role('button', name='Channels and model chats ▾').click()
@@ -444,7 +447,7 @@ def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(cha
     expect(composer).to_be_in_viewport()
     expect(board.get_by_role('button', name='Send', exact=True)).to_be_in_viewport()
     assert page.evaluate('document.documentElement.scrollHeight <= innerHeight')
-    page.screenshot(path='/private/tmp/poolhouse-channel-fixed-mobile-expanded.png')
+    page.screenshot(path=str(tmp_path / 'channel-fixed-mobile-expanded.png'))
 
 
 def test_bounded_history_navigation_keeps_message_nodes_scroll_and_draft(chat_browser, team):

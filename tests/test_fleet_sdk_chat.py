@@ -5,6 +5,10 @@ import json
 
 import httpx2
 import pytest
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: a real daemon reads this test's own node)
+    alone,
+    unfounded_node,
+)
 
 from poolhouse.client.sdk import FleetTransport, local_client
 from poolhouse.fleet.chat import Target, reply_text
@@ -17,6 +21,8 @@ from poolhouse.testing.canned import (
     canned_stream_reply,
     marked,
 )
+
+pytest_plugins = ("testfarm_kit",)  # the `node_binary` fixture
 
 
 @pytest.mark.redteam
@@ -80,7 +86,7 @@ def sdk_playwright():
 
 
 @pytest.mark.slow
-def test_browser_sends_sdk_chat_and_reloads_saved_answer(tmp_path, sdk_playwright):
+def test_browser_sends_sdk_chat_and_reloads_saved_answer(alone, tmp_path, sdk_playwright):  # noqa: F811
     from playwright.sync_api import expect
     from test_fleet_ui import Serving
 
