@@ -4,6 +4,12 @@ work. Git is real; the runner's computer is `test_cards_run.Computer`, which giv
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
 import pytest
 from cards_kit import card, project as card_project
 from delegate_kit import agent_names, said
@@ -18,7 +24,9 @@ from poolhouse import (
     delegate_memory,
     delegate_record,
     delegate_store as store,
+    harnessing,
     isolation,
+    jobs,
 )
 
 pytest_plugins = ["node_kit", "delegate_kit"]
@@ -47,6 +55,82 @@ def ran(carded, monkeypatch):
     monkeypatch.setattr(cards_run, "Host", lambda *_a, **_k: host)
     ended("run-1")
     return node, lead, root, computer
+
+
+DETACHED = """
+import sys
+sys.path[:0] = %(paths)r
+import pytest  # a test run: the state root may be moved to the node of the test
+import json, os, time
+from pathlib import Path
+from poolhouse import cards_run, delegate, delegate_store as store, jobs, node_launch
+from poolhouse.isolation import ancestry
+deadline = time.monotonic() + 30
+while os.getppid() == int(sys.argv[1]) and time.monotonic() < deadline:   # the command that started it has not ended yet
+    time.sleep(0.02)
+node_launch.default_state = lambda: Path(%(state)r)
+
+
+def detach(module, argv, **more):   # the delegate's own runner is recorded and not run: nothing leases a model
+    jobs.record(more["kind"], pid=os.getpid(), argv=argv, log=str(more["log"]), home=more["home"], refuse_if_alive=False)
+    return jobs.Detached(pid=os.getpid(), log=more["log"], command=(module, *argv), started="now")
+
+
+jobs.detach = detach
+host = cards_run.Host(delegate.main, status=lambda: {"claims": {}, "servers": []},
+                      servers=lambda: {8080: {"model": %(model)r, "context": 262144, "parallel": 1}}, live=lambda _entry: True,
+                      measuring=lambda: None, busy=lambda _url: False, queued=lambda _url: 0, takes=lambda _model: True, idle_s=0.0)
+placed = ancestry.attest().agent   # asked, as the widening is, before a start registers the card delegate's session from this process
+widened = delegate.main(["start", "--task", "widened", "--edit", "--project", %(root)r, "--model", %(model)r, "--as", %(lead)r])
+step = cards_run.step(Path(%(root)r), host)
+made = [store.load(name) for name in store.names()]
+print("RESULT " + json.dumps({"placed": placed, "step": step, "widened": widened,
+                              "made": [[each.lead, each.source, each.sandboxed, each.card] for each in made]}), flush=True)
+"""
+STARTS = """
+import os, subprocess, sys
+subprocess.Popen([sys.executable, "-c", sys.argv[1], str(os.getpid())], start_new_session=True, stdin=subprocess.DEVNULL,
+                 stdout=open(sys.argv[2], "w"), stderr=subprocess.STDOUT)
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a card runs only in a sandbox, and the node places no process on Windows")
+def test_a_detached_runner_the_node_places_nowhere_starts_the_released_leads_card_and_is_still_refused_every_widening(carded, tmp_path, capsys):
+    """`cards run --detach`: the command ends, and the runner, left to the system's first process, is a marked agent's with no session above it."""
+    node, lead, root = carded
+    card(root, "junk-card", memory=False)   # a recall may lease an embedding model
+    assert delegate.main(["cards", "release", "--why", "go", "--project", str(root)]) == 0, said(capsys)
+    here = Path(__file__).resolve().parent
+    code = DETACHED % {"paths": [str(here.parent / "src"), str(here), str(here.parent)], "state": str(node.state), "root": str(root),
+                       "lead": lead.name, "model": f"{harnessing.PREFERRED_MODEL}.gguf"}
+    out = tmp_path / "runner.log"
+    env = node.env(None, {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": lead.session})
+    subprocess.run([sys.executable, "-c", STARTS, code, str(out)], env=env, cwd=root, check=True, timeout=60)
+    deadline = time.monotonic() + 120
+    while not (found := [line for line in out.read_text().splitlines() if line.startswith("RESULT ")]) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    heard = out.read_text()
+    assert found, heard
+    result = json.loads(found[0][len("RESULT "):])
+    assert result["placed"] is False, "the control: the node finds no session above the runner"
+    assert result["step"][0] == "launched", heard
+    assert result["made"] == [[lead.name, str(root), True, "junk-card"]], "sandboxed, in the project itself, as the released lead's"
+    assert result["widened"] == 2 and "finds no session above it" in heard, "naming a project is still refused to the same process"
+
+
+def test_a_detached_runner_starts_in_its_project_so_the_folder_it_was_started_from_may_go(carded, tmp_path, monkeypatch, capsys):
+    _node, _lead, root = carded
+    asked: list[tuple[list[str], Path]] = []
+
+    def detach(_module: str, argv: list[str], *, log: Path, **_more) -> jobs.Detached:
+        asked.append((argv, Path.cwd()))
+        return jobs.Detached(pid=4242, log=log, command=tuple(argv), started="now")
+
+    monkeypatch.setattr(jobs, "detach", detach)
+    monkeypatch.chdir(tmp_path)
+    assert delegate.main(["cards", "run", "--detach", "--project", str(root)]) == 0, said(capsys)
+    [(argv, folder)] = asked
+    assert argv[:2] == ["cards", "run"] and folder == root and Path.cwd() == tmp_path.resolve()
 
 
 def state(root) -> str:

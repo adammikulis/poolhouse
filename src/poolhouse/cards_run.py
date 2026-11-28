@@ -2,10 +2,12 @@
 released the runner, and records what came of it. One at a time on a device.
 
 It is held until a lead releases it, runs only the cards that release recorded, and takes a paused tier only when the release names it. It runs a
-card only in a sandbox and only for a lead that is live, which it never registers again. It never loads a model, never starts while anything else
-holds, uses or waits for one and stops its delegate when someone else comes for the model. An ended run waits for review only when its commit stays
-within the card and the card's check passes on it, run again by this process (`cards_check`). It grades, accepts, pushes and merges nothing:
-finished work waits for the lead, whose grade accepts or rejects it (`cards_ledger.graded`).
+card only in a sandbox and only for a lead that is live, which it never registers again. It starts each from the project's own folder with the
+default reach, which widens nothing, so a runner detached from its lead's session, one the node places in no session, starts it as an attached one
+does. It never loads a model, never starts while anything else holds, uses or waits for one and stops its delegate when someone else comes for the
+model. An ended run waits for review only when its commit stays within the card and the card's check passes on it, run again by this process
+(`cards_check`). It grades, accepts, pushes and merges nothing: finished work waits for the lead, whose grade accepts or rejects it
+(`cards_ledger.graded`).
 """
 
 from __future__ import annotations
@@ -44,8 +46,8 @@ from poolhouse.serve.matching import model_matches
 from poolhouse.serve.reclaim import busy_now
 from poolhouse.workspace import nudge_fence
 
-__all__ = ["IDLE_S", "Host", "Standing", "card_digest", "digest", "family", "held", "lead_gone", "listing", "needs", "outcome", "queued", "run",
-           "standing", "stated", "step", "tier_number", "watch"]
+__all__ = ["IDLE_S", "Host", "Standing", "broker_status", "card_digest", "digest", "family", "held", "lead_gone", "listing", "needs", "outcome",
+           "queued", "run", "standing", "stated", "step", "tier_number", "watch"]
 
 IDLE_S = 600.0
 """The seconds a served model is seen unused before a card is started on it."""
@@ -94,12 +96,18 @@ def lead_gone(release: dict[str, Any]) -> str:
     return f"lead {lead} has ended" if found.retired or found.name != lead else ""
 
 
+def broker_status() -> dict[str, Any]:
+    """What the machine's broker holds. One is started where none answers, as every caller that needs one does (a replaced broker leaves its
+    servers to the next one, which takes them in); starting it loads no model."""
+    return broker_wire.status(start=True)
+
+
 @dataclass(slots=True)
 class Host:
     """What the runner asks of this computer, and how it starts and stops a delegate (`poolhouse-delegate`'s own command line)."""
 
     start: Callable[[list[str]], int]
-    status: Callable[[], dict[str, Any]] = broker_wire.status
+    status: Callable[[], dict[str, Any]] = broker_status
     servers: Callable[[], dict[int, dict[str, Any]]] = recorded_servers
     live: Callable[[dict[str, Any]], bool] = admission.live
     measuring: Callable[[], Any] = measurement_on_the_card
@@ -291,7 +299,7 @@ def _others(status: dict[str, Any], mine: set[int]) -> str:
         if waiter.get("pid") not in mine:
             return f"the device is waited for: {(waiter.get('info') or {}).get('purpose') or waiter.get('name')}"
     for ask in status.get("queue") or []:
-        if ask.get("pid") not in mine and not str(ask.get("label") or "").startswith(UNUSING):
+        if ask.get("pid") not in mine:   # whatever asks and waits wants the model, a `poolhouse-serve up` of another one too
             return f"a model is waited for by {ask.get('label') or ask.get('pid')}"
     for device, turns in (status.get("requests") or {}).items():
         if any(not turn.get("running") and turn.get("pid") not in mine for turn in turns):
@@ -408,9 +416,12 @@ def _launch(root: Path, host: Host, each: Standing, model: str) -> tuple[str, st
     pinned = card_digest(root, card)
     task = cards.brief(root, card, lead, reasons)
     before = set(store.names())
-    words = ["start", "--task", task, "--edit", "--project", str(root), "--as", lead, "--kind", "card", "--card", card.id, "--model", model,
+    words = ["start", "--task", task, "--edit", "--as", lead, "--kind", "card", "--card", card.id, "--model", model,
              *(["--memory", "--about", f"{card.title} {' '.join(card.write)}"] if card.memory else [])]
-    status = host.start(words)
+    # No `--project`: naming one is a widening argument, which the launch gate refuses a marked process the node places in no session, as a
+    # detached runner is. A start from the project's own folder has the default reach, in a registered project only (design-isolated-launcher 8.3).
+    with contextlib.chdir(root):
+        status = host.start(words)
     new = [name for name in store.names() if name not in before and (rec := store.load(name)) and rec.card == card.id]
     if status or not new:
         return _held_for(root, f"{card.id}: no delegate started for lead {lead}; a live lead releases the runner again once what it said is "
