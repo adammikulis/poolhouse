@@ -17,7 +17,7 @@ from pathlib import Path
 from poolhouse import home
 from poolhouse.files import write_text
 
-__all__ = ["AGENTS", "codex_hooks", "install", "targets"]
+__all__ = ["AGENTS", "PHONE_COMMAND", "codex_hooks", "install", "phone", "targets"]
 
 AGENTS = ("claude-code", "codex")
 FILES = {"claude-code": (".claude", "settings.local.json"), "codex": (".codex", "config.toml")}
@@ -145,6 +145,57 @@ def _codex_text(text: str) -> str:
     new = (base + "\n\n" if base else "") + codex_hooks(True, with_features)
     tomllib.loads(new)
     return new
+
+
+PHONE_COMMAND = "poolhouse phone hook"
+PHONE_HOOKS: tuple[tuple[str, str, tuple[tuple[str, int, bool], ...]], ...] = (
+    ("SessionStart", "", (("session-start", 15, False), ("listen", 604860, True))),
+    ("UserPromptSubmit", "", (("prompt", 15, False),)),
+    ("PreToolUse", "AskUserQuestion", (("ask", 660, False),)),
+    ("PostToolUse", "*", (("tool", 15, False),)),
+    ("Stop", "", (("stop", 15, False), ("listen", 604860, True))),
+    ("SubagentStart", "", (("subagent-start", 15, False),)),
+    ("SubagentStop", "", (("subagent-stop", 15, False),)),
+    ("Notification", "permission_prompt", (("notification", 15, False),)),
+    ("SessionEnd", "", (("session-end", 15, False),)),
+)
+"""The phone hooks of a connected project (`poolhouse.phone_hook`): event, matcher, and each hook with its timeout in seconds and whether
+it runs in the background and wakes the session (``asyncRewake``)."""
+_PHONE_OWN = re.compile(r"(?:poolhouse phone hook|[^;|&<>$`\r\n]+ -m poolhouse\.cli\.phone hook) [a-z-]+\Z")
+
+
+def _phone_text(text: str, run: str | None) -> str:
+    """Claude Code settings ``text`` with earlier phone hooks removed and, when ``run`` names the command, the phone hooks added."""
+    data = json.loads(text) if text else {}
+    hooks = data.setdefault("hooks", {})
+    for event in list(hooks):
+        groups = []
+        for group in hooks[event]:
+            kept = [h for h in group.get("hooks", []) if not _PHONE_OWN.match(str(h.get("command", "")))]
+            if kept:
+                groups.append({**group, "hooks": kept})
+        hooks[event] = groups
+        if not groups:
+            del hooks[event]
+    for event, matcher, entries in PHONE_HOOKS if run else ():
+        made = [{"type": "command", "command": f"{run} {name}", "timeout": timeout, **({"asyncRewake": True} if wakes else {})}
+                for name, timeout, wakes in entries]
+        hooks.setdefault(event, []).append({**({"matcher": matcher} if matcher else {}), "hooks": made})
+    if not hooks:
+        del data["hooks"]
+    return json.dumps(data, indent=2) + "\n"
+
+
+def phone(project: Path, connect: bool = True, run: str = PHONE_COMMAND) -> Path:
+    """Connect ``project`` to linked phones, or disconnect it, in its own ``.claude/settings.local.json``; the file written."""
+    path = targets(project, ("claude-code",))["claude-code"]
+    old = path.read_text(encoding="utf-8") if path.exists() else ""
+    if not connect and not old:
+        return path
+    new = _phone_text(old, run if connect else None)
+    if new != old:
+        write_text(path, new)
+    return path
 
 
 def install(project: Path, only: tuple[str, ...] = AGENTS) -> dict[str, tuple[Path, list[str]]]:

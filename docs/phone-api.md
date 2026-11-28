@@ -201,7 +201,7 @@ show above the send box:
 | `next_turn` | waits until someone or something gives the session its next turn |
 | `none` | cannot receive a message here; `note` says why (hide the send box) |
 
-A message waits at most 24 hours, then is dropped with a `dropped` event. `text` is 1 to 16000 characters.
+A message waits at most 24 hours, then is dropped with a `dropped` event. `text` is 1 to 8000 characters.
 
 `Event`: `{"id": "t:81233:0", "at": 1790000000.0, "type": "...", ...}`. `id` is unique within the session (use it to
 de-duplicate); events arrive oldest first.

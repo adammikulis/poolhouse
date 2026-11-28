@@ -31,6 +31,7 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
               "runtime", "runtime_age", "runtime_launchers", "runtime_git", "runtime_inputs", "runtime_bridges", "runtime_identity", "app_bundle", "macho", "node_signing", "disclaim",
               "lock", "ownership", "log", "loopback_window", "macauth", "maintenance", "maintenance_windows", "sealing",
               "markup", "sandbox",
+              "phone_hook", "phone_mailbox",
               "deciders", "delegate_record", "delegate_testrun", "desktop", "devbranch", "media", "messages", "net", "node_health", "node_pool", "optional", "paths", "platform", "safenames", "redact", "sentinel",
               "real_machine", "records", "caller", "private_path", "private_counters", "procscan", "protectedwrites", "safetext", "scopedflag", "secretpaths",
               "serverkeys", "spawned",

@@ -32,6 +32,7 @@ ROUTED: dict[str, str] = {
     "features": "poolhouse.features_cli:main",
     "test": "poolhouse.testfarm.cli:command",
     "test-devices": "poolhouse.testfarm.devices:command",
+    "phone": "poolhouse.cli.phone:main",
 }
 """``word`` -> ``module:attr`` for the commands that run as ``poolhouse <word>`` and have no ``poolhouse-<word>``.
 
