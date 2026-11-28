@@ -1,4 +1,4 @@
-title = "Split the CSV pair import into functions of at most 80 statements"
+title = "Split the CSV import into functions of at most 80 statements"
 row = "Three functions over 80 statements"
 task = """
 `imported` in src/poolhouse/ingest/imports.py has over 80 statements, with several functions nested in it. Split it into private functions of the
