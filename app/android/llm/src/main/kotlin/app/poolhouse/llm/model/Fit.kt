@@ -18,12 +18,12 @@ data class Verdict(val fit: Fit, val memoryNeeded: Long, val storageNeeded: Long
 
 /**
  * The verdict for `model`. `measured` is the most memory the app held with this model loaded on this phone, when it has
- * been loaded here; before that the need is the size of all the files, the most a runtime that holds them can take.
+ * been loaded here; before that the need is the size of its file.
  */
 fun verdict(model: CatalogModel, room: PhoneRoom, stored: Long, measured: Long? = null): Verdict {
     val need = measured ?: model.bytes
     val remaining = (model.bytes - stored).coerceAtLeast(0)
-    val asMuch = if (measured != null) "Used ${gigabytes(need)} on this phone" else "Needs up to ${gigabytes(need)} of memory"
+    val asMuch = if (measured != null) "Used ${gigabytes(need)} on this phone" else "Needs about ${gigabytes(need)} of memory or more"
     if (remaining > room.freeStorage) {
         return Verdict(Fit.TOO_BIG, need, -1, "Needs ${gigabytes(remaining)} of storage; ${gigabytes(room.freeStorage)} is free.")
     }

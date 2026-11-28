@@ -1,4 +1,7 @@
-/** `.litertlm` models, run by LiteRT-LM. */
+/**
+ * `.litertlm` models, run by LiteRT-LM: measured on the owner's phone against llama.cpp, which read a long prompt
+ * many times more slowly there (docs/phone-models.md).
+ */
 @file:OptIn(ExperimentalApi::class)
 
 package app.poolhouse.llm.android
@@ -14,9 +17,8 @@ import app.poolhouse.llm.engine.GenerationStats
 import app.poolhouse.llm.engine.LoadSettings
 import app.poolhouse.llm.engine.LoadedModel
 import app.poolhouse.llm.engine.LocalEngine
-import app.poolhouse.llm.engine.ModelFiles
-import app.poolhouse.llm.engine.ModelFormat
 import app.poolhouse.llm.engine.Role
+import com.google.ai.edge.litertlm.ActivationDataType
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
@@ -30,6 +32,9 @@ import com.google.ai.edge.litertlm.LogSeverity
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
 import com.google.ai.edge.litertlm.SamplerConfig
+import com.google.ai.edge.litertlm.SpeculativeDecodingConfig
+import com.google.ai.edge.litertlm.SpeculativeDecodingMode
+import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicReference
 
@@ -40,11 +45,7 @@ private const val TOP_K = 64
 private const val TOP_P = 0.95
 
 class LiteRtEngine : LocalEngine {
-    override val format = ModelFormat.LITERTLM
-
-    override fun accelerators(): List<Accelerator> = listOf(Accelerator.GPU, Accelerator.CPU)
-
-    override fun load(files: ModelFiles, settings: LoadSettings): LoadedModel {
+    override fun load(weights: File, settings: LoadSettings): LoadedModel {
         // The runtime's own log says nothing below a warning, so no message of a conversation reaches the phone's log.
         Engine.setNativeMinLogSeverity(LogSeverity.WARNING)
         ExperimentalFlags.enableBenchmark = true
@@ -61,18 +62,20 @@ class LiteRtEngine : LocalEngine {
         for ((text, vision) in tries) {
             val engine = Engine(
                 EngineConfig(
-                    modelPath = files.weights.absolutePath,
+                    modelPath = weights.absolutePath,
                     backend = backend(text),
                     visionBackend = if (settings.images) backend(vision) else null,
                     audioBackend = null,
                     maxNumTokens = settings.contextSize,
                     maxNumImages = null,
                     cacheDir = settings.cacheDir.absolutePath,
+                    activationDataType = ActivationDataType.FLOAT32.takeIf { settings.fullPrecision && text == Accelerator.GPU },
+                    speculativeDecodingConfig = SpeculativeDecodingConfig(SpeculativeDecodingMode.ON).takeIf { settings.drafting },
                 ),
             )
             try {
                 engine.initialize()
-                Log.i(TAG, "loaded ${files.weights.name} on ${text.label}, images ${if (settings.images) vision.label else "off"}")
+                Log.i(TAG, "loaded ${weights.name} on ${text.label}, images ${if (settings.images) vision.label else "off"}")
                 return LiteRtModel(engine, text, settings.contextSize, settings.images)
             } catch (failure: RuntimeException) {
                 Log.w(TAG, "could not load on ${text.label}: ${failure.message}")

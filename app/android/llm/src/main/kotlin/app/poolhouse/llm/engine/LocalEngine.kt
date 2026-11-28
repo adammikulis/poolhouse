@@ -1,9 +1,7 @@
-/** What a model runtime on the phone offers, whatever its file format. */
+/** What the model runtime on the phone offers. */
 package app.poolhouse.llm.engine
 
 import java.io.File
-
-enum class ModelFormat(val label: String) { LITERTLM("LiteRT-LM"), GGUF("llama.cpp") }
 
 enum class Accelerator(val label: String) { GPU("GPU"), CPU("CPU") }
 
@@ -76,9 +74,6 @@ class CancelToken {
     }
 }
 
-/** The files of one downloaded model. */
-data class ModelFiles(val weights: File, val projector: File? = null)
-
 data class LoadSettings(
     val accelerator: Accelerator,
     val contextSize: Int,
@@ -86,6 +81,10 @@ data class LoadSettings(
     val images: Boolean,
     /** A directory the runtime may fill with compiled kernels. */
     val cacheDir: File,
+    /** Whether the graphics processor computes in 32 bits where the runtime would use 16. */
+    val fullPrecision: Boolean = false,
+    /** Whether a model file that carries a draft model uses it to write faster. */
+    val drafting: Boolean = false,
 )
 
 /** A model held in memory. One reply runs at a time. */
@@ -101,11 +100,7 @@ interface LoadedModel : AutoCloseable {
     fun generate(turns: List<ChatTurn>, options: GenerationOptions, cancel: CancelToken, onText: (String) -> Unit): GenerationResult
 }
 
-interface LocalEngine {
-    val format: ModelFormat
-
-    /** The accelerators this build and this phone can offer, best first. */
-    fun accelerators(): List<Accelerator>
-
-    fun load(files: ModelFiles, settings: LoadSettings): LoadedModel
+/** The runtime that reads a model's file. */
+fun interface LocalEngine {
+    fun load(weights: File, settings: LoadSettings): LoadedModel
 }

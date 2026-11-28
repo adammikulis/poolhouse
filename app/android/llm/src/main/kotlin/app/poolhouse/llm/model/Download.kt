@@ -1,4 +1,4 @@
-/** Fetching a model's files: resumed where they stopped, and kept only when their bytes match the pinned checksum. */
+/** Fetching a model's file: resumed where it stopped, and kept only when its bytes match the pinned checksum. */
 package app.poolhouse.llm.model
 
 import app.poolhouse.llm.engine.CancelToken
@@ -60,23 +60,16 @@ object HttpsSource : Source {
 
 class Downloader(private val store: ModelStore, private val source: Source = HttpsSource) {
     /**
-     * Brings every file of `model` onto the phone, reporting the bytes held out of [CatalogModel.bytes]. Returns false
+     * Brings the file of `model` onto the phone, reporting the bytes held out of [CatalogModel.bytes]. Returns false
      * when `cancel` stopped it, leaving what arrived for the next try.
      */
     fun fetch(model: CatalogModel, cancel: CancelToken, progress: (Long) -> Unit): Boolean {
-        val directory = store.directory(model).apply { mkdirs() }
-        var before = 0L
-        for (file in model.files) {
-            if (!store.verified(model, file)) {
-                if (!one(model, file, directory, cancel) { progress(before + it) }) return false
-            }
-            before += file.bytes
-            progress(before)
+        if (store.installed(model)) {
+            progress(model.bytes)
+            return true
         }
-        return true
-    }
-
-    private fun one(model: CatalogModel, file: ModelFile, directory: File, cancel: CancelToken, progress: (Long) -> Unit): Boolean {
+        val directory = store.directory(model).apply { mkdirs() }
+        val file = model.file
         val finished = File(directory, file.name)
         val part = File(directory, file.name + PART)
         // A whole file with no record of its check is checked again as it stands.
@@ -100,7 +93,7 @@ class Downloader(private val store: ModelStore, private val source: Source = Htt
             if (file.bytes - held > directory.usableSpace) {
                 throw DownloadFailed("Not enough storage: ${gigabytes(file.bytes - held)} more is needed.")
             }
-            source.open(model.url(file), held).use { body ->
+            source.open(model.url, held).use { body ->
                 if (!body.resumed) {
                     digest.reset()
                     held = 0
@@ -137,7 +130,8 @@ class Downloader(private val store: ModelStore, private val source: Source = Htt
             throw DownloadFailed("${file.name} did not match its checksum, so it was removed. Try again.")
         }
         if (!part.renameTo(finished)) throw DownloadFailed("The downloaded file could not be kept.")
-        store.markVerified(model, file)
+        store.markVerified(model)
+        progress(file.bytes)
         return true
     }
 }

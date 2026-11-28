@@ -2,7 +2,6 @@
 package app.poolhouse.llm.model
 
 import app.poolhouse.llm.engine.CancelToken
-import app.poolhouse.llm.engine.ModelFormat
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.security.MessageDigest
@@ -18,25 +17,22 @@ import org.junit.rules.TemporaryFolder
 private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
 class CatalogTest {
-    @Test fun everyEntryIsPinnedToARevisionAndTheBytesOfItsFiles() {
+    @Test fun everyEntryIsPinnedToARevisionAndTheBytesOfItsFile() {
         assertEquals(Catalog.models.size, Catalog.models.map { it.id }.toSet().size)
         for (model in Catalog.models) {
             assertTrue(model.id, model.id.matches(Regex("[a-z0-9-]{1,80}")))
             assertTrue(model.id, model.revision.matches(Regex("[0-9a-f]{40}")))
-            for (file in model.files) {
-                assertTrue(file.name, file.sha256.matches(Regex("[0-9a-f]{64}")))
-                assertTrue(file.name, file.bytes > 100_000_000)
-                assertEquals("$HUB/${model.repository}/resolve/${model.revision}/${file.name}", model.url(file))
-            }
-            val suffix = if (model.format == ModelFormat.GGUF) ".gguf" else ".litertlm"
-            assertTrue(model.id, model.files.all { it.name.endsWith(suffix) })
+            assertTrue(model.id, model.file.sha256.matches(Regex("[0-9a-f]{64}")))
+            assertTrue(model.id, model.file.bytes > 100_000_000)
+            assertEquals("$HUB/${model.repository}/resolve/${model.revision}/${model.file.name}", model.url)
+            assertTrue(model.id, model.file.name.endsWith(".litertlm"))
             assertTrue(model.id, model.licence.url.startsWith("https://"))
-            if (model.format == ModelFormat.GGUF && model.images) assertTrue(model.id, model.projector != null)
         }
     }
 
-    @Test fun bothFormatsAreOffered() {
-        assertEquals(ModelFormat.entries.toSet(), Catalog.models.map { it.format }.toSet())
+    @Test fun eachModelIsOneFileThatReadsPicturesUpTo32000Tokens() {
+        assertEquals(Catalog.models.size, Catalog.models.map { it.repository }.toSet().size)
+        assertTrue(Catalog.models.all { it.images && it.contextLimit == 32_000 })
     }
 }
 
@@ -71,21 +67,15 @@ class FitTest {
 class DownloadTest {
     @get:Rule val folder = TemporaryFolder()
 
-    private val first = ByteArray(3_000_000) { (it % 251).toByte() }
-    private val second = ByteArray(1_000_000) { (it % 13).toByte() }
-    private val model = Catalog.models.first().copy(
-        weights = ModelFile("weights.bin", first.size.toLong(), sha256(first)),
-        projector = ModelFile("projector.bin", second.size.toLong(), sha256(second)),
-    )
+    private val whole = ByteArray(3_000_000) { (it % 251).toByte() }
+    private val model = Catalog.models.first().copy(file = ModelFile("weights.bin", whole.size.toLong(), sha256(whole)))
 
-    /** A host of the two files that records what it was asked for; `limit` cuts each body short. */
+    /** A host of the file that records the offsets it was asked for; `limit` cuts each body short. */
     private inner class Host(val resumes: Boolean = true, var limit: Int = Int.MAX_VALUE) : Source {
-        val asked = mutableListOf<Pair<String, Long>>()
+        val asked = mutableListOf<Long>()
 
         override fun open(url: String, offset: Long): Body {
-            val name = url.substringAfterLast('/')
-            asked += name to offset
-            val whole = if (name == "weights.bin") first else second
+            asked += offset
             val from = if (resumes) offset.toInt() else 0
             val length = (whole.size - from).coerceAtMost(limit)
             return Body(resumes && offset > 0, ByteArrayInputStream(whole, from, length))
@@ -100,7 +90,7 @@ class DownloadTest {
         assertTrue(Downloader(store, Host()).fetch(model, CancelToken()) { last = it })
         assertEquals(model.bytes, last)
         assertTrue(store.installed(model))
-        assertArrayEquals(first, store.files(model)!!.weights.readBytes())
+        assertArrayEquals(whole, store.file(model)!!.readBytes())
         assertTrue(store.delete(model))
         assertFalse(store.installed(model))
         assertEquals(0L, store.stored(model))
@@ -114,7 +104,7 @@ class DownloadTest {
         assertEquals(1_200_000L, store.stored(model))
         host.limit = Int.MAX_VALUE
         assertTrue(Downloader(store, host).fetch(model, CancelToken()) {})
-        assertEquals("weights.bin" to 1_200_000L, host.asked[1])
+        assertEquals(1_200_000L, host.asked[1])
         assertTrue(store.installed(model))
     }
 
@@ -122,12 +112,12 @@ class DownloadTest {
         val store = store()
         assertThrows(DownloadFailed::class.java) { Downloader(store, Host(limit = 900_000)).fetch(model, CancelToken()) {} }
         assertTrue(Downloader(store, Host(resumes = false)).fetch(model, CancelToken()) {})
-        assertArrayEquals(first, store.files(model)!!.weights.readBytes())
+        assertArrayEquals(whole, store.file(model)!!.readBytes())
     }
 
     @Test fun bytesThatDoNotMatchTheChecksumAreRemoved() {
         val store = store()
-        val wrong = Source { _, _ -> Body(false, ByteArrayInputStream(ByteArray(first.size))) }
+        val wrong = Source { _, _ -> Body(false, ByteArrayInputStream(ByteArray(whole.size))) }
         val failure = assertThrows(DownloadFailed::class.java) { Downloader(store, wrong).fetch(model, CancelToken()) {} }
         assertTrue(failure.message!!, "checksum" in failure.message!!)
         assertEquals(0L, store.stored(model))
@@ -146,8 +136,7 @@ class DownloadTest {
     @Test fun aFileWithoutItsCheckIsCheckedAgainAndNotFetched() {
         val store = store()
         val directory = store.directory(model).apply { mkdirs() }
-        File(directory, "weights.bin").writeBytes(first)
-        File(directory, "projector.bin").writeBytes(second)
+        File(directory, "weights.bin").writeBytes(whole)
         assertFalse(store.installed(model))
         val host = Host()
         assertTrue(Downloader(store, host).fetch(model, CancelToken()) {})

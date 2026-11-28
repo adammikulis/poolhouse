@@ -91,11 +91,9 @@ class LocalChatActivity : ModelScreen() {
                     models.contextTokens = it
                     size = models.contextFor(model)
                 }
-                if (!model.gpuOnly) {
-                    Choice("On the ${processor.label}", Accelerator.entries.map { it.label to it }, !ChatSession.busy) {
-                        models.accelerator = it
-                        processor = it
-                    }
+                Choice("On the ${processor.label}", Accelerator.entries.map { it.label to it }, !ChatSession.busy) {
+                    models.accelerator = it
+                    processor = it
                 }
                 TextButton(onClick = ChatSession::clear) { Text("New chat") }
             }

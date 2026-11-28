@@ -11,7 +11,6 @@ import app.poolhouse.llm.engine.GenerationOptions
 import app.poolhouse.llm.engine.GenerationResult
 import app.poolhouse.llm.engine.LoadSettings
 import app.poolhouse.llm.engine.LocalEngine
-import app.poolhouse.llm.engine.ModelFormat
 import app.poolhouse.llm.engine.ModelHost
 import app.poolhouse.llm.model.Catalog
 import app.poolhouse.llm.model.CatalogModel
@@ -21,23 +20,19 @@ import java.io.File
 /** What one loaded model was loaded with; a change of any of these reads the model in again. */
 data class Held(val model: String, val accelerator: Accelerator, val context: Int, val images: Boolean)
 
-/** The context a model starts with, in tokens, until the person picks another: what both runtimes hold on a phone. */
-const val DEFAULT_CONTEXT = 8192
+/** The context a model starts with, in tokens, until the person picks another (the owner's choice). */
+const val DEFAULT_CONTEXT = 16_384
 
-val CONTEXT_CHOICES = listOf(4096, DEFAULT_CONTEXT, 16_384, 32_000, 65_536, 131_072)
+/** Up to what the model packages support. */
+val CONTEXT_CHOICES = listOf(8192, DEFAULT_CONTEXT, 32_000)
 
 class LocalModels private constructor(private val context: Context) {
     val store = ModelStore(File(context.filesDir, "llm-models"))
     val host = ModelHost<Held>()
-    private val engines: List<LocalEngine> = listOfNotNull(LiteRtEngine(), LlamaEngine.orNull(context))
+    private val engine: LocalEngine = LiteRtEngine()
     private val preferences = context.getSharedPreferences("poolhouse-llm", Context.MODE_PRIVATE)
 
-    /** The models this build can run. */
-    val offered: List<CatalogModel> get() = Catalog.models.filter { engine(it.format) != null }
-
-    fun engine(format: ModelFormat): LocalEngine? = engines.firstOrNull { it.format == format }
-
-    fun installed(): List<CatalogModel> = offered.filter(store::installed)
+    fun installed(): List<CatalogModel> = Catalog.models.filter(store::installed)
 
     /** The model that answers: the chosen one while it is downloaded, else the first downloaded. */
     fun chosen(): CatalogModel? = installed().let { all ->
@@ -77,12 +72,10 @@ class LocalModels private constructor(private val context: Context) {
         onLoaded: (Accelerator) -> Unit = {},
         onText: (String) -> Unit,
     ): GenerationResult {
-        val files = store.files(model) ?: throw IllegalStateException("${model.title} is not downloaded.")
-        val engine = engine(model.format) ?: throw IllegalStateException("This build cannot run ${model.format.label} models.")
-        val processor = if (model.gpuOnly) Accelerator.GPU else accelerator
-        val key = Held(model.id, processor, contextFor(model), model.images)
+        val weights = store.file(model) ?: throw IllegalStateException("${model.title} is not downloaded.")
+        val key = Held(model.id, accelerator, contextFor(model), model.images)
         return host.use(caller, key, cancel, {
-            engine.load(files, LoadSettings(key.accelerator, key.context, key.images, File(context.cacheDir, "llm")))
+            engine.load(weights, LoadSettings(key.accelerator, key.context, key.images, File(context.cacheDir, "llm")))
         }) { loaded ->
             onLoaded(loaded.accelerator)
             loaded.generate(turns, options, cancel, onText).also { record(model) }

@@ -5,7 +5,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// The on-device runtimes, pinned by version and by the bytes of their archives.
+// The on-device runtime, pinned by version and by the bytes of its archives.
 val litertLm = "0.20.0"
 val pinnedArchives = mapOf(
     "litertlm-android-0.20.0.aar" to "9cd2699d796a7120ff567316de85e797250cc10b2b67cb616c48567b719e7ed8",
@@ -25,8 +25,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     buildFeatures { compose = true }
-    // The llama.cpp libraries `native/build.py` makes; a build without them offers no GGUF model.
-    sourceSets.getByName("main").jniLibs.directories.add("build/llama-jni")
 }
 
 val checkPinnedArchives = tasks.register("checkPinnedArchives") {

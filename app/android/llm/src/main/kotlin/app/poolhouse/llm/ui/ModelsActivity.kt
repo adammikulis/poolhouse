@@ -33,6 +33,7 @@ import app.poolhouse.llm.android.DownloadState
 import app.poolhouse.llm.android.LocalModels
 import app.poolhouse.llm.android.metered
 import app.poolhouse.llm.android.phoneRoom
+import app.poolhouse.llm.model.Catalog
 import app.poolhouse.llm.model.CatalogModel
 import app.poolhouse.llm.model.gigabytes
 import app.poolhouse.llm.model.verdict
@@ -56,7 +57,7 @@ class ModelsActivity : ModelScreen() {
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            items(models.offered, key = { it.id }) { model ->
+            items(Catalog.models, key = { it.id }) { model ->
                 val mine = download?.takeIf { it.model == model.id }
                 // `changed` and the download's progress make the stored size and the verdict current.
                 val stored = remember(changed, mine) { models.store.stored(model) }
@@ -119,7 +120,7 @@ class ModelsActivity : ModelScreen() {
                 Text(model.title, style = MaterialTheme.typography.titleMedium)
                 Text(model.about)
                 Text(
-                    "${gigabytes(model.bytes)} · ${model.format.label} · up to ${model.contextLimit} tokens · " +
+                    "${gigabytes(model.bytes)} · LiteRT-LM · up to ${model.contextLimit} tokens · " +
                         if (model.images) "reads pictures" else "text only",
                     style = MaterialTheme.typography.bodySmall,
                 )
