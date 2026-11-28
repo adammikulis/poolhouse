@@ -272,7 +272,13 @@ impl Node {
         let binding = Binding::signed(body, &self.key)?;
         let resource = binding.resource()?;
         if self.current_service_capability().as_deref() != Some(resource.as_str()) {
-            let who = crate::poolapi::authorize(self, token, "service_bind", &resource)?;
+            // This device's own session binds this device's own service with no grant: nothing waits for a person, and a pool member
+            // that holds no admin key can still serve its pool. Any other session needs the grant.
+            let own = self.tokens.resolve(token).cloned().filter(|holder| crate::presence::person_session(self, holder));
+            let who = match own {
+                Some(holder) => holder,
+                None => crate::poolapi::authorize(self, token, "service_bind", &resource)?,
+            };
             self.host(crate::poolops::POOL_BOARD)?.board.append_node(crate::row::Kind::Audit, "node",
                 json!({"event":"service_capability","subject":resource,"detail":format!("approved by {}/{}",who.board,who.name)}), "")?;
         }

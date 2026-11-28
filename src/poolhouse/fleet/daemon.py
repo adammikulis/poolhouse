@@ -20,6 +20,7 @@ from typing import Any
 from poolhouse import home, lan as lan_policy, macauth, runtime_identity, sentinel
 from poolhouse.files import write_text
 from poolhouse.fleet.onboard.devices import Devices
+from poolhouse.fleet.onboard.lan import primary_ip
 from poolhouse.hub import default_roots, uploads
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
@@ -117,6 +118,9 @@ class DaemonOptions:
     announcer: Callable[[Callable[[], list[dict]]], Callable[[str], object]] | None = None
     """`poolhouse.board.model_uploads.board_notice`, handed in by the command for the same reason: given the daemon's boards, it posts
     the daily model upload check's lines. None checks and posts nothing."""
+    compute_service: Callable[..., Any] | None = None
+    """`poolhouse.board.service_binding.Keeper`, handed in by the command: while this daemon listens off this machine, it keeps the
+    daemon's certificate and address bound to the node, without which no member can reach it. None binds nothing."""
 
 
 class DaemonRuntime:
@@ -141,6 +145,7 @@ class DaemonRuntime:
         self.track = options.track
         self.pool_actions = options.pool_actions
         self.announcer = options.announcer
+        self.compute_service = options.compute_service
 
     def configure(self) -> None:
         self.root = home.expand(self.root) if self.root else default_root()
@@ -354,12 +359,18 @@ class DaemonRuntime:
             say(f"  reclaiming a server unused for {self.idle_s:.0f}s")
             self.reclaiming.enter_context(watching(older_than=self.idle_s, say=print))
         runtime_repair.resume_stored(self.interface, self.root)
+        keeper = None
+        if self.compute_service is not None and self.listening != LOOPBACK:
+            keeper = self.compute_service(self.members.state, self.identity, self.service_endpoint)
+            keeper.start()
         try:
             self.httpd.serve_forever()
         except KeyboardInterrupt:
             pass
         finally:
             try:
+                if keeper is not None:
+                    keeper.close()
                 self.reclaiming.close()
                 self.scanner.stop()
                 self._shutdown_jobs()
@@ -425,6 +436,11 @@ class DaemonRuntime:
         return LimitedServer((address, self.port), self.handler,
                              tls=tls.member_context(self.identity(), self.members))
 
+    def service_endpoint(self) -> str:
+        """Where other devices reach this listener now: the address it was bound to, or this machine's own on every interface."""
+        host = primary_ip() if self.listening in (ALL_INTERFACES, "", "::") else self.listening
+        return f"https://{f'[{host}]' if ':' in host else host}:{self.httpd.server_address[1]}"
+
     def rename(self, called: str) -> str:
         """Give this machine a new name now, on the page and on the network."""
         called = called.strip()
@@ -475,7 +491,8 @@ def persist(*, slots: int = 1, labels: tuple[str, ...] = (), report: str = "") -
     return 2
 
 
-def run(argv: list[str] | None = None, *, pool_actions: Any = None, announcer: Any = None) -> int:
+def run(argv: list[str] | None = None, *, pool_actions: Any = None, announcer: Any = None,
+        compute_service: Any = None) -> int:
     ap = argparse.ArgumentParser(prog="poolhouse-traind")
     ap.add_argument("--root", default=str(default_root()))
     ap.add_argument(
@@ -649,6 +666,7 @@ def run(argv: list[str] | None = None, *, pool_actions: Any = None, announcer: A
             track=a.track,
             pool_actions=pool_actions,
             announcer=announcer,
+            compute_service=compute_service,
         )
     )
     return 0

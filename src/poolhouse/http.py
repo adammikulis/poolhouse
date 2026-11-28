@@ -27,6 +27,7 @@ from typing import Any
 
 from poolhouse import errors, lazy, macauth, sealing, serverkeys
 from poolhouse.httpguard import Limits, Refused, resolve, split
+from poolhouse.log import warn
 
 USER_AGENT = "poolhouse"
 
@@ -243,9 +244,26 @@ def build_request(url: str, *, data: bytes | None = None, method: str | None = N
         sent["Authorization"] = f"Bearer {token}"
     elif "Authorization" not in sent and (leased := serverkeys.for_url(url)):
         sent["Authorization"] = f"Bearer {leased}"
+    if not secret and (data or "Authorization" in sent):
+        _say_readable(url)
     request = _Request(url, data=data, method=verb, headers=sent)
     request.sealed = opens
     return request
+
+
+_READABLE: set[str] = set()
+"""The hosts already named by `_say_readable`."""
+
+
+def _say_readable(url: str) -> None:
+    """Warn, once a host, that what is sent in plain http to another machine, and any key with it, can be read on the network.
+    Not refused: the address is the user's own choice, and a model server on their network may offer nothing else."""
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "http" or _this_computer(url) or parts.netloc.lower() in _READABLE:
+        return
+    _READABLE.add(parts.netloc.lower())
+    warn(f"plain http to {urllib.parse.urlsplit(shown(url)).netloc}: what is sent, and any key with it, can be read on the network; "
+         "use https where that server offers it")
 
 
 class _Guarded(urllib.request.HTTPRedirectHandler):

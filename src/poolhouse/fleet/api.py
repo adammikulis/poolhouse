@@ -12,6 +12,7 @@ import re
 import secrets
 import shlex
 import ssl
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -37,6 +38,7 @@ from . import (
     callers,
     commands,
     device_auth,
+    member_view,
     projects as project_routes,
     studio_device_routes,
     studio_library,
@@ -76,12 +78,14 @@ from .weights import ModelError
 
 INFER_CHUNK = 1 << 13
 INFER_TIMEOUT = 600.0
-READ_ONLY = ("/slots", "/props", "/metrics", "/models", "/health")
-"""Model-server paths the proxy only reads: a write to ``/slots`` saves or erases a cache."""
-PROXIED = re.compile(r"/(v1/[A-Za-z0-9/_.-]*|completions?|chat/completions|tokenize|detokenize|"
-                     r"embeddings?|infill|apply-template|props|health|models|metrics|slots)"
-                     r"(\?[^\s#]*)?")
-"""The paths of a model server the proxy passes on; nothing else, and no way up out of them."""
+PROXY_READS = re.compile(r"/(health|v1/health|props|models|v1/models(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)?|metrics|slots)"
+                         r"(\?[^\s#]*)?")
+"""Model-server paths the proxy only reads: a write to ``/slots`` saves or erases a cache. ``/slots`` is cut down to capacity."""
+PROXY_CALLS = re.compile(r"/(v1/(chat/completions|completions|embeddings|rerank|responses|messages(/count_tokens)?|"
+                         r"audio/transcriptions|tokenize|infill)|completions?|chat/completions|tokenize|detokenize|"
+                         r"embeddings?|rerank(ing)?|infill|apply-template)(\?[^\s#]*)?")
+"""Model-server paths a request may be sent to. Anything in neither list is not passed on: a model server's other routes can
+hold what somebody else asked it."""
 AGENT = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
@@ -256,14 +260,14 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return False
             if not self._guard(body):
                 return True
-            body = self._unsealed(body)
-            if body is None:
-                return True
+            if body is not None:   # a read has no body to open
+                body = self._unsealed(body)
+                if body is None:
+                    return True
             rest = self.path[len("/infer"):] or "/"
             rest = "/" + rest if rest.startswith("?") else rest
-            route = rest.split("?")[0]
-            if (not PROXIED.fullmatch(rest) or ".." in route.split("/")
-                    or (route.startswith(READ_ONLY) and self.command not in ("GET", "HEAD"))):
+            passed = PROXY_READS if self.command in ("GET", "HEAD") else PROXY_CALLS
+            if not passed.fullmatch(rest):
                 self._send(403, {"error": "that path is not one the proxy passes on"})
                 return True
             parsed = urllib.parse.urlparse(rest)
@@ -279,7 +283,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 upstream.add_header("Authorization", f"Bearer {leased}")
             for name, value in self.headers.items():
                 if name.lower() in ("authorization", "host", "content-length",
-                                    "connection", "x-poolhouse-ui"):
+                                    "connection", "x-poolhouse-ui", "accept-encoding"):
                     continue
                 upstream.add_header(name, value)
             if body:
@@ -312,6 +316,9 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return True
 
             kind = response.headers.get("Content-Type", "application/json")
+            if urllib.parse.urlsplit(upstream.full_url).path == "/slots":
+                with response:
+                    return self._send_slots(response.status, response.read())
             opening = self._sealing()
             if opening is not None and opening[2] and "event-stream" not in kind:
                 with response:
@@ -340,6 +347,25 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             finally:
                 response.close()
             return True
+
+        def _send_slots(self, status: int, raw: bytes) -> bool:
+            """Answer a ``/slots`` read with each slot's capacity and none of its text."""
+            try:
+                shown = member_view.slots(raw) if self.command != "HEAD" else b""
+            except ValueError:
+                self._send(502, {"error": "the model server's slots could not be read"})
+                return True
+            self._send(status, None, raw=shown, content_type="application/json")
+            return True
+
+        def _requester(self) -> str:
+            """The member whose request this is, or "" for the owner of this daemon. Set by `_guard`."""
+            return "" if self._owner_service else self._member
+
+        def _job(self, job_id: str):
+            """The job ``job_id`` when the requester may see it, else None."""
+            job = runner.jobs.get(job_id)
+            return job if job is not None and member_view.owns(job.by, self._requester()) else None
 
         def _ui(self) -> bool:
             if ui is None or not self.path.startswith("/ui"):
@@ -383,6 +409,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return
             if path == "/health":
                 status = runner.status()
+                status["running"] = [ident for ident in status["running"] if self._job(ident) is not None]
                 sched = schedule.public() if schedule is not None else None
                 if sched is not None and not sched["available"]:
                     status = {**status, "free": 0}
@@ -434,7 +461,8 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 self._send(200, schedule.public())
                 return
             if path == "/jobs":
-                self._send(200, {"jobs": runner.snapshot()})
+                self._send(200, {"jobs": [job for job in runner.snapshot()
+                                          if member_view.owns(job["by"], self._requester())]})
                 return
             if path == "/speech/providers":
                 self._send(200, speech.providers())
@@ -444,25 +472,15 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                     self._send(501, {"error": "this daemon takes no bench jobs"})
                     return
                 self._send(200, {"ok": True, "name": self._name(), **bench.report(),
-                                 "jobs": bench.snapshot()})
+                                 "jobs": [job for job in bench.snapshot()
+                                          if member_view.owns(job["by"], self._requester())]})
                 return
             if path == "/bench/export":
-                if bench is None:
-                    self._send(501, {"error": "this daemon takes no bench jobs"})
-                    return
-                try:
-                    out = bench.export(since=q.get("since", [""])[0],
-                                       job=q.get("job", [""])[0],
-                                       full=q.get("full", ["0"])[0] not in ("", "0"),
-                                       anyway=q.get("anyway", ["0"])[0] not in ("", "0"))
-                except DaemonError as e:
-                    self._send(400, {"error": str(e)})
-                    return
-                self._send(200, {**out, "host": self._name()})
+                self._read_export(q)
                 return
             m = re.match(r"^/jobs/([^/]+)(/log|/metrics)?$", path)
             if m:
-                job = runner.jobs.get(m.group(1))
+                job = self._job(m.group(1))
                 if job is None:
                     self._send(404, {"error": "unknown job"})
                     return
@@ -489,6 +507,28 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return
             self._send(404, {"error": "no such route"})
 
+        def _read_export(self, q):
+            """``GET /bench/export``. A member reads what its own bench job kept: the runs from its start to its end."""
+            if bench is None:
+                self._send(501, {"error": "this daemon takes no bench jobs"})
+                return
+            named, member = q.get("job", [""])[0], self._requester()
+            asked = self._job(named) if named else None
+            if member and (asked is None or not asked.started_at):
+                self._send(404, {"error": "name a bench job of yours that has started"})
+                return
+            try:
+                out = bench.export(since="" if member else q.get("since", [""])[0], job=named,
+                                   full=q.get("full", ["0"])[0] not in ("", "0"),
+                                   anyway=q.get("anyway", ["0"])[0] not in ("", "0"))
+            except DaemonError as e:
+                self._send(400, {"error": str(e)})
+                return
+            if member and asked.finished_at:
+                until = time.strftime("%FT%T", time.localtime(asked.finished_at))
+                out["runs"] = [run for run in out["runs"] if str(run.get("at", ""))[:len(until)] <= until]
+            self._send(200, {**out, "host": self._name()})
+
         def _read_files(self, path):
             m = re.match(r"^/fetch/([^/]+)$", path)
             if m:
@@ -496,7 +536,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                     self._send(501, {"error": "device-to-device fetch is not enabled"})
                     return
                 fetch = fetcher.fetches.get(m.group(1))
-                if fetch is None:
+                if fetch is None or not member_view.owns(fetch.by, self._requester()):
                     self._send(404, {"error": "unknown fetch"})
                     return
                 self._send(200, fetch.public())
@@ -505,13 +545,13 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 if fetcher is None:
                     self._send(501, {"error": "device-to-device fetch is not enabled"})
                     return
-                self._send(200, {"fetches": [f.public() for f in
-                                             list(fetcher.fetches.values())],
+                self._send(200, {"fetches": [f.public() for f in list(fetcher.fetches.values())
+                                             if member_view.owns(f.by, self._requester())],
                                  **fetcher.status()})
                 return
             if path.startswith("/files/"):
                 try:
-                    target = safe_relpath(files_root, path[len("/files/"):])
+                    target = member_view.file_path(files_root, runner.jobs, path[len("/files/"):], self._requester())
                 except DaemonError as e:
                     self._send(400, {"error": str(e)})
                     return
@@ -595,6 +635,9 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return
             m = re.match(r"^/jobs/([^/]+)/stop$", parsed.path)
             if m:
+                if self._job(m.group(1)) is None:
+                    self._send(404, {"error": "unknown job"})
+                    return
                 try:
                     job = runner.stop(m.group(1))
                 except DaemonError as e:
@@ -628,7 +671,8 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                     if isinstance(argv, str):
                         argv = shlex.split(argv)
                     job = runner.label(runner.submit(req.get("name", ""), command(argv or []),
-                                                     str(files_root)), submitter(self))
+                                                     str(member_view.home(files_root, self._requester()))),
+                                       submitter(self))
                 except (DaemonError, ValueError) as e:
                     self._send(400, {"error": str(e)})
                     return
@@ -641,11 +685,15 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 try:
                     job = bench.submit(BenchJob.from_request(self._object(body)))
                 except Refused as e:
-                    self._send(409, {"error": str(e), "refused": e.kind})
+                    # The reason a measuring lock gives names the job that holds it, which may be another's.
+                    why = f"{self._name()} is measuring already" if e.kind == "lock" and self._requester() else str(e)
+                    self._send(409, {"error": why, "refused": e.kind})
                     return
                 except (DaemonError, ValueError) as e:
                     self._send(400, {"error": str(e)})
                     return
+                if held := bench.runner.jobs.get(job.id):
+                    job.by = bench.runner.label(held, submitter(self)).by
                 self._send(201, job.public())
                 return
             if parsed.path == "/models/get":
@@ -717,9 +765,15 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                     relpath = str(req.get("relpath") or "")
                     if not source or not relpath:
                         raise DaemonError("both 'member' and 'relpath' are required")
-                    fetch = fetcher.start(source=source, relpath=relpath,
-                                          to=str(req.get("to") or relpath),
-                                          sha256=str(req.get("sha256") or ""))
+                    to, member = str(req.get("to") or relpath), self._requester()
+                    if member:
+                        # This device fetches as itself, so for a member it reads only what the source shares with every member.
+                        if not relpath.startswith(member_view.SHARED + "/"):
+                            raise DaemonError("a member has this device fetch only from a source's shared folder")
+                        safe_relpath(member_view.home(files_root, member), to)
+                        to = f"{member_view.MEMBERS}/{member}/{to}"
+                    fetch = fetcher.start(source=source, relpath=relpath, to=to,
+                                          sha256=str(req.get("sha256") or ""), by=member)
                 except (DaemonError, ValueError) as e:
                     self._send(400, {"error": str(e)})
                     return
@@ -784,7 +838,8 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 self._send(404, {"error": "no such route"})
                 return
             try:
-                target = safe_relpath(files_root, parsed.path[len("/files/"):])
+                target = member_view.file_path(files_root, runner.jobs, parsed.path[len("/files/"):], self._requester(),
+                                               write=True)
                 offset, _ = content_range(self.headers.get("Content-Range", ""), len(body))
             except DaemonError as e:
                 self._send(400, {"error": str(e)})

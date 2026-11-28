@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -31,6 +31,8 @@ class Target:
     member: str = ""
     alias: str = ""
     capabilities: dict[str, Any] = field(default_factory=model_capabilities)
+    member_client: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    """For a model on another device, the `fleet.remote.Member` that reaches it over the connection pinned to its certificate."""
 
     @property
     def local(self) -> bool:
@@ -73,6 +75,7 @@ def targets(members: list[dict[str, Any]], serving: Any = None) -> list[Target]:
                 out.append(Target(model=str(model),
                                   url=f"{base}/infer{CHAT_PATH}",
                                   token=str(beacon.get("token") or ""),
+                                  member_client=beacon.get("member_client"),
                                   capabilities=_capabilities(served.get('capabilities')),
                                   member=str(beacon.get("name") or "")))
     out.sort(key=lambda t: (not t.local, t.member, t.model))
@@ -92,8 +95,13 @@ def stream(target: Target, payload: dict[str, Any], *,
     """The model server's reply, in the pieces it arrives in."""
     data = json.dumps(payload).encode()
     try:
-        response = open_stream(target.url, data=data, method="POST", options=Options(token=target.token, timeout=timeout, headers={"Content-Type": "application/json",
-                     "Accept": "text/event-stream" if payload.get("stream") else "*/*"}))
+        options = Options(token=target.token, timeout=timeout, headers={"Content-Type": "application/json",
+                          "Accept": "text/event-stream" if payload.get("stream") else "*/*"})
+        if target.member_client is not None:
+            options = target.member_client().current_options(options)
+        response = open_stream(target.url, data=data, method="POST", options=options)
+    except PermissionError as exc:
+        raise ChatError(f"{target.member} may not be reached: {exc}") from None
     except ServerUnreachable as exc:
         raise ChatError(
             f"{target.member or 'this machine'} did not answer: {exc}") from None

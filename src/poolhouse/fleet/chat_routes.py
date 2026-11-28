@@ -11,10 +11,10 @@ from .conversation_routes import ConversationRoutes
 __all__ = ["ChatRoutes"]
 
 
-def _secret(row: dict, root) -> str:
-    """The request secret for one other pool member, or empty when the node authorizes none for it."""
+def _reach(row: dict, root) -> dict:
+    """The request secret and pinned client for one other pool member, or no secret when the node authorizes none for it."""
     member = None if row.get("is_self") else roster.client_for(row, root=root)
-    return member.token if member is not None else ""
+    return {"token": ""} if member is None else {"token": member.token, "member_client": lambda: member}
 
 
 class ChatRoutes(ConversationRoutes):
@@ -27,7 +27,7 @@ class ChatRoutes(ConversationRoutes):
 
     def _chat(self) -> bool:
         ui = self.ui
-        available = targets([{**row, "token": _secret(row, ui.root)} for row in ui.members()], ui.serving)
+        available = targets([{**row, **_reach(row, ui.root)} for row in ui.members()], ui.serving)
         if self.method == "GET":
             problem = agent_dependency.problem()
             self.send(200, {"models": [t.public() for t in available], "runtime_ready": not problem,

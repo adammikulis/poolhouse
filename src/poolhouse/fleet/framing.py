@@ -163,6 +163,18 @@ class Limited:
                 raise ConnectionAbortedError("plain HTTP from another machine")
         super().setup()  # type: ignore[misc]
 
+    def finish(self) -> None:
+        """End a TLS connection here: wrapping took the socket from the one the server closes, so a reply that ends when the
+        connection does (a stream) would otherwise never end for its reader."""
+        try:
+            super().finish()  # type: ignore[misc]
+        finally:
+            connection = getattr(self, "request", None)
+            if isinstance(connection, ssl.SSLSocket):
+                with contextlib.suppress(OSError):
+                    connection.shutdown(socket.SHUT_WR)
+                connection.close()
+
     def handle_one_request(self) -> None:
         guard = threading.Timer(self.header_s, self._hang_up)
         guard.daemon = True

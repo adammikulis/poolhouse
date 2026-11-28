@@ -107,6 +107,8 @@ class Fetch:
     error: str = ""
     started_at: float = field(default_factory=time.time)
     finished_at: float = 0.0
+    by: str = ""
+    """The member that asked for it, "" for the daemon's owner; only they are shown it."""
 
     def public(self) -> dict[str, Any]:
         return {"id": self.id, "source": self.source, "relpath": self.relpath,
@@ -135,11 +137,11 @@ class Fetcher:
         raise DaemonError(f"no pool member named {name!r} has a current compute service")
 
     def start(self, *, source: str, relpath: str, to: str,
-              sha256: str = "") -> Fetch:
+              sha256: str = "", by: str = "") -> Fetch:
         target = safe_relpath(self.files_root, to)
         safe_relpath(self.files_root, relpath)
         fetch = Fetch(id=f"{int(time.time())}-{secrets.token_hex(3)}",
-                      source=source, relpath=relpath, to=to)
+                      source=source, relpath=relpath, to=to, by=by)
         with self._lock:
             self.fetches[fetch.id] = fetch
         threading.Thread(target=self._run, args=(fetch, target, sha256),

@@ -18,6 +18,7 @@ from poolhouse.client.counters import read_speculative
 from poolhouse.client.health import is_healthy, reported_models, serving_params
 from poolhouse.client.settings import Transport
 from poolhouse.files import stat_signature, write_json
+from poolhouse.http import pin
 from poolhouse.hub.capabilities import capabilities
 from poolhouse.hub.probe import machine_memory
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port
@@ -440,6 +441,8 @@ def discover_serving(*, model: str = "", timeout_s: float = 10.0) -> list[Endpoi
     out = []
     for member in Member.discover(timeout=timeout_s):
         beacon = member.beacon
+        # A `Client` built from the endpoint trusts the certificate the node vouches for, and shows this device's own.
+        pin(urlsplit(member.base_url).netloc, member.current_options().tls_context)
         for served in (beacon.device.get("serving") or []):
             models = tuple(served.get("models") or ())
             if model and not any(model.lower() in m.lower() for m in models):
