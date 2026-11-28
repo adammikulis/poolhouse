@@ -9,9 +9,11 @@ import app.poolhouse.core.api.Me
 import app.poolhouse.core.api.Models
 import app.poolhouse.core.api.PhoneJson
 import app.poolhouse.core.api.PoolUse
+import app.poolhouse.core.api.Projects
 import app.poolhouse.core.api.Runs
 import app.poolhouse.core.api.ScheduledJobs
 import app.poolhouse.core.api.Sessions
+import app.poolhouse.core.api.StartDelegate
 import app.poolhouse.core.api.StreamedEvent
 import app.poolhouse.core.net.PhoneCalls
 import app.poolhouse.core.net.PhoneError
@@ -55,6 +57,7 @@ data class PoolState(
     val inbox: Loaded<Inbox> = Loaded(),
     val poolUse: Loaded<PoolUse> = Loaded(),
     val me: Loaded<Me> = Loaded(),
+    val projects: Loaded<Projects> = Loaded(),
     val transcripts: Map<String, Transcript> = emptyMap(),
     /** When the person last saw each session, by its `active_at`. */
     val seen: Map<String, Double> = emptyMap(),
@@ -72,6 +75,9 @@ interface SeenStore {
 }
 
 private val LISTS = listOf("sessions", "inbox", "devices", "delegates", "jobs", "scheduled", "models", "pool-use", "me")
+
+/** The longest message, and the longest task, the computer accepts. */
+const val MESSAGE_LIMIT = 8_000
 
 /**
  * The app's view of the linked computer: it reads the lists, follows the live stream while the app is on screen, and carries out what
@@ -199,6 +205,7 @@ class PoolStore(
             "models" -> list({ it.models }, { s, v -> s.copy(models = v) }) { calls.models() }
             "pool-use" -> list({ it.poolUse }, { s, v -> s.copy(poolUse = v) }) { calls.poolUse() }
             "me" -> list({ it.me }, { s, v -> s.copy(me = v) }) { calls.me() }
+            "projects" -> list({ it.projects }, { s, v -> s.copy(projects = v) }) { calls.projects() }
         }
     }
 
@@ -295,7 +302,7 @@ class PoolStore(
         editTranscript(id) { it.withDraft(draft) }
         scope.launch {
             try {
-                require(draft.text.length <= 16_000) { "A message is at most 16000 characters." }
+                require(draft.text.length <= MESSAGE_LIMIT) { "A message is at most $MESSAGE_LIMIT characters." }
                 val sent = calls.send(id, draft.text)
                 editTranscript(id) { it.withDraft(draft.copy(message = sent.message, mode = sent.mode, note = sent.note)) }
                 readEvents(id)
@@ -332,6 +339,15 @@ class PoolStore(
     }
 
     fun clearNotice() = change { it.copy(notice = "") }
+
+    /** Starts a local delegate on a project of the computer; [started] gets its name once it exists. */
+    fun startDelegate(project: String, task: String, edit: Boolean, model: String, started: (String) -> Unit) =
+        act("start", "delegates", "sessions") {
+            require(task.isNotBlank() && task.length <= MESSAGE_LIMIT) { "A task is 1 to $MESSAGE_LIMIT characters." }
+            val said = calls.startDelegate(StartDelegate(project, task.trim(), edit, model.trim()))
+            if (said.name.isNotEmpty()) started(said.name)
+            said.said.ifEmpty { "${said.name} started." }
+        }
 
     fun answer(session: String, question: String, answers: Map<String, String>) {
         act("answer:$question", "inbox", "sessions") {

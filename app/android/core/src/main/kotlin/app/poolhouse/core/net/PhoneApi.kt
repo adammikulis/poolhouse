@@ -13,14 +13,18 @@ import app.poolhouse.core.api.Pause
 import app.poolhouse.core.api.Paused
 import app.poolhouse.core.api.PhoneJson
 import app.poolhouse.core.api.PoolUse
+import app.poolhouse.core.api.Projects
 import app.poolhouse.core.api.RunPage
 import app.poolhouse.core.api.Runs
 import app.poolhouse.core.api.Said
+import app.poolhouse.core.api.ScheduledDetail
 import app.poolhouse.core.api.ScheduledJobs
 import app.poolhouse.core.api.SendMessage
 import app.poolhouse.core.api.Sent
 import app.poolhouse.core.api.Sessions
 import app.poolhouse.core.api.SetPoolUse
+import app.poolhouse.core.api.StartDelegate
+import app.poolhouse.core.api.Started
 import app.poolhouse.core.api.StartModel
 import app.poolhouse.core.api.StopModel
 import app.poolhouse.core.device.ComputerLink
@@ -48,7 +52,10 @@ interface PhoneCalls {
     suspend fun jobLog(id: String): JobLog
     suspend fun stopJob(id: String)
     suspend fun scheduled(): ScheduledJobs
+    suspend fun scheduledJob(id: String): ScheduledDetail
     suspend fun cancelScheduled(id: String)
+    suspend fun projects(): Projects
+    suspend fun startDelegate(start: StartDelegate): Started
     suspend fun delegates(): Runs
     suspend fun delegate(name: String, after: Long): RunPage
     suspend fun stopDelegate(name: String): Said
@@ -106,9 +113,16 @@ class PhoneApi(private val client: PhoneClient) : PhoneCalls, ComputerLink {
 
     override suspend fun scheduled() = client.get("/scheduled", ScheduledJobs.serializer())
 
+    override suspend fun scheduledJob(id: String) = client.get("/scheduled/${encode(id)}", ScheduledDetail.serializer())
+
     override suspend fun cancelScheduled(id: String) {
         postEmpty("/scheduled/${encode(id)}/cancel")
     }
+
+    override suspend fun projects() = client.get("/projects", Projects.serializer())
+
+    override suspend fun startDelegate(start: StartDelegate) =
+        client.post("/delegates", StartDelegate.serializer(), start, Started.serializer())
 
     override suspend fun delegates() = client.get("/delegates", Runs.serializer())
 
@@ -136,7 +150,7 @@ class PhoneApi(private val client: PhoneClient) : PhoneCalls, ComputerLink {
 
     override suspend fun inbox() = client.get("/inbox", Inbox.serializer())
 
-    override suspend fun poolUse() = client.get("/pool-use", app.poolhouse.core.api.PoolUse.serializer())
+    override suspend fun poolUse() = client.get("/pool-use", PoolUse.serializer())
 
     override suspend fun setPoolUse(enabled: Boolean) =
         client.post("/pool-use", SetPoolUse.serializer(), SetPoolUse(enabled), PoolUse.serializer())

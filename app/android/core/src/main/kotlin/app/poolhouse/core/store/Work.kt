@@ -2,7 +2,6 @@ package app.poolhouse.core.store
 
 import app.poolhouse.core.api.Job
 import app.poolhouse.core.api.Run
-import app.poolhouse.core.api.Scheduled
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -56,23 +55,36 @@ fun jobRow(job: Job): WorkRow = WorkRow(
     title = job.name.ifBlank { job.id },
     state = job.state,
     phase = phaseOf(job.state),
-    detail = job.id,
+    detail = listOf(job.id, if (job.by.isBlank()) "" else "by ${job.by}", job.returncode?.takeIf { it != 0 }?.let { "exit $it" } ?: "")
+        .filter { it.isNotBlank() }.joinToString(" · "),
     at = job.startedAt ?: job.submittedAt,
     live = job.state in LIVE_JOB,
-    cancellable = job.state in LIVE_JOB,
+    cancellable = job.cancellable ?: (job.state in LIVE_JOB),
 )
 
-fun scheduledRow(job: Scheduled): WorkRow = WorkRow(
-    kind = WorkKind.SCHEDULED,
-    id = job.id,
-    title = job.name.ifBlank { job.id },
-    state = if (job.enabled) "scheduled" else "off",
-    phase = if (job.enabled) Phase.WAITING else Phase.STOPPED,
-    detail = listOf(job.schedule, job.lastState.let { if (it.isBlank()) "" else "last: $it" }).filter { it.isNotBlank() }.joinToString(" · "),
-    at = job.nextAt,
-    live = false,
-    cancellable = job.enabled,
-)
+/** A scheduled job's row, or null when it has no id. Only what the computer says is shown. */
+fun scheduledRow(job: JsonObject): WorkRow? {
+    val id = job.text("id").ifEmpty { return null }
+    val enabled = (job["enabled"] as? JsonPrimitive)?.booleanOrNull != false
+    val last = job.text("last_state")
+    return WorkRow(
+        kind = WorkKind.SCHEDULED,
+        id = id,
+        title = job.text("name").ifBlank { id },
+        state = job.text("state").ifBlank { if (enabled) "scheduled" else "off" },
+        phase = if (enabled) Phase.WAITING else Phase.STOPPED,
+        detail = listOf(job.text("when"), if (last.isBlank()) "" else "last: $last").filter { it.isNotBlank() }.joinToString(" · "),
+        at = (job["next_at"] as? JsonPrimitive)?.doubleOrNull,
+        live = false,
+        cancellable = enabled,
+    )
+}
+
+/** The fields of a scheduled job's row as name and value, for its screen. */
+fun facts(row: JsonObject): List<Pair<String, String>> = row.entries.mapNotNull { (name, value) ->
+    val said = (value as? JsonPrimitive)?.contentOrNull ?: value.toString()
+    if (said.isBlank() || said == "null") null else name.replace('_', ' ').replaceFirstChar { it.uppercase() } to said.take(500)
+}
 
 /** One line of a delegate's record (poolhouse.delegate_record), as the phone shows it. */
 data class RecordLine(val at: Double, val title: String, val body: String, val phase: Phase?)

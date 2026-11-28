@@ -1,5 +1,6 @@
 package app.poolhouse.core
 
+import app.poolhouse.core.api.StartDelegate
 import app.poolhouse.core.link.Address
 import app.poolhouse.core.link.LinkOffer
 import app.poolhouse.core.link.keyWords
@@ -117,6 +118,29 @@ class ConnectionTest {
         computer.answers["GET /phone/v1/sessions/agent-a%20b%2Fc/events"] = { computer.ok("""{"events":[],"next":"t:9:0"}""") }
         assertEquals("t:9:0", api().events("agent-a b/c", "t:8:0&x").next)
         assertTrue(computer.received.any { it == "GET /phone/v1/sessions/agent-a%20b%2Fc/events?after=t%3A8%3A0%26x" })
+    }
+
+    @Test
+    fun workIsStartedAndStoppedWithTheRequestsOfTheContract() = runBlocking {
+        computer.answers["POST /phone/v1/delegates"] = { computer.ok("""{"name":"canned-run","said":"canned: started"}""") }
+        computer.answers["POST /phone/v1/jobs/j1/stop"] = { computer.ok("{}") }
+        computer.answers["POST /phone/v1/pool-use"] = { computer.ok("""{"enabled":false,"offering":false,"model":null,"queued":0}""") }
+        val api = api()
+        computer.received.clear()
+        assertEquals("canned-run", api.startDelegate(StartDelegate("p1", "canned task", false, "")).name)
+        api.stopJob("j1")
+        assertEquals("""{"enabled":false,"offering":false,"model":null,"queued":0}""", api.call("pool-use", """{"enabled":false}""", 5_000))
+        assertEquals(
+            listOf(
+                """POST /phone/v1/delegates {"project":"p1","task":"canned task","edit":false,"model":""}""",
+                "POST /phone/v1/jobs/j1/stop {}",
+                """POST /phone/v1/pool-use {"enabled":false}""",
+            ),
+            computer.received.toList(),
+        )
+        for (bad in listOf("../link", "https://elsewhere/", "model next")) {
+            assertTrue(bad, runCatching { api.call(bad, null, 5_000) }.exceptionOrNull() is IllegalArgumentException)
+        }
     }
 
     @Test

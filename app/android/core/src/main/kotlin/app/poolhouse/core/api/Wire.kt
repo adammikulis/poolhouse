@@ -115,6 +115,10 @@ data class Job(
     @SerialName("submitted_at") val submittedAt: Double? = null,
     @SerialName("started_at") val startedAt: Double? = null,
     @SerialName("finished_at") val finishedAt: Double? = null,
+    val cancellable: Boolean? = null,
+    val by: String = "",
+    val returncode: Int? = null,
+    @SerialName("elapsed_s") val elapsedS: Double? = null,
 )
 
 @Serializable
@@ -123,18 +127,24 @@ data class Jobs(val jobs: List<Job> = emptyList())
 @Serializable
 data class JobLog(val log: String = "")
 
+/** The computer's own scheduled-job rows: only `id` is promised, so each is read field by field. */
 @Serializable
-data class Scheduled(
-    val id: String,
-    val name: String = "",
-    @SerialName("when") val schedule: String = "",
-    @SerialName("next_at") val nextAt: Double? = null,
-    @SerialName("last_state") val lastState: String = "",
-    val enabled: Boolean = true,
-)
+data class ScheduledJobs(val available: Boolean = false, val jobs: List<JsonObject> = emptyList())
 
 @Serializable
-data class ScheduledJobs(val available: Boolean = false, val jobs: List<Scheduled> = emptyList())
+data class ScheduledDetail(val job: JsonObject, val log: String = "")
+
+@Serializable
+data class Project(val id: String, val name: String = "", val path: String = "", val connected: Boolean = false)
+
+@Serializable
+data class Projects(val projects: List<Project> = emptyList())
+
+@Serializable
+data class StartDelegate(val project: String, val task: String, val edit: Boolean, val model: String)
+
+@Serializable
+data class Started(val name: String = "", val said: String = "")
 
 @Serializable
 data class Run(

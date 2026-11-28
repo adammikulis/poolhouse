@@ -6,21 +6,31 @@ import app.poolhouse.core.api.PhoneJson
 import app.poolhouse.core.api.Question
 import app.poolhouse.core.api.Run
 import app.poolhouse.core.api.Session
+import app.poolhouse.core.store.Block
 import app.poolhouse.core.store.Delivery
 import app.poolhouse.core.store.Draft
 import app.poolhouse.core.store.Item
 import app.poolhouse.core.store.Phase
 import app.poolhouse.core.store.SessionFilter
+import app.poolhouse.core.store.Span
 import app.poolhouse.core.store.Transcript
+import app.poolhouse.core.store.ago
+import app.poolhouse.core.store.blocks
+import app.poolhouse.core.store.bytes
 import app.poolhouse.core.store.delegateRow
+import app.poolhouse.core.store.facts
 import app.poolhouse.core.store.items
 import app.poolhouse.core.store.jobRow
 import app.poolhouse.core.store.openQuestions
 import app.poolhouse.core.store.recordLines
+import app.poolhouse.core.store.scheduledRow
 import app.poolhouse.core.store.sessionRows
+import app.poolhouse.core.store.spans
+import app.poolhouse.core.store.until
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -131,6 +141,40 @@ class StateTest {
         assertTrue(jobRow(Job(id = "j", state = "queued")).cancellable)
         assertFalse(jobRow(Job(id = "j", state = "stopped")).cancellable)
         assertEquals(Phase.BAD, jobRow(Job(id = "j", state = "failed")).phase)
+    }
+
+    @Test
+    fun theComputersSayOnCancellingAndItsScheduledRowsAreTakenAsTheyAre() {
+        assertFalse(jobRow(Job(id = "j", state = "running", cancellable = false)).cancellable)
+        assertEquals("j · by lead · exit 2", jobRow(Job(id = "j", state = "failed", by = "lead", returncode = 2)).detail)
+        fun row(text: String) = scheduledRow(PhoneJson.parseToJsonElement(text).jsonObject)
+        assertNull(row("""{"name":"no id"}"""))
+        val bare = row("""{"id":"s1"}""")!!
+        assertEquals(listOf("s1", "scheduled", ""), listOf(bare.title, bare.state, bare.detail))
+        val full = row("""{"id":"s2","name":"nightly","when":"daily","next_at":50,"last_state":"done","enabled":false}""")!!
+        assertEquals(listOf("nightly", "off", "daily · last: done"), listOf(full.title, full.state, full.detail))
+        assertFalse(full.cancellable)
+        assertEquals(listOf("Id" to "s2", "Next at" to "50"), facts(PhoneJson.parseToJsonElement("""{"id":"s2","next_at":50,"x":null}""").jsonObject))
+    }
+
+    @Test
+    fun agesAndSizesAreSaidShortly() {
+        assertEquals(listOf("", "now", "1m", "2h", "3d"), listOf(ago(null, 100.0), ago(99.0, 100.0), ago(40.0, 100.0), ago(1.0, 7300.0), ago(1.0, 270_000.0)))
+        assertEquals(listOf("due", "in 30s", "in 1h 1m"), listOf(until(1.0, 2.0), until(32.0, 2.0), until(3662.0, 2.0)))
+        assertEquals(listOf("", "512 B", "1.5 KB", "48.0 GB"), listOf(bytes(null), bytes(512), bytes(1536), bytes(48L shl 30)))
+    }
+
+    @Test
+    fun anAgentsMarkdownKeepsItsCodeAsWritten() {
+        val parts = blocks("## Done\nRan `pytest` and\nit **passed**.\n\n- one\n  2. two\n```sh\n# not a heading\n- not a list\n```\n```\nstill open")
+        assertEquals(
+            listOf(
+                Block.Heading("Done", 2), Block.Paragraph("Ran `pytest` and\nit **passed**."), Block.Bullet("one", "•", 0), Block.Bullet("two", "2.", 1),
+                Block.Code("# not a heading\n- not a list", "sh"), Block.Code("still open", ""),
+            ),
+            parts,
+        )
+        assertEquals(listOf(Span("Ran "), Span("pytest", code = true), Span(" and "), Span("passed", strong = true)), spans("Ran `pytest` and **passed**"))
     }
 
     @Test
