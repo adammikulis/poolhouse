@@ -21,6 +21,7 @@ from pathlib import Path
 import affected
 import testnode
 import testreuse_facts as facts
+import treemetadata
 from testreuse_imports import ImportFacts, version
 
 NEVER_MARKS = frozenset({"live_api", "live_net", "redteam", "real_model", "gpu", "model"})
@@ -31,7 +32,7 @@ SPAWNS = re.compile(r"\b(?:subprocess|Popen|os\.system|os\.exec\w*|os\.spawn\w*|
 DYNAMIC = re.compile(r"\b(?:importlib\.util|runpy|pkgutil|entry_points|importorskip|__import__|import_module)\b")
 UNSEEN = re.compile(r"\b(?:DirEntry|scandir|utime|chown|setxattr|mmap|sqlite3|ladybug)\b")
 SNAPSHOT_SKIP = frozenset({".git", ".claude/worktrees", ".venv", "venv", ".build-venv", ".build-work", "node_modules",
-                           *facts.BUILT_DIRS})
+                           treemetadata.NAME, *facts.BUILT_DIRS})  # the runner writes the metadata from the tracked project file
 SNAPSHOT_BUDGET_S = 10.0
 RUNNER_OWNED = frozenset({".full-tier-last.json"})
 RUNNER_PLUGINS = frozenset({"testslots_pytest", "testreuse_plugin"})

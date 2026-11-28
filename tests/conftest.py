@@ -117,7 +117,10 @@ from environ_guard import (  # noqa: E402,F401  (autouse fixtures)
 from machine_guard import installed_ports, signals_refused  # noqa: E402,F401  (an autouse fixture)
 from network_guard import nothing_beyond_loopback  # noqa: E402,F401  (an autouse fixture)
 from signal_guard import signal_handlers_are_restored  # noqa: E402,F401  (an autouse fixture)
-from system_guard import no_system_probes  # noqa: E402,F401  (an autouse fixture)
+from system_guard import (  # noqa: E402,F401  (autouse fixtures)
+    no_interpreters_of_this_machine,
+    no_system_probes,
+)
 from testoptions import pytest_addoption  # noqa: E402,F401  (the suite's tier options)
 
 from poolhouse import loopback_window, sandbox  # noqa: E402

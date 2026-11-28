@@ -25,6 +25,18 @@ def declared() -> list:
     return [str(Version(PROJECT["version"])), PROJECT["entry-points"]["poolhouse.ui_routes"]]
 
 
+def test_writing_the_metadata_during_a_run_does_not_count_as_a_changed_tree(tmp_path):
+    """The runner writes it again after a merge changes the project file, between the two looks at the tree."""
+    import testreuse_key
+
+    folder = tmp_path / "tests" / "_generated_metadata"
+    folder.mkdir(parents=True)
+    (tmp_path / "tests" / "kept.py").write_text("")
+    before = testreuse_key.snapshot(tmp_path)
+    (folder / "METADATA").write_text("Name: poolhouse\n")
+    assert testreuse_key.snapshot(tmp_path) == before and "tests/kept.py" in before
+
+
 def test_this_process_reads_the_trees_own_metadata():
     found = distribution("poolhouse")
     assert Path(str(found.locate_file(""))).resolve().is_relative_to(REPO), "another copy answers for this tree"

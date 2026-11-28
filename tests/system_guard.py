@@ -12,6 +12,14 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def no_interpreters_of_this_machine(monkeypatch):
+    """A test sees no stray copy of Poolhouse but one it builds: the look at this machine's Pythons answers nothing."""
+    from poolhouse import devinstall
+
+    monkeypatch.setattr(devinstall, "interpreters", lambda environ=None: [])
+
+
+@pytest.fixture(autouse=True)
 def no_system_probes(monkeypatch):
     """Every probe in `poolhouse.bench.system` answers nothing, and no hardware is held over."""
     from poolhouse.bench import system

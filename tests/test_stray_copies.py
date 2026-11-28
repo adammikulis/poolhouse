@@ -73,6 +73,8 @@ def test_the_window_names_the_copy_and_its_python_and_the_button_removes_it(stra
             page.goto(f"http://127.0.0.1:{server.port}/ui/?launch_ticket={body['ticket']}#settings")
             notice = page.locator("stray-copies")
             playwright.expect(notice).to_contain_text(f"{program} runs Poolhouse straight from {checkout}")
+            page.set_viewport_size({"width": 390, "height": 800})
+            assert page.evaluate("document.documentElement.scrollWidth <= innerWidth"), "long paths wrap on a phone-sized window"
             assert (packages / PTH).exists(), "showing it changes nothing"
             notice.get_by_role("button", name="Remove this copy").click()
             playwright.expect(notice).to_be_empty()
