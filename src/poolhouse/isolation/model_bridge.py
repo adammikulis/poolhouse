@@ -6,6 +6,9 @@ the strict reader of `wire` and writes the request upstream itself, so the sessi
 the leased alias; and it swaps the session's token for the server's key, which never leaves the parent. The server's own port is in no
 profile. Responses pass through as bytes, never parsed for anything but their framing. No more requests are with the server than it has slots:
 the others wait their turn, each for as long as its client stays, and a client that goes away leaves the line or frees its slot at once.
+
+Each prompt, as it goes to the server, is compared with those before it (`prompt_watch`): one that rewrites history the server has read is said,
+and `ModelBridge.look` tells that, whether a compaction is being asked for and, from the server's ``/slots``, how far it is in reading.
 """
 
 from __future__ import annotations
@@ -22,11 +25,12 @@ import threading
 import time
 import traceback
 from collections import Counter, deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from poolhouse.isolation import wire
+from poolhouse import http
+from poolhouse.isolation import prompt_watch, wire
 from poolhouse.isolation.gate import check_on
 from poolhouse.isolation.serving import IDLE_SECONDS, Server, tell
 from poolhouse.json_objects import unique_object
@@ -54,6 +58,12 @@ MEDIA = frozenset({"image_url", "image", "input_image", "input_audio", "audio", 
 """The content parts that carry a picture, a sound, a video or a file: each is read for a place the server could fetch from."""
 LOCATIONS = ("image_url", "audio_url", "video_url", "file_url", "url")
 DEPTH = 24
+PROMPTS = frozenset({"/v1/messages", "/v1/chat/completions", "/v1/responses"})
+"""The routes whose body holds a prompt."""
+PROGRESS_EVERY_S = 10.0
+"""Seconds between two reads of the server's ``/slots`` while a request is with it: the reply is made between two batches of its work."""
+REWRITES = 50
+"""The rewrites of one session that are kept, the newest."""
 LEFT = 499
 """The status counted for a request whose client went away before it was answered; nothing is written to it."""
 ANSWERED = ("content-type", "content-length", "cache-control")
@@ -228,6 +238,12 @@ class ModelBridge:
         self._totals = Totals(Counter(), Counter())
         self._lock = threading.Lock()
         self._busy = 0
+        self._watch = prompt_watch.Watch()
+        self._upstream_url = upstream.rstrip("/")
+        self._served = self._compacting = 0
+        self._rewrites: list[str] = []
+        self._progress: prompt_watch.Progress | None = None
+        self._asked_at: float | None = None
         self._upstreams: set[socket.socket] = set()
         self._stopped = False
         self._server = Server(socket.AF_INET, ("127.0.0.1", 0), self._connection,
@@ -256,6 +272,31 @@ class ModelBridge:
         """How many requests are with the model server now, those that wait for one of its slots among them."""
         with self._lock:
             return self._busy
+
+    def look(self) -> prompt_watch.Look:
+        """What is known now of the requests: whether all of them wait for a slot, whether one with the server asks for a compaction's summary,
+        how far the server is in reading it, as last heard (the question is put again from a thread of its own, so this never waits), and every
+        rewrite seen."""
+        with self._lock:
+            now = time.monotonic()
+            if self._served and (self._asked_at is None or now - self._asked_at >= PROGRESS_EVERY_S):
+                self._asked_at = now
+                threading.Thread(target=self._ask_progress, daemon=True).start()
+            return prompt_watch.Look(bool(self._busy) and not self._served, bool(self._compacting), self._progress if self._served else None,
+                                     tuple(self._rewrites))
+
+    def _ask_progress(self) -> None:
+        """Keep what the server's ``/slots`` says of the request it is at work on; a server that does not say leaves it unknown."""
+        headers = {"Authorization": f"Bearer {self._key}"} if self._key else {}
+        try:
+            found = http.request_json(f"{self._upstream_url}/slots", method="GET", options=http.Options(headers=headers, timeout=self.idle))
+        except (OSError, ValueError, RuntimeError):
+            return
+        with self._lock:
+            if self._served:
+                self._progress = prompt_watch.progress(found)
+                if self._progress is None:   # the server had not started on it: asked again at the next look
+                    self._asked_at = None
 
     def summary(self) -> dict[str, object]:
         """What was served, for the end-of-session record: counts by route and status, the bytes answered and the routes refused."""
@@ -317,12 +358,31 @@ class ModelBridge:
             if not self._turns.take(sock):
                 return LEFT, 0
             try:
-                return self._relay(sock, head, path, body)
+                with self._watched(path, body):
+                    return self._relay(sock, head, path, body)
             finally:
                 self._turns.release()
         finally:
             with self._lock:
                 self._busy -= 1
+
+    @contextlib.contextmanager
+    def _watched(self, path: str, body: bytes) -> Iterator[None]:
+        """The block while the request has its slot: its prompt is compared, in the order the server is asked, and counted as being read."""
+        seen = self._watch.sent(path, body) if path in PROMPTS else prompt_watch.Seen()
+        with self._lock:
+            self._served += 1
+            self._compacting += seen.compaction
+            if seen.rewrite:
+                self._rewrites = [*self._rewrites, seen.rewrite][-REWRITES:]
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._served -= 1
+                self._compacting -= seen.compaction
+                if not self._served:
+                    self._progress, self._asked_at = None, None
 
     def _models(self) -> dict[str, object]:
         """The one model of this session as the lease names it: its alias and its window, and nothing the server would say of itself (the path

@@ -206,7 +206,7 @@ class _InPlace:
             _written(self.rec, own, (reached, bridge.token), ask, folder)
             if ask.session:
                 delegate_resume.carry_conversation(self.scratch / "data", own / "data")
-            answer, broke = self._followed(ask, own, folder, hooks, bridge.busy)
+            answer, broke = self._followed(ask, own, folder, hooks, bridge)
             if broke:
                 shutil.rmtree(self.scratch / "data", ignore_errors=True)
                 delegate_resume.carry_conversation(own / "data", self.scratch / "data")
@@ -232,7 +232,7 @@ class _InPlace:
         return ran
 
     def _followed(self, ask: delegate_review.Pass, own: Path, folder: Path, hooks: delegate_confined.Hooks,
-                  busy: Callable[[], int]) -> tuple[harness.Answer, str]:
+                  bridge: isolation.ModelBridge) -> tuple[harness.Answer, str]:
         """The answer of the pass, and what broke it off from outside."""
         rec, alias = self.rec, self.model.alias
         seen = delegate_refusals.Writes(str(folder))
@@ -271,7 +271,7 @@ class _InPlace:
 
         taken_up = ("--session", ask.session) if ask.session else ()
         argv = (self.binary, "run", "--standalone", "--format", "json", "--model", f"{opencode.PROVIDER}/{alias}", *taken_up, "--title", "delegate")
-        running = inplace.Direct(argv, environment(own, self.binary), str(folder), busy)
+        running = inplace.Direct(argv, environment(own, self.binary), str(folder), bridge.busy, bridge.look)
         store.set_phase(rec.name, ask.phase, ask.round)
         store.set_status(rec.name, "working", alias)
         record.started()

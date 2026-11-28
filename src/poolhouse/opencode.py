@@ -58,6 +58,12 @@ BRIEF = "poolhouse-brief.md"
 UNGUARDED = "OpenCode ran without poolhouse's plugin reporting, so its tool calls were not judged; nothing more it changed is published"
 
 
+COMPACTION = {"background": False}
+"""What every run's config says of compaction. Left on, the release writes a summary beside the run from 60,000 tokens before its limit: on a server
+that has one slot for the conversation that request waits behind a step, takes the slot and leaves the next step to read everything again. Compaction
+at the limit, which the release then does itself, asks with the conversation as it stands and the summary's words at its end."""
+
+
 @dataclass(frozen=True, slots=True)
 class Setup:
     """What one run's config is made from: the server's URL, the model's name and its window (``served``) and its token; the path of the plugin's
@@ -77,9 +83,9 @@ class Setup:
 
 def config(setup: Setup) -> str:
     """The ``opencode.json`` of one run: the provider, the one model with its window, the plugin, no sharing and no update, a tool's output cut at as
-    many bytes as the window holds tokens (a quarter of it, so one call cannot fill it), and permissions that never ask (the classifier and the mount
-    decide). A reply's head is waited for as long as it takes: a request may wait its turn for a slot, and a long prompt is read for minutes, while
-    the release's own limit (300 s) would give both up."""
+    many bytes as the window holds tokens (a quarter of it, so one call cannot fill it), no summary written beside the run (`COMPACTION`) and
+    permissions that never ask (the classifier and the mount decide). A reply's head is waited for as long as it takes: a request may wait its turn
+    for a slot, and a long prompt is read for minutes, while the release's own limit (300 s) would give both up."""
     base_url, alias, window = setup.served
     model: dict[str, Any] = {"name": alias, "tool_call": True, "limit": {"context": window, "output": min(window, 32768)}}
     if setup.thinking:
@@ -91,7 +97,8 @@ def config(setup: Setup) -> str:
         "provider": {setup.provider: {"npm": "@ai-sdk/openai-compatible", "name": "poolhouse",
                                       "options": {"baseURL": base_url.rstrip("/") + "/v1", "apiKey": setup.token, "headerTimeout": False},
                                       "models": {alias: model}}},
-        "enabled_providers": [setup.provider], "plugins": [setup.plugin], "share": "disabled", "autoupdate": False}   # a path, to a folder
+        "enabled_providers": [setup.provider], "plugins": [setup.plugin], "share": "disabled", "autoupdate": False,   # a path, to a folder
+        "compaction": dict(COMPACTION)}
     if window:
         made["tool_output"] = {"max_bytes": window, "max_lines": window}
     if setup.agent is None:
@@ -106,7 +113,8 @@ def plugin(settings: dict[str, Any]) -> str:
     refuses, or cannot ask about, throws, which OpenCode returns to the model as the tool's error. It tells the parent it is loaded before the first
     request to the model, and adds to a tool's result what the lead sent. Where the settings give them: ``tools`` are the only tools offered to the
     model; ``fixed`` lists ``[text, replacement]``, each text taken out of the system prompt and the tools' descriptions, so every run starts with the same
-    prompt; ``shell`` (``argv`` of a program that ends a command at its timeout, the ``program`` it runs the command with, and the ``default`` and
+    prompt. Both shape a step's request and a compaction's alike (this release asks each through a hook of its own), so a summary is asked with the
+    prompt the server has already read; ``shell`` (``argv`` of a program that ends a command at its timeout, the ``program`` it runs the command with, and the ``default`` and
     ``most`` seconds) is what every shell command runs under, never in the background."""
     return harness_js.prelude(settings) + r'''const fileTools = ["read", "edit", "write"];
 const quoted = (word) => "'" + String(word).replaceAll("'", "'\\''") + "'";
@@ -159,6 +167,7 @@ export default {
     await ctx.tool.hook("execute.before", before);
     await ctx.tool.hook("execute.after", after);
     await ctx.session.hook("context", context);
+    await ctx.session.hook("compaction", context);
   },
 };
 '''
@@ -277,8 +286,9 @@ def rendering(context: isolation.Context, setup: Setup, command: Sequence[str], 
                                noted=noted if made.agent else None)
 
 
-OWN = ("$schema", "model", "small_model", "provider", "tool_output", "instructions")
-"""The keys of `config` a run in place adds to the person's own configuration: the served model and the workspace brief."""
+OWN = ("$schema", "model", "small_model", "provider", "tool_output", "compaction", "instructions")
+"""The keys of `config` a run in place adds to the person's own configuration: the served model, what keeps its prompt cache and the workspace
+brief."""
 UNCHANGING = {"edit": "deny", "bash": "deny", "shell": "deny"}
 STANCES = {coding_policy.READ_ONLY: UNCHANGING, coding_policy.PLAN: UNCHANGING, coding_policy.YOLO: {"*": "allow"}}
 """OpenCode's own permission rules for each `harnessing.stance` of a run in place that changes the person's."""

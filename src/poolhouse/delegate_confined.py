@@ -46,6 +46,7 @@ from poolhouse import (
 )
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.errors import Denied
+from poolhouse.isolation import prompt_watch
 from poolhouse.isolation.environment import SHELL, SHELL_DEFAULT_S, SHELL_MAX_S
 from poolhouse.isolation.serving import IDLE_SECONDS
 from poolhouse.isolation.workspace import Turn
@@ -244,11 +245,12 @@ class Stream:
         self.turns, self.finished, self.model_s = 0, 0, 0.0
         self.tool, self.reason, self.error, self.session = "", "", "", ""
 
-    def looked(self, with_model: bool, seconds: float) -> None:
-        """Take in one look at the model server: whether a request is with it, and the seconds since the last look."""
+    def looked(self, with_model: bool, seconds: float, look: prompt_watch.Look | None = None) -> None:
+        """Take in one look at the model server: whether a request is with it, the seconds since the last look and what the bridge knows of the
+        requests."""
         self.model_s += seconds if with_model else 0.0
         if self.record is not None:
-            self.record.beat(with_model)
+            self.record.beat(with_model, look)
 
     def line(self, raw: bytes) -> bool:
         """Take one line in; whether it moved the turns, the last tool or the text."""
@@ -364,7 +366,7 @@ def follow(confinement: isolation.Confinement, process: subprocess.Popen[bytes],
             chunk, ready = b"", False
         now = time.monotonic()
         with_model = confinement.waiting_for_model()
-        stream.looked(with_model, now - looked)
+        stream.looked(with_model, now - looked, confinement.model_look())
         looked = now
         if ready:
             if not chunk:

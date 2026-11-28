@@ -282,7 +282,8 @@ for (const name of ["deny", "allow", "broken"]) {
 }
 console.log(JSON.stringify(seen));
 """)
-    assert seen["deny"]["id"] == "poolhouse" and seen["deny"]["hooks"] == ["session.context", "tool.execute.after", "tool.execute.before"]
+    assert seen["deny"]["id"] == "poolhouse" and seen["deny"]["hooks"] == ["session.compaction", "session.context", "tool.execute.after",
+                                                                      "tool.execute.before"]
     assert seen["deny"]["before"] == "poolhouse: read-only" and seen["deny"]["after"] == "ok"
     assert (seen["allow"]["before"], seen["allow"]["after"], seen["allow"]["context"]) == ("ok", "ok", "ok")
     assert seen["broken"]["before"] == "poolhouse: tool policy failed; blocked" and "checkpoint failed" in seen["broken"]["after"]
@@ -305,8 +306,10 @@ const bare = {status: "completed", result: {output: {n: 1}}}, failed = {status: 
 for (const each of [text, parts, bare, failed]) after(each);
 const context = {system: [{type: "text", text: "Working directory: /tmp/stage-1\\nPrefer /tmp/home-1/tmp"}],
   tools: {read: {description: "reads in /tmp/stage-1"}, webfetch: {description: "fetches"}, subagent: {description: "starts"}}};
+const summary = structuredClone(context);
 hooks["session.context"](context);
-console.log(JSON.stringify({text, parts, bare, failed, context}));
+hooks["session.compaction"](summary);
+console.log(JSON.stringify({text, parts, bare, failed, context, summary}));
 """)
     added = {"type": "text", "text": "[PLUMBING] from your lead"}
     assert seen["text"]["result"]["content"] == [{"type": "text", "text": "the file"}, added]
@@ -315,6 +318,16 @@ console.log(JSON.stringify({text, parts, bare, failed, context}));
     assert seen["failed"]["error"]["message"] == "no such file\n\n[PLUMBING] from your lead"
     assert seen["context"]["system"][0]["text"] == "Working directory: .\nPrefer $HOME/tmp"
     assert seen["context"]["tools"] == {"read": {"description": "reads in ."}}
+    assert seen["summary"] == seen["context"], "a summary is asked with the prompt every step was asked with, so the server reuses what it has read"
+
+
+def test_no_summary_is_written_beside_the_run_in_a_sandbox_or_in_place(tmp_path):
+    """A server that holds one conversation a slot would read the whole of it again for a summary written in the background."""
+    setup = opencode.Setup(("http://127.0.0.1:1", "m", 262_144), "t", "/p.js", ["/py", "mcp"], brief="/b.md")
+    assert json.loads(opencode.config(setup))["compaction"] == {"background": False}
+    command = ["/bin/opencode", "run", "x", "--server", "http://127.0.0.1:2"]   # a server of the caller's: the binary is not asked anything
+    made = opencode.direct(opencode.inplace.Context(tmp_path, "http://127.0.0.1:1", "key", "m", 262_144), command, "", "")
+    assert json.loads(made.env[opencode.INLINE])["compaction"] == {"background": False}
 
 
 def test_a_shell_command_the_plugin_bounds_ends_at_its_timeout_with_its_children_and_never_stays_in_the_background(tmp_path):

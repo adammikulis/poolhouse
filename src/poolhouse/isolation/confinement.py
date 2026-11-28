@@ -33,7 +33,7 @@ from urllib.parse import urlsplit
 import psutil
 
 from poolhouse import activity, coding_policy, home as state_home, loopback_window
-from poolhouse.isolation import client as client_module, history, preflight, toolchain
+from poolhouse.isolation import client as client_module, history, preflight, prompt_watch, toolchain
 from poolhouse.isolation.attestation import attest
 from poolhouse.isolation.bounds import Bounds, Watch, derive
 from poolhouse.isolation.capability import require_capable
@@ -347,6 +347,11 @@ class Confinement:
     def waiting_for_model(self) -> bool:
         """Whether a request of the harness is with the model server now."""
         return any(each.busy() for each in self.made.services if isinstance(each, ModelBridge))
+
+    def model_look(self) -> prompt_watch.Look:
+        """What the model bridge knows now of the harness's requests (`ModelBridge.look`)."""
+        found = next((each for each in self.made.services if isinstance(each, ModelBridge)), None)
+        return prompt_watch.Look() if found is None else found.look()
 
     def end_processes(self) -> None:
         """End every process of the session's tree, so none that outlived the harness holds its pipes; nothing is published."""

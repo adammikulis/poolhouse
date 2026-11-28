@@ -1,7 +1,7 @@
 """The real pinned OpenCode (`opencode_install.VERSION`) on poolhouse's config, plugin and serve script, inside the real confinement.
 
-It runs where the release is kept under the account's state root (read, and copied into the test's own directory; nothing there is written) and each
-test skips with that reason elsewhere. NOT A MODEL: the model side is the suite's canned server (`poolhouse.testing.canned`), whose model id
+It runs where the release is kept under the account's state root, or in the folder ``POOLHOUSE_TEST_OPENCODE`` names (read, and copied into the
+test's own directory; nothing there is written) and each test skips with that reason elsewhere. NOT A MODEL: the model side is the suite's canned server (`poolhouse.testing.canned`), whose model id
 (CANNED-NOT-A-MODEL) and every reply are marked. It asks for the tool calls a test names and no model behaviour is under test; the lead is the test
 node's.
 """
@@ -27,6 +27,7 @@ from delegate_kit import agent_names, started
 
 from poolhouse import (
     delegate_confined,
+    delegate_record,
     delegate_resume,
     delegate_run,
     delegate_store as store,
@@ -53,7 +54,8 @@ SAID = canned.marked("done")
 @pytest.fixture
 def release(_real_home, tmp_path):
     """The pinned release as a copy of the test's own (the binary, and the ripgrep kept beside it)."""
-    kept = _real_home.state / "tools" / "opencode" / opencode_install.VERSION / "bin"
+    named = os.environ.get("POOLHOUSE_TEST_OPENCODE")
+    kept = Path(named) if named else _real_home.state / "tools" / "opencode" / opencode_install.VERSION / "bin"
     if not all((kept / name).is_file() for name in ("opencode", "rg")):
         pytest.skip(f"the pinned OpenCode {opencode_install.VERSION} is not installed in {kept}, so the real binary cannot be run")
     copy = tmp_path / "release" / "bin"
@@ -114,8 +116,8 @@ def delegated(lead_node, release, served, monkeypatch, request):
     monkeypatch.setattr(lead_bridge, "POLL_S", 0.05)
     before = signal.getsignal(signal.SIGTERM)
 
-    def run(asked, *words, resumes=0):
-        served.turns = turns(asked)
+    def run(asked, *words, resumes=0, turns_of=None):
+        served.turns = turns(asked) if turns_of is None else list(turns_of)
         assert started("--task", "PLUMBING: call the tools", "--project", str(project), *words, resumes=resumes) == 0
         [name] = agent_names(node, lead)
         node.session(lead).post(name, "status", "PLUMBING word from the lead")
@@ -274,6 +276,46 @@ def test_the_pinned_release_gives_up_on_a_replys_head_only_where_the_config_name
     monkeypatch.setattr(served, "frames", late)
     ran = delegated.run([("glob", {"pattern": "*"})])
     assert ran.status == 1 and "Timed out waiting for response headers" in ran.row["error"], (ran.row, ran.log[-4000:])
+
+
+SUMMARY = "## Objective\n- PLUMBING summary"
+
+
+def summarizes(request):
+    last = request["messages"][-1]
+    return last["role"] == "user" and "into a structured summary" in json.dumps(last["content"])
+
+
+def test_no_request_of_a_long_run_on_the_pinned_release_rewrites_what_the_server_has_read_before_its_one_compaction(delegated, served,
+                                                                                                                    monkeypatch):
+    """A window of 32,768 tokens compacts at 16,768 and, left alone, this release would write a summary beside the run from about 9,000 on, with
+    another tool list. The canned server reports the prompt tokens named here (PLUMBING, not a model). Every request up to the compaction, the
+    compaction's own among them, is the one before it with more at its end, so a server reads only what is new."""
+    made = served.frames
+
+    def frames(body):
+        if not summarizes(body):
+            return made(body)
+        served.turns.insert(0, canned.Turn(text=(SUMMARY,)))
+        with served.unmarked():   # a summary must begin with its template's heading
+            return made(body)
+
+    monkeypatch.setattr(served, "frames", frames)
+    sizes = (1_000, 12_000, 20_000, 3_000, 3_500)
+    asked = [canned.Turn(calls=(("glob", json.dumps({"pattern": f"{n}*"})),), prompt_tokens=size, completion_tokens=10)
+             for n, size in enumerate(sizes)]
+    ran = delegated.run([], "--edit", turns_of=asked)
+    assert ran.status == 0 and SAID in ran.row["text"], (ran.row, ran.log[-4000:])
+    requests = [each for each in served.bodies if each.get("tools")]
+    compactions = [number for number, each in enumerate(requests) if summarizes(each)]
+    assert compactions == [3], (compactions, len(requests), ran.log[-4000:])
+    for number in range(1, compactions[0] + 1):
+        before, after = requests[number - 1], requests[number]
+        assert after["tools"] == before["tools"], (number, tools_in(before), tools_in(after))
+        assert after["messages"][: len(before["messages"])] == before["messages"], number
+    assert requests[-1]["tools"] == requests[0]["tools"] and "PLUMBING summary" in json.dumps(requests[4]["messages"])
+    rewrites = [each for each in delegate_record.read(ran.name)[0] if each["kind"] == "rewrite"]
+    assert not rewrites, "a conversation this short costs nothing worth saying to read again"
 
 
 ASKS_ITS_SERVER = """socket=$(sed -n '1s/^[^"]*"//; 1s/".*$//p' "$HOME/bin/poolhouse-server.js" 2>/dev/null)

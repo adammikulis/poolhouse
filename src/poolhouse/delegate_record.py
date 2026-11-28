@@ -198,6 +198,22 @@ def span(seconds: float) -> str:
     return f"{whole // 3600}h {whole % 3600 // 60}m"
 
 
+def _with_model(held: object) -> str:
+    """What the model server is doing with a run's request, from the counts its status keeps (`delegate_recorder.Pass.beat`): waiting for a slot,
+    reading the prompt (out of about as many tokens as the conversation had) or generating, and whether for a compaction."""
+    held = held if isinstance(held, dict) else {}
+    read, cached, written, of = (int(_number(held.get(key))) for key in ("read", "cached", "written", "of"))
+    if held.get("waiting"):
+        return "waiting for the model server's slot"
+    head = "compacting the conversation, " if held.get("compacting") else ""
+    if written:
+        return f"{head}generating: {written:,} tokens written"
+    if read:
+        far = f" of about {of:,} tokens ({100 * read // of}%)" if of >= read else " tokens so far"
+        return f"{head}reading its prompt: {read:,}{far}" + (f", {cached:,} of them from the server's cache" if cached else "")
+    return f"{head}model generating or queued"
+
+
 def doing(state: str, status: Mapping[str, Any], now: float) -> str:
     """One clause: what a run in ``state`` with ``status`` is doing at ``now`` and for how long, or how long ago it ended."""
     since = _number(status.get("since")) or _number(status.get("beat")) or now
@@ -212,7 +228,7 @@ def doing(state: str, status: Mapping[str, Any], now: float) -> str:
     began = _number(activity.get("since")) or since
     kind = str(activity.get("doing") or "")
     what = " ".join(cleaned(activity.get("what") or "", 90).split())
-    said = {"tool": f"running {what or 'a tool'}", "model": "model generating or queued", "lead": "waiting for the lead's answer",
+    said = {"tool": f"running {what or 'a tool'}", "model": _with_model(status.get("model")), "lead": "waiting for the lead's answer",
             "idle": "waiting between steps"}.get(kind, "working")
     heard = _number(status.get("heard"))
     quiet = f" (last event {span(now - heard)} ago)" if heard and now - heard >= 10 else ""

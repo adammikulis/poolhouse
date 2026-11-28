@@ -359,8 +359,28 @@ the same lease, window, permission profiles, workspace session and publication o
 - **Names it would read from a project** (`guard.harnesses.RECORDS["opencode"]`): `.opencode`, `opencode.json`, `opencode.jsonc`. A sandboxed launch turns that
   off (`OPENCODE_DISABLE_PROJECT_CONFIG`), so a project's settings and plugins replace neither the permissions nor Poolhouse's plugin.
 
-Tests: `tests/test_opencode_harness.py`, and `tests/test_opencode_pinned.py`, which runs the pinned binary where it is kept (and skips with the reason
-elsewhere) against a marked plumbing server.
+Tests: `tests/test_opencode_harness.py`, and `tests/test_opencode_pinned.py`, which runs the pinned binary where it is kept, or the one in the folder
+`POOLHOUSE_TEST_OPENCODE` names (and skips with the reason elsewhere), against a marked plumbing server.
+
+### Prompt reuse
+
+A model server reads only what a request adds to the conversation it holds; anything changed earlier is read again, which at 160,000 tokens takes
+about a quarter of an hour. Every harness that points at a local model keeps to appending:
+
+- **One prompt for steps and summaries.** The plugin shapes a step's request (`context` hook) and a compaction's (`compaction` hook) the same way, so
+  a summary is asked with the tools and the system prompt the server has read.
+- **No summary beside the run.** The config says `compaction.background: false`. Left on, 2.4.2 starts one 60,000 tokens before its limit (about
+  163,000 of a 262,144 window); it waits for the one slot, takes it and leaves the next step to read everything again. Compaction happens at the
+  limit (15 % of the window kept free), asked as the conversation with the summary's words at its end. 2.4.2 prunes no old tool output, and a
+  delegate's title is given, so no title is asked for.
+- **Room in the server's prompt cache.** A server a coding session starts is given `--cache-ram` for two conversations of its window, at most a
+  quarter of the machine and never under llama-server's 8192 MiB (`harnessing.prompt_cache_mb`): one conversation of Qwen3.8-Flash-Next is about
+  7 GiB at 166,000 tokens, so with 8192 MiB one other request pushed it out. A server already up keeps its own setting.
+- **A rewrite is said.** The model bridge compares each prompt with those before it (`isolation.prompt_watch`) and says one that makes the server
+  read much of a conversation again, naming where it differs; a delegate records it and tells its lead, and a step that read most of a long
+  prompt without the cache is told too. A run in place talks to the server itself and is not compared.
+- **Hybrid models.** Qwen3.8-Flash-Next keeps recurrent state, so llama-server cannot cut its cache at any token: it goes back to a saved context
+  checkpoint before the difference, or to the start when it has none there (32 a slot, its default, saved near the end of each prompt).
 
 ## A delegate
 
@@ -411,8 +431,10 @@ escapes and of control and invisible characters, has recognized credentials, the
 replaced, and is cut to a bound (a command 2000 characters, an output its last 60 lines and 4000 characters); past 16 MB the record leaves outputs
 and messages out, past 24 MB it adds only what says how the run went, and it ends at 32 MB (docs/limits.md).
 
-**`status`** prints one line per run, fenced as data: its state, what it is doing now and for how long (running a named command, the model
-generating or queued, waiting for the lead, the model or the next step, and how long ago the last event was), its turn and its last test run.
+**`status`** prints one line per run, fenced as data: its state, what it is doing now and for how long (running a named command; waiting for the
+model server's slot, reading its prompt as tokens read of about how many, generating with the tokens written, each also for a compaction; waiting for
+the lead, the model or the next step; and how long ago the last event was), its turn and its last test run. The counts are the server's own `/slots`
+counters, read at most every 10 s by the bridge, which alone holds the server's key; "about how many" is the size of the conversation at the last step.
 **`follow NAME`** prints the whole record from the start, fenced as data, and goes on while the run does (`--once` prints what there is).
 **The page.** The web app's **Work > Delegates** view (`/ui/#delegates`) lists the runs and shows one run's timeline as it grows. Its routes
 (`/ui/delegates`, `/ui/delegates/NAME?after=N`) are read-only, behind the page's own sign-in, and answered to this computer alone.
@@ -422,8 +444,9 @@ generating or queued, waiting for the lead, the model or the next step, and how 
 Besides the question a delegate asks and the message that its run ended, `poolhouse.delegate_notices` sends the lead a message, subject
 `delegate notice: ...`, when: an attempt is broken off from outside, or a review fails (an error that ends the run is the last message); a restart
 begins; the preflight in the box fails; a test run in the box fails for what looks like setup (a command that cannot start, a runner that cannot
-collect, a module, a permission or a connection the box lacks), once for each such line; and nothing has happened for 10 minutes, again after 20, 40
-and so on. A run sends at most 30. Nothing waits for an answer to one.
+collect, a module, a permission or a connection the box lacks), once for each such line; a request rewrote history the model server had read, or a
+step after the first read 32,000 tokens or more of its prompt without the cache and more than it reused ("Prompt reuse"); and nothing has happened
+for 10 minutes, again after 20, 40 and so on. A run sends at most 30. Nothing waits for an answer to one.
 
 ### Self-check before delivery
 

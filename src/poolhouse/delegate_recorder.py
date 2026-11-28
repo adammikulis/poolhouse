@@ -23,6 +23,9 @@ SHELL = ("shell", "bash")
 FILES = ("file_path", "path", "filePath")
 ABOUT = ("pattern", "question", "text")
 """The argument that says what a call is about, of a tool that has no command and no file."""
+REREAD = 32_000
+"""The tokens of a prompt that a step after the first may read without the server's cache, past which, when they are also more than it reused, the
+history was read again."""
 
 
 def _never_ends_a_run(method: Callable[..., None]) -> Callable[..., None]:
@@ -79,7 +82,7 @@ class Recorder:
 
 class Pass:
     """One attempt as it runs. `row` takes each line the harness prints, `asked` each tool call the hook was asked about, `beat` each look the
-    launcher takes at whether a request is with the model server."""
+    launcher takes at whether a request is with the model server and what the bridge knows of it."""
 
     def __init__(self, recorder: Recorder, ask: Any, asking: Callable[[], bool]) -> None:
         self.recorder, self.ask, self.asking = recorder, ask, asking
@@ -88,6 +91,10 @@ class Pass:
         """The calls the hook let through that have no result yet, by id: the tool, what it is about and when it was asked."""
         self._busy, self._looked, self._model_s = False, time.monotonic(), 0.0
         self._doing: tuple[str, str] | None = None
+        self._context = 0
+        """The tokens of the conversation as the last step that ended left it: about what the next prompt holds."""
+        self._model: dict[str, Any] | None = None
+        self._rewritten: set[str] = set()
         self._lock = threading.RLock()
 
     @_never_ends_a_run
@@ -145,12 +152,33 @@ class Pass:
             self.recorder.add("error", why=f"{told.get('type') or 'unknown'}: {told.get('message') or 'no message'}")
 
     @_never_ends_a_run
-    def beat(self, with_model: bool) -> None:
+    def beat(self, with_model: bool, look: Any = None) -> None:
+        """Take in one look: whether a request is with the model server, and what the bridge knows of it (`prompt_watch.Look`). A rewrite of
+        history it saw and the start of a compaction are events of the record; how far the server is, is kept in the status."""
         with self._lock:
             now = time.monotonic()
             self._model_s += now - self._looked if with_model or self._busy else 0.0
             self._busy, self._looked = with_model, now
+            if look is not None:
+                self._seen(look)
             self._show()
+
+    def _seen(self, look: Any) -> None:
+        """Keep what a look says, with the lock held."""
+        for said in look.rewrites:
+            if said not in self._rewritten:
+                self._rewritten.add(said)
+                self.recorder.add("rewrite", turn=self.turn, why=said)
+        if look.compacting and not (self._model or {}).get("compacting"):
+            self.recorder.add("compaction", turn=self.turn, tokens=self._context)
+        held = None
+        if self._busy:
+            far = look.progress
+            held = {"waiting": look.waiting, "compacting": look.compacting, "of": self._context, "read": far.read if far else 0,
+                    "cached": far.cached if far else 0, "written": far.written if far else 0}
+        if held != self._model:
+            self._model = held
+            store.note(self.recorder.name, model=held)
 
     def _ran(self, part: Mapping[str, Any]) -> None:
         """A tool call that has ended, completed or in an error."""
@@ -186,6 +214,9 @@ class Pass:
                          cache_read_tokens=reused, reuse_percent=round(100 * reused / prompt) if prompt else None, model_seconds=seconds,
                          tokens_per_second=round(wrote / seconds, 1) if wrote and seconds >= 0.5 else None)
         self.recorder.spend(input_tokens=read, output_tokens=wrote, cache_read_tokens=reused, model_seconds=seconds)
+        self._context = prompt + wrote
+        if self.turn > 1 and read >= REREAD and read > reused:
+            self.recorder.add("reread", turn=self.turn, input_tokens=read, cache_read_tokens=reused)
 
     def _show(self) -> None:
         """Keep what the run is doing now in its status, with the lock held, when it has changed."""
