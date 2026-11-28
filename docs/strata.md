@@ -49,11 +49,15 @@ server's slots are not grown. `poolhouse-serve status` names the engine and its 
 
 ## Drafting
 
-A Strata server drafts unless the lease says `--no-mtp`. Without `--draft` the drafter is Strata's measured choice for the model
-set and device: MTP for IQ3_S on a Mac; DFlash2 for the other sets on a Mac and whichever suits the card on Windows, when
-DFlash2's files are on the device or may be fetched. Its publisher is not one Poolhouse knows, so a server start does not fetch
-it: MTP drafts, and `poolhouse-serve status` says so and why. `poolhouse-models pull hf:incoai/Qwen3.8-Flash-Next-DFlash2/model.safetensors`
-by a person, or a line for it in the allow file, makes it available.
+A Strata server drafts unless the lease says `--no-mtp`. Without `--draft` the drafter is Strata's default for the model set and
+device: MTP for IQ3_S on a Mac; DFlash2 for the other sets on a Mac and whichever suits the card on Windows, when DFlash2's files
+are on the device or may be fetched. Its publisher is not one Poolhouse knows: where the allow file does not name it, a server
+start does not fetch it, MTP drafts, and `poolhouse-serve status` says so and why. `poolhouse-models pull
+hf:incoai/Qwen3.8-Flash-Next-DFlash2/model.safetensors` by a person, or a line for it in the allow file, makes it available.
+
+DFlash2 starts at Strata's own window and confidence for the device; `--spec-n-max N` and `--engine-option=--draft-conf=C`
+replace them. On a Mac it drafts for one conversation at a time: with `--parallel` above 1 MTP drafts, and naming DFlash2 is
+refused.
 
 ## What does not work
 

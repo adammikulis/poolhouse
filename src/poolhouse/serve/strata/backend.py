@@ -34,7 +34,7 @@ from poolhouse.serve.logs import tail
 from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.strata import config, install, pins, prepare
 
-__all__ = ["FLAGS", "NAME", "StrataBackend", "asked_drafter", "overridden"]
+__all__ = ["FLAGS", "NAME", "StrataBackend", "asked_drafter", "asked_options", "overridden"]
 
 logger = logging.getLogger(__name__)
 
@@ -66,8 +66,8 @@ def asked_drafter(spec: ServerSpec) -> str:
     return named
 
 
-def overridden(args: list[str], spec: ServerSpec) -> list[str]:
-    """``args`` with the engine options ``spec`` names (`FLAGS`) in place of the ones chosen for it."""
+def asked_options(spec: ServerSpec) -> dict[str, str]:
+    """The engine options ``spec`` names, flag by flag; `ServerFailed` for one outside `FLAGS` or without a value."""
     wanted: dict[str, str] = {}
     if spec.spec_draft_max is not None:
         wanted["--spec"] = str(spec.spec_draft_max)
@@ -77,8 +77,13 @@ def overridden(args: list[str], spec: ServerSpec) -> list[str]:
     if len(extra) % 2 or any(flag not in FLAGS or value.startswith("-") for flag, value in zip(extra[::2], extra[1::2], strict=False)):
         raise ServerFailed(f"a Strata server takes these options, each with a value: {', '.join(FLAGS)}; not {' '.join(extra)}")
     wanted.update(zip(extra[::2], extra[1::2], strict=True))
+    return wanted
+
+
+def overridden(args: list[str], spec: ServerSpec) -> list[str]:
+    """``args`` with the engine options ``spec`` names in place of the ones chosen for it."""
     out = list(args)
-    for flag, value in wanted.items():
+    for flag, value in asked_options(spec).items():
         if flag in out[:-1]:
             out[out.index(flag) + 1] = value
         else:
@@ -164,6 +169,9 @@ class StrataBackend(ServerBackend):
             "log": str(run / "engine.log"), "lib_dirs": [], "env": dict(shaped.env), "drafting": made.drafter,
             "open_browser": False, "api_monitor": False, **({"backend": "metal"} if job.kind == "metal" else {}),
         }
+        # Strata puts the drafter's own window over ``args`` at every start, except for the options named as the person's
+        if mine := asked_options(spec):
+            held["user_args"] = [piece for pair in mine.items() for piece in pair]
         if spec.reasoning_budget is not None:
             if spec.reasoning_budget > 0:
                 held["reasoning_budget_tokens"] = int(spec.reasoning_budget)

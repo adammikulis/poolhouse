@@ -205,25 +205,33 @@ def _dflash2(engine: Engine, pin: dict, say: Say) -> None:
 
 
 def drafter_for(job: Job, asked: str, say: Say, pin: dict) -> tuple[str, str]:
-    """``(drafter, why)``: the drafter's files made present and the value Strata's config takes. ``asked`` empty is the best one:
-    Strata's own measured choice for the set and device, and MTP when DFlash2's files may not be fetched here. A start drafts
-    unless ``asked`` is ``off``; a drafter that cannot be had fails the start rather than being skipped."""
+    """``(drafter, why)``: the drafter's files made present and the value Strata's config takes. ``asked`` empty is Strata's own
+    default for the set and device, and MTP where DFlash2 cannot draft or its files may not be fetched. A start drafts unless
+    ``asked`` is ``off``; a drafter that was named and cannot be had fails the start rather than being replaced."""
     engine, chosen, kind = job.engine, job.chosen, job.kind
+    one_at_a_time = kind == "metal" and job.slots > 1   # Strata's Metal engine has no DFlash2 drafter for each request slot
     if asked == "off":
         return "off", "drafting was switched off for this start"
     if asked == "dflash2":
+        if one_at_a_time:
+            raise ServerFailed(f"DFlash2 drafts for one conversation at a time on a Mac, not {job.slots}: "
+                               "serve one slot, or draft with mtp")
         _dflash2(engine, pin, say)
         return "dflash2", "asked for"
-    if asked == "mtp" or (kind == "metal" and chosen.key == "iq3_s"):
+    if asked == "mtp" or one_at_a_time or (kind == "metal" and chosen.key == "iq3_s"):
         _mtp(engine, kind, pin, say)
-        return "mtp", "asked for" if asked == "mtp" else "Strata measured MTP faster than DFlash2 for IQ3_S on a Mac"
+        if asked == "mtp":
+            return "mtp", "asked for"
+        if one_at_a_time:
+            return "mtp", "DFlash2 drafts one conversation at a time on a Mac"
+        return "mtp", "Strata measured MTP faster than DFlash2 for IQ3_S on a Mac"
     try:
         _dflash2(engine, pin, say)
     except fetch.Refused as why:
         _mtp(engine, kind, pin, say)
         return "mtp", f"MTP drafts because DFlash2 is not available here: {why}"
     if kind == "metal":
-        return "dflash2", "Strata's choice for this set on a Mac"
+        return "dflash2", "Strata's default on a Mac for this set"
     _mtp(engine, kind, pin, say)
     return "auto", "Strata chooses between DFlash2 and MTP by the card"
 

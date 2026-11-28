@@ -237,6 +237,16 @@ class TestDrafter:
         with pytest.raises(fetch.Refused, match="incoai"):
             prepare.drafter_for(job_for(tmp_path, (chosen, files), "metal", 128 * GIB), "dflash2", lambda _line: None, pins.load())
 
+    def test_several_slots_on_a_mac_draft_with_mtp_and_dflash2_by_name_is_refused(self, tmp_path, monkeypatch):
+        chosen, files = small_set(tmp_path, "unsloth-ud-iq2_xs")
+        monkeypatch.setattr(prepare, "_mtp", lambda *_: None)
+        monkeypatch.setattr(prepare, "_dflash2", lambda *_: pytest.fail("DFlash2 cannot draft for several slots on a Mac"))
+        job = replace(job_for(tmp_path, (chosen, files), "metal", 128 * GIB), slots=2)
+        drafter, why = prepare.drafter_for(job, "", print, pins.load())
+        assert drafter == "mtp" and "one conversation at a time" in why
+        with pytest.raises(ServerFailed, match="one conversation at a time"):
+            prepare.drafter_for(job, "dflash2", print, pins.load())
+
     def test_iq3_s_on_a_mac_drafts_with_mtp_without_asking_for_dflash2(self, tmp_path, monkeypatch):
         chosen, files = small_set(tmp_path, "iq3_s")
         monkeypatch.setattr(prepare, "_mtp", lambda *_: None)
@@ -388,6 +398,14 @@ class TestLease:
         manager.stop_all()
         with pytest.raises(OSError):
             asked(info.port, "/health")
+
+    def test_a_dflash2_start_keeps_the_window_and_confidence_the_spec_names(self, canned):
+        manager, files = canned
+        info = manager.lease(ServerSpec(model=files[0], engine="strata", port=18437, context=131072, spec_type="dflash2",
+                                        spec_draft_max=8, extra_args=("--draft-conf", "0.6")), timeout=60)
+        held = json.loads((install.root() / "runs" / str(info.port) / "config.json").read_text())
+        assert held["drafting"] == "dflash2" and held["user_args"] == ["--spec", "8", "--draft-conf", "0.6"]
+        assert info.mtp == "dflash2"
 
     def test_a_lease_that_may_escalate_and_brings_a_chat_template_still_starts(self, canned, tmp_path):
         manager, files = canned
