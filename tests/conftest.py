@@ -89,6 +89,7 @@ def pytest_sessionfinish(session, exitstatus) -> None:
 
 
 # ``src`` goes on the path above, so these cannot be imported with the rest.
+import testsecrets  # noqa: E402
 import testslots  # noqa: E402
 import walkbound  # noqa: E402
 from daemon_guard import daemons_stop_with_the_test  # noqa: E402,F401  (an autouse fixture)
@@ -735,6 +736,8 @@ def _testmon_ignores_scripts_without_a_suffix() -> None:
 
 
 def pytest_configure(config):
+    testsecrets.withhold_credentials()
+    testsecrets.hide_environment(config.option)
     _testmon_ignores_scripts_without_a_suffix()
     config.addinivalue_line(
         "markers",
