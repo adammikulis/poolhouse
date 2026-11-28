@@ -126,6 +126,14 @@ def test_an_undrafted_depth_is_compared_with_but_never_chosen():
     assert "nothing drafted" in said[0] and "0.50x undrafted" in said[1]
 
 
+def test_an_arm_with_other_drafting_than_the_campaigns_is_reported_under_its_own_name():
+    arm = engines.arms_of(CAMPAIGN, "mac", "main-iq2")[0]
+    assert engines.drafted_arm(arm, {}) == arm
+    assert engines.drafted_arm(arm, {"main-iq2": {"draft_n_max": arm.draft_n_max}}) == arm
+    other = engines.drafted_arm(arm, {"main-iq2": {"draft_n_max": 2}})
+    assert (other.name, other.draft_n_max) == ("main-iq2-chosen", 2)
+
+
 def test_a_clock_time_already_past_means_tomorrow():
     now = datetime(2030, 1, 1, 23, 0)
     assert engines.moment("", now) is None

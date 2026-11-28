@@ -241,11 +241,11 @@ def held_arm(args: Any, arm: Arm, files: Mapping[str, Path]) -> Iterator[tuple[s
 
 
 def drafted_arm(arm: Arm, chosen: Mapping[str, Any]) -> Arm:
-    """``arm`` with the drafting ``tune`` chose for it, when it chose any."""
-    got = chosen.get(arm.name)
-    if not got:
-        return arm
-    return replace(arm, **{k: got[k] for k in ("head", "spec_type", "draft_n_max", "draft_p_min") if k in got})
+    """``arm`` with the drafting ``tune`` chose for it. One that differs from the campaign's is named
+    ``-chosen``, so its figures are never pooled with the campaign's own setting."""
+    got = chosen.get(arm.name) or {}
+    changed = replace(arm, **{k: got[k] for k in ("head", "spec_type", "draft_n_max", "draft_p_min") if k in got})
+    return arm if changed == arm else replace(changed, name=f"{arm.name}-chosen")
 
 
 def checks(args: Any, url: str, keep: Callable[[dict[str, Any]], None]) -> None:
