@@ -44,7 +44,8 @@ pub fn watch_stop(state: &Path, stop: Arc<AtomicBool>) {
     let name = wide(stop_event_name(state));
     // SAFETY: `name` is NUL-ended and `attributes` points into `only`; both outlive the call.
     let Ok(event) = Handle::checked(unsafe { CreateEventW(&attributes, 1, 0, name.as_ptr()) }) else { return };
-    std::thread::spawn(move || {
+    // A node with no thread to watch with is stopped the other ways.
+    let _ = std::thread::Builder::new().name("stop-watch".into()).spawn(move || {
         let event = event;
         while Arc::strong_count(&stop) > 1 && !stop.load(Ordering::SeqCst) {
             // SAFETY: the event is owned by this thread.
