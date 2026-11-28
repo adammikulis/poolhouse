@@ -248,8 +248,13 @@ def test_a_failed_build_stops_the_run_before_any_test_with_the_cargo_error(tmp_p
         raise testnode.BuildError("cargo build -p poolhouse-node failed:\nerror[E0432]")
 
     monkeypatch.setattr(runner.testnode, "ensure", broken)
+    monkeypatch.setattr(runner.sandbox, "confined", lambda: False)   # this suite may itself run in a coding box, which goes on without
     assert runner.build_node() == 4
     assert "error[E0432]" in capsys.readouterr().err
+    monkeypatch.delitem(os.environ, testnode.UNBUILT, raising=False)
+    monkeypatch.setattr(runner.sandbox, "confined", lambda: True)
+    monkeypatch.setitem(os.environ, testnode.UNBUILT, "")
+    assert runner.build_node() == 0 and "coding sandbox" in os.environ[testnode.UNBUILT]
 
 
 def test_the_build_command_prints_the_binary_for_a_run_the_runner_does_not_start(tmp_path, monkeypatch, capsys):
