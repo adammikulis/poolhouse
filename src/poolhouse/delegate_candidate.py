@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import secretpaths
+from poolhouse import safelaunch, secretpaths
 from poolhouse.activity import source_snapshot
 from poolhouse.activity.source_snapshot import Capture
 from poolhouse.coding_workspace import Change, between
@@ -147,7 +147,7 @@ def diff(changes: Sequence[Edit], limit: int = 0) -> str:
 def git(folder: str | Path, *words: str, env: Mapping[str, str] | None = None) -> bytes:
     """What git says of ``words`` in ``folder``, with ``env`` added to a closed environment: no hook, file monitor, global configuration or
     optional lock. ValueError when there is no git or it fails."""
-    program = shutil.which("git")
+    program = safelaunch.which("git")
     if not program:
         raise ValueError("git is not installed")
     argv = [program, "-c", "core.fsmonitor=false", "-c", f"core.hooksPath={os.devnull}", "--no-optional-locks", "-C", str(folder), *words]

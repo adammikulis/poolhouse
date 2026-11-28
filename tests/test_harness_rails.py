@@ -540,7 +540,7 @@ class TestCodingAgent:
             seen["command"] = list(confinement.argv)
             return 0
 
-        monkeypatch.setattr(codex.shutil, "which", lambda n: str(binary))
+        monkeypatch.setattr(codex.harnessing.shutil, "which", lambda n: str(binary))
         assert coding.launch_coding_agent("", coding_policy.Policy("guarded"), tmp_path / "proj", harness="codex", orders_from=["reviewer"],
                                           harness_args=["exec", "go"], say=lambda _: None, run_codex=run, sandbox=True) == 0
         assert seen["model"] == harnessing.DEFAULT_MODEL == "Qwen3.8-27B-UD-Q3_K_XL.gguf"

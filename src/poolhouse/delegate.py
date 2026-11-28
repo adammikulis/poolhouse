@@ -43,6 +43,7 @@ from poolhouse import (
     jobs,
     lead_bridge,
     node_launch,
+    safelaunch,
 )
 from poolhouse.board import place, session as sessions
 from poolhouse.board.client import Client, NodeError
@@ -104,7 +105,10 @@ def _folder(source: str, edit: bool) -> str:
     try:
         if source:
             shutil.copytree(source, made, symlinks=True, dirs_exist_ok=True)
-        subprocess.run([shutil.which("git") or "git", "init", "--quiet", made], check=True, capture_output=True, timeout=60)
+        program = safelaunch.which("git")
+        if not program:
+            raise FileNotFoundError("git is not installed")
+        subprocess.run([program, "init", "--quiet", made], check=True, capture_output=True, timeout=60)
     except (OSError, subprocess.SubprocessError):
         shutil.rmtree(made, ignore_errors=True)
         raise

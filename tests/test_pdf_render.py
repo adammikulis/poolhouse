@@ -109,10 +109,11 @@ def test_the_default_engine_renders_a_datasheet_page_with_pdfium_and_crops_it(pd
     assert done.stdout.strip() == "ok", done.stderr[-600:]
 
 
-def test_rendering_names_the_extra_when_pdfium_is_not_installed(tmp_path, monkeypatch):
-    monkeypatch.setattr(pdfrender, "available", lambda: False)
-    with pytest.raises(RuntimeError, match="pdf-render"):
-        render_pages(a_drawn_page(tmp_path / "d.pdf"), [1])
+def test_rendering_where_pdfium_cannot_be_installed_says_why(tmp_path, monkeypatch):
+    drawn = a_drawn_page(tmp_path / "d.pdf")
+    monkeypatch.setitem(sys.modules, "pypdfium2", None)
+    with pytest.raises(RuntimeError, match=r"pdf-render.*POOLHOUSE_INSTALL_AT_NEED"):
+        render_pages(drawn, [1])
 
 
 def test_the_render_child_runs_by_path_with_dash_P_in_a_scrubbed_environment(

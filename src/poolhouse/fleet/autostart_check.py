@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home
+from poolhouse import home, provision
 
 from . import autostart_ledger
 from .autostart_backends import Backend, backend_for
@@ -43,7 +43,8 @@ def prepared(now: float = 0.0, device: str = "", platform: str = "") -> Manifest
     """The newest unexpired manifest staged for this device and platform, or None."""
     now = now or time.time()
     try:
-        device = device or home.device_id()
+        with provision.nothing_installed():
+            device = device or home.device_id()
     except RuntimeError:
         return None
     best: Manifest | None = None

@@ -20,13 +20,15 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any
 
+from poolhouse import provision
+
 __all__ = ["CypherStore", "GraphStoreUnavailable", "census", "literal", "store_memory"]
 
 DISAGREEING = " disagreeing"
 
 
 class GraphStoreUnavailable(RuntimeError):
-    """Ladybug is not installed, or a store cannot be read. `pip install poolhouse[store]`."""
+    """Ladybug is not here and could not be installed, or a store cannot be read."""
 
 
 def store_memory() -> int:
@@ -76,7 +78,7 @@ class CypherStore:
     def __init__(self, path: str | Path, *, read_only: bool = False,
                  buffer_pool_size: int | None = None, max_db_size: int | None = None) -> None:
         try:
-            import ladybug as lb
+            lb = provision.module("ladybug", "store")
         except ImportError as exc:  # pragma: no cover - depends on what is installed
             raise GraphStoreUnavailable(str(exc)) from exc
         self.path = Path(path).expanduser()

@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, hub
+from poolhouse import home, hub, provision
 from poolhouse.hub import room
 from poolhouse.hub.modelfile import safetensors_header
 from poolhouse.serve import kvcache, python_runtime
@@ -173,6 +173,11 @@ class MlxTreeBackend(ServerBackend):
         """
         argv = self.command(spec)
         claim_port(spec, lease)
+        if python_runtime.source_checkout():   # the server runs in this environment: its libraries are put here first
+            try:
+                provision.ensure("spec", "mlx", "mlx_lm", "mlx_vlm")
+            except ImportError as exc:
+                raise ServerFailed(str(exc)) from exc
         if starting.get("preflight", True):
             report = report_for(spec, limit_bytes=room())
             if not report.ok:
