@@ -228,10 +228,6 @@ What the 2026-10 hardening pass left open; `docs/security.md` has the model and 
 - [ ] **`poolhouse-bench standard` lets lm-eval fetch datasets.** `datasets` downloads through
   `huggingface_hub`'s transport. Fetch the datasets a task names through `hub.snapshot` and run
   the harness with `HF_HUB_OFFLINE=1`.
-- [ ] **The browser resolves names itself.** `net/browserguard.py` checks the address of every
-  request, then Chromium resolves the name again to connect, so a name whose answer changes in
-  between reaches a private address. Pin with `--host-resolver-rules` from the checked answer,
-  or send the browser through a local proxy that connects to the pinned address.
 - [ ] **Windows Defender and Linux ClamAV are untested here.** The Defender command line and
   exit codes are tested against a stand-in script; ClamAV was exercised on macOS only. Run
   `tests/test_net_scan.py` on a Windows machine with Defender and on Linux with `clamav`

@@ -28,7 +28,7 @@ from typing import Any
 from poolhouse import home, provision, safelaunch
 from poolhouse.lock import only_one
 from poolhouse.log import warn
-from poolhouse.net import browserguard
+from poolhouse.scrape import browserguard
 
 FETCH_S = 1800.0
 """Seconds the browser's download, and a wait for another process's, may take."""
@@ -50,10 +50,10 @@ class Window:
     timeout_ms: int = 60_000
     position: tuple[int, int] | None = None
     guarded: bool = False
-    """Only public addresses may be requested and nothing is downloaded: for pages a model chose."""
+    """Only public addresses may be connected to and nothing is downloaded (`browserguard`): for pages a model chose."""
     own_pages: bool = False
-    """Nothing but the project's own pages is opened, so Chromium may run without its sandbox, which cannot start inside
-    another one. A guarded window keeps its sandbox whatever this says."""
+    """Nothing but the project's own pages, served on this machine, is opened, so Chromium may run without its sandbox, which
+    cannot start inside another one. A guarded window keeps its sandbox whatever this says."""
 
     def args(self) -> list[str]:
         """The Chromium flags this window wants."""
@@ -133,12 +133,14 @@ def _launch_errors() -> tuple[type[BaseException], ...]:
         return (RuntimeError,)
 
 
-def _context(play: Any, profile: Path, window: Window) -> Any:
-    """The persistent context of ``window``: the browser it names, else the bundled Chromium where that one is not here."""
-    options = {"headless": window.headless, "args": window.args(), "accept_downloads": not window.guarded,
+def _context(play: Any, profile: Path, window: Window, guard: browserguard.Guard | None = None) -> Any:
+    """The persistent context of ``window``: the browser it names, else the bundled Chromium where that one is not here. A
+    guarded window is launched on ``guard``."""
+    options = {"headless": window.headless, "args": window.args(), "accept_downloads": True,
                "viewport": {"width": window.width, "height": window.height},
-               "chromium_sandbox": window.guarded or not window.own_pages,
-               **({"service_workers": "block"} if window.guarded else {})}   # a service worker's requests pass no route
+               "chromium_sandbox": window.guarded or not window.own_pages}
+    if window.guarded:
+        options.update(guard.options(window.args()))   # type: ignore[union-attr]  # without one nothing is launched
     try:
         return play.chromium.launch_persistent_context(str(profile), channel=window.channel, **options)
     except _launch_errors() as exc:
@@ -152,20 +154,21 @@ def _paged(play: Any, window: Window) -> Iterator[Any]:
     """A page on that Playwright, over a profile directory that persists."""
     profile = Path(window.profile).expanduser()
     profile.mkdir(parents=True, exist_ok=True)
-    context = _context(play, profile, window)
-    if window.guarded:
-        browserguard.install(context)
-    context.set_default_timeout(window.timeout_ms)
-    # a guarded window never uses a page that was open before the guard was installed: that one's document lacks it
-    older = list(context.pages) if window.guarded else []
-    page = context.new_page() if older or not context.pages else context.pages[0]
-    for one in older:
-        one.close()
-    try:
-        yield page
-    finally:
-        with contextlib.suppress(Exception):
-            context.close()
+    with browserguard.Guard() if window.guarded else contextlib.nullcontext() as guard:
+        context = _context(play, profile, window, guard)
+        if guard:
+            guard.install(context)
+        context.set_default_timeout(window.timeout_ms)
+        # a guarded window never uses a page that was open before the guard was installed: that one's document lacks it
+        older = list(context.pages) if window.guarded else []
+        page = context.new_page() if older or not context.pages else context.pages[0]
+        for one in older:
+            one.close()
+        try:
+            yield page
+        finally:
+            with contextlib.suppress(Exception):
+                context.close()
 
 
 @contextlib.contextmanager

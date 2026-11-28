@@ -16,6 +16,8 @@ import pytest
 from poolhouse import home, keystore, lock, opencode_install, provision
 from poolhouse.fleet import autostart_check, environment as environments, llama, runtime_paths
 from poolhouse.fleet.settings import Settings
+from poolhouse.serve import binary, build_recover
+from poolhouse.serve.policy import LocalPolicy
 from poolhouse.speech import asr, vad
 from poolhouse.speech.protocols import ProviderError
 from poolhouse.workspace import device_metadata
@@ -61,6 +63,18 @@ def test_the_app_server_is_not_downloaded_when_held_back(held_back, monkeypatch,
     monkeypatch.setattr(llama, "_download", lambda *a: pytest.fail("downloaded"))
     with pytest.raises(llama.LlamaError, match=held_back):
         llama.ensure_server(tmp_path / "an-app-root", sources="both")
+
+
+def test_a_rejected_server_binary_is_not_replaced_by_a_build_or_download_when_held_back(held_back, monkeypatch, tmp_path):
+    monkeypatch.setattr(build_recover, "can_build_from_source", lambda: False)
+    monkeypatch.setattr(build_recover, "build_from_release", lambda args: pytest.fail("downloaded"))
+    pins = LocalPolicy(tmp_path / "pins.json")
+    server = tmp_path / "llama-server"
+    server.write_text("# PLUMBING ONLY: a server file that is never run\n")
+    assert binary.vetted(server, pins) == server
+    server.write_text("# PLUMBING ONLY: changed by nobody that vouches for it\n")
+    with pytest.raises(binary.BinaryTampered, match=held_back):
+        binary.vetted(server, pins)
 
 
 def test_a_job_python_and_its_libraries_are_not_fetched_when_held_back(held_back, monkeypatch, tmp_path):

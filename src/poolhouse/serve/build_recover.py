@@ -38,6 +38,12 @@ def _one_at_a_time() -> Iterator[None]:
         yield
 
 
+def _may_fetch() -> None:
+    """`BuildFailed` where nothing may be fetched by itself: switched off, a check that only looks, or a LAN-only device."""
+    if refused := provision.download_refusal():
+        raise BuildFailed(f"llama.cpp was not built or downloaded: {refused}")
+
+
 def _make(*, force: bool) -> Path:
     """The binary of a good build made now and switched to as `current`: from the verified source commit when this machine
     has a compiler and a commit is pinned, else from the pinned release, and from the other when that fails. Neither is ever
@@ -63,6 +69,7 @@ def _make(*, force: bool) -> Path:
 
 def fetch() -> Path:
     """A good build in the place of one that was rejected: the copy already in ``builds/`` is that one, so it is built afresh."""
+    _may_fetch()
     with _one_at_a_time():
         return _make(force=True)
 
@@ -73,8 +80,7 @@ def ensure() -> Path:
     present = managed_current() / server_name()
     if present.is_file():
         return present
-    if refused := provision.download_refusal():
-        raise BuildFailed(f"llama.cpp was not built or downloaded: {refused}")
+    _may_fetch()
     with _one_at_a_time():
         if present.is_file():
             return present

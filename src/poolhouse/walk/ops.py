@@ -9,6 +9,7 @@ raised. The browser comes from `poolhouse.scrape.browser`.
 from __future__ import annotations
 
 import contextlib
+import urllib.parse
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import partial
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import home
+from poolhouse.fleet.onboard.lan import loopback_host
 from poolhouse.scrape.browser import Window, browser
 
 __all__ = ["FLEET", "FLEET_STEPS", "FLEET_VIEWS", "GRAPH", "PAGES", "Stop", "Walk",
@@ -120,9 +122,11 @@ def _first_line(exc: BaseException) -> str:
 
 
 def _window(what: Walk) -> Window:
-    """The browser this walk opens: bundled Chromium, on a profile of its own."""
+    """The browser this walk opens: bundled Chromium, on a profile of its own. Only a base on this machine is the project's
+    own page; any other is opened with Chromium's sandbox on."""
     return Window(profile=home.cache("walk"), width=what.width, height=what.height,
-                  headless=what.headless, channel="chromium", own_pages=True,
+                  headless=what.headless, channel="chromium",
+                  own_pages=loopback_host(urllib.parse.urlsplit(what.base).hostname or ""),
                   timeout_ms=int(what.timeout_s * 1000))
 
 

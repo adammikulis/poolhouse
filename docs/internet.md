@@ -54,8 +54,12 @@ one `taint.Label(Level.UNTRUSTED, origin)` takes where the taint ledger is in us
   that only fetched content mentioned is fetched only when its host is allow-listed or
   approved. An agent loop calls `net.untrusted.shared().typed(text)` with what the person
   typed (`graph.conversation` does).
-- The browser a model drives (`web.look`, rendered reads) runs with every request checked and
-  downloads off.
+- The browser a model drives (`web.look`, rendered reads) connects only through a proxy on a
+  loopback port of its own (`scrape/browserguard.py`), loopback addresses included. The proxy
+  resolves each host once, refuses it unless every address is public and connects to the address
+  it checked, so redirects, forms, WebSockets and a name whose answer changes are held to the one
+  rule; WebRTC sends no datagram around it, and downloads are off.
+- A model's tool call that reads or looks at a page installs and downloads nothing.
 
 ## Every path
 

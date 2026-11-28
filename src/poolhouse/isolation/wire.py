@@ -1,4 +1,5 @@
-"""A strict HTTP/1.1 request reader for the two services that face the confined session: the model bridge and the egress proxy.
+"""A strict HTTP/1.1 request reader for the services that face content nobody vouches for: the model bridge and the egress proxy of a
+confined session, and the guarded browser's proxy (`poolhouse.scrape.browserguard`).
 
 The reader is the only parser the bytes of a request pass through. What it accepts it re-serialises itself, so a second parser behind it
 never sees the bytes the session sent, and a request that two parsers would read differently (smuggling) is refused here, before

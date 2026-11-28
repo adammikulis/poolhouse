@@ -1,7 +1,7 @@
 {
- "surfaces": 895,
+ "surfaces": 898,
  "by_status": {
-  "covered": 566,
+  "covered": 569,
   "partial": 189,
   "uncovered": 51,
   "n/a": 89,
@@ -37,7 +37,7 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 63,
+   "covered": 66,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
@@ -2330,21 +2330,6 @@
    "note": "The probe's own requests and programs run inside the real Seatbelt profile: each reaches only the parent's bridge and fixed system tools, every argv is a literal of the probe, and nineteen weakened profiles each let a named attempt through and stop the launch. The parent's one program is a fixed `ioreg`, `ifconfig` or `sysctl` with no input of the project's."
   },
   {
-   "id": "egress:net/browserguard.py:allowed",
-   "kind": "egress",
-   "source": "net/browserguard.py:allowed",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_net_no_bypass.py",
-    "tests/test_httpguard.py",
-    "tests/test_net_download.py",
-    "tests/test_net_untrusted.py"
-   ],
-   "note": ""
-  },
-  {
    "id": "egress:net/download.py:_bring",
    "kind": "egress",
    "source": "net/download.py:_bring",
@@ -2624,6 +2609,74 @@
     "tests/test_net_untrusted.py"
    ],
    "note": ""
+  },
+  {
+   "id": "egress:scrape/browserguard.py:Guard.__init__",
+   "kind": "egress",
+   "source": "scrape/browserguard.py:Guard.__init__",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_browser.py::test_the_proxy_connects_to_nothing_on_this_machine_however_it_is_named",
+    "tests/test_net_browser.py::test_the_proxy_dials_the_address_it_checked_and_sends_one_request_for_one_check",
+    "tests/test_net_browser.py::test_the_proxy_takes_no_request_it_would_have_to_guess_at",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_reaches_this_machine_by_no_redirect_form_or_socket",
+    "tests/test_net_browser.py::test_a_web_read_that_is_redirected_to_this_machine_returns_nothing_of_it",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_sends_no_datagram_with_or_without_the_removal"
+   ],
+   "note": "A model-chosen page's redirects, forms, both socket APIs, popups, frames, beacons, preconnects, WebRTC and names that answer with a local address are attacked against canned loopback services, through the proxy and through a real browser; the proxy connects only to an address it checked, sends one request per check and refuses chunked, origin-form and malformed targets."
+  },
+  {
+   "id": "egress:scrape/browserguard.py:Guard._exchange",
+   "kind": "egress",
+   "source": "scrape/browserguard.py:Guard._exchange",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_browser.py::test_the_proxy_connects_to_nothing_on_this_machine_however_it_is_named",
+    "tests/test_net_browser.py::test_the_proxy_dials_the_address_it_checked_and_sends_one_request_for_one_check",
+    "tests/test_net_browser.py::test_the_proxy_takes_no_request_it_would_have_to_guess_at",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_reaches_this_machine_by_no_redirect_form_or_socket",
+    "tests/test_net_browser.py::test_a_web_read_that_is_redirected_to_this_machine_returns_nothing_of_it",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_sends_no_datagram_with_or_without_the_removal"
+   ],
+   "note": "A model-chosen page's redirects, forms, both socket APIs, popups, frames, beacons, preconnects, WebRTC and names that answer with a local address are attacked against canned loopback services, through the proxy and through a real browser; the proxy connects only to an address it checked, sends one request per check and refuses chunked, origin-form and malformed targets."
+  },
+  {
+   "id": "egress:scrape/browserguard.py:Guard._open",
+   "kind": "egress",
+   "source": "scrape/browserguard.py:Guard._open",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_browser.py::test_the_proxy_connects_to_nothing_on_this_machine_however_it_is_named",
+    "tests/test_net_browser.py::test_the_proxy_dials_the_address_it_checked_and_sends_one_request_for_one_check",
+    "tests/test_net_browser.py::test_the_proxy_takes_no_request_it_would_have_to_guess_at",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_reaches_this_machine_by_no_redirect_form_or_socket",
+    "tests/test_net_browser.py::test_a_web_read_that_is_redirected_to_this_machine_returns_nothing_of_it",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_sends_no_datagram_with_or_without_the_removal"
+   ],
+   "note": "A model-chosen page's redirects, forms, both socket APIs, popups, frames, beacons, preconnects, WebRTC and names that answer with a local address are attacked against canned loopback services, through the proxy and through a real browser; the proxy connects only to an address it checked, sends one request per check and refuses chunked, origin-form and malformed targets."
+  },
+  {
+   "id": "egress:scrape/browserguard.py:allowed",
+   "kind": "egress",
+   "source": "scrape/browserguard.py:allowed",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_browser.py::test_the_proxy_connects_to_nothing_on_this_machine_however_it_is_named",
+    "tests/test_net_browser.py::test_the_proxy_dials_the_address_it_checked_and_sends_one_request_for_one_check",
+    "tests/test_net_browser.py::test_the_proxy_takes_no_request_it_would_have_to_guess_at",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_reaches_this_machine_by_no_redirect_form_or_socket",
+    "tests/test_net_browser.py::test_a_web_read_that_is_redirected_to_this_machine_returns_nothing_of_it",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_sends_no_datagram_with_or_without_the_removal"
+   ],
+   "note": "A model-chosen page's redirects, forms, both socket APIs, popups, frames, beacons, preconnects, WebRTC and names that answer with a local address are attacked against canned loopback services, through the proxy and through a real browser; the proxy connects only to an address it checked, sends one request per check and refuses chunked, origin-form and malformed targets."
   },
   {
    "id": "egress:serve/broker_wire.py:_connect",

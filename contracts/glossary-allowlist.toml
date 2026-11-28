@@ -225,7 +225,7 @@ words = ["peer"]
 reason = "the source-evidence inventory preserves literal existing source/protocol identifiers (Peer, PeerFacts, peer, peer_pid and peer.lineage); these observations define no new public vocabulary or authority"
 
 [[allow]]
-path = ["src/poolhouse/net/browserguard.py"]
+path = ["src/poolhouse/scrape/browserguard.py", "tests/test_net_browser.py"]
 words = ["peer"]
 reason = "the browser's own constructor names (RTCPeerConnection), which the guard removes from pages by name; nothing to do with membership"
 

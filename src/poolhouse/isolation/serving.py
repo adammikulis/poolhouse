@@ -1,4 +1,5 @@
-"""One listening socket and the threads that serve it: the shared body of the model bridge, the egress proxy and the session bridge.
+"""One listening socket and the threads that serve it: the shared body of the model bridge, the egress proxy, the session bridge and the
+guarded browser's proxy.
 
 Each connection is one thread that runs the service's handler once and is then closed; no connection is kept for a second request. The
 number of live connections is bounded by the machine's own limits (`connection_bound`), a connection past it is closed at once and never

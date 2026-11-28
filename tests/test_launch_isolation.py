@@ -111,6 +111,23 @@ def test_uv_is_never_taken_from_the_current_directory(tmp_path, monkeypatch):
     assert safelaunch.which("uv", str(elsewhere)) == str(elsewhere / "uv"), "a root as the directory rules out only itself"
 
 
+def test_on_windows_every_poolhouse_process_keeps_bare_names_from_running_out_of_the_current_directory():
+    source = Path(__file__).resolve().parent.parent / "src"
+    environment = {name: value for name, value in os.environ.items() if name.lower() != "nodefaultcurrentdirectoryinexepath"}
+    environment["PYTHONPATH"] = str(source)
+
+    def importing_on(system):
+        # what Windows reads is this process's variable, which its children get; the platform name is all that is pretended
+        code = ("import importlib, logging, os, subprocess, sys, typing\n"
+                f"sys.platform = {system!r}\n"
+                "import poolhouse\n"
+                "print(os.environ.get('NoDefaultCurrentDirectoryInExePath'))")
+        return subprocess.run([sys.executable, "-c", code], env=environment, capture_output=True, text=True,
+                              check=True, timeout=60).stdout.strip()
+
+    assert (importing_on("win32"), importing_on(sys.platform if sys.platform != "win32" else "linux")) == ("1", "None")
+
+
 def test_uv_runs_from_an_empty_directory(tmp_path, monkeypatch):
     seen = []
     monkeypatch.setattr(uvinstall, "program", lambda path=None: "/opt/uv")

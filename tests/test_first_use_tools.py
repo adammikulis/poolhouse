@@ -28,6 +28,7 @@ from poolhouse.serve.build_paths import builds_dir
 from poolhouse.serve.policy import LocalPolicy
 from poolhouse.speech import asr
 from poolhouse.testing.canned import canned_binary
+from poolhouse.walk import ops
 
 browser = importlib.import_module("poolhouse.scrape.browser")  # the package exports a function of the same name
 MARKED = "# PLUMBING ONLY: stands where a download would be\n"
@@ -188,7 +189,6 @@ class Opened:
 
     def __init__(self):
         self.pages, self.guards = [SimpleNamespace(name="earlier", close=lambda: self.pages.pop(0))], []
-        self.route = self.route_web_socket = lambda *a: self.guards.append(len(self.pages))
         self.add_init_script = lambda script: self.guards.append(len(self.pages))
         self.set_default_timeout = lambda ms: None
         self.close = lambda: None
@@ -200,11 +200,17 @@ class Opened:
 
 @pytest.mark.parametrize("guarded,name", [(True, "after"), (False, "earlier")])
 def test_a_guarded_window_never_uses_a_page_open_before_the_guard(monkeypatch, tmp_path, guarded, name):
-    context = Opened()
-    monkeypatch.setattr(browser, "_context", lambda *a: context)
+    context, proxies = Opened(), []
+
+    def launched(play, profile, window, guard=None):
+        proxies.append(guard.port if guard else None)
+        return context
+
+    monkeypatch.setattr(browser, "_context", launched)
     with browser._paged(None, browser.Window(profile=tmp_path, guarded=guarded)) as page:
         assert page.name == name and [one.name for one in context.pages] == [name]
-    assert context.guards == ([1, 1, 1] if guarded else []), "the route, the sockets and the removal come before the page"
+    assert [bool(port) for port in proxies] == [guarded], "the proxy is listening when the browser is launched on it"
+    assert context.guards == ([1] if guarded else []), "the removal comes before the page"
 
 
 @pytest.mark.parametrize("rendered", [False, True])
@@ -276,11 +282,57 @@ def test_a_missing_browser_is_answered_with_the_bundled_one_sandboxed_either_way
     chromium = Chromium()
     monkeypatch.setattr(browser, "bundled_chromium", lambda: "/kept/chromium")
     window = browser.Window(profile=tmp_path, guarded=guarded, **({"own_pages": True} if own else {}))
-    assert browser._context(SimpleNamespace(chromium=chromium), tmp_path, window) == "context"
+    with browser.browserguard.Guard() as guard:
+        assert browser._context(SimpleNamespace(chromium=chromium), tmp_path, window, guard if guarded else None) == "context"
     assert chromium.asked[1]["executable_path"] == "/kept/chromium"
+    through = {"server": f"http://127.0.0.1:{guard.port}", "bypass": "<-loopback>"} if guarded else None
     for options in chromium.asked:
         assert options["chromium_sandbox"] is (guarded or not own), "only a window for the project's own pages goes without"
         assert options.get("service_workers") == ("block" if guarded else None)
+        assert options.get("proxy") == through and options["accept_downloads"] is not guarded
+
+
+def test_a_guarded_window_is_not_launched_without_its_proxy(tmp_path):
+    chromium = Chromium()
+    with pytest.raises(AttributeError):
+        browser._context(SimpleNamespace(chromium=chromium), tmp_path, browser.Window(profile=tmp_path, guarded=True))
+    assert chromium.asked == []
+
+
+def test_only_a_walk_of_this_machine_goes_without_the_browsers_sandbox():
+    for base in ("http://127.0.0.1:8787", "http://localhost:1/ui", "http://[::1]:2"):
+        assert ops._window(ops.Walk(base=base)).own_pages, base
+    for base in ("https://tessyn.example", "http://192.168.1.4:8787", "http://127.0.0.1.tessyn.example", ""):
+        assert not ops._window(ops.Walk(base=base)).own_pages, base
+
+
+@pytest.mark.parametrize("tool,asked", [("web_read", {"rendered": True}), ("web_read", {}), ("web_look", {})])
+def test_a_tool_that_reads_or_looks_at_a_page_installs_and_downloads_nothing(switched_on, monkeypatch, tool, asked):
+    url = "https://tessyn.example/"
+    origins = web.untrusted.Origins()
+    origins.typed(url)
+    monkeypatch.setattr(web.untrusted, "shared", lambda: origins)
+    monkeypatch.setattr(web, "check", lambda url: url)
+    held = []
+
+    def fetch(url):
+        held.append(provision.download_refusal())
+        return "<html><body>thin</body></html>"
+
+    @contextlib.contextmanager
+    def browse():
+        held.append(provision.download_refusal())
+        raise browser.BrowserUnavailable("plumbing only: no page is opened")
+        yield
+
+    calls = {schema["function"]["name"]: call for schema, call in web.tools(fetch=fetch, browse=browse, vision=True)}
+    got = calls[tool]({"url": url, **asked})
+    assert held and all(held), "everything the tool did, it did with nothing to be installed or downloaded"
+    if tool == "web_look":
+        assert got["none"].startswith("no browser")
+    else:
+        assert "thin" in got["text"] and got["rendered"] is False, "with no browser the plain read is what there is"
+    assert provision.download_refusal() == "", "and only while the tool ran"
 
 
 def test_the_bundled_browser_is_downloaded_once_into_the_state_root(switched_on, monkeypatch, tmp_path):

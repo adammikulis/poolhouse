@@ -317,6 +317,9 @@ def read(url: str, *, limit: int = 6000, fetch: Callable[[str], str] | None = No
             if plain_error is not None:
                 raise plain_error from exc
             # no browser, or it failed: the plain read is what there is
+            if rendered:
+                html = fetch(url)
+                title, text, hidden = _readable(html, url)
         else:
             r_title, r_text, r_hidden = _readable(html, url)
             if r_text or not text:
@@ -541,6 +544,8 @@ def tools(*, engine: Engine | None = None, fetch: Callable[[str], str] | None = 
     raises: what went wrong comes back as ``{"none": reason}``. A URL a search returned or a
     person typed is fetched; one only fetched content mentioned needs an allow-listed or
     approved host (`poolhouse.net.untrusted.Origins`). Results are marked ``untrusted``.
+    Reading and looking install and download nothing, since a page's own words may be what asked
+    for them: they use the browser and libraries that are here.
     """
     seen = untrusted.shared()
 
@@ -559,15 +564,17 @@ def tools(*, engine: Engine | None = None, fetch: Callable[[str], str] | None = 
     def reading(args: Mapping[str, Any]) -> Any:
         try:
             seen.admit(str(args.get("url") or ""))
-            return read(str(args.get("url") or ""), fetch=fetch, browse=browse,
-                        rendered=bool(args.get("rendered")))
+            with provision.nothing_installed():
+                return read(str(args.get("url") or ""), fetch=fetch, browse=browse,
+                            rendered=bool(args.get("rendered")))
         except Exception as exc:
             return {"none": f"could not read {args.get('url')!r}: {exc}"}
 
     def looking(args: Mapping[str, Any]) -> Any:
         try:
             seen.admit(str(args.get("url") or ""))
-            return look(str(args.get("url") or ""), browse=browse, fetch_bytes=fetch_bytes)
+            with provision.nothing_installed():
+                return look(str(args.get("url") or ""), browse=browse, fetch_bytes=fetch_bytes)
         except ImportError as exc:
             return {"none": f"no browser: {exc}"}
         except Exception as exc:

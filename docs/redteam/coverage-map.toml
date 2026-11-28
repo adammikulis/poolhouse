@@ -1501,6 +1501,17 @@ tests = ["tests/test_wsl_network.py::test_lan_forward_refuses_public_target",
 note = "the relay connects only to the launcher-selected private daemon destination, and relay bytes cannot redirect it"
 
 [[group]]
+match = ["egress:scrape/browserguard.py:*", "listener:scrape/browserguard.py:*", "parser:scrape/browserguard.py"]
+status = "covered"
+tests = ["tests/test_net_browser.py::test_the_proxy_connects_to_nothing_on_this_machine_however_it_is_named",
+         "tests/test_net_browser.py::test_the_proxy_dials_the_address_it_checked_and_sends_one_request_for_one_check",
+         "tests/test_net_browser.py::test_the_proxy_takes_no_request_it_would_have_to_guess_at",
+         "tests/test_net_browser.py::test_a_real_guarded_browser_reaches_this_machine_by_no_redirect_form_or_socket",
+         "tests/test_net_browser.py::test_a_web_read_that_is_redirected_to_this_machine_returns_nothing_of_it",
+         "tests/test_net_browser.py::test_a_real_guarded_browser_sends_no_datagram_with_or_without_the_removal"]
+note = "A model-chosen page's redirects, forms, both socket APIs, popups, frames, beacons, preconnects, WebRTC and names that answer with a local address are attacked against canned loopback services, through the proxy and through a real browser; the proxy connects only to an address it checked, sends one request per check and refuses chunked, origin-form and malformed targets."
+
+[[group]]
 match = ["egress:net/*", "egress:httpguard.py:*", "egress:http.py:*", "egress:web.py:*",
          "egress:fleet/models.py:*", "egress:ingest/run.py:*"]
 status = "covered"
