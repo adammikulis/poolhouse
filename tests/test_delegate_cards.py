@@ -121,6 +121,21 @@ def test_the_runner_runs_the_check_itself_on_the_committed_tree_in_a_confinement
         cards_check.delegate_candidate.git(root, "worktree", "list"))
 
 
+def test_a_check_that_looks_at_its_own_output_runs_as_in_a_delegates_shell_and_is_kept_in_the_log(editing, tmp_path):  # noqa: F811
+    """`scripts/test` asks what its output is; the box refuses that of a file outside it, so the rerun reads the check through a pipe."""
+    _node, _lead, checkout = editing
+    root = card_project(checkout)
+    card(root, "junk-card", check="test ! -e junk.txt")
+    git(root, "add", "HANDOFF.md", "AGENTS.md", "docs", "junk.txt", "left.txt")
+    git(root, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "cards")
+    done = work(root, "HEAD", {"junk.txt": None})
+    [found] = cards.load(root)[0]
+    log = tmp_path / "recheck.log"
+    looking = dataclasses.replace(found, check="python3 -c 'import os; os.fstat(1); os.fstat(2); print(\"CHECK SAID\")' && test ! -e junk.txt")
+    assert cards_check.rerun(root, looking, done, "run-1", log) == ""
+    assert "CHECK SAID" in log.read_text(encoding="utf-8")
+
+
 @pytest.mark.parametrize("words", [["release", "--why", "go"], ["hold", "--why", "stop"], ["retry", "junk-card"], ["run", "--once"], ["wait"]])
 def test_a_delegate_and_what_it_starts_can_neither_release_hold_retry_run_nor_wait_on_the_cards(tmp_path, monkeypatch, capsys, words):
     root = card_project(tmp_path / "project")

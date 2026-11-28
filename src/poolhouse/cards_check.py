@@ -11,8 +11,10 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import os
+import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 from poolhouse import (
@@ -103,11 +105,17 @@ def _boxed(tree: Path, check: str, name: str, log: Path) -> str:
     try:
         delegate_confined.held(box)   # never released: nothing of the check's run is published
         with log.open("wb") as out:
-            process = box.popen(stdout=out, stderr=subprocess.STDOUT)
+            # a pipe, as a delegate's shell has: a command may ask what its output is, which the box refuses of a file outside it
+            process = box.popen(stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            copying = threading.Thread(target=shutil.copyfileobj, args=(process.stdout, out), daemon=True)
+            copying.start()
             try:
                 status = process.wait(timeout=delegate_confined.SHELL_MAX_S)
             except subprocess.TimeoutExpired:
                 return f"its check did not end within {delegate_confined.SHELL_MAX_S:.0f}s on the committed tree"
+            finally:
+                box.end_processes()   # nothing the check left running holds the pipe, so the copy ends
+                copying.join(delegate_confined.NO_PROGRESS_S)
         passed = box.passed()
     finally:
         box.close(publish=False)
