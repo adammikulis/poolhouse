@@ -19,6 +19,7 @@ import threading
 import time
 import urllib.parse
 from collections.abc import Callable, Iterable
+from http.client import HTTPException
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,8 @@ PUBLISHER = "unsloth"
 EVERY_S = 24 * 3600
 FIRST_AFTER_S = 300.0
 LOOK_S = 3600.0
+UNREACHABLE = (OSError, RuntimeError, ValueError, HTTPException)
+"""What a listing of the Hub raises when it cannot be had."""
 _LOG = logging.getLogger(__name__)
 
 
@@ -123,15 +126,22 @@ def _asks(state: dict[str, Any]) -> bool:
     return state.get("enabled", True) is not False and urllib.parse.urlsplit(remote.endpoint()).hostname in publishers.HOSTS
 
 
+def asks_about(path: Path) -> bool:
+    """Whether Poolhouse may ask the Hub about the cached file ``path`` by itself: this publisher's, the check on and
+    ``$HF_ENDPOINT`` the official Hub."""
+    found = hfstore.identify(path)
+    return bool(found and found[2] and found[0].split("/")[0].lower() == PUBLISHER and _asks(_kept()))
+
+
 def replaced(path: Path) -> bool:
     """Whether the repository the cached file ``path`` came from serves other bytes under its name now, asked now.
-    False for another publisher's file, where the check is off, and where the Hub cannot be asked."""
+    False where `asks_about` says not to ask, and where the Hub cannot be asked."""
     found = hfstore.identify(path)
-    if not found or not found[2] or found[0].split("/")[0].lower() != PUBLISHER or not _asks(_kept()):
+    if not found or not asks_about(path):
         return False
     try:
         one = next((one for one in remote.listing(found[0], auth="") if one.path == found[2]), None)
-    except (OSError, RuntimeError, ValueError) as exc:
+    except UNREACHABLE as exc:
         _LOG.info("%s could not be asked whether %s changed: %s", found[0], found[2], exc)
         return False
     return one is not None and bool(_differs(path, one.size, one.sha256 or one.oid))
@@ -149,7 +159,7 @@ def check(post: Callable[[str], object] | None = None, *, now: float = 0.0) -> l
         before = repos.get(repo) or {}
         try:
             listed = {one.path: [one.size, one.sha256 or one.oid] for one in remote.listing(repo, auth="")}
-        except (OSError, RuntimeError, ValueError) as exc:
+        except UNREACHABLE as exc:
             errors[repo] = str(exc)[:300]
             found.extend(before.get("changes") or [])
             continue
@@ -211,7 +221,7 @@ def serving(*served: str | Path, say: Callable[[str], object] = _LOG.warning) ->
             for change in check():
                 if change["repo"] in repos:
                     say(change["text"])
-        except (OSError, RuntimeError, ValueError, KeyError, TypeError):  # a file, the Hub or the kept cache
+        except (*UNREACHABLE, KeyError, TypeError):  # a file, the Hub or the kept cache
             _LOG.exception("The model upload check failed")
 
     thread = threading.Thread(target=once, name="model-uploads-serving")
@@ -230,7 +240,7 @@ def watch(post: Callable[[str], object] | None = None, *, first_after_s: float =
             try:
                 if due():
                     check(post)
-            except (OSError, RuntimeError, ValueError, KeyError, TypeError):  # a file, the Hub or the kept cache
+            except (*UNREACHABLE, KeyError, TypeError):  # a file, the Hub or the kept cache
                 _LOG.exception("The model upload check failed")
             time.sleep(look_s)
 

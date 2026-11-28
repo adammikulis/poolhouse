@@ -70,6 +70,7 @@ _FLAGS = ("context", "n_gpu_layers", "device", "parallel", "mtp", "spec_type", "
 def _shape_of(settings: Mapping[str, Any]) -> dict[str, Any]:
     """The settings of a server that decide whether it can be shared, from an ask's spec, a
     `ServerSpec` as a dict or a lease record."""
+    settings = {**settings, **(settings.get("asked") or {})}
     out: dict[str, Any] = {"device": admission.device_of(settings)}
     for key in ("context", "parallel", "cache_type_k", "cache_type_v", "spec_type", "mtp",
                 "embedding", "reranking", "draft", "chat_template_file", "spec_draft_max", "spec_p_min"):
@@ -377,7 +378,8 @@ class Broker(BrokerStops, BrokerHolds):
             elif not info.adopted:
                 held.info = info
             held.holders[lease] = (pid, label)
-            held.records[lease] = dict(record)
+            named = {"draft": Path(str(entry.get("draft") or "")).name} if entry.get("asked") else {}
+            held.records[lease] = {**record, **named}
             self._write_held()
             self._cond.notify_all()
         self._hand_to(pid, info.pid)

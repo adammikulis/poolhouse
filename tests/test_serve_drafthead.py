@@ -1,18 +1,28 @@
-"""A draft head the mainline llama.cpp cannot load is replaced when a server starts with it, and serving a model
-makes the day's upload check. Real GGUF headers, a local Hub and a Hub cache in ``tmp_path``; the server process is
-the canned one, which loads no model."""
+"""A server start takes the newest draft head its llama.cpp loads, falls back to one that works when that one cannot
+be had or will not start, and records the head served; serving a model makes the day's upload check. Real GGUF headers,
+a local Hub and a Hub cache in ``tmp_path``; the server process is the canned one, which loads no model."""
 
+import json
+import stat
+from http.client import IncompleteRead
 from pathlib import Path
 
 import gguf
 import numpy as np
 import pytest
-from test_serve_mtp import after, argv_of, cache, leased, server, stop  # noqa: F401 - fixtures
+from test_serve_mtp import MTP_HELP, after, argv_of, cache, leased, stop  # noqa: F401 - fixtures
 
 from poolhouse import hub
 from poolhouse.hub import uploads
-from poolhouse.serve import binary as builds, drafthead, mtp, profile
-from poolhouse.serve.backend import ServerSpec
+from poolhouse.serve import (
+    LlamaServerBackend,
+    ServerManager,
+    binary as builds,
+    drafthead,
+    mtp,
+    profile,
+)
+from poolhouse.testing.canned import canned_binary
 from poolhouse.testing.fakehub import fake_hub
 
 pytest_plugins = ["serve_node"]
@@ -20,12 +30,16 @@ pytestmark = pytest.mark.usefixtures("serve_leases")
 
 REPO = "unsloth/thing-GGUF"
 MODEL, HEAD = "thing-Q4_K_M.gguf", "MTP/mtp-thing-Q4_K_M.gguf"
+SHARED = "MTP/mtp-thing-shared-Q4_K_M.gguf"
+REFUSED = "refuse-this-head"
 
 
-def a_qwen4(path: Path, ratios: list[int], *, ahead: int, arch: str = "qwen4exp") -> Path:
+def a_qwen4(path: Path, ratios: list[int], *, ahead: int, arch: str = "qwen4exp", name: str = "") -> Path:
     """A real, tiny GGUF with the keys that say whether a draft block is a sparse attention layer."""
     path.parent.mkdir(parents=True, exist_ok=True)
     writer = gguf.GGUFWriter(str(path), arch)
+    if name:
+        writer.add_name(name)
     writer.add_embedding_length(8)
     writer.add_block_count(len(ratios))
     writer.add_array(f"{arch}.attention.compress_ratios", ratios)
@@ -42,6 +56,8 @@ def a_qwen4(path: Path, ratios: list[int], *, ahead: int, arch: str = "qwen4exp"
 @pytest.fixture
 def shelf(cache, tmp_path, monkeypatch):  # noqa: F811
     """A local Hub whose model and older draft head are in the cache."""
+    for name in ("LLAMA_CPP_SERVER", "LLAMA_CPP_DIR", "POOLHOUSE_LLAMA_BUILD", mtp.ENV):
+        monkeypatch.delenv(name, raising=False)
     model = a_qwen4(tmp_path / "made" / "model.gguf", [0, 4], ahead=0).read_bytes()
     old = a_qwen4(tmp_path / "made" / "old.gguf", [0, 4, 0], ahead=1).read_bytes()
     new = a_qwen4(tmp_path / "made" / "new.gguf", [0, 4, 4], ahead=1).read_bytes()
@@ -59,6 +75,46 @@ def publish(there, body: bytes) -> None:
     there.moved[REPO] = there.moved.get(REPO, 0) + 1
 
 
+def offline(monkeypatch, error: Exception | None = None) -> None:
+    def unreachable(*_a, **_k):
+        raise error or OSError("no network")
+
+    monkeypatch.setattr("poolhouse.hub.remote.listing", unreachable)
+    for name in ("fetch", "pull"):
+        monkeypatch.setattr(hub, name, unreachable)
+
+
+def a_server(where: Path) -> Path:
+    """The canned server behind a launcher that exits when a file it is handed says it must be refused, in the
+    directory ``where``; answers the canned server, whose directory holds what it was started with."""
+    inner = where / "canned"
+    inner.mkdir(parents=True)
+    real = canned_binary(inner, help_text=MTP_HELP)
+    outer = where / "llama-server"
+    outer.write_text(
+        "#!/bin/sh\n"
+        f"if [ \"$1\" = --help ]; then cat {inner / 'help.txt'}; exit 0; fi\n"
+        f"for a in \"$@\"; do case \"$a\" in *.gguf) grep -q {REFUSED} \"$a\" && exit 1;; esac; done\n"
+        f"exec {real} \"$@\"\n")
+    outer.chmod(outer.stat().st_mode | stat.S_IXUSR)
+    return real
+
+
+@pytest.fixture
+def machine(shelf, tmp_path):
+    """The manager over the managed ``current`` build, as a lease that names no build gets it."""
+    real = a_server(builds.managed_current())
+    return real, ServerManager(LlamaServerBackend(), state_file=tmp_path / "leases.json")
+
+
+def a_fork() -> Path:
+    return a_server(builds.managed_named() / "forkname")
+
+
+def record(manager: ServerManager, info) -> dict:
+    return json.loads(manager.state_file.read_text())[str(info.port)]
+
+
 @pytest.mark.parametrize("case", [([0, 4, 0], 1, "qwen4exp", True), ([0, 4, 4], 1, "qwen4exp", False),
                                   ([0, 0, 0], 1, "qwen4exp", False), ([0, 4, 0], 0, "qwen4exp", False),
                                   ([0, 4, 0], 1, "deepseek4", False)])
@@ -68,63 +124,114 @@ def test_only_a_draft_block_left_dense_beside_sparse_layers_is_outdated(tmp_path
     assert bool(drafthead.outdated(head)) is expected
 
 
-def test_a_server_start_fetches_the_current_head_and_nothing_fetches_it_before(shelf, tmp_path, stop):  # noqa: F811
+def test_a_start_fetches_the_current_head_records_it_and_the_same_lease_finds_it(shelf, machine, tmp_path, stop):  # noqa: F811
     there, held, new = shelf
+    program, manager = machine
     publish(there, new)
     uploads.check()
     assert there.cdn_seen == [], "noticing an upload downloads nothing"
-    program, manager = server(tmp_path)
     info = leased(manager, held[MODEL], draft=str(held[HEAD]), spec_type=mtp.KIND)
     stop(manager, info)
     served = Path(after(argv_of(program), "-md"))
     assert served != held[HEAD] and served.read_bytes() == new
     assert held[HEAD].is_file() and held[HEAD].read_bytes() != new, "a server holding the old copy keeps it"
-    there.cdn_seen.clear()
-    assert drafthead.loadable(held[HEAD], program) == str(served)
-    assert there.cdn_seen == [], "the newer copy held here is not downloaded again"
+    kept = record(manager, info)
+    assert kept["draft"] == str(served) and kept["asked"]["draft"] == str(held[HEAD])
+    again = leased(manager, held[MODEL], draft=str(held[HEAD]), spec_type=mtp.KIND)
+    stop(manager, again)
+    assert again.port == info.port, "the same lease takes the server already up"
 
 
-def test_a_replaced_head_that_loads_is_fetched_when_a_server_starts_with_it(shelf, tmp_path):
-    there, held, new = shelf
-    publish(there, new)
-    first = Path(drafthead.loadable(held[HEAD], None))
-    newer = a_qwen4(tmp_path / "made" / "newer.gguf", [0, 4, 8], ahead=1).read_bytes()
-    publish(there, newer)
-    assert Path(drafthead.loadable(first, None)).read_bytes() == newer
-    assert first.read_bytes() == new
-
-
-def test_a_replacement_that_does_not_load_or_a_check_that_is_off_keeps_the_held_head(shelf, tmp_path):
-    there, held, new = shelf
-    publish(there, new)
-    good = Path(drafthead.loadable(held[HEAD], None))
-    publish(there, a_qwen4(tmp_path / "made" / "bad.gguf", [0, 8, 0], ahead=1).read_bytes())
-    assert drafthead.loadable(good, None) == str(good)
-    uploads.switch(False)
-    there.hub_seen.clear()
-    assert drafthead.loadable(good, None) == str(good)
-    assert there.hub_seen == []
-
-
-def test_a_hub_that_cannot_be_reached_leaves_the_held_head_served(shelf, monkeypatch):
+def test_offline_with_an_old_head_and_a_borrowing_one_the_fork_drafts(shelf, machine, tmp_path, monkeypatch, stop):  # noqa: F811
     _there, held, _new = shelf
+    _program, manager = machine
+    shared = a_qwen4(held[HEAD].parent / Path(SHARED).name, [0, 4, 0], ahead=1)
+    forked = a_fork()
+    offline(monkeypatch)
+    info = leased(manager, held[MODEL], draft=str(held[HEAD]), spec_type=mtp.KIND)
+    stop(manager, info)
+    assert after(argv_of(forked), "-md") == str(shared)
+    assert record(manager, info)["draft"] == str(shared)
+    assert "fork build forkname" in info.mtp_note
 
-    def unreachable(*_a, **_k):
-        raise OSError("no network")
 
-    monkeypatch.setattr("poolhouse.hub.remote.listing", unreachable)
-    monkeypatch.setattr(hub, "fetch", unreachable)
-    assert drafthead.loadable(held[HEAD], None) == str(held[HEAD])
+@pytest.mark.parametrize("draft", [True, False])
+def test_offline_with_no_head_that_loads_the_model_is_served_without_drafting(shelf, machine, monkeypatch,
+                                                                              stop, draft):  # noqa: F811
+    """``draft`` False is a record whose head this machine lacks and cannot look up: a method and no file."""
+    _there, held, _new = shelf
+    program, manager = machine
+    offline(monkeypatch)
+    asked = {"draft": str(held[HEAD])} if draft else {}
+    info = leased(manager, held[MODEL], spec_type=mtp.KIND, **asked)
+    stop(manager, info)
+    argv = argv_of(program)
+    assert "-md" not in argv and "--spec-type" not in argv
+    assert "WITHOUT DRAFTING" in info.mtp_note
+    assert record(manager, info)["draft"] == ""
 
 
-def test_a_fork_build_and_a_loadable_head_are_served_as_asked(shelf, tmp_path):
-    there, held, _new = shelf
-    fork = builds.managed_named() / "forkname" / "llama-server"
-    assert drafthead.loadable(held[HEAD], fork) == str(held[HEAD])
-    good = a_qwen4(tmp_path / "mtp-good.gguf", [0, 4, 4], ahead=1)
-    assert drafthead.loadable(good, None) == str(good), "a file outside a Hub cache is served as asked"
-    assert drafthead.fitting(ServerSpec(model=held[MODEL]), None).draft is None
-    assert there.hub_seen == []
+def test_a_head_that_cannot_be_fetched_by_reference_is_left_out(shelf, machine, monkeypatch, stop):  # noqa: F811
+    _there, held, _new = shelf
+    program, manager = machine
+    held[HEAD].unlink()
+    offline(monkeypatch)
+    info = leased(manager, held[MODEL], draft=f"hf:{REPO}/{HEAD}", spec_type=mtp.KIND)
+    stop(manager, info)
+    assert "--spec-type" not in argv_of(program) and "WITHOUT DRAFTING" in info.mtp_note
+
+
+def test_a_replacement_the_server_will_not_start_with_gives_way_to_the_held_head(shelf, machine, tmp_path, stop):  # noqa: F811
+    there, held, new = shelf
+    program, manager = machine
+    publish(there, new)
+    good = hub.fetch(f"hf:{REPO}/{HEAD}")
+    publish(there, a_qwen4(tmp_path / "made" / "bad.gguf", [0, 4, 4], ahead=1, name=REFUSED).read_bytes())
+    for asked in (good, hub.located(good.name)):
+        info = leased(manager, held[MODEL], draft=str(asked), spec_type=mtp.KIND)
+        assert Path(after(argv_of(program), "-md")).read_bytes() == new
+        assert Path(record(manager, info)["draft"]).read_bytes() == new
+        manager.release(info)
+
+
+def test_the_head_served_is_the_one_verified(shelf, machine, tmp_path, stop):  # noqa: F811
+    """A fetched head whose bytes no longer match its pin is not served; the one asked for is."""
+    there, held, new = shelf
+    program, manager = machine
+    publish(there, new)
+    good = hub.fetch(f"hf:{REPO}/{HEAD}")
+    publish(there, a_qwen4(tmp_path / "made" / "newer.gguf", [0, 4, 8], ahead=1).read_bytes())
+    newer = hub.fetch(f"hf:{REPO}/{HEAD}")
+    data = bytearray(newer.read_bytes())
+    data[-1] ^= 0xFF
+    newer.resolve().write_bytes(bytes(data))
+    info = leased(manager, held[MODEL], draft=str(good), spec_type=mtp.KIND)
+    stop(manager, info)
+    assert Path(after(argv_of(program), "-md")).read_bytes() == new
+
+
+def test_a_listing_cut_short_leaves_the_held_head_served(shelf, tmp_path, monkeypatch):
+    there, held, new = shelf
+    publish(there, new)
+    good = Path(next(drafthead.copies(str(held[HEAD]))))
+    offline(monkeypatch, IncompleteRead(b""))
+    assert next(drafthead.copies(str(good))) == str(good)
+
+
+def test_a_check_that_is_off_fetches_nothing_even_for_a_head_that_cannot_load(shelf):
+    there, held, new = shelf
+    publish(there, new)
+    uploads.switch(False)
+    assert list(drafthead.copies(str(held[HEAD]))) == []
+    assert there.hub_seen == [] and there.cdn_seen == []
+
+
+def test_a_named_build_of_mainline_is_not_a_fork(tmp_path):
+    where = builds.managed_named() / "patched"
+    where.mkdir(parents=True)
+    (where / "BUILD.json").write_text(json.dumps({"name": "patched", "repo": "ggml-org/llama.cpp"}))
+    assert builds.borrows(where / "llama-server") is False
+    assert builds.borrows(builds.managed_named() / "forkname" / "llama-server") is True
 
 
 def test_a_head_the_profile_names_and_this_machine_lacks_is_the_repositorys(shelf):

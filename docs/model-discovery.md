@@ -219,10 +219,14 @@ daemon is told; the changes in the served repositories are said where the load i
 
 A draft head is fetched as any model file is: by `poolhouse-models fetch`, or by a server start that uses it. A mainline
 llama.cpp server about to start with a held `unsloth/*` head asks whether that file was replaced and fetches the new one
-(`serve.drafthead`); a held `qwen4exp` head it cannot load (its draft block has compress ratio 0) is fetched the same way.
-The old copy stays on disk, so a running server keeps it. If the Hub cannot be asked, the download fails or the new copy
-does not load, the held one is served. `poolhouse-models updates --off` stops the asking. Nothing is fetched when
-Poolhouse is upgraded. Each distinct change is announced once on
+(`serve.drafthead`); a held `qwen4exp` head it cannot load (its draft block has compress ratio 0) is fetched the same way,
+as an agent's pull. The old copy stays on disk, so a running server keeps it. `poolhouse-models updates --off` stops the
+asking and these fetches. Nothing is fetched when Poolhouse is upgraded.
+
+A start never depends on the newest copy (`serve.draftstart`). If it cannot be had or the server will not start with it,
+the file asked for and then the other held copies are tried; after those, a borrowing head on its fork build (only where
+the lease named no build or binary), and last the model without drafting, said loudly. Each head is chosen and verified
+before it is used, and the lease record names the file served. Each distinct change is announced once on
 one workspace (the daemon's preferred project, else the first one present); with none, the next check offers it again. The first
 check reports the held files that are stale already. `poolhouse-models updates` shows the findings, `--now` checks at once without
 posting, and `--off` stops the daily check and hides its findings (`--on` resumes). The switch and the cache are
