@@ -1,5 +1,5 @@
 title = "Delete two readers nothing calls"
-row = "Functions that nothing calls"
+row = "Five functions that nothing calls"
 task = """
 Nothing calls `reset_cache` of src/poolhouse/contracts/loader.py or `raw_rows` of src/poolhouse/decide/dataset.py. Confirm with
 `git grep -n -w -e reset_cache -e raw_rows -- src tests scripts` (only the two definitions), delete both functions and any import or name only they

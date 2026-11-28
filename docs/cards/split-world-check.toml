@@ -1,5 +1,5 @@
 title = "Split the world consistency check by what it checks"
-row = "Functions over 80 statements"
+row = "Three functions over 80 statements"
 task = """
 `consistency` in src/poolhouse/world/check.py has over 80 statements: one block of it for each thing it holds against the graph, each under its own
 comment. Move each block into a private function in the same file that adds to the `Report`, so that no function is over 80 statements and no
@@ -11,6 +11,5 @@ prints []. A pure refactor: report it as exempt from fail first.
 read = []
 write = ["src/poolhouse/world/check.py"]
 check = "scripts/test all tests/test_world_check.py"
-step = 2
 closes = true
 memory = false

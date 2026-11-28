@@ -1,5 +1,5 @@
 title = "Delete the two screenshots no page shows"
-row = "Test helpers and images that nothing uses"
+row = "A test helper and two screenshots that nothing uses"
 task = """
 docs/images/closing.jpg and docs/images/pool.jpg are shown by no page. Confirm with `git grep -n -e closing.jpg -e pool.jpg -- . ':!docs/cards'`
 (it prints nothing), then delete the two files. Never read them: they are binary. Keep setup.jpg and settings.jpg, which docs/install.md shows, and

@@ -1,5 +1,5 @@
 title = "Delete two fleet helpers nothing calls"
-row = "Functions that nothing calls"
+row = "Five functions that nothing calls"
 task = """
 Nothing calls `byte_range` of src/poolhouse/fleet/files.py or `default_path` of src/poolhouse/fleet/rates.py. Confirm with
 `git grep -n -w -e byte_range -e default_path -- src tests scripts` (the two definitions and the `__all__` of rates.py), delete both functions, take

@@ -1,5 +1,5 @@
 title = "Delete the replica test server no test starts"
-row = "Test helpers and images that nothing uses"
+row = "A test helper and two screenshots that nothing uses"
 task = """
 tests/replica_server.py starts a daemon for tests that are gone. Confirm with `git grep -n replica_server -- . ':!docs/cards' ':!HANDOFF.md'` that
 only the file itself names it, then delete the file. Change no code.

@@ -1,5 +1,5 @@
 title = "Split the world question builder by kind of question"
-row = "Functions over 80 statements"
+row = "Three functions over 80 statements"
 task = """
 `_buckets` in src/poolhouse/world/questions.py has over 80 statements: one block for each group of questions, each under a `# ---` comment. Move
 blocks into private functions in the same file, so that no function is over 80 statements and no signature has over 8 parameters. Every question must
@@ -14,7 +14,7 @@ prints []. A pure refactor: report it as exempt from fail first.
 """
 read = []
 write = ["src/poolhouse/world/questions.py"]
-check = "scripts/test all tests/test_world_company.py tests/test_world_relations.py"
-step = 3
+check = "scripts/test all tests/test_world_relations.py tests/test_world_company.py::test_the_graph_and_the_questions_are_what_the_bench_reads tests/test_world_company.py::test_questions_expect_ids_that_exist_and_cover_every_kind_of_answer tests/test_world_company.py::test_questions_are_the_same_for_a_seed_and_a_given_rng_changes_them tests/test_world_company.py::test_every_new_kind_is_generated_for_every_world_and_every_expected_id_exists tests/test_world_company.py::test_a_count_is_scored_as_the_people_counted_and_a_tie_is_never_the_most tests/test_world_company.py::test_two_hops_answer_with_the_far_end_and_never_the_person_in_the_middle tests/test_world_company.py::test_a_false_premise_leaves_the_place_exactly_as_the_graph_has_it tests/test_world_company.py::test_a_quote_question_is_answered_by_the_words_and_by_nothing_else tests/test_world_company.py::test_kinds_draws_only_those_buckets_and_refuses_an_unknown_one"
+step = 2
 closes = true
 memory = false
