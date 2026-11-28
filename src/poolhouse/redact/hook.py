@@ -336,8 +336,9 @@ def permitted(root: str, fixtures: str, allow: str) -> set[str]:
     return out
 
 
-def from_database(graph: str, scrape: str) -> set[str]:
-    """Every person, named org and message sender the graph and the scrape hold."""
+def from_database(graph: str, scrape: str, unread: list[str] | None = None) -> set[str]:
+    """Every person, named org and message sender the graph and the scrape hold; ``unread`` gains each configured one that
+    cannot be read."""
     names: set[str] = set()
     people: set[str] = set()
     try:
@@ -351,7 +352,8 @@ def from_database(graph: str, scrape: str) -> set[str]:
                   and len(n["label"]) > 4 and n["label"][:1].isupper()}
         names |= {m["sender"] for m in (data.get("messages") or {}).values() if m.get("sender")}
     except (OSError, ValueError):
-        pass
+        if graph and unread is not None:
+            unread.append(f"NAMES_GRAPH={graph}")
     try:
         with open(scrape, encoding="utf-8") as fh:
             for line in fh:
@@ -362,7 +364,8 @@ def from_database(graph: str, scrape: str) -> set[str]:
                 if isinstance(row, dict) and row.get("sender"):
                     names.add(row["sender"])
     except OSError:
-        pass
+        if scrape and unread is not None:
+            unread.append(f"NAMES_SCRAPE={scrape}")
     # the length floor is for handles and org names; a person keeps protection at any length
     return {n for n in names if n.casefold() not in COMMON and (n in people or len(n) > 3)}
 
@@ -572,8 +575,10 @@ def main(argv: list[str] | None = None, *, env: Mapping[str, str] | None = None,
     fixtures = env.get("NAMES_FIXTURES", DEFAULT_FIXTURES)
     account = env.get("HOME") or str(home.user_home())
     allowed = permitted(where, fixtures, f"{account}/.config/pii-allow.txt")
-    known = {n for n in from_database(env.get("NAMES_GRAPH", ""), env.get("NAMES_SCRAPE", ""))
+    unread: list[str] = []
+    known = {n for n in from_database(env.get("NAMES_GRAPH", ""), env.get("NAMES_SCRAPE", ""), unread)
              if n.casefold() not in allowed}
+    out.writelines(f"pre-commit: {source} could not be read, so its names are not refused\n" for source in unread)
     engine = LazyRecogniser() if installed() else None
     explain = "--why" in argv or bool(env.get("NAMES_WHY"))
 

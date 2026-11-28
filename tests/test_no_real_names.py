@@ -105,6 +105,16 @@ def test_a_name_from_the_graph_is_refused(tmp_path):
     assert "Wren Halloway" in said
 
 
+def test_a_name_source_that_cannot_be_read_is_said_and_one_that_is_not_configured_is_not(tmp_path):
+    """The graph a machine's wrapper pointed at was gone for good and every commit passed as if its names had been checked."""
+    where = repo(tmp_path, PEOPLE)
+    (tmp_path / "graph.json").unlink()
+    code, said = check(where, tmp_path, notes="Nothing personal.\n")
+    assert code == 0, said
+    assert f"NAMES_GRAPH={tmp_path / 'graph.json'} could not be read" in said
+    assert "NAMES_SCRAPE" not in said
+
+
 def test_a_merge_is_checked_for_what_it_adds_not_for_what_the_other_parent_brought(tmp_path):
     where = repo(tmp_path, PEOPLE)
     git = lambda *a: subprocess.run(["git", *a], cwd=where, check=True, capture_output=True)  # noqa: E731
