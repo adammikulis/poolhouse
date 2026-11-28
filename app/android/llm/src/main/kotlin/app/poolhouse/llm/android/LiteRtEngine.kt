@@ -44,7 +44,24 @@ private const val TAG = "PoolhouseLlm"
 private const val TOP_K = 64
 private const val TOP_P = 0.95
 
-class LiteRtEngine : LocalEngine {
+/**
+ * `activation` is the precision the GPU computes in. The runtime's own is 16 bits, in which the model miscopied digits
+ * and hashes out of long input; 32 bits copied them exactly, at the cost of memory and of speed on long input
+ * (docs/phone-models.md). Null leaves the runtime's own, which only a measurement asks for.
+ */
+class LiteRtEngine(private val activation: ActivationDataType? = ActivationDataType.FLOAT32) : LocalEngine {
+    fun config(weights: String, settings: LoadSettings, text: Accelerator, vision: Accelerator): EngineConfig = EngineConfig(
+        modelPath = weights,
+        backend = backend(text),
+        visionBackend = if (settings.images) backend(vision) else null,
+        audioBackend = null,
+        maxNumTokens = settings.contextSize,
+        maxNumImages = null,
+        cacheDir = settings.cacheDir.absolutePath,
+        activationDataType = activation.takeIf { text == Accelerator.GPU },
+        speculativeDecodingConfig = SpeculativeDecodingConfig(SpeculativeDecodingMode.ON).takeIf { settings.drafting },
+    )
+
     override fun load(weights: File, settings: LoadSettings): LoadedModel {
         // The runtime's own log says nothing below a warning, so no message of a conversation reaches the phone's log.
         Engine.setNativeMinLogSeverity(LogSeverity.WARNING)
@@ -60,19 +77,7 @@ class LiteRtEngine : LocalEngine {
         }
         var first: Throwable? = null
         for ((text, vision) in tries) {
-            val engine = Engine(
-                EngineConfig(
-                    modelPath = weights.absolutePath,
-                    backend = backend(text),
-                    visionBackend = if (settings.images) backend(vision) else null,
-                    audioBackend = null,
-                    maxNumTokens = settings.contextSize,
-                    maxNumImages = null,
-                    cacheDir = settings.cacheDir.absolutePath,
-                    activationDataType = ActivationDataType.FLOAT32.takeIf { settings.fullPrecision && text == Accelerator.GPU },
-                    speculativeDecodingConfig = SpeculativeDecodingConfig(SpeculativeDecodingMode.ON).takeIf { settings.drafting },
-                ),
-            )
+            val engine = Engine(config(weights.absolutePath, settings, text, vision))
             try {
                 engine.initialize()
                 Log.i(TAG, "loaded ${weights.name} on ${text.label}, images ${if (settings.images) vision.label else "off"}")

@@ -36,6 +36,7 @@ import app.poolhouse.llm.model.Downloader
 import app.poolhouse.llm.model.Licence
 import app.poolhouse.llm.model.ModelFile
 import app.poolhouse.llm.model.ModelStore
+import com.google.ai.edge.litertlm.ActivationDataType
 import java.io.File
 import kotlin.concurrent.thread
 import org.json.JSONObject
@@ -163,16 +164,23 @@ class BenchRunner : Instrumentation() {
                 .put("batteryC", batteryCelsius(targetContext)).put("cpuset", File("/proc/self/cpuset").readText().trim()),
         )
         val temperature = text("temperature", "0").toDoubleOrNull()
-        val precise = text("activation", "default") == "fp32"
+        // The app's engine computes in 32 bits; `fp16` measures the runtime's own precision, `int16` that with 32-bit logits.
+        val activation = text("activation", "fp32")
+        val engine = when (activation) {
+            "fp32" -> LiteRtEngine()
+            "fp16" -> LiteRtEngine(null)
+            "int16" -> LiteRtEngine(ActivationDataType.INT16)
+            else -> throw IllegalArgumentException("No such activation.")
+        }
         val drafting = text("drafting", "no") == "yes"
         val action = text("action", "run")
         try {
             val loading = System.nanoTime()
             val images = pictures || (action == "speed" && model.images)
-            val settings = LoadSettings(accelerator, context, images, File(targetContext.cacheDir, "llm"), precise, drafting)
-            LiteRtEngine().load(weights, settings).use { loaded ->
+            val settings = LoadSettings(accelerator, context, images, File(targetContext.cacheDir, "llm"), drafting)
+            engine.load(weights, settings).use { loaded ->
                 say(
-                    JSONObject().put("event", "loaded").put("accelerator", loaded.accelerator.label).put("fp32", precise)
+                    JSONObject().put("event", "loaded").put("accelerator", loaded.accelerator.label).put("activation", activation)
                         .put("drafting", drafting).put("images", loaded.acceptsImages)
                         .put("temperature", temperature ?: "model").put("seconds", (System.nanoTime() - loading) / 1e9)
                         .put("memory", watch.report()),

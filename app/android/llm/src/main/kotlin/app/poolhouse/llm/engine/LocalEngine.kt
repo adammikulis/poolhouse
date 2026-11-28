@@ -81,8 +81,6 @@ data class LoadSettings(
     val images: Boolean,
     /** A directory the runtime may fill with compiled kernels. */
     val cacheDir: File,
-    /** Whether the graphics processor computes in 32 bits where the runtime would use 16. */
-    val fullPrecision: Boolean = false,
     /** Whether a model file that carries a draft model uses it to write faster. */
     val drafting: Boolean = false,
 )
