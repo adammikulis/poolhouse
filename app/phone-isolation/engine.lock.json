@@ -1,0 +1,358 @@
+{
+ "packages": [
+  {
+   "name": "alsa-lib",
+   "version": "1.2.16.1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/a/alsa-lib/alsa-lib_1.2.16.1_aarch64.deb",
+   "sha256": "34d850de4cf6a832b638a125ac2b029a46697e7a44c66f88fb388486c93314a5"
+  },
+  {
+   "name": "argp",
+   "version": "1.5.0-1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/a/argp/argp_1.5.0-1_aarch64.deb",
+   "sha256": "4096bfb8cba379efc3699e94e1cee400e72c274d734b5c1ed5f274ec42003405"
+  },
+  {
+   "name": "dbus",
+   "version": "1.16.4",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/d/dbus/dbus_1.16.4_aarch64.deb",
+   "sha256": "fff79b58f1a4d5819140ccd5b5d72bc157351285ababf0361229293a4fd69b82"
+  },
+  {
+   "name": "dtc",
+   "version": "1.8.1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/d/dtc/dtc_1.8.1_aarch64.deb",
+   "sha256": "a428adaccdb5af0c53698178f915ef65d23010cf9bd98d2a4447b79dba22e20d"
+  },
+  {
+   "name": "glib",
+   "version": "2.90.2",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/g/glib/glib_2.90.2_aarch64.deb",
+   "sha256": "22237d7b0df4e65a81c0bb68767ebec4fbf5769dbb2849217ecfd8bf25ed11f4"
+  },
+  {
+   "name": "gst-plugins-base",
+   "version": "1.28.9",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/g/gst-plugins-base/gst-plugins-base_1.28.9_aarch64.deb",
+   "sha256": "65598eb8ddb0edb2e8acd4254d0f4552c33caf34d12efad6ab7b4dd74343693c"
+  },
+  {
+   "name": "gstreamer",
+   "version": "1.28.9",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/g/gstreamer/gstreamer_1.28.9_aarch64.deb",
+   "sha256": "56ff63ba8b217c3859e5feac9831661cd7e7c7b999ee1b00c6cc898f02434f0a"
+  },
+  {
+   "name": "jack2",
+   "version": "1.9.22-2",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/j/jack2/jack2_1.9.22-2_aarch64.deb",
+   "sha256": "7dbdb39e94cfe52567fb86524de3303b03eb1707c82a81a1155482ccc8e9d2e8"
+  },
+  {
+   "name": "libandroid-execinfo",
+   "version": "0.1-3",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/liba/libandroid-execinfo/libandroid-execinfo_0.1-3_aarch64.deb",
+   "sha256": "725dd2c6da7fc96e860fcc928e18aa9fb0e85e0bdcaf4f8ce0f0654ca6860fc2"
+  },
+  {
+   "name": "libandroid-shmem",
+   "version": "0.7",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/liba/libandroid-shmem/libandroid-shmem_0.7_aarch64.deb",
+   "sha256": "0da3a24d558b93c92bcf8d611e0826a99ff96e396b148e6cdf33b47c47c57ff6"
+  },
+  {
+   "name": "libandroid-support",
+   "version": "29-1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/liba/libandroid-support/libandroid-support_29-1_aarch64.deb",
+   "sha256": "f2f145d6135ad4843ac9670153be3e3944dc1e6f1736d46d2306c28f2b86f517"
+  },
+  {
+   "name": "libandroid-sysv-semaphore",
+   "version": "0.1-1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/liba/libandroid-sysv-semaphore/libandroid-sysv-semaphore_0.1-1_aarch64.deb",
+   "sha256": "c3369a92814690d56278d0455ae6df7bf2ad7678ae9543e86d1e3aa433937c69"
+  },
+  {
+   "name": "libbz2",
+   "version": "1.0.8-8",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libb/libbz2/libbz2_1.0.8-8_aarch64.deb",
+   "sha256": "4335d7f060650b0aabef545d1334c2f9f280223d5962e13c24a00ec934b794ba"
+  },
+  {
+   "name": "libc++",
+   "version": "30",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libc/libc++/libc++_30_aarch64.deb",
+   "sha256": "53d0b84a7ba7459024257cb94d5b136fe13ef858567f65a8064b35950799f2ca"
+  },
+  {
+   "name": "libcurl",
+   "version": "8.23.0",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libc/libcurl/libcurl_8.23.0_aarch64.deb",
+   "sha256": "2011bb9709261bb3d5ecaa6672faa333be14cf48ad4af37031e3e365309557ac"
+  },
+  {
+   "name": "libdb",
+   "version": "18.1.40-6",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libd/libdb/libdb_18.1.40-6_aarch64.deb",
+   "sha256": "60bfb4e8bed834d334806f39aae27ffc11ab819f2da2f9abb7a3b2d37970a532"
+  },
+  {
+   "name": "libdw",
+   "version": "0.197",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libd/libdw/libdw_0.197_aarch64.deb",
+   "sha256": "6c25c05cbba67671238434306ca5e55444d29c9b425600a710618a189d4f9ebb"
+  },
+  {
+   "name": "libelf",
+   "version": "0.197",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libe/libelf/libelf_0.197_aarch64.deb",
+   "sha256": "c47ee2eee8450274f22218307b31471b76113b2825d3c69a5fdc47180cd68c13"
+  },
+  {
+   "name": "libffi",
+   "version": "3.8.2",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libf/libffi/libffi_3.8.2_aarch64.deb",
+   "sha256": "24e32ef321a2c8969cece066422d94928b1062f8fb4ed44b2e3d55bd85903863"
+  },
+  {
+   "name": "libflac",
+   "version": "1.5.0-1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libf/libflac/libflac_1.5.0-1_aarch64.deb",
+   "sha256": "d1d6fcac6fd6d15c36f34464cb01d5e2140e321d8448dfc396cd7eb1536b1f6c"
+  },
+  {
+   "name": "libgmp",
+   "version": "6.3.0-2",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libg/libgmp/libgmp_6.3.0-2_aarch64.deb",
+   "sha256": "5a3c1325638946ca212ddcb89bffb2c4459b4c90757d6e69f820e176534037fa"
+  },
+  {
+   "name": "libgnutls",
+   "version": "3.8.14",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libg/libgnutls/libgnutls_3.8.14_aarch64.deb",
+   "sha256": "bbbf782408c4e006fab1267e75ad1f1380ecffba1075c830362566b2a6dd77f5"
+  },
+  {
+   "name": "libiconv",
+   "version": "1.19.1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libi/libiconv/libiconv_1.19.1_aarch64.deb",
+   "sha256": "a1c6323eff4f660e16ae6f5832356444b3269c19a4f61146355a49e7c4be5ed1"
+  },
+  {
+   "name": "libidn2",
+   "version": "2.3.8-1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libi/libidn2/libidn2_2.3.8-1_aarch64.deb",
+   "sha256": "a450a1ba25759ebf78738484a3efee316c51a1fe7bafb0b01a68e2c058a91020"
+  },
+  {
+   "name": "libjpeg-turbo",
+   "version": "3.2.1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libj/libjpeg-turbo/libjpeg-turbo_3.2.1_aarch64.deb",
+   "sha256": "3e46721f2fbb10d5f53a45b99e2549d18a34ca3751aa4b704b3404fcdea5f8e7"
+  },
+  {
+   "name": "liblz4",
+   "version": "1.11.1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libl/liblz4/liblz4_1.11.1_aarch64.deb",
+   "sha256": "314d1a014f74f667122afd5e6b5d7541fbb60fab9e28086382568f8140b523ed"
+  },
+  {
+   "name": "liblzma",
+   "version": "5.8.4",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libl/liblzma/liblzma_5.8.4_aarch64.deb",
+   "sha256": "44e95e6e60dddb3705e60a344a4f009a1085a210797342b721eaff41b44033c0"
+  },
+  {
+   "name": "liblzo",
+   "version": "2.10-5",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libl/liblzo/liblzo_2.10-5_aarch64.deb",
+   "sha256": "b8a6d232d592dcd6529589c817927cca3254f3ab40a85fce873d997ace7d1ca2"
+  },
+  {
+   "name": "libmp3lame",
+   "version": "4.0-1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libm/libmp3lame/libmp3lame_4.0-1_aarch64.deb",
+   "sha256": "59f70ad8885578063bcbea3b11e74fb69e2416ca036b47aa255c1fa4f074565e"
+  },
+  {
+   "name": "libmpg123",
+   "version": "1.33.7",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libm/libmpg123/libmpg123_1.33.7_aarch64.deb",
+   "sha256": "883b104faae53820b2e758363300ccf99e28f627a263d766af61ae07b73b07b3"
+  },
+  {
+   "name": "libnettle",
+   "version": "4.0+really3.10.2",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libn/libnettle/libnettle_4.0+really3.10.2_aarch64.deb",
+   "sha256": "f2d2a84083e66beab642e88496eb16976ccdb12d1278466e687f01431db8a5fb"
+  },
+  {
+   "name": "libnghttp2",
+   "version": "1.71.0",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libn/libnghttp2/libnghttp2_1.71.0_aarch64.deb",
+   "sha256": "ae33e7b21e0636be8686b9b13a20e31267f047f69cb26b4befd70c9a9bae221e"
+  },
+  {
+   "name": "libnghttp3",
+   "version": "1.19.0",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libn/libnghttp3/libnghttp3_1.19.0_aarch64.deb",
+   "sha256": "8bb6fa31f9281cd48047ec9a571cadf153538f5b38f0203ad7a4e221344b14a6"
+  },
+  {
+   "name": "libngtcp2",
+   "version": "1.26.0",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libn/libngtcp2/libngtcp2_1.26.0_aarch64.deb",
+   "sha256": "8225ecde58104ef5aa234fa54a1bea5051a8a9ef2937e5ba996b3e8dda68c8eb"
+  },
+  {
+   "name": "libogg",
+   "version": "1.3.6-1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libo/libogg/libogg_1.3.6-1_aarch64.deb",
+   "sha256": "4f1700a532f251ad3600f44f88cd764f1f6b0542d3343391117944b47a92802d"
+  },
+  {
+   "name": "libopus",
+   "version": "1.6.1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libo/libopus/libopus_1.6.1_aarch64.deb",
+   "sha256": "005a9335ce0ec0f510bbe6e0229c901d6f920cc375fcda56461e96cef70f8ff0"
+  },
+  {
+   "name": "liborc",
+   "version": "0.4.44",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libo/liborc/liborc_0.4.44_aarch64.deb",
+   "sha256": "dee3318c3ad68cc437d6808c3f88ae89b381f4dc3b81f818f5066274924e02d3"
+  },
+  {
+   "name": "libpixman",
+   "version": "0.46.4-1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libp/libpixman/libpixman_0.46.4-1_aarch64.deb",
+   "sha256": "364b8c82ff68f8513930e5d413459fb7c52eccc7ba75a97a8c5a38760eee8d33"
+  },
+  {
+   "name": "libpng",
+   "version": "1.6.59",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libp/libpng/libpng_1.6.59_aarch64.deb",
+   "sha256": "32d61f0b1a60cf7283aa3a80e288737493df2c6b84c8c749606b77c94a10f2b2"
+  },
+  {
+   "name": "libsamplerate",
+   "version": "0.2.2-4",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libs/libsamplerate/libsamplerate_0.2.2-4_aarch64.deb",
+   "sha256": "521d46cc49557c00b2d5c107da1f86f0cdda8a3a3b84bd9958bd7fc52bec2dae"
+  },
+  {
+   "name": "libsasl",
+   "version": "2.1.28-3",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libs/libsasl/libsasl_2.1.28-3_aarch64.deb",
+   "sha256": "66fcdac6fdd708534dc3df00f917fe24a1a99bde868b5085d93861e44ea6dd6e"
+  },
+  {
+   "name": "libslirp",
+   "version": "4.9.7",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libs/libslirp/libslirp_4.9.7_aarch64.deb",
+   "sha256": "2dd2c214bcec7f1125fcd4040606e72768c38010ba87ed9c0365193616ba7ada"
+  },
+  {
+   "name": "libsndfile",
+   "version": "1.2.2-3",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libs/libsndfile/libsndfile_1.2.2-3_aarch64.deb",
+   "sha256": "1e1fb77b14ec26f3ff6ded069e9ec816ab7535ae5d074122c6727b0f59d8aff3"
+  },
+  {
+   "name": "libspice-server",
+   "version": "0.16.0-1",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libs/libspice-server/libspice-server_0.16.0-1_aarch64.deb",
+   "sha256": "98efa86c8d382ee742eda5eb1d73b12d831a6a518a16a62f9d5d33a44508cdda"
+  },
+  {
+   "name": "libssh",
+   "version": "0.12.2",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libs/libssh/libssh_0.12.2_aarch64.deb",
+   "sha256": "05cfb1d6f70e9b316f1eac7a5ec9139f884e644d6d91e668e9ca49716aad8ff0"
+  },
+  {
+   "name": "libssh2",
+   "version": "1.11.1-2",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libs/libssh2/libssh2_1.11.1-2_aarch64.deb",
+   "sha256": "1add4e0a926b848814e7e2f1817ea28b123c54cabd5bbc4e5cfd65291cbad84e"
+  },
+  {
+   "name": "libtasn1",
+   "version": "4.21.0",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libt/libtasn1/libtasn1_4.21.0_aarch64.deb",
+   "sha256": "1d02de3a7e5ef4ff7d893597091176b8ddf135f1ddfacff951f76c18711a7342"
+  },
+  {
+   "name": "libunistring",
+   "version": "1.5",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libu/libunistring/libunistring_1.5_aarch64.deb",
+   "sha256": "8853ca1421d6472046a0683d53084b26db1caa50a3aa2bf6422a1276c7dba69b"
+  },
+  {
+   "name": "libusb",
+   "version": "1.0.30",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libu/libusb/libusb_1.0.30_aarch64.deb",
+   "sha256": "b8db930e478bf30e91a709da9ad2560b600a30ab2c0afd05d611b5d962a21b31"
+  },
+  {
+   "name": "libusbredir",
+   "version": "0.15.0",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libu/libusbredir/libusbredir_0.15.0_aarch64.deb",
+   "sha256": "30577db7759dbc165b82ed089426da192e4eb278ea204e1216fe34e386b705c3"
+  },
+  {
+   "name": "libvorbis",
+   "version": "1.3.7-4",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/libv/libvorbis/libvorbis_1.3.7-4_aarch64.deb",
+   "sha256": "6bfd70c4b570b85594bd06116b75a6f8109ec58cbc123e938b630a6eefdedf4e"
+  },
+  {
+   "name": "ncurses",
+   "version": "6.6.20260307+really6.5.20250830",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/n/ncurses/ncurses_6.6.20260307+really6.5.20250830_aarch64.deb",
+   "sha256": "f44bbfdc3d42ec0217bffa978309390e59cea5a48a9a83226d4a496c42ad0b99"
+  },
+  {
+   "name": "openssl",
+   "version": "1:3.6.5",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/o/openssl/openssl_1:3.6.5_aarch64.deb",
+   "sha256": "a2fb7856875e63ef6b90442752e05974813372c3ca86d2513a78ea43c67a0f8b"
+  },
+  {
+   "name": "p11-kit",
+   "version": "0.26.6",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/p/p11-kit/p11-kit_0.26.6_aarch64.deb",
+   "sha256": "e6a305edbfcf6a907bd1f09bedbcbbb06ca7784116300bd297a769c971595424"
+  },
+  {
+   "name": "pcre2",
+   "version": "10.49",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/p/pcre2/pcre2_10.49_aarch64.deb",
+   "sha256": "c27995e5f52b8ecc9b8b3e662eb08e49f82a18bfd3f34343936acc7b23964724"
+  },
+  {
+   "name": "pulseaudio",
+   "version": "17.0-5",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/p/pulseaudio/pulseaudio_17.0-5_aarch64.deb",
+   "sha256": "4e110e32007fee5aaf67cfa2f35ae67c11ed53f45da857d0def426e2ca66f8c8"
+  },
+  {
+   "name": "qemu-system-aarch64-headless",
+   "version": "1:11.1.3",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/q/qemu-system-aarch64-headless/qemu-system-aarch64-headless_1:11.1.3_aarch64.deb",
+   "sha256": "64d63f37884ee8ae07bf91e144b8d06955027ad69b339a4ecdd888d391bd8cd3"
+  },
+  {
+   "name": "zlib",
+   "version": "1.4",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/z/zlib/zlib_1.4_aarch64.deb",
+   "sha256": "e3027565ae50bcd8ba5113c988b589754ae192c9cc3e6afbe3e4ed7c06b2598e"
+  },
+  {
+   "name": "zstd",
+   "version": "1.6.0",
+   "url": "https://packages.termux.dev/apt/termux-main/pool/main/z/zstd/zstd_1.6.0_aarch64.deb",
+   "sha256": "c487af7d68664585cc5187330acc7a7a054614cb742fcbb1d8a62e214bb3368a"
+  }
+ ]
+}

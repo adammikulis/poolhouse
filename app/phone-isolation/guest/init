@@ -1,0 +1,57 @@
+#!/bin/busybox sh
+# The guest's first program. It installs the system onto the work disk once, takes one script from the app over the
+# channel, runs it in that system, sends back what it printed and powers the machine off. It has no network device.
+/bin/busybox --install -s
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t devtmpfs dev /dev
+while read -r module; do insmod "/modules/$module.ko" || echo "guest.module refused $module"; done < /modules/order
+mdev -s
+
+disk() {
+    for found in /sys/block/vd*; do
+        [ "$(cat "$found/serial" 2>/dev/null)" = "$1" ] && { echo "/dev/${found##*/}"; return 0; }
+    done
+    return 1
+}
+say() { echo "guest.$1 at $(cut -d' ' -f1 /proc/uptime) s"; }
+
+say booted
+system=$(disk system)
+work=$(disk work)
+if ! mount -t ext4 -o noatime "$work" /mnt 2>/dev/null; then
+    mke2fs -q -F -t ext4 "$work" && mount -t ext4 -o noatime "$work" /mnt || { say disk-failed; poweroff -f; }
+fi
+if [ ! -f /mnt/.provisioned ]; then
+    say provisioning
+    tar -x -f "$system" -C /mnt && chroot /mnt /bin/busybox --install -s && touch /mnt/.provisioned
+    sync
+    say provisioned
+fi
+mkdir -p /mnt/proc /mnt/sys /mnt/dev /mnt/tmp
+mount -t proc proc /mnt/proc
+mount -t sysfs sys /mnt/sys
+mount -o bind /dev /mnt/dev
+mkdir -p /mnt/dev/shm && mount -t tmpfs shm /mnt/dev/shm
+mount -t tmpfs -o mode=1777 tmp /mnt/tmp
+ip link set lo up
+
+port=
+for found in /sys/class/virtio-ports/*; do
+    [ "$(cat "$found/name" 2>/dev/null)" = app.poolhouse.channel ] && port="/dev/${found##*/}"
+done
+[ -n "$port" ] || { say no-channel; poweroff -f; }
+exec 3<>"$port"
+say waiting
+read -r length <&3
+dd bs=1 count="$length" of=/mnt/tmp/task.sh <&3 2>/dev/null
+say running
+chroot /mnt /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root /bin/sh /tmp/task.sh >&3 2>&1
+status=$?
+echo "task.exit $status" >&3
+say finished
+sync
+umount /mnt/tmp /mnt/dev/shm /mnt/dev /mnt/sys /mnt/proc
+umount /mnt
+poweroff -f
