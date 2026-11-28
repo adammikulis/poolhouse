@@ -11,15 +11,17 @@ import json
 import os
 import sys
 import tarfile
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from poolhouse import serverkeys
+from poolhouse import delegate_review, harnessing, ownership, serverkeys
 from poolhouse.serve import admission, engines, ops, python_runtime
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.fitted import fitted
 from poolhouse.serve.manager import ServerManager
+from poolhouse.serve.serving import Serving
 from poolhouse.serve.strata import backend, config, fetch, install, pins, prepare, proof
 
 pytest_plugins = ["serve_node"]
@@ -45,8 +47,10 @@ class Handler(BaseHTTPRequestHandler):
             code, body = 401, {}
         else:
             code = 200
+            each = int(config["args"][config["args"].index("--max-context") + 1])
             body = {"/health": {"status": "ok"}, "/metrics": {"engine": {"drafting": config["drafting"], "drafting_note": ""}},
-                    "/v1/models": {"data": [{"id": "CANNED-NOT-A-MODEL"}]}}.get(self.path, {})
+                    "/props": {"default_generation_settings": {"n_ctx": each}, "total_slots": 1},
+                    "/v1/models": {"data": [{"id": name} for name in (config["model_name"], *config["aliases"])]}}.get(self.path, {})
         data = json.dumps({"canned": "[CANNED RESPONSE, NOT A MODEL]", **body}).encode()
         self.send_response(code)
         self.send_header("X-Canned", "[CANNED RESPONSE, NOT A MODEL]")
@@ -179,6 +183,13 @@ class TestConfig:
         got = config.shape(job_for(tmp_path, (chosen, files), "cuda", 32 * GIB, 32768), made_for(tmp_path, files))
         assert "--mmap-experts" in got.args and got.experts_file and "--kv-resident" not in got.args
 
+    @pytest.mark.parametrize("kind", ["metal", "cuda"])
+    def test_each_slot_is_started_with_its_share_of_the_context(self, tmp_path, kind):
+        chosen, files = small_set(tmp_path)
+        job = replace(job_for(tmp_path, (chosen, files), kind, 128 * GIB, 2 * 131072), slots=2)
+        args = list(config.shape(job, made_for(tmp_path, files)).args)
+        assert args[args.index("--max-context") + 1] == "131072"
+
     def test_engine_options_replace_chosen_ones_and_name_no_file(self):
         spec = ServerSpec(model="m", engine="strata", spec_draft_max=5, extra_args=("--expert-cache", "96"))
         got = backend.overridden(["--spec", "3", "--expert-cache", "64"], spec)
@@ -291,6 +302,48 @@ def asked(port: int, path: str) -> tuple[int, dict]:
         connection.close()
 
 
+class TestSessions:
+    def up(self, canned, monkeypatch, port: int):
+        """The CANNED server leased on ``port``, and the harness reading that lease file."""
+        manager, files = canned
+        info = manager.lease(ServerSpec(model=files[0], engine="strata", port=port, context=131072), timeout=60)
+        monkeypatch.setattr(harnessing, "recorded_servers", lambda: ownership.recorded_servers(manager.state_file))
+        return manager, files, info
+
+    def test_a_session_takes_the_strata_server_already_up_and_gives_it_no_chat_template(self, canned, tmp_path, monkeypatch):
+        manager, files, first = self.up(canned, monkeypatch, 18435)
+        template = tmp_path / "late-system.jinja"
+        template.write_text("CANNED template\n", encoding="utf-8")
+        said: list[str] = []
+        taken = harnessing.adopted(str(files[0]), harnessing.Want(port=first.port), template, said.append)
+        assert taken is not None, said
+        assert (taken.port, taken.serving.engine, taken.serving.slot_context) == (first.port, "strata", 131072)
+        again = manager.lease(ServerSpec(model=files[0], chat_template_file=template, **taken.lease()), timeout=60)
+        assert (again.port, again.pid) == (first.port, first.pid)
+
+    def test_a_session_asking_for_an_engine_does_not_take_another_ones_server(self, canned, monkeypatch):
+        _manager, files, first = self.up(canned, monkeypatch, 18436)
+        held = harnessing.recorded_servers()
+        monkeypatch.setattr(harnessing, "recorded_servers", lambda: {first.port: {**held[first.port], "backend": "llama.cpp"}})
+        said: list[str] = []
+        assert harnessing.adopted(str(files[0]), harnessing.Want(port=first.port, engine="strata"), None, said.append) is None
+        assert any("not served by the strata engine" in line for line in said)
+
+    def test_a_session_that_starts_strata_asks_the_lease_for_that_engine(self, tmp_path):
+        want = harnessing.Want(engine="strata", ctx=131072, slots=2)
+        got = harnessing.config_for(str(tmp_path / "set.gguf"), want, lambda _line: None).lease()
+        assert (got["engine"], got["context"], got["parallel"]) == ("strata", 131072, 2)
+        assert not {"draft", "spec_type", "mtp"} & set(got)
+
+    def test_the_coding_launchers_take_the_engine(self):
+        ap = harnessing.parser("claude", "Claude Code", 8080, 1)
+        assert ap.parse_args(["--engine", "strata"]).engine == "strata" and ap.parse_args([]).engine == ""
+
+    def test_a_delegates_record_names_the_engine(self):
+        got = delegate_review.served("/models/set.gguf", "set", Serving(model="/models/set.gguf", engine="strata"))
+        assert got["settings"]["engine"] == "strata"
+
+
 class TestLease:
     def test_the_server_starts_on_loopback_with_the_issued_key_offline_and_stops_with_its_lease(self, canned):
         manager, files = canned
@@ -315,6 +368,15 @@ class TestLease:
         manager.stop_all()
         with pytest.raises(OSError):
             asked(info.port, "/health")
+
+    def test_a_lease_that_may_escalate_and_brings_a_chat_template_still_starts(self, canned, tmp_path):
+        manager, files = canned
+        template = tmp_path / "late-system.jinja"
+        template.write_text("CANNED template\n", encoding="utf-8")
+        info = manager.lease(ServerSpec(model=files[0], engine="strata", port=18434, context=131072, chat_template_file=template),
+                             timeout=60, escalate=True)
+        record = json.loads(manager.state_file.read_text())[str(info.port)]
+        assert record["backend"] == "strata" and not record["chat_template_file"]
 
     @pytest.mark.parametrize("asking", [{"mmproj": "/etc/hosts"}, {"mmproj": "http://example.invalid/x"},
                                         {"slot_save_path": "/tmp/slots"}, {"embedding": True}])
