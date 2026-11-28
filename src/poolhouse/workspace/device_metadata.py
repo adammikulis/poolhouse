@@ -8,6 +8,7 @@ from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from poolhouse import provision
 from poolhouse.home import device_id, machine_id
 
 STATES = ('joined', 'agent-reported', 'local-observed', 'inherited', 'unknown')
@@ -102,7 +103,8 @@ def runtime_commit():
 def current():
     """The local host observation, cached for this process."""
     try:
-        identity = device_id()
+        with provision.nothing_installed():
+            identity = device_id()
     except RuntimeError:
         identity = None
     try:

@@ -519,6 +519,7 @@ def test_a_frozen_member_installs_the_bench_after_accepting_the_job(boxes, tmp_p
         return real_pip(self, args, **kw)
 
     monkeypatch.setattr(Environment, "pip", slow_pip)
+    monkeypatch.delenv("POOLHOUSE_INSTALL_AT_NEED", raising=False)  # nothing comes from an index: the wheel declares no requirement
     monkeypatch.delenv("PYTHONPATH", raising=False)  # the managed interpreter must not import this checkout
     monkeypatch.setenv("PIP_NO_CACHE_DIR", "1")
     monkeypatch.setenv("PIP_DISABLE_PIP_VERSION_CHECK", "1")
@@ -877,7 +878,7 @@ def test_a_detached_bench_is_told_the_home_whose_lock_the_daemon_watches(tmp_pat
     monkeypatch.setattr(fb.subprocess, "run", run)
     pid, log = fb.detach_bench(["run", "m.gguf"], tmp_path / "bench", Path("/env/bin/python"))
     assert pid == 4242 and log == tmp_path / "bench" / "x.log"
-    assert seen["argv"][:4] == ["/env/bin/python", "-B", "-m", "poolhouse.bench"]
+    assert seen["argv"][:5] == ["/env/bin/python", "-B", "-P", "-m", "poolhouse.bench"]
     assert seen["env"]["POOLHOUSE_BENCH_HOME"] == str(tmp_path / "bench")
     assert "PATH" in seen["env"]                     # the rest of the environment came along
 

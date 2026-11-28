@@ -218,6 +218,36 @@ class TestAPatchThatNoLongerApplies:
         assert "TWO" in (broken.tree / "a.txt").read_text()
 
 
+class TestTheCheckoutTheLastBuildLeftBehind:
+    """A build leaves its patches applied in the managed checkout, and an interrupted three-way
+    apply leaves it unmerged. Neither may stop the next build moving to another commit."""
+
+    @pytest.mark.parametrize("unmerged", [False, True])
+    def test_the_next_build_moves_to_a_commit_that_changed_a_patched_file(self, upstream, unmerged):
+        upstream.pin(upstream.first)
+        build_source.build_from_source(_build_args())
+        tree = build_paths.src_dir()
+        if unmerged:
+            blob = _run(tree, "hash-object", "-w", "a.txt")
+            entries = "".join(f"100644 {blob} {stage}\ta.txt\n" for stage in (1, 2, 3))
+            _REAL_RUN(["git", "update-index", "--index-info"], cwd=tree, check=True, text=True,
+                      input=f"0 {'0' * 40}\ta.txt\n{entries}")
+            assert _run(tree, "ls-files", "--unmerged")
+        newer = upstream.push("a.txt", "one\ntwo\nthree\nfour\n", "grow")
+        upstream.pin(newer)
+        _, tag = build_source.build_from_source(_build_args())
+        assert tag.startswith(newer[:7])
+        assert (tree / "a.txt").read_text() == "one\nTWO\nthree\nfour\n"
+
+    def test_a_forks_checkout_moves_to_the_new_ref_too(self, upstream, tmp_path):
+        source = tmp_path / "fork"
+        _run(tmp_path, "clone", "-q", str(upstream.bare), str(source))
+        build_source._apply_patches(source)
+        newer = upstream.push("a.txt", "one\ntwo\nthree\nfour\n", "grow")
+        build_source._sync_named_source(source, "someone/llama.cpp", newer)
+        assert _run(source, "rev-parse", "HEAD") == newer
+
+
 @pytest.mark.parametrize('broken_patch', [False, True])
 def test_failed_trial_cleanup_preserves_its_lock_bytes_and_unrelated_missing_registration(upstream, tmp_path, capsys, broken_patch):
     source = upstream.bare.parent / 'work'

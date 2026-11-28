@@ -8,6 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from poolhouse import provision
 from poolhouse.net.pdfread import Limits, engine, load
 from poolhouse.net.untrusted import clean_text
 
@@ -103,10 +104,9 @@ def visible_text(path: str | Path, *, limit: int | None = None) -> tuple[str, st
 
 def _visible_text_mupdf(path: str | Path, *, limit: int | None = None) -> tuple[str, str, int, int]:
     try:
-        import pymupdf
+        pymupdf = provision.module("pymupdf", "pdf-agpl")
     except ImportError as exc:
-        raise ImportError("POOLHOUSE_PDF_ENGINE=pymupdf needs MuPDF (AGPL-3.0): "
-                          "pip install 'poolhouse[pdf-agpl]'") from exc
+        raise ImportError(f"POOLHOUSE_PDF_ENGINE=pymupdf needs MuPDF (AGPL-3.0): {exc}") from exc
     removed = 0
     with pymupdf.open(str(Path(path).expanduser())) as doc:
         out: list[str] = []

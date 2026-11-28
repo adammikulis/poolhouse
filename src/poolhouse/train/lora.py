@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home
+from poolhouse import home, provision
 from poolhouse.hub.transfer import base_folder
 from poolhouse.train.step import TorchStep
 from poolhouse.units import span
@@ -54,9 +54,9 @@ DEFAULT_TARGETS = ("q_proj", "k_proj", "v_proj", "o_proj",
                    "gate_proj", "up_proj", "down_proj")
 
 PEFT_MISSING = (
-    "a LoRA needs peft, which is not installed: pip install 'poolhouse[train-lora]' "
-    "(or pip install peft). Without it the tool-calls recipe is a full fine-tune, which "
-    "works for a small base and needs ~128G of optimizer state for an 8B one."
+    "a LoRA needs peft (the train-lora extra), which is not here and could not be installed. Without it the "
+    "tool-calls recipe is a full fine-tune, which works for a small base and needs ~128G of optimizer state "
+    "for an 8B one."
 )
 
 # Over this many minutes a training run is refused. The same rule and the same
@@ -130,12 +130,11 @@ class Lora:
 
 
 def require_peft() -> Any:
-    """The ``peft`` module, or a ``ValueError`` that names the extra to install."""
+    """The ``peft`` module, installed first when it is not here, or a ``ValueError`` saying why it could not be."""
     try:
-        import peft
+        return provision.module("peft", "train-lora")
     except ImportError as exc:                                  # pragma: no cover - env
-        raise ValueError(PEFT_MISSING) from exc
-    return peft
+        raise ValueError(f"{PEFT_MISSING} {exc}") from exc
 
 
 def attach(model: Any, lora: Lora) -> Any:
@@ -523,11 +522,9 @@ def preflight_export(gguf: Path | str, *, binary: Path | str | None = None,
     from poolhouse.serve.preflight import Preflight
 
     if binary is None:
-        from poolhouse.serve.binary import BinaryNotFound, find_binary
+        from poolhouse.serve.binary import require_binary
 
-        binary = find_binary()
-        if binary is None:
-            raise BinaryNotFound("no llama-server to preflight the export with")
+        binary = require_binary()
     spec = ServerSpec(model=str(Path(gguf).expanduser()), context=context)
     return Preflight(spec, binary=binary, **seams)
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -23,7 +22,14 @@ from poolhouse.serve.build_paths import (
     patch_stamp,
     src_dir,
 )
-from poolhouse.serve.build_platform import cmake_flags, copy_flat, now_iso, server_name, version_of
+from poolhouse.serve.build_platform import (
+    cmake_flags,
+    cmake_program,
+    copy_flat,
+    now_iso,
+    server_name,
+    version_of,
+)
 
 __all__ = ["build_from_source", "build_from_source_named"]
 
@@ -71,6 +77,12 @@ def _fetch_commit(source: Path, commit: str, url: str = REPO_URL) -> None:
 def _checkout_commit(source: Path, commit: str, url: str = REPO_URL) -> None:
     _fetch_commit(source, commit, url)
     _git("checkout", "FETCH_HEAD", cwd=source)
+
+
+def _clear(source: Path) -> None:
+    """Drop what the last build patched, or left unmerged, in a managed checkout: either would
+    stop it moving to a commit that changed one of those files."""
+    _git("reset", "--hard", "HEAD", cwd=source)
 
 
 def _short_commit(source: Path, rev: str = "HEAD") -> str:
@@ -123,14 +135,20 @@ def _sync_named_source(source: Path, repo: str, ref: str) -> None:
         source.parent.mkdir(parents=True, exist_ok=True)
         _git("clone", "--depth", "1", url, str(source), url=url)
     if ref:
+        _clear(source)
         _checkout_commit(source, ref, url)
 
 
 # -- cmake ---------------------------------------------------------------
+def _cmake() -> str:
+    try:
+        return cmake_program()
+    except ImportError as exc:
+        raise BuildFailed(f"cmake is not on PATH and could not be installed: {exc}") from exc
+
+
 def _configure(source: Path) -> None:
-    cmake = shutil.which("cmake")
-    if cmake is None:
-        raise BuildFailed("cmake is not on PATH")
+    cmake = _cmake()
     done = subprocess.run([cmake, "-B", "build", *cmake_flags()], cwd=source,
                           capture_output=True, text=True)
     if done.returncode != 0:
@@ -138,9 +156,7 @@ def _configure(source: Path) -> None:
 
 
 def _compile(source: Path, jobs: int) -> None:
-    cmake = shutil.which("cmake")
-    if cmake is None:
-        raise BuildFailed("cmake is not on PATH")
+    cmake = _cmake()
     done = subprocess.run(
         [cmake, "--build", "build", "--config", "Release", "--target", CMAKE_TARGET,
          "-j", str(jobs)],
@@ -208,6 +224,8 @@ def build_from_source(args) -> tuple[Path, str]:
         return dest, tag
 
     check_patches(source, _full_commit(source, rev), _git)
+    if not args.source:
+        _clear(source)
     if want:
         _git("checkout", "FETCH_HEAD", cwd=source)
     elif not args.source:

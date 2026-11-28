@@ -76,3 +76,4 @@ test_task_coding.py
 test_coding_browser.py
 test_redteam_isolation_gate_unattended.py
 test_workspace_local_agent.py
+test_net_browser.py
