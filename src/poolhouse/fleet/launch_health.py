@@ -10,7 +10,7 @@ import secrets
 import stat
 from pathlib import Path
 
-from poolhouse.files import stat_signature
+from poolhouse.files import open_step, stat_signature
 from poolhouse.http import Options, ServerError, open_stream
 
 from . import app_identity
@@ -38,10 +38,11 @@ def _read_existing(root: Path) -> bytes:
         raise OSError('An installed absolute identity directory is required')
     descriptors, anchors = [], []
     try:
-        at = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        parts = path.parts
+        at = open_step(parts[0], last=len(parts) == 1)
         descriptors.append(at)
-        for name in path.parts[1:]:
-            child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=at)
+        for position, name in enumerate(parts[1:], 2):
+            child = open_step(name, last=position == len(parts), dir_fd=at)
             descriptors.append(child)
             anchors.append((at, name, child, stat_signature(os.fstat(child))[:4]))
             at = child

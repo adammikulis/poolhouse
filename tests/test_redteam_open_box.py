@@ -31,9 +31,11 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import loopback_window
+import poolhouse
+from poolhouse import loopback_window, sandbox
 from poolhouse.isolation import confinement as choke_point, toolchain
-from poolhouse.sandbox import confinement, process_tree, seatbelt_open
+from poolhouse.sandbox import Limits, Policy, confinement, process_tree, seatbelt_open
+from tests.short_temp import short_temp
 from tests.test_redteam_isolation_shell import box, shelled  # noqa: F401  (box is a fixture)
 
 pytest_plugins = ["tests.confined_kit", "tests.sandbox_kit"]
@@ -349,6 +351,44 @@ def test_the_folder_a_test_makes_short_paths_in_holds_a_unix_socket_inside_the_b
         "print('own' if short_temp() == tempfile.gettempdir() == os.environ['TMPDIR'] else short_temp())\n")
     out, _, _ = shelled(box, f"{PYTHON} folders.py\n")
     assert out.strip().splitlines()[-1] == "own", out
+
+
+WALKS = """
+import os, sys
+sys.path.insert(0, sys.argv[1])
+from pathlib import Path
+from poolhouse.fleet import app_identity, launch_health, producer_bootstrap, producer_control, studio_epoch, studio_transfer
+try:
+    os.listdir(Path.cwd().parent)
+    raise SystemExit("the folder above was listed")
+except PermissionError:
+    pass
+root = Path.cwd() / "node"
+root.mkdir(mode=0o700)
+key = root / app_identity.PROOF_KEY_FILE
+key.write_text("ab" * 32)
+key.chmod(0o600)
+producer_control._Location(root).close()
+assert producer_bootstrap.read_existing(root) == launch_health._read_existing(root) == bytes.fromhex("ab" * 32)
+with studio_epoch.directory(root) as held:
+    os.fsync(held)
+os.close(studio_transfer._directory(root / "made", create=True))
+print("walked")
+"""
+
+
+def test_the_private_walks_pass_a_folder_that_may_be_gone_through_and_not_listed():
+    """As in a coding box, whose own temporary folder is under the shared one that it is refused: the walks from the root still reach a private
+    folder in it, and the folder above stays unlisted."""
+    own = Path(tempfile.mkdtemp(prefix="walk-", dir=short_temp())).resolve()
+    try:
+        policy = Policy("walk", write=(str(own),), exec=(os.path.realpath(sys.executable),), open=True, private=(str(own.parent),),
+                        env={"PATH": os.defpath, "HOME": str(own), "TMPDIR": str(own)}, limits=Limits(wall_seconds=60))
+        source = str(Path(poolhouse.__file__).resolve().parents[1])
+        done = sandbox.run([sys.executable, "-I", "-B", "-c", WALKS, source], policy, cwd=own)
+        assert done.ok and done.stdout.strip() == "walked", done.stderr[-2000:]
+    finally:
+        shutil.rmtree(own)
 
 
 def test_an_open_box_reaches_this_machines_loopback_and_nothing_beyond_it_and_binds_no_address(box, earlier):  # noqa: F811

@@ -12,7 +12,7 @@ import threading
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from poolhouse.files import promote
+from poolhouse.files import open_step, promote
 from poolhouse.studio.catalog import is_model_type
 
 CHUNK_BYTES = 256 * 1024
@@ -40,13 +40,14 @@ def _name(value: str) -> tuple[str, ...]:
 def _directory(path: Path, *, create: bool = False) -> int:
     if not path.is_absolute() or ".." in path.parts:
         raise ValueError("Resource directories require canonical absolute paths.")
-    descriptor = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    parts = path.parts
+    descriptor = open_step(parts[0], last=len(parts) == 1)
     try:
-        for part in path.parts[1:]:
+        for position, part in enumerate(parts[1:], 2):
             if create:
                 with contextlib.suppress(FileExistsError):
                     os.mkdir(part, mode=0o700, dir_fd=descriptor)
-            following = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+            following = open_step(part, last=position == len(parts), dir_fd=descriptor)
             os.close(descriptor)
             descriptor = following
         return descriptor

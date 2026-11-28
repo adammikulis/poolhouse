@@ -11,7 +11,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from poolhouse import lock
-from poolhouse.files import promote
+from poolhouse.files import open_step, promote
 
 NAME = "studio-authority-epoch.json"
 HEX = re.compile(r"[0-9a-f]{64}\Z")
@@ -31,10 +31,11 @@ def directory(root: Path, *, create: bool = False):
         raise ValueError("Authority directories cannot contain parent traversal.")
     if create:
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(root.anchor, os.O_RDONLY | os.O_DIRECTORY)
+    parts = root.parts
+    fd = open_step(parts[0], last=len(parts) == 1)
     try:
-        for part in root.parts[1:]:
-            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+        for position, part in enumerate(parts[1:], 2):
+            child = open_step(part, last=position == len(parts), dir_fd=fd)
             os.close(fd)
             fd = child
         info = os.fstat(fd)

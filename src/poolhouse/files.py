@@ -27,8 +27,8 @@ else:
     open_read = None
     replace = os.replace
 
-__all__ = ["UNVERSIONED", "CrossDevice", "clone_tree", "promote", "promote_new", "prune_orphans", "read_json", "reading", "records_in",
-           "sha256_file", "stat_signature", "swap", "version_of", "versioned", "write_json", "write_text", "writing"]
+__all__ = ["SEARCH", "UNVERSIONED", "CrossDevice", "clone_tree", "open_step", "promote", "promote_new", "prune_orphans", "read_json", "reading",
+           "records_in", "sha256_file", "stat_signature", "swap", "version_of", "versioned", "write_json", "write_text", "writing"]
 
 #: A record with no version key.
 UNVERSIONED = 0
@@ -42,6 +42,15 @@ def stat_signature(row):
     return (row.st_dev, row.st_ino, row.st_mode, row.st_uid, row.st_nlink,
             row.st_size, row.st_mtime_ns, row.st_ctime_ns)
 
+
+SEARCH = getattr(os, "O_SEARCH", getattr(os, "O_PATH", os.O_RDONLY))
+"""Opens a directory to look names up in and not to list it: macOS's ``O_SEARCH``, Linux's ``O_PATH``."""
+
+
+def open_step(name: str, *, last: bool, dir_fd: int | None = None) -> int:
+    """A descriptor of the directory ``name``, never through a link, for one step of a walk down a path: the ``last`` one open to be read, one
+    above it to be gone through only, so a folder a process may pass and not list (the shared temporary folder, in a coding box) is passed."""
+    return os.open(name, (os.O_RDONLY if last else SEARCH) | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dir_fd)
 
 
 def promote(source: Path | str, target: Path | str, *, directory_fd: int | None = None) -> Path:

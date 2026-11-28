@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 from poolhouse import home, maintenance, unix_socket
+from poolhouse.files import open_step
 from poolhouse.platform import start_process
 from poolhouse.studio.store import digest
 
@@ -81,10 +82,11 @@ def _proof(root, value, process):
     if path.name != 'data.sock' or path.parent.parent != Path(root) or not path.parent.name.startswith('producer-'):
         raise PermissionError('The owned producer listener is outside its private directory')
     # Anchor every ancestor without following a substituted directory link.
-    at = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    parts = path.parts[:-1]
+    at = open_step(parts[0], last=len(parts) == 1)
     try:
-        for name in path.parts[1:-1]:
-            child_fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=at)
+        for position, name in enumerate(parts[1:], 2):
+            child_fd = open_step(name, last=position == len(parts), dir_fd=at)
             os.close(at)
             at = child_fd
         row = os.stat(path.name, dir_fd=at, follow_symlinks=False)
