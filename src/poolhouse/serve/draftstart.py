@@ -21,6 +21,7 @@ from poolhouse.serve.backend import (
     UnknownFlag,
 )
 from poolhouse.serve.binary import BinaryNotFound, borrows
+from poolhouse.serve.preflight import PreflightFailed
 
 __all__ = ["Attempt", "Start"]
 
@@ -143,7 +144,7 @@ class Start:
             try:
                 info = self._on(attempt).start(attempt.spec, **starting)
                 break
-            except (ServerFailed, UnknownFlag) as why:
+            except (ServerFailed, UnknownFlag, PreflightFailed) as why:
                 failed.append((attempt, why))
                 attempt = next(self._queue, None)
                 if attempt is None:

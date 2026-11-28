@@ -66,6 +66,7 @@ from poolhouse.serve.matching import model_matches, serving_mismatch
 from poolhouse.serve.mlx_tree import MlxTreeBackend
 from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free, reclaim_port
+from poolhouse.serve.preflight import PreflightFailed
 from poolhouse.serve.process import (
     kill_process_tree,
     measuring,
@@ -322,7 +323,7 @@ class ServerManager(Admitting):
             try:
                 info, served = self._launch(spec, timeout=resolved_timeout, on_event=on_event,
                                             anyway=anyway, reuse=roam, **how.checks())
-            except (Measuring, admission.AdmissionRefused, guarded.SentinelRefused):
+            except (Measuring, PreflightFailed, admission.AdmissionRefused, guarded.SentinelRefused):
                 self._forget(spec.port)
                 raise
             except ServerFailed:
@@ -423,7 +424,7 @@ class ServerManager(Admitting):
         emit(on_event, "loading", port=spec.port, model=Path(str(spec.model)).name,
               slots=max(1, int(spec.parallel or 1)))
         start = draftstart.Start(spec, self.backend_for(spec), verify=verify, say=self.say or logger.warning)
-        admitted = self._admitted(start.first.spec, on_event=on_event, reuse=reuse, load_s=timeout)
+        admitted = self._admitted(start.first.spec, on_event=on_event, reuse=reuse, load_s=timeout, asked=spec)
         if isinstance(admitted, ServerInfo):
             return admitted, spec
         info, served = start.run(lease=admitted, timeout=timeout, **starting)
@@ -507,7 +508,7 @@ class ServerManager(Admitting):
             try:
                 info, served = self._launch(moved, timeout=timeout, on_event=on_event,
                                             anyway=anyway, reuse=True, **starting)
-            except (Measuring, admission.AdmissionRefused, guarded.SentinelRefused):
+            except (Measuring, PreflightFailed, admission.AdmissionRefused, guarded.SentinelRefused):
                 self._forget(moved.port)
                 raise
             except ServerFailed:
@@ -715,7 +716,9 @@ class ServerManager(Admitting):
                    "spec_type": spec.spec_type if drafting else "",
                    "chat_template_file": str(spec.chat_template_file or ""), "mtp_note": info.mtp_note,
                    **({"iq_warning": iq.name} if iq is not None else {}),
-                   **({"asked": {"draft": str(asked.draft or ""), "spec_type": asked.spec_type}} if swapped else {})})
+                   **({"asked": {"draft": str(asked.draft or ""), "spec_type": asked.spec_type,
+                                 **({"mtp": Path(str(asked.draft or "embedded")).name} if asked.mtp else {})}}
+                      if swapped else {})})
         forget_server(info.base_url)
         if info.process is not None:
             self.children.hold(info.port, info.process)

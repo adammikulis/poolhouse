@@ -130,12 +130,30 @@ def pending_serves(spec: ServerSpec, entry: Mapping[str, Any]) -> bool:
             and not (spec.mmproj and not entry.get("mmproj")))
 
 
+def servings(entry: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """The settings a record, or a held server's shape, may be asked for by: as it serves, and, where it was started
+    with another draft head than was asked, with the head settings of each such asking (``asked``, ``also``)."""
+    others = (entry.get("asked"), *(entry.get("also") or ()))
+    return [entry, *({**entry, **one} for one in others if one)]
+
+
+def as_served(entry: Mapping[str, Any]) -> dict[str, Any]:
+    """The head settings the server on ``entry`` is asked for by as it serves."""
+    mtp = {"mtp": True} if entry.get("mtp") else {} if entry.get("draft") else {"mtp": False}
+    return {"draft": str(entry.get("draft") or ""), "spec_type": str(entry.get("spec_type") or ""), **mtp}
+
+
 def differences(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str]) -> list[str]:
     """Each way the server on ``entry`` differs from ``spec``, in plain words: ``mismatches``
     (from `serving_mismatch`) and then the recorded settings that were asked for and are not
-    the server's. Empty when it can serve ``spec`` as it is."""
-    out = list(mismatches)
-    entry = {**entry, **(entry.get("asked") or {})}  # a server started with another head serves the same asking
+    the server's. Empty when it can serve ``spec`` as it is, by any of its `servings`."""
+    found = [_unlike(spec, one) for one in servings(entry)]
+    return [*mismatches, *next((one for one in found if not one), found[0])]
+
+
+def _unlike(spec: ServerSpec, entry: Mapping[str, Any]) -> list[str]:
+    """Each recorded setting ``spec`` asks for that ``entry``, read one way, does not have."""
+    out: list[str] = []
     if bool(entry.get("embedding")) != bool(spec.embedding):
         out.append("embedding: the server " + ("serves embeddings" if entry.get("embedding") else "does not"))
     if bool(entry.get("reranking")) != bool(spec.reranking):

@@ -4,6 +4,8 @@ a local Hub and a Hub cache in ``tmp_path``; the server process is the canned on
 
 import json
 import stat
+import threading
+from dataclasses import replace
 from http.client import IncompleteRead
 from pathlib import Path
 
@@ -12,16 +14,20 @@ import numpy as np
 import pytest
 from test_serve_mtp import MTP_HELP, after, argv_of, cache, leased, stop  # noqa: F401 - fixtures
 
-from poolhouse import hub
+from poolhouse import harnessing, hub
 from poolhouse.hub import uploads
+from poolhouse.ownership import lease_file, recorded_servers
 from poolhouse.serve import (
     LlamaServerBackend,
     ServerManager,
+    ServerSpec,
     binary as builds,
     drafthead,
+    free_port,
     mtp,
     profile,
 )
+from poolhouse.serve.preflight import PreflightFailed
 from poolhouse.testing.canned import canned_binary
 from poolhouse.testing.fakehub import fake_hub
 
@@ -101,10 +107,10 @@ def a_server(where: Path) -> Path:
 
 
 @pytest.fixture
-def machine(shelf, tmp_path):
+def machine(shelf):
     """The manager over the managed ``current`` build, as a lease that names no build gets it."""
     real = a_server(builds.managed_current())
-    return real, ServerManager(LlamaServerBackend(), state_file=tmp_path / "leases.json")
+    return real, ServerManager(LlamaServerBackend(), state_file=lease_file())
 
 
 def a_fork() -> Path:
@@ -113,6 +119,15 @@ def a_fork() -> Path:
 
 def record(manager: ServerManager, info) -> dict:
     return json.loads(manager.state_file.read_text())[str(info.port)]
+
+
+def coding(model: Path, **asked) -> ServerSpec:
+    """A lease with the window a coding session needs of a server it takes as it stands."""
+    return ServerSpec(model=model, port=free_port(), context=harnessing.MIN_WINDOW, **asked)
+
+
+def up(manager: ServerManager, spec: ServerSpec):
+    return manager.lease(spec, timeout=60, preflight=False, warmup_request=False)
 
 
 @pytest.mark.parametrize("case", [([0, 4, 0], 1, "qwen4exp", True), ([0, 4, 4], 1, "qwen4exp", False),
@@ -258,3 +273,92 @@ def test_serving_makes_the_days_check_and_says_what_changed(shelf):
 
 def test_serving_another_publishers_file_asks_nothing(tmp_path):
     assert uploads.serving(tmp_path / "model.gguf", "", say=pytest.fail) is None
+
+
+@pytest.mark.parametrize("case", ["replaced", "forked", "undrafted"])
+def test_a_warm_server_is_taken_by_the_head_it_runs_and_by_the_head_asked(shelf, machine, monkeypatch, stop, case):  # noqa: F811
+    """A coding session asks for exactly what the server up serves (`harnessing.adopted`); the lease that started it
+    asks again for what it asked before. Both take it."""
+    there, held, new = shelf
+    _program, manager = machine
+    if case == "replaced":
+        publish(there, new)
+    else:
+        offline(monkeypatch)
+    if case == "forked":
+        a_qwen4(held[HEAD].parent / Path(SHARED).name, [0, 4, 0], ahead=1)
+        a_fork()
+    asked = coding(held[MODEL], draft=str(held[HEAD]), spec_type=mtp.KIND)
+    first = up(manager, asked)
+    stop(manager, first)
+    served = record(manager, first)["draft"]
+    assert served != str(held[HEAD]) and bool(served) is (case != "undrafted")
+    said: list[str] = []
+    config = harnessing.adopted(str(held[MODEL]), harnessing.Want(), None, said.append)
+    assert config is not None, said
+    for spec in (ServerSpec(model=held[MODEL], **config.lease()), replace(asked, port=first.port),
+                 replace(asked, port=free_port())):
+        again = up(manager, spec)
+        stop(manager, again)
+        assert (again.port, again.pid) == (first.port, first.pid)
+
+
+@pytest.mark.parametrize("case", ["served", "asked", "chosen otherwise"])
+def test_a_start_waiting_on_a_loading_server_takes_it_when_it_is_up(shelf, machine, stop, case):  # noqa: F811
+    there, held, new = shelf
+    _program, manager = machine
+    publish(there, new)
+    asked = coding(held[MODEL], draft=str(held[HEAD]), spec_type=mtp.KIND)
+    first = up(manager, asked)
+    stop(manager, first)
+    running = manager._mine[str(first.port)]
+    chosen = {"served": running["draft"], "asked": asked.draft, "chosen otherwise": "/elsewhere/mtp-thing.gguf"}[case]
+    manager._mine[str(first.port)] = {**running, "pid": None, "pending": True}
+    manager._save()
+
+    def finish() -> None:
+        manager._mine[str(first.port)] = running
+        manager._save()
+
+    later = threading.Timer(1.0, finish)
+    later.start()
+    second = ServerManager(LlamaServerBackend(), state_file=lease_file())
+    try:
+        got = second._admitted(replace(asked, port=free_port(), draft=chosen), reuse=True, load_s=30,
+                               asked=replace(asked, port=free_port()))
+    finally:
+        later.join()
+    assert got.port == first.port
+
+
+def refusing(monkeypatch, refused) -> None:
+    started = LlamaServerBackend.start
+
+    def start(self, spec, **kw):
+        if refused(spec):
+            raise PreflightFailed("preflight refused this start")
+        return started(self, spec, **kw)
+
+    monkeypatch.setattr(LlamaServerBackend, "start", start)
+
+
+def test_a_head_preflight_refuses_gives_way_to_the_next_attempt(shelf, machine, monkeypatch, stop):  # noqa: F811
+    _there, held, _new = shelf
+    program, manager = machine
+    offline(monkeypatch)
+    a_qwen4(held[HEAD].parent / Path(SHARED).name, [0, 4, 0], ahead=1)
+    a_fork()
+    refusing(monkeypatch, lambda spec: bool(spec.draft))
+    info = up(manager, coding(held[MODEL], draft=str(held[HEAD]), spec_type=mtp.KIND))
+    stop(manager, info)
+    assert "--spec-type" not in argv_of(program) and "WITHOUT DRAFTING" in info.mtp_note
+
+
+def test_a_start_preflight_refuses_every_way_leaves_no_record(shelf, machine, monkeypatch):
+    _there, held, _new = shelf
+    _program, manager = machine
+    offline(monkeypatch)
+    refusing(monkeypatch, lambda _spec: True)
+    with pytest.raises(Exception, match="preflight refused this start"):
+        up(manager, coding(held[MODEL], draft=str(held[HEAD]), spec_type=mtp.KIND))
+    assert recorded_servers(lease_file()) == {}
