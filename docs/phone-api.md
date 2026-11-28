@@ -123,6 +123,9 @@ All under `/phone/v1`. Times are Unix seconds (numbers) unless a name ends in `_
  "address": "", "last_seen": 1790000000.0}
 ```
 
+A computer row also carries, only when known: `"memory": {"used_bytes", "total_bytes"}`, `"cpu_load"` (0 to 1) and
+`"gpus": [{"name", "memory_used_bytes", "memory_total_bytes", "load"}]` (each inner field only when known).
+
 A linked phone appears with `"kind": "phone"`, `"pool_use": true|false` and `"models"` holding its offered model while it is
 offering one. A pool member that does not answer is listed with `"online": false`.
 
@@ -136,6 +139,9 @@ offering one. A pool member that does not answer is listed with `"online": false
 
 ### Jobs
 
+`state` is `queued`, `preparing`, `running`, `done`, `failed`, `stopped` or `interrupted`; `cancellable` is true for the first
+three. Rows also carry `by` (who asked), `returncode` and `elapsed_s` when they have them.
+
 | Request | Result |
 |---|---|
 | `GET /jobs` | `{"jobs": [{"id", "name", "state", "submitted_at", "started_at", "finished_at", ...}]}` (the daemon's own job rows) |
@@ -147,8 +153,19 @@ offering one. A pool member that does not answer is listed with `"online": false
 
 | Request | Result |
 |---|---|
-| `GET /scheduled` | `{"available": false, "jobs": []}` until scheduled jobs are on the computer; then `{"available": true, "jobs": [{"id", "name", "when", "next_at", "last_state", "enabled"}]}` |
+| `GET /scheduled` | `{"available": false, "jobs": []}` on a computer without scheduled jobs; else `{"available": true, "jobs": [Row]}`, the computer's own scheduled-job rows (always an `id`; show the other fields it has) |
+| `GET /scheduled/{id}` | `{"job": Row, "log": "text"}` |
 | `POST /scheduled/{id}/cancel` `{}` | `{"cancelled": true}`; `501` while unavailable |
+
+### Projects and starting work
+
+| Request | Result |
+|---|---|
+| `GET /projects` | `{"projects": [{"id", "name", "path", "connected": true}]}`: the project folders this computer knows |
+| `POST /delegates` `{"project": "<id from /projects>", "task": "text", "edit": false, "model": ""}` | `201` `{"name": "<delegate>", "said": "..."}`: starts a local delegate on that project; it appears in `/delegates` and `/sessions`. `task` is 1 to 8000 characters; `model` is optional |
+
+Anything else is started by telling a session (a Claude session in the project, say). Test runs have no endpoint of their
+own in api 1: they show as `progress` in the session that runs them.
 
 ### Delegates (local agents)
 
@@ -249,7 +266,8 @@ minutes (reconnect and sign again) and at once when the phone is removed. At mos
 ## 5. Using the phone in the pool (off by default)
 
 One switch for each phone, **off** when linked, stored on the computer, changeable from the phone and from the computer's
-Phones screen. While it is off the computer sends the phone no request, shows no model for it and refuses its model calls.
+Phones screen. It covers everything the pool may ask of a phone: its model (this section) now, and running code and tests when
+the phone becomes a full pool node (designed separately; linking and directing stay as they are). While it is off the computer sends the phone no request, shows no model for it and refuses its model calls.
 Directing, sessions and chat do not depend on it.
 
 | Request | Result |
@@ -264,40 +282,48 @@ chat messages and takes text back.
 `POST /model/next`:
 
 ```json
-{"model": {"id": "gemma-3n-e4b", "name": "Gemma 3n", "runtime": "litert-lm", "context": 4096, "max_output": 1024, "tools": false},
- "wait_s": 25}
+{"model": {"id": "gemma-3n-e4b", "name": "Gemma 3n", "runtime": "litert-lm", "context": 32768, "max_output": 4096},
+ "blocked": "", "wait_s": 25}
 ```
 
-`runtime` is `litert-lm` or `llama.cpp`; `context` 256 to 1048576; `max_output` 1 to 8192; `wait_s` 0 to 25; `id` and `name`
-1 to 80 printable characters. Result `{"request": null, "enabled": true}` when there is nothing, `enabled: false` (answered at
+`runtime` is `litert-lm` or `llama.cpp`; `context` 256 to 1048576, the window the app really serves; `max_output` 1 to 8192;
+`wait_s` 0 to 25; `id` and `name` 1 to 80 printable characters. A non-empty `blocked` (at most 120 characters, such as
+"too hot" or "on battery") says the phone cannot take work now: the computer shows it on the Phones screen and sends nothing. Result `{"request": null, "enabled": true}` when there is nothing, `enabled: false` (answered at
 once) when pool use is off: stop polling. Otherwise:
 
 ```json
 {"request": {"id": "r-0123456789abcdef", "model": "gemma-3n-e4b",
              "messages": [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}],
-             "max_tokens": 512, "temperature": 0.7, "tools": [], "deadline": 1790000600.0},
+             "max_tokens": 512, "temperature": 0.7, "deadline": 1790000600.0},
  "enabled": true}
 ```
 
-`content` is a string (text only in api 1). `tools` (OpenAI function tools) is non-empty only for a model that declared
-`tools: true`.
+`role` is `system`, `user` or `assistant`; `content` is a string. **Api 1 is text only: no tools, tool calls or images.** The
+computer refuses a pool request that carries tools and ignores tool calls a phone sends.
 
 `POST /model/requests/{id}` sends the answer in order, many times:
 
 ```json
 {"seq": 0, "delta": "Hello", "done": false}
-{"seq": 1, "delta": "", "done": true, "finish_reason": "stop", "usage": {"prompt_tokens": 12, "completion_tokens": 3},
- "tool_calls": []}
+{"seq": 1, "delta": "", "done": true, "finish_reason": "stop", "usage": {"prompt_tokens": 12, "completion_tokens": 3}}
 {"seq": 2, "error": "out of memory"}
 ```
 
-`seq` starts at 0 and rises by one. `finish_reason` is `stop`, `length` or `tool_calls`. `tool_calls` (in the last post only)
-are OpenAI-shaped: `{"id", "type": "function", "function": {"name", "arguments": "<json text>"}}`. The result is
-`{"continue": true}`; `continue: false` means stop generating (the asker left, or pool use was turned off). Send a delta at
+`seq` starts at 0 and rises by one. `finish_reason` is `stop` or `length`. The result is `{"continue": true}`; `continue: false` means stop generating (the asker left, or pool use was turned off). Send a delta at
 least every 60 seconds (batch tokens: no more than about 10 posts a second).
 
-Limits: 2 requests waiting or running for each phone, 30 requests a minute, 256 KiB and 128 messages a request, 16 KiB a
+Limits: 2 requests waiting or running for each phone, 30 requests a minute, 1 MiB and 256 messages a request, 16 KiB a
 delta, 1 MiB an answer, 90 seconds to the first post, 90 seconds between posts, 10 minutes in all.
+
+**What a pool request holds is private.** It can carry code and files an agent read. The app **must** keep a request and its
+answer in memory only: never written to storage, a log, a crash report, a notification, the clipboard or a backup, and
+dropped as soon as the last post is accepted, the computer says `continue: false`, or the switch goes off. The computer keeps
+them in memory only too and never logs them.
+
+**What a phone returns is untrusted model output.** The computer passes it to the asker as text from a model and runs nothing
+of it. No delegate uses a phone model in api 1, so nothing a phone returns can act; a later delegate path may run a phone's
+tool calls only inside that delegate's sandbox, and never for a delegate without one. A coding delegate needs a window of at
+least 65536 tokens: a phone model below that is for questions and short work.
 
 **The pool's side** (not for the app): `POST /infer/v1/chat/completions?poolhouse_model=phone:<phone id>` on the daemon, with
 the daemon's own member authentication, takes an OpenAI chat request and answers it (streamed as `data:` chunks when
