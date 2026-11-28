@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import functools
 import os
-from typing import Any
+from typing import Any, ClassVar
 
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 EVENT_MODIFY_STATE = 0x0002
@@ -21,6 +21,11 @@ STILL_ACTIVE = 259
 ERROR_ACCESS_DENIED = 5
 ERROR_PIPE_BUSY = 231
 WAIT_OBJECT_0 = 0
+PROCESS_TERMINATE = 0x0001
+PROCESS_SET_QUOTA = 0x0100
+JOB_EXTENDED_LIMITS = 9
+JOB_LIMIT_JOB_MEMORY = 0x200
+JOB_LIMIT_KILL_ON_CLOSE = 0x2000
 
 
 @functools.cache
@@ -39,7 +44,69 @@ def _k32() -> Any:
     k.CreateFileW.restype = wintypes.HANDLE
     k.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
     k.GetNamedPipeServerProcessId.restype, k.GetNamedPipeServerProcessId.argtypes = wintypes.BOOL, [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    k.CreateJobObjectW.restype, k.CreateJobObjectW.argtypes = wintypes.HANDLE, [ctypes.c_void_p, wintypes.LPCWSTR]
+    k.SetInformationJobObject.restype, k.SetInformationJobObject.argtypes = wintypes.BOOL, [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+    k.AssignProcessToJobObject.restype, k.AssignProcessToJobObject.argtypes = wintypes.BOOL, [wintypes.HANDLE, wintypes.HANDLE]
     return k
+
+
+_JOBS: dict[int, Any] = {}
+"""The job handle of each process held in one, by process id, kept open while this process runs: closing the last handle is
+what ends the processes of a job made to end with its owner."""
+
+
+def _limits(memory_bytes: int, ends_with_us: bool) -> Any:
+    """``JOBOBJECT_EXTENDED_LIMIT_INFORMATION`` bounding the job's memory."""
+    import ctypes
+    from ctypes import wintypes
+
+    class Basic(ctypes.Structure):
+        _fields_: ClassVar = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                    ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t), ("MaximumWorkingSetSize", ctypes.c_size_t),
+                    ("ActiveProcessLimit", wintypes.DWORD), ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class Extended(ctypes.Structure):
+        _fields_: ClassVar = [("BasicLimitInformation", Basic), ("IoInfo", ctypes.c_uint64 * 6), ("ProcessMemoryLimit", ctypes.c_size_t),
+                    ("JobMemoryLimit", ctypes.c_size_t), ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    found = Extended()
+    found.BasicLimitInformation.LimitFlags = JOB_LIMIT_JOB_MEMORY | (JOB_LIMIT_KILL_ON_CLOSE if ends_with_us else 0)
+    found.JobMemoryLimit = memory_bytes
+    return found
+
+
+def hold_in_job(pid: int, *, memory_bytes: int, ends_with_us: bool) -> None:
+    """Put the process ``pid``, and every process it starts from now on, in a new job object that bounds the memory they may
+    commit; with ``ends_with_us`` they end when this process does. Raises `OSError` when Windows will not."""
+    import ctypes
+
+    k = _k32()
+    job = k.CreateJobObjectW(None, None)
+    if not job:
+        raise OSError(_last_error(), "cannot create a job object")
+    limits = _limits(memory_bytes, ends_with_us)
+    process = None
+    held = False
+    try:
+        if not k.SetInformationJobObject(job, JOB_EXTENDED_LIMITS, ctypes.byref(limits), ctypes.sizeof(limits)):
+            raise OSError(_last_error(), "cannot bound the job object")
+        process = k.OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, False, pid)
+        if not process or not k.AssignProcessToJobObject(job, process):
+            raise OSError(_last_error(), f"cannot put process {pid} in the job object")
+        held = True
+    finally:
+        if process:
+            k.CloseHandle(process)
+        if not held:
+            k.CloseHandle(job)
+    _JOBS[pid] = job
+
+
+def close_job(pid: int) -> None:
+    """Close the job holding ``pid``: the processes of a job made to end with its owner end now."""
+    if (job := _JOBS.pop(pid, None)) is not None:
+        _k32().CloseHandle(job)
 
 
 def _last_error() -> int:

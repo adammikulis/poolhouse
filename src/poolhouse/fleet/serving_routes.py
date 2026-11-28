@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from poolhouse.serve import confined
+
 from .session import parse_cookie
 
 
@@ -14,7 +16,7 @@ def route(handler, can_serve):
         return True
     if handler.method == "GET":
         handler.send(200, {"running": [x.public() for x in ui.serving.live(force=True)],
-                        "can_serve": can_serve()})
+                        "can_serve": can_serve(), "sandbox": confined.gap()})
         return True
     if handler.method == "POST":
         return _start(handler, can_serve)

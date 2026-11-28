@@ -12,7 +12,7 @@ from pathlib import Path
 from poolhouse.command import flag, option
 from poolhouse.hub import pretty_name
 from poolhouse.log import say
-from poolhouse.serve import holding, lease_cli, ops, provenance
+from poolhouse.serve import confined, holding, lease_cli, ops, provenance
 from poolhouse.serve.backend import ServerSpec, logs_of, parse_context
 from poolhouse.serve.broker import BrokerError
 from poolhouse.serve.ops import base_url_for
@@ -168,12 +168,15 @@ def cmd_status(args: argparse.Namespace) -> int:
             {"serving": bool(found.servers) or bool(found.foreign),
              "leases": [asdict(h) for h in held],
              "ports_checked": list(found.ports),
+             "sandbox": confined.gap(),
              "servers": [asdict(s) for s in found.servers],
              "foreign": list(found.foreign)},
             indent=2))
         return 0 if (found.servers or found.foreign) else 1
 
     _say_leases(held)
+    if unconfined := confined.gap():
+        say(f"sandbox: {unconfined}")
     if not found.servers and not found.foreign:
         say("nothing is serving on port " + ", ".join(str(p) for p in found.ports) + ".")
         say(f"  'poolhouse-serve up <model>' would start one on port {args.port}.")

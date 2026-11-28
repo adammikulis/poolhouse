@@ -20,7 +20,7 @@ from typing import Any
 from poolhouse import errors, home, serverkeys
 from poolhouse.client import families, wait_for_health
 from poolhouse.ownership import listens_on, recorded_servers
-from poolhouse.platform import end_child, process_group_kwargs
+from poolhouse.platform import end_child, start_server
 from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, startup
 from poolhouse.serve.binary import child_env, require_binary, vetted
 from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
@@ -491,8 +491,8 @@ def launch(  # noqa: PLR0913 - the independent facts of one spawn; a bundle type
     if binary is not None and (now := vetted(binary, policy)) != binary:
         raise ServerFailed(f"{binary} changed while the server was starting and {now} replaces it; nothing was started")
     with log_path.open("wb") as log_handle:
-        process = subprocess.Popen(argv, stdout=log_handle, stderr=subprocess.STDOUT, env=policy.scrub_env(clean_env(env)),
-                                   cwd=cwd, **process_group_kwargs())
+        process = start_server(argv, ends_with_us=lease.stop_on_exit, stdout=log_handle, stderr=subprocess.STDOUT,
+                               env=policy.scrub_env(clean_env(env)), cwd=cwd)
     if lease.stop_on_exit:
         exit_guard.protect(process.pid)
     base_url = f"http://{DEFAULT_HOST}:{lease.port}"

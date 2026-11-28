@@ -48,7 +48,7 @@ class Running:
 
     def post(self, path, body=None, token=None, stream=False):
         req = build_request(
-            f"http://127.0.0.1:{self.port}{path}", data=json.dumps(body or {}).encode(),
+            f"http://127.0.0.1:{self.port}{path}", data=body if isinstance(body, bytes) else json.dumps(body or {}).encode(),
             method="POST", headers={"Content-Type": "application/json"},
             token="" if token is False else (token or self.token))
         return urllib.request.urlopen(req, timeout=30)
@@ -266,6 +266,25 @@ class TestProxy:
             daemon.post("/infer/v1/chat/completions", {"messages": []})
         assert exc.value.code == 503
         assert serving.live(force=True) == []
+
+    @pytest.mark.parametrize("body", [
+        {"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "http://192.168.0.1/x.png"}}]}]},
+        {"messages": [{"role": "user", "content": [{"type": "image_url", "image_url": "file:///C:/Users/me/secret.png"}]}]},
+        {"messages": [{"role": "user", "content": [{"type": "input_audio", "input_audio": {"url": "https://host.invalid/a.wav"}}]}]},
+        {"messages": [{"role": "user", "content": [{"type": "input_video", "input_video": {"url": "C:\\\\secret.mp4"}}]}]},
+        {"messages": [], "response_format": {"type": "json_schema", "json_schema": {"schema": {"$ref": "https://host.invalid/s"}}}},
+    ])
+    def test_nothing_another_machine_names_by_path_or_address_reaches_the_model_server(self, wired, body):
+        daemon, _, _ = wired
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            daemon.post("/infer/v1/chat/completions", body)
+        assert exc.value.code == 400 and "data: URL" in json.loads(exc.value.read())["error"]
+
+    def test_a_body_that_is_not_one_json_value_is_not_forwarded(self, wired):
+        daemon, _, _ = wired
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            daemon.post("/infer/v1/chat/completions", b'{"messages": [], "messages": [1]}')
+        assert exc.value.code == 400
 
     def test_a_plain_completion_comes_back(self, wired):
         daemon, _, _ = wired

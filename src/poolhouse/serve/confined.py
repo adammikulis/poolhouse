@@ -18,7 +18,7 @@ from poolhouse.sandbox import policies
 from poolhouse.sandbox.policy import Net
 from poolhouse.serve.socket_relay import arguments
 
-__all__ = ["ENV", "Confined", "confine", "wanted"]
+__all__ = ["ENV", "Confined", "confine", "gap", "wanted"]
 
 ENV = "POOLHOUSE_SANDBOX_SERVE"
 KEEP = ("DYLD_LIBRARY_PATH", "LD_LIBRARY_PATH", "LLAMA_SERVER_SLOTS_DEBUG", "GGML_METAL_PATH_RESOURCES")
@@ -51,6 +51,14 @@ class Confined:
             return "what the sandbox refused could not be read"
         seen = dict.fromkeys(f"  {d['operation']} {d['target']}" for d in found)
         return "\n".join(["the sandbox refused:", *seen]) if seen else ""
+
+
+def gap() -> str:
+    """What a person is told where a model server cannot be confined here; empty where it can."""
+    if sys.platform != "win32":
+        return ""
+    return ("Model servers are not sandboxed on Windows: one can read this account's files and use the network. It listens on "
+            "this computer only and answers no request without its key.")
 
 
 def wanted(explicit: bool | None, environ: Mapping[str, str] | None = None) -> bool:

@@ -1,8 +1,8 @@
 {
  "surfaces": 889,
  "by_status": {
-  "covered": 561,
-  "partial": 189,
+  "covered": 560,
+  "partial": 190,
   "uncovered": 51,
   "n/a": 88,
   "unmapped": 0
@@ -87,7 +87,7 @@
   },
   "route": {
    "covered": 124,
-   "partial": 46,
+   "partial": 47,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 0
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 98,
+   "covered": 97,
    "partial": 69,
    "uncovered": 0,
    "n/a": 3,
@@ -7681,6 +7681,21 @@
    "note": "The installed read-only History extension runs after custom UI-header and signed-in-session authorization; native socket tests reject unauthenticated reads before exposing encrypted activity metadata"
   },
   {
+   "id": "route:fleet/api.py:/audio/",
+   "kind": "route",
+   "source": "fleet/api.py:make_handler.Handler._sent_as_bytes",
+   "trust": "member the node authorizes; /health open to anyone",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_fleet.py::test_no_protected_route_answers_without_the_right_token",
+    "tests/test_redteam_fleet.py::test_no_path_reaches_a_file_outside_the_files_directory",
+    "tests/test_fleet_framing.py",
+    "tests/test_fleet_commands.py"
+   ],
+   "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
+  },
+  {
    "id": "route:fleet/api.py:/availability",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._read_jobs",
@@ -12144,19 +12159,6 @@
     "tests/test_redteam_startup_arguments.py"
    ],
    "note": "a hostile binary path stays one literal argument and the information flags are fixed, without a shell"
-  },
-  {
-   "id": "spawn:serve/backend.py:launch",
-   "kind": "spawn",
-   "source": "serve/backend.py:launch",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_spawn.py::test_a_hostile_argument_is_one_argv_item_and_never_reaches_a_shell",
-    "tests/test_redteam_mcp.py::test_a_hostile_model_name_is_one_argument_never_a_shell_line"
-   ],
-   "note": ""
   },
   {
    "id": "spawn:serve/binary_trust.py:signed",

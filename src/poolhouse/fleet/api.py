@@ -26,7 +26,9 @@ from poolhouse import gate, sealing, sentinel, serverkeys
 from poolhouse.files import promote
 from poolhouse.graph.guard import MAX_BODY
 from poolhouse.http import _open
+from poolhouse.json_objects import unique_object
 from poolhouse.macauth import Verdict
+from poolhouse.media import parts
 from poolhouse.sentinel.adapters import watch_authenticator
 from poolhouse.speech import service as speech
 from poolhouse.speech.protocols import ProviderError
@@ -257,7 +259,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if not self._guard(body):
                 return True
             body = self._unsealed(body)
-            if body is None:
+            if body is None or not self._sent_as_bytes(body):
                 return True
             rest = self.path[len("/infer"):] or "/"
             rest = "/" + rest if rest.startswith("?") else rest
@@ -292,6 +294,22 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             except gate.QueueTimeout as exc:
                 self._send(429, {"error": str(exc)})
                 return True
+
+        def _sent_as_bytes(self, body: bytes) -> bool:
+            """Whether another machine's request names nothing the model server would read itself, once a refusal has been sent
+            when it does: the server may be unconfined (docs/windows-runtime.md), so a path or an address never reaches it. An
+            upload of an audio route is the bytes themselves; every other body is one JSON value."""
+            upload = "/audio/" in self.path and self.headers.get("Content-Type", "").startswith("multipart/form-data")
+            if not body or upload:
+                return True
+            try:
+                if not parts.names_elsewhere(json.loads(body, object_pairs_hook=unique_object)):
+                    return True
+                why = parts.REMOTE
+            except (ValueError, RecursionError):
+                why = "the body is not one JSON value with each field once, nested no deeper than is read"
+            self._send(400, {"error": why})
+            return False
 
         def _forward(self, upstream: urllib.request.Request) -> bool:
             """Relay ``upstream`` to the caller as it is generated."""

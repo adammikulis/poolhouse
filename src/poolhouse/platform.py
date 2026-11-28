@@ -15,6 +15,8 @@ from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
+from poolhouse import win32
+
 __all__ = [
     "detached_kwargs",
     "end_child",
@@ -31,6 +33,7 @@ __all__ = [
     "quitting",
     "reap_in_background",
     "start_process",
+    "start_server",
     "stop_gently",
     "stop_pid",
     "terminate_process_group",
@@ -75,6 +78,24 @@ def launch(argv: Sequence[str], *, stdin: int | None = None) -> subprocess.Popen
 def start_process(argv, **kwargs):
     """Start a child in its own platform process group."""
     return subprocess.Popen(argv, **process_group_kwargs(), **kwargs)
+
+
+def start_server(argv, *, ends_with_us: bool, **kwargs):
+    """Start a model server in a process group of its own. On Windows it and what it starts are held in a job object that
+    bounds the memory they may commit to this computer's physical memory and, with ``ends_with_us``, ends them when this
+    process ends; a server that cannot be held so is ended and the start fails (`OSError`)."""
+    process = start_process(argv, **kwargs)
+    if is_windows():
+        import psutil
+
+        held = False
+        try:
+            win32.hold_in_job(process.pid, memory_bytes=psutil.virtual_memory().total, ends_with_us=ends_with_us)
+            held = True
+        finally:
+            if not held:
+                end_child(process)
+    return process
 
 
 def start_grouped(argv, **kwargs):

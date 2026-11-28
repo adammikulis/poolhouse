@@ -37,6 +37,7 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
     <div class="models-utilities"><a href="#fit">Explore capacity &amp; performance →</a><a href="#settings">Manage model runtimes in Settings →</a></div>
     <div class="models-auxiliary" role="region" aria-label="Model downloads and device controls" tabindex="0">
     <div id="models-note" role="status"></div>
+    <p id="models-sandbox" class="hint" hidden></p>
     <section id="models-getting" hidden><h2>Downloads</h2><div id="download-rows"></div></section>
     <section id="models-unfinished" hidden></section>
     <details data-advanced id="models-room"><summary>Device memory controls</summary><wired-memory></wired-memory></details>
@@ -92,6 +93,9 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
         this.querySelector('#models-count').textContent = m.ok ? String((m.library || []).length) : "Unavailable";
         this.querySelector('#models-running').textContent = run.ok
           ? String(new Set((run.running || []).flatMap(server => (server.models || []).map((model, index) => server.aliases?.[index] || model))).size) : "Unavailable";
+        const sandbox = this.querySelector('#models-sandbox');
+        sandbox.textContent = run.sandbox || '';
+        sandbox.hidden = !run.sandbox;
         this.browser.setInventory(m, run);
         this.querySelector("models-library").update(m.library || [], run,
           (path, name, options) => this.serve(path, name, options), (port) => this.halt(port),

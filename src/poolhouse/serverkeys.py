@@ -19,6 +19,7 @@ from poolhouse import home
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import only_one, pid_alive
 from poolhouse.ownership import START_TOLERANCE_S, listens_on, recorded_servers, same_process
+from poolhouse.platform import private_dir
 
 __all__ = ["LOOPBACK", "bind", "bound", "for_url", "forget", "held", "issue", "key_file", "unproved", "unproxied", "write_key_file"]
 
@@ -84,7 +85,8 @@ def _write(port: int, key: str) -> Path:
     """A new private file of ``port`` holding ``key``, in place of any it had."""
     folder = home.state("server-keys.d")
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    folder.chmod(0o700)
+    if not private_dir(folder):   # on Windows a mode means nothing: this is the owner-only ACL, before any key is in it
+        raise OSError(f"{folder} cannot be restricted to this account, so no key is written into it")
     for old in _files(port):
         old.unlink(missing_ok=True)
     path = folder / f"{int(port)}-{secrets.token_hex(16)}.key"

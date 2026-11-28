@@ -30,6 +30,7 @@ from poolhouse.isolation import wire
 from poolhouse.isolation.gate import check_on
 from poolhouse.isolation.serving import IDLE_SECONDS, Server, tell
 from poolhouse.json_objects import unique_object
+from poolhouse.media import parts
 
 __all__ = ["FORWARDED", "ROUTES", "Lease", "ModelBridge", "pin"]
 
@@ -50,10 +51,6 @@ FIELDS: dict[str, tuple[str, ...]] = {
 """The only top-level fields of a request that reach the server, by route: what the three message routes of the harnesses take. Every other field
 is dropped, a slot (`id_slot`, `slot_id`), an adapter (`lora`) and the server's own cache switch (`cache_prompt`) among them, and none is added by
 being unknown to a list kept here (the list is the allow-list, never a deny-list)."""
-MEDIA = frozenset({"image_url", "image", "input_image", "input_audio", "audio", "audio_url", "file", "input_file", "video_url", "document"})
-"""The content parts that carry a picture, a sound, a video or a file: each is read for a place the server could fetch from."""
-LOCATIONS = ("image_url", "audio_url", "video_url", "file_url", "url")
-DEPTH = 24
 LEFT = 499
 """The status counted for a request whose client went away before it was answered; nothing is written to it."""
 ANSWERED = ("content-type", "content-length", "cache-control")
@@ -67,38 +64,12 @@ MESSAGES = {
     "type": "The body must be sent as application/json.",
     "auth": "The token is not this session's.",
     "route": "No such route.",
-    "remote": "A picture, a sound or a file must be sent as its own bytes (a data: URL), never as an address.",
+    "remote": parts.REMOTE,
     "down": "The model server did not answer.",
     "length": "A request with a body states its length.",
     "empty": "This route takes no body.",
     "fault": "The bridge could not read this request; it is not forwarded.",
 }
-
-
-def _media(value: object, depth: int = 0) -> list[dict]:
-    """Every content part under ``value`` that carries a picture, a sound, a video or a file (`MEDIA`), at any depth a message nests them."""
-    if depth > DEPTH:
-        raise wire.Refusal(400, MESSAGES["json"])
-    found: list[dict] = []
-    if isinstance(value, dict):
-        kind = value.get("type")
-        if isinstance(kind, str) and kind in MEDIA:   # a tool's schema has a property named `type` whose value is a dict, a list unhashable here
-            found.append(value)
-        found += [part for each in value.values() if isinstance(each, (dict, list)) for part in _media(each, depth + 1)]
-    elif isinstance(value, list):
-        found += [part for each in value for part in _media(each, depth + 1)]
-    return found
-
-
-def _remote(part: dict) -> bool:
-    """Whether a media part names a place the server could fetch from (a URL that is not `data:`, a file the server holds) and not bytes it was sent."""
-    for key in LOCATIONS:
-        held = part.get(key)
-        named = held.get("url") if isinstance(held, dict) else held
-        if isinstance(named, str) and not named.startswith("data:"):
-            return True
-    source = part.get("source")
-    return "file_id" in part or (isinstance(source, dict) and (source.get("type") in ("url", "file") or "url" in source or "file_id" in source))
 
 
 def pin(body: bytes, alias: str, route: str) -> bytes:
@@ -120,7 +91,11 @@ def pin(body: bytes, alias: str, route: str) -> bytes:
         raise wire.Refusal(400, MESSAGES["pinned"])
     found = {name: value for name, value in found.items() if name in FIELDS[route]}
     found["model"] = alias
-    if any(_remote(part) for part in _media(found)):
+    try:
+        elsewhere = parts.names_elsewhere(found)
+    except parts.TooDeep:
+        raise wire.Refusal(400, MESSAGES["json"]) from None
+    if elsewhere:
         raise wire.Refusal(400, MESSAGES["remote"])
     try:
         return json.dumps(found, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
