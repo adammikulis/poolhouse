@@ -823,7 +823,7 @@ def test_a_delegate_commits_in_its_box_and_its_work_is_on_its_branch_however_the
     assert {"src/after.py", "src/feature.py"} <= set(held), (held, row)
     message = said_by("log", "-1", "--format=%B%n%an", sha)
     assert name in message and ("UNFINISHED" in message) == (state != "done"), message
-    assert ("PLUMBING commit made in the box" in message) == (then != "tampers"), "a session that spoilt its .git still has its files kept"
+    assert "PLUMBING commit made in the box" not in message, "the launcher reads nothing of the copy's .git, whose commits stay there"
     if then in ("done", "errors", "tampers"):
         assert f"committed 0 {name}" in row["text"], "git commit works in the box, under the delegate's own name"
     assert row["patches"] == [] and not Path(store.load(name).workdir).exists(), row

@@ -91,8 +91,6 @@ class Answer:
     """For a delegate in the confinement, why the preflight could not start the project's tests there; empty when it could, or had none."""
     refused_writes: tuple[Any, ...] = ()
     """For a delegate that edits, the writes it was refused (`delegate_refusals.Refused`)."""
-    commits: tuple[str, ...] = ()
-    """For a delegate with a branch of its own, the messages of the commits it made in its box, in its own words."""
     wrote: bool = False
     """For a delegate with no sandbox, whether any writing call went through."""
     review: Any = None

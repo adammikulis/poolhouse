@@ -113,7 +113,9 @@ def _tell(bridge: lead_bridge.Bridge, state: str, row: dict[str, Any]) -> None:
 
 
 def _end(*_ignored: object) -> None:
+    """The stop signal: the first ends the run, and no later one cuts short what the run then keeps (`delegate_confined.unstopped`)."""
     lead_bridge.STOPPED.set()
+    delegate_confined.unstopped()
     raise SystemExit(143)
 
 
@@ -123,7 +125,16 @@ def run(name: str) -> int:
     if rec is None:
         say(f"no delegate {name}")
         return 2
-    signal.signal(signal.SIGTERM, _end)
+    before = signal.signal(signal.SIGTERM, _end)
+    try:
+        return _ran(rec)
+    finally:
+        signal.signal(signal.SIGTERM, before)
+
+
+def _ran(rec: store.Delegate) -> int:
+    """The run of ``rec``: its work, then what it made committed and its result written, which no stop cuts short."""
+    name = rec.name
     node = Client(node_launch.default_state())
     lead = Session(node, rec.board, credentials.load(node.state, rec.board, rec.lead), rec.lead)
     mine = HarnessSession(name, board=rec.board, minted=True, base=limits.root(), parent=lead, state=node.state, native=Native(*rec.native))
@@ -144,6 +155,7 @@ def run(name: str) -> int:
         why = f"{type(error).__name__}: {error}"
         say(why)
     finally:
+        delegate_confined.unstopped()
         teller.close()
     found, refused = (answer.published, answer.refused_writes) if answer else (None, ())
     detail = changes(state, found, refused, answer.review if answer else None)
@@ -152,7 +164,7 @@ def run(name: str) -> int:
     row = safetext.utf8({**_outcome(answer, why, began), "detail": detail})   # the model's text reaches the board
     row["phases"] = store.graded(name)["run"].get("phases", [])
     if rec.branch:   # commit the work to its branch, however the run ended, and remove the worktree
-        state, said, row["tree"] = delegate_tree.settled(rec, state, found.applied if found else None, answer.commits if answer else ())
+        state, said, row["tree"] = delegate_tree.settled(rec, state, found.applied if found else None)
         row["detail"] = "; ".join(each for each in (said, row["detail"]) if each)
     store.save_result(name, {**row, "state": state})
     delegate_grade.ended(name, state, row)

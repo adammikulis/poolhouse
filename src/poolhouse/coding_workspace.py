@@ -255,9 +255,10 @@ class Workspace:
     def pin(self, stage: Stage) -> None:
         """Keep the index of ``stage`` as it is now, outside every folder a session writes, and read the stage by that copy from here on
         (`observe`): the index of a session that commits changes, and then decides nothing of what is captured."""
-        held = self.directory / f"index-{uuid.uuid4().hex}"
-        shutil.copyfile(stage.physical / ".git" / "index", held)
-        held.chmod(0o600)
+        held, index = self.directory / f"index-{uuid.uuid4().hex}", stage.physical / ".git" / "index"
+        if os.path.lexists(index):   # git writes none for a project with no file to add; the copy that is not there lists none either
+            shutil.copyfile(index, held)
+            held.chmod(0o600)
         self.pinned = held
 
     def adopt(self, kept: Path) -> Stage:

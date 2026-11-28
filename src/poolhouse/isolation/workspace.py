@@ -173,8 +173,8 @@ class Session:
         self.unread: list[tuple[str, str]] = []
         self.links = environment_links(self.root, stage.physical, self.unread)
         self.closed = False
-        self.start = ""
-        """The commit the project was at when the session began."""
+        self.fixed: tuple[Capture, tuple[bytes, ...]] | None = None
+        """The capture every publication applies in place of the stage as it is then (`fix`)."""
 
     @classmethod
     def begin(cls, launch: Launch) -> Session:
@@ -191,7 +191,6 @@ class Session:
         if launch.committer:
             workspace.pin(stage)
         session = cls(launch, workspace, stage, base)
-        session.start = history.head(root)
         session.reports.seen.update(reported)
         return session
 
@@ -275,9 +274,23 @@ class Session:
         with self.workspace.lock:
             return self._turn()
 
+    def captured(self) -> tuple[Capture, tuple[bytes, ...]]:
+        """What the session holds, and the control and credential names never carried: the capture it was fixed at (`fix`), else the stage as it
+        is now. The caller holds the workspace's lock."""
+        return self.fixed or self.workspace.observe(self.stage, self.base)
+
+    def fix(self) -> None:
+        """Capture the stage, unless a capture is held already, and have every publication apply that capture whatever the stage holds by then."""
+        with self.workspace.lock:
+            self.fixed = self.captured()
+
+    def unfix(self) -> None:
+        """Publish the stage as it is at the publication again."""
+        self.fixed = None
+
     def _turn(self) -> Turn:
         try:
-            captured, made = self.workspace.observe(self.stage, self.base)
+            captured, made = self.captured()
         except (RuntimeError, TimeoutError):
             return Turn(deferred=DEFERRED, text=DEFERRED)
         changes = tuple(each for each in between(self.base, captured) if self.decided.get(each.path) != (each.after, each.after_mode))
@@ -326,8 +339,9 @@ class Session:
         """End every process of the session, then publish the last turn: the final capture is taken only after the tree is gone (4.2 item 3).
 
         ``tree`` is the follower's record of the confinement (macOS); ``ended`` is what a backend that ends the session by its own namespace or job
-        reports (Linux, Windows), in place of the walk. A survivor, or a tree that was not complete, skips the publication and keeps the stage, and
-        the launching session is told in the parent's words. ``stalled`` is the seconds without progress that end the barrier: the caller measures it."""
+        reports (Linux, Windows), in place of the walk. A survivor, or a tree that was not complete, skips the publication, and the launching session
+        is told in the parent's words. A last publication that did not run keeps the stage for a re-launch of the conversation; a session no
+        re-launch takes up keeps its work as `_saved` says. ``stalled`` is the seconds without progress that end the barrier: the caller measures it."""
         result = ended or (process_tree.end(tree, stalled=stalled) if tree is not None else process_tree.Ended(unseen=True))
         if tree is not None:
             process_tree.release(tree)
@@ -338,33 +352,58 @@ class Session:
             turn = Turn(text=text, report=self.reports.send([Refusal("(processes)", "survivor")], text), deferred=SURVIVOR)
             self.launch.log("isolation.publication", subject=self.launch.session, outcome="skipped",
                             meta={"survivors": len(result.survivors), "unseen": result.unseen})
-        self._settle(keep=bool(self.decided) or bool(turn.deferred))
+        stays = False
+        if turn.deferred and not self.launch.conversation:
+            turn, stays = self._saved(turn)
+        self._settle(keep=bool(self.decided) or bool(turn.deferred), stays=stays)
         return turn
+
+    def _saved(self, turn: Turn) -> tuple[Turn, bool]:
+        """``turn``, a last publication that did not run, with the work it left: kept as a patch, and where the stage cannot be read for one, the
+        stage itself, named in the words and never removed (the second value)."""
+        try:
+            with self.workspace.lock:
+                kept = self._withhold("")
+        except (OSError, ValueError):
+            kept = Turn(deferred=UNREAD)
+        if kept.deferred:
+            return self._left(turn), True
+        words_kept = kept.text.removeprefix(HEAD).strip()
+        return replace(turn, patch=kept.patch, withheld=kept.withheld, text=" ".join(each for each in (turn.text, words_kept) if each)), False
+
+    def _left(self, turn: Turn) -> Turn:
+        """``turn`` saying where the stage that stays is."""
+        where = f"The session's working copy is left at {self.stage.physical}."
+        return replace(turn, text=f"{turn.text} {where}".strip(), deferred=f"{turn.deferred} {where}".strip())
 
     def discard(self, tree: process_tree.Tree | None, *, stalled: float, keep_patch: bool = False, ended_by: str = "") -> Turn:
         """End every process of the session and drop the stage without publishing it: what the session of a stopped or failed launch had made and
         not yet published is not applied, and nothing of it is kept for a re-launch. The patches already kept for the session stay, with their
-        reports. With ``keep_patch`` (a failed launch) the unpublished changes are first written as one more patch, which the turn names.
+        reports. With ``keep_patch`` (a failed launch) the unpublished changes are first written as one more patch, which the turn names; a stage
+        that cannot be read for it, or a patch that cannot be written, leaves the stage where it is, named in the turn's words.
         ``ended_by`` is the launcher's own reason for ending the session (a resource bound): it is in the turn's words and reported at once."""
         if tree is not None:
             process_tree.end(tree, stalled=stalled)
             process_tree.release(tree)
-        turn = Turn()
+        turn, stays = Turn(), keep_patch
         try:
             if keep_patch:
                 with self.workspace.lock:
                     turn = self._withhold()
+                stays = bool(turn.deferred)
+                if stays:
+                    turn = self._left(turn)
             if ended_by:
                 text = f"{HEAD} {ended_by} {turn.text.removeprefix(HEAD).strip() or 'Nothing more was published.'}"
                 turn = replace(turn, text=text, report=self.reports.send([Refusal(ended_by, "limit")], text))
         finally:
-            self._settle(keep=False)
+            self._settle(keep=False, stays=stays)
         return turn
 
-    def _withhold(self) -> Turn:
-        """The changes no publication has decided, kept as a patch and applied nowhere."""
+    def _withhold(self, why: str = "The run failed, so nothing more was published.") -> Turn:
+        """The changes no publication has decided, kept as a patch and applied nowhere; ``why`` opens the words about it."""
         try:
-            captured, made = self.workspace.observe(self.stage, self.base)
+            captured, made = self.captured()
         except (RuntimeError, TimeoutError):
             return Turn(deferred=UNREAD, text=UNREAD)
         changes = tuple(each for each in between(self.base, captured) if self.decided.get(each.path) != (each.after, each.after_mode))
@@ -376,15 +415,15 @@ class Session:
             return Turn()
         patch = self.kept.write(publication.patch_text(basis, kept))
         paths = tuple(each.path for each in kept)
-        text = (f"{HEAD} The run failed, so nothing more was published. What it had changed ({len(paths)}) and had not published is kept as a patch, "
-                f"digest {patch.digest[:16]}, at {patch.path}.")
+        said = (f"What it had changed ({len(paths)}) and had not published is kept as a patch, digest {patch.digest[:16]}, at {patch.path}.")
+        text = " ".join(each for each in (HEAD, why, said) if each)
         self.launch.log("isolation.publication", subject=self.launch.session, outcome="withheld",
                         meta={"withheld": [_digest(path) for path in paths], "patch": patch.digest})
         return Turn(patch=patch, text=text, withheld=paths)
 
-    def _settle(self, *, keep: bool) -> None:
+    def _settle(self, *, keep: bool, stays: bool = False) -> None:
         """Close the session's directories. A stage with refused or unpublished work is kept, with its base, for a re-launch of the same
-        conversation; any other stage is removed."""
+        conversation, and one that ``stays`` holds work nothing else does; any other stage is removed."""
         self.closed = True
         self.kept.close()
         self.restores.close()
@@ -398,7 +437,7 @@ class Session:
             files.write_json(record, files.versioned({"stage": str(self.stage.physical), "namespace": str(namespace), "base": rows,
                                                       "reported": sorted(self.reports.seen)}, KEPT_VERSION))
             record.chmod(0o600)
-        else:
+        elif not stays:
             shutil.rmtree(namespace, ignore_errors=True)
         for each in (self.kept.directory, self.restores.directory):
             with contextlib.suppress(OSError):

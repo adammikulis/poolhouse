@@ -41,6 +41,24 @@ def workspace(tmp_path, private_snapshot_storage):
     shutil.rmtree(made.directory)
 
 
+@pytest.mark.parametrize("files", [{}, {".env": "NOT-A-REAL=1\n"}], ids=["no file", "only a withheld one"])
+def test_a_project_with_nothing_to_index_is_pinned_and_what_a_session_then_makes_is_seen(tmp_path, private_snapshot_storage, files):
+    root = tmp_path / "selected-repository"
+    root.mkdir()
+    git_output(["init", "--quiet", str(root)], cwd=tmp_path)
+    for name, text in files.items():
+        (root / name).write_text(text)
+    made = Workspace(root)
+    try:
+        stage = made.begin()
+        made.pin(stage)
+        assert made.observe(stage, made.initial)[0].entries == ()
+        (stage.physical / "new.txt").write_text("made\n")
+        assert [entry.path for entry in made.observe(stage, made.initial)[0].entries] == [b"new.txt"]
+    finally:
+        shutil.rmtree(made.directory)
+
+
 @pytest.fixture
 def binding(tmp_path, seatbelt):
     binary = shutil.which("pi")

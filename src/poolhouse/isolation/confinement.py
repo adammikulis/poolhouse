@@ -149,7 +149,7 @@ class Plan:
     """What the session may take (`isolation.bounds`); ``None`` derives each from the machine at launch."""
     committer: str = ""
     """For a session whose project is a checkout of its own (a delegate's worktree), the name it commits under: `git commit` works in its copy,
-    and a publication asked for at the end is made even when a resource bound ended the session."""
+    and a publication asked for at the end is made also when a resource bound ended the session, unless the copy is past the disk or file bound."""
 
 
 class Admission:
@@ -347,17 +347,6 @@ class Confinement:
         """What every publication of this session came to, as data: no caller reads it from `said`."""
         return tally(self.made.turns)
 
-    def commits(self) -> tuple[str, ...]:
-        """The messages of the commits a session that commits has made in its copy, oldest first, as git inside the box says them: they are the
-        session's words. Empty once the confinement is closed, and when git there says nothing."""
-        if self.closed or not self.plan.committer:
-            return ()
-        try:
-            said = preflight.shell(self.profile, history.messages(self.session.start))
-        except (OSError, ValueError, RuntimeError):
-            return ()
-        return tuple(each.strip() for each in said.stdout.split("\0") if each.strip()) if said.ok else ()
-
     def waiting_for_model(self) -> bool:
         """Whether a request of the harness is with the model server now."""
         return any(each.busy() for each in self.made.services if isinstance(each, ModelBridge))
@@ -377,7 +366,8 @@ class Confinement:
         """End every process of the session, publish the last turn (the checks decide, not the exit status), stop the services and remove what the
         launch made. With ``publish`` false (the session is stopped by the one that started it, or it failed) nothing more is published: the stage's
         unpublished work is dropped with the stage, after it is kept as a patch when ``keep_patch`` says so. A session that passed a resource bound
-        publishes nothing more and keeps the patch, whatever the caller asked. Safe to call twice; the first call decides."""
+        publishes nothing more and keeps the patch, whatever the caller asked; one that commits (`Plan.committer`) is still published when its copy
+        is within the disk and file bounds. Safe to call twice; the first call decides."""
         if self.closed:
             return self.turn or Turn()
         self.closed = True
@@ -388,7 +378,7 @@ class Confinement:
             if self.made.watch is not None:
                 self.end_processes()   # the last look is taken once nothing writes any more, and before anything is published
                 passed = self.made.watch.stop()
-            if passed and not (publish and self.plan.committer):
+            if passed and not (publish and self.plan.committer and self.made.watch.fits(str(self.session.stage.physical))):
                 publish, keep_patch = False, True
             self.turn = (self.session.finish(tree, stalled=self.stall, ended=None if started else process_tree.Ended()) if publish
                          else self.session.discard(tree, stalled=self.stall, keep_patch=keep_patch, ended_by=passed))

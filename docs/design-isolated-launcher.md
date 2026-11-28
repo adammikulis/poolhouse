@@ -354,8 +354,8 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
 - **The stage's `.git` is read-only** (`profile.GIT_DIRECTORY`, a frozen name like the control names, with every ancestor): the
   launcher reads its index after the run, so the box cannot write, remove, rename, link or redirect it. `git status` and
   `git diff` work; a commit fails. A delegate with a worktree of its own writes it (`Plan.committer`, `Spec.commits`) and commits; the launcher
-  then reads the stage by its own copy of the index (`Workspace.pin`), runs no git of its own on the stage's `.git` after the start, and takes the
-  session's commit messages from git run inside the box.
+  then reads the stage by its own copy of the index (`Workspace.pin`) and reads nothing of the stage's `.git` after the start: the session's
+  commits and their messages stay in the stage. Nothing runs in the box once the session's processes are ended.
 - **The session's own programs** (macOS): an editing session executes what lies in its writable stage and agent home, so a project's
   `scripts/test`, a script it wrote and a program it built run. It already ran them through a shell or an interpreter in the same box, so
   no file, network or process becomes reachable; a `read-only` or plan stage is executed from neither.
@@ -751,7 +751,10 @@ disk bound, when the processes' memory footprint passes the memory bound, when t
 when a process has used the CPU bound (also one that ignores `SIGXCPU`), when a file reaches the size bound, or when the follower's
 exit report says `SIGXCPU` or `SIGXFSZ` ended a process (`NOTE_EXITSTATUS`; the numbers are in 17). A crossing ends the session,
 publishes nothing more, keeps the unpublished work as a patch, and puts the limit that was passed in the result and in an
-`isolation.report` to the launching session; a look that cannot be taken ends the session too. What a sampled watcher does not see
+`isolation.report` to the launching session; a look that cannot be taken ends the session too. A session that commits (a delegate with a
+worktree of its own) is still published there when its working copy is within the disk and file bounds. A last publication that does not run (a
+survivor, a stage written while it is read) in a session that no re-launch takes up keeps the work as a patch, and where none can be made the
+stage stays where it is, named in the words. What a sampled watcher does not see
 is a bound passed and given back between two looks (memory freed, files deleted); the kernel's three rlimits hold meanwhile. A
 descriptor refused with `EMFILE` by a process that then closes or exits is refused by the kernel and ends nothing. The process
 count is not watched: the kernel refuses the fork (D5).

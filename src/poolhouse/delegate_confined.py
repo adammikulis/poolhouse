@@ -6,8 +6,9 @@ reaches its lead by two tools over the session bridge (`ask`, `note`). A run tha
 poolhouse's plugin (`poolhouse.opencode`) or shows no progress for `NO_PROGRESS_S` publishes nothing more: its changes are kept as a patch.
 
 A self-checked delegate (`poolhouse.delegate_review`) holds that confinement and publishes nothing from it, not at a turn the box says has ended,
-until a reviewer accepts. Each review, fix and continuation (`poolhouse.delegate_resume`) is a confinement of its own over the same project, given
-the held change first; what a fix or a continued pass changed is carried back, and none of those ever publishes.
+until a reviewer accepts, and then the capture of it that reviewer was given. Each review, fix and continuation (`poolhouse.delegate_resume`) is a
+confinement of its own over the same project, given the held change first; what a fix or a continued pass changed is carried back, and none of
+those ever publishes. Once the work is over nothing runs in its box, and a stop signal is no longer heard (`unstopped`).
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import json
 import os
 import queue
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -53,7 +55,7 @@ from poolhouse.log import say as log
 from poolhouse.workspace import nudge_fence
 
 __all__ = ["HELD", "NO_PROGRESS_S", "STOPPED_WHY", "Hooks", "Stopped", "Stream", "admit", "converse", "follow", "held", "tools_of", "unsandboxable",
-           "work_pass"]
+           "unstopped", "work_pass"]
 
 READ_TOOLS = ("read", "glob", "grep")
 EDIT_TOOLS = ("edit", "write", "shell")
@@ -131,7 +133,7 @@ links that lead out of the project are refused and kept aside for {lead}.
 """
 GIT_KEPT = "The .git folder is read-only too (git status, diff, log and show work, a commit fails)."
 GIT_OWN = ("git works here, commit included. This project is a branch of your own: the launcher commits there what you leave in the files, however "
-           "the run ends, with the messages of your commits.")
+           "the run ends. Your own commits and their messages stay in this copy, so say what matters in your result.")
 UNSANDBOXED_WORK = """\
 shell runs in the folder itself, with no sandbox. A call that reads a credential, writes outside the folder, changes the user's global
 configuration, force-pushes or deletes something on a remote is refused. A command ends at its timeout ({default}s unless you give another as
@@ -318,6 +320,13 @@ class Stopped(SystemExit):
     def __init__(self, answer: harness.Answer) -> None:
         super().__init__(143)
         self.answer = answer
+
+
+def unstopped() -> None:
+    """The work of the run is over and what it made is now published, committed and written down: a stop signal has nothing left to end and from
+    here on is not heard, so none cuts that short. Does nothing off the process's main thread, which alone sets a signal."""
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
 
 def _chunks(pipe: int) -> queue.Queue[bytes]:
@@ -519,8 +528,6 @@ class _Boxed:
     tried: bool = False
     box: isolation.Confinement | None = None
     """The work's confinement, which holds the change."""
-    commits: tuple[str, ...] = ()
-    """The messages of the commits the delegate made in the work's box."""
 
     @property
     def window(self) -> int:
@@ -623,15 +630,13 @@ class _Boxed:
 
     def _kept(self, box: isolation.Confinement) -> None:
         """End the work's confinement keeping what it made. A delegate with a branch of its own has it published into its worktree, however the
-        run ended, to be committed there (`delegate_tree.settled`), with the messages of its own commits; any other keeps a patch, and nothing of it
-        is published."""
+        run ended, to be committed there (`delegate_tree.settled`); any other keeps a patch, and nothing of it is published."""
+        unstopped()
         if box.closed:
             return
         if not self.rec.branch:
             box.close(publish=False, keep_patch=True)
             return
-        box.end_processes()
-        self.commits = box.commits() or self.commits
         released(box)
         box.close()
 
@@ -651,8 +656,8 @@ class _Boxed:
                         latest, outcome = delegate_review.looped(self.rec, self, work, latest)
                     publish = not latest.is_error and (outcome is None or outcome.accepted)
                 finally:
+                    unstopped()
                     if publish:
-                        self.commits = opened.box.commits()
                         released(opened.box)   # leaving the block publishes
                     else:   # failed, not accepted, stopped, or an error on its way out
                         self._kept(opened.box)
@@ -662,9 +667,11 @@ class _Boxed:
         return self._came_to(latest, outcome)
 
     def change(self) -> str:
-        """The held change as it stands, as text; empty for a delegate that only reads."""
+        """The held change as it stands, as text, for a review: the stage is fixed here, so an accept publishes what was shown; empty for a
+        delegate that only reads."""
         if not self.rec.edit:
             return ""
+        self.box.session.fix()
         captured, _made = delegate_candidate.staged(self.box)
         base = self.box.session.base
         return delegate_candidate.diff(delegate_candidate.edits(base.directory, captured.directory, delegate_candidate.changed(base, captured)))
@@ -720,14 +727,18 @@ class _Boxed:
             return failed
 
     def _carried(self, box: isolation.Confinement, start: Any) -> list[str]:
-        """Carry what a pass changed in ``box`` since the capture ``start`` into the held stage; the paths that could not be."""
+        """Carry what a pass changed in ``box`` since the capture ``start`` into the held stage, which is then published as it stands unless a
+        later review fixes it; the paths that could not be."""
         after, _made = delegate_candidate.staged(box)
-        return delegate_candidate.carry(delegate_candidate.changed(start, after), after.directory, Path(self.box.profile.stage))
+        changes = delegate_candidate.changed(start, after)
+        if changes:
+            self.box.session.unfix()
+        return delegate_candidate.carry(changes, after.directory, Path(self.box.profile.stage))
 
     def _came_to(self, answer: harness.Answer, outcome: delegate_review.Outcome | None) -> harness.Answer:
-        """``answer`` with what every pass spent, what the publications came to, the writes that were refused and the delegate's commit messages."""
+        """``answer`` with what every pass spent, what the publications came to and the writes that were refused."""
         answer = replace(answer, spent=delegate_review.spent(self.used) if self.used else answer.spent, review=outcome,
-                         tried=answer.tried or self.tried, commits=self.commits)
+                         tried=answer.tried or self.tried)
         if self.rec.edit and self.box is not None:
             answer.published = self.box.published()
             answer.untested = self.box.untested

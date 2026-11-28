@@ -160,6 +160,14 @@ class Watch:
         self._tree = None
         return reason
 
+    def fits(self, root: str) -> bool:
+        """Whether what ``root`` holds is within the disk bound and each of its files under the file bound; False when that cannot be read."""
+        try:
+            used, largest = _held((root,))
+        except (OSError, ValueError):
+            return False
+        return used <= self.bounds.disk_bytes and largest < self.bounds.file_bytes
+
     def _run(self) -> None:
         pause = self.bounds.interval_s
         while not self._done.wait(pause):

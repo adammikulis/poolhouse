@@ -9,7 +9,7 @@ deletion. Content `HEAD` also holds under an ordinary name, and the empty file's
 
 The index keeps the working copy's files, so `git diff HEAD` is the uncommitted change with the session's and `git diff` the session's alone.
 Other files no session is given (`excluded`) stay as `HEAD` has them, skip-worktree. `.git/REVIEW` holds three views for one that only reads.
-A session that commits writes that `.git`, which the launcher no longer reads then (`coding_workspace.Workspace.pin`, `messages`).
+The launcher reads nothing more of the `.git` of a session that commits, whose commits stay in the stage (`coding_workspace.Workspace.pin`).
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from pathlib import Path
 from poolhouse import secretpaths
 from poolhouse.activity import source_snapshot
 
-__all__ = ["DEPTH", "IDENTITY", "REVIEW", "committed", "give", "head", "messages"]
+__all__ = ["DEPTH", "IDENTITY", "REVIEW", "committed", "give"]
 
 IDENTITY = "poolhouse.invalid"
 """The domain of the address a session or a delegate's branch is committed under, which reaches no one."""
@@ -191,17 +191,6 @@ def committed(source: Path) -> bool:
         return bool(_git(source, ["rev-parse", "--verify", "--quiet", "HEAD"]))
     except (OSError, RuntimeError, subprocess.TimeoutExpired):
         return False
-
-
-def head(source: Path) -> str:
-    """The commit the project is at; empty when it has none."""
-    return _git(source, ["rev-parse", "--verify", "HEAD"]).decode().strip() if committed(source) else ""
-
-
-def messages(since: str) -> str:
-    """The shell line, run inside the box, that prints the message of each commit made in the stage after ``since`` (a commit id the launcher read
-    from the project; empty for a project that had none), oldest first, each ended by NUL."""
-    return f"git log --reverse --format=%B%x00 {since + '..' if since else ''}HEAD"
 
 
 def _identified(stage: Path, committer: str) -> None:

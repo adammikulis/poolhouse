@@ -44,10 +44,10 @@ class Edit:
 
 
 def staged(box: Any) -> tuple[Capture, tuple[bytes, ...]]:
-    """The stage of the confinement ``box`` as it is now, and the control and credential names it holds that are never carried."""
-    session = box.session
-    with session.workspace.lock:
-        return session.workspace.observe(session.stage, session.base)
+    """What the confinement ``box`` holds (`isolation.workspace.Session.captured`): its stage as it is now, or the capture it was fixed at, and
+    the control and credential names that are never carried."""
+    with box.session.workspace.lock:
+        return box.session.captured()
 
 
 def changed(before: Capture, after: Capture) -> tuple[Change, ...]:
