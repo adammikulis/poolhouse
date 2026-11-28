@@ -1,6 +1,6 @@
 # Handoff
 
-The backlog, highest priority first. Take work from the top; a paused tier starts only when the owner asks. Delete a row in the change that lands it and add nothing finished. "Open, checked" and the sections beside it were checked against the tree at `ac0639291`; an entry of the long handoff at `git show ac0639291:HANDOFF.md` is reconciled against the code before anyone acts on it. An older backlog is `docs/notes/release-backlog-2026-10-15.md`.
+The backlog, highest priority first. Take work from the numbered tiers top down; a paused tier starts only when the owner asks. Delete a row in the change that lands it and add nothing finished. A row under the later headings is reconciled against the code before anyone acts on it.
 
 A branch named below without a pull request is on GitHub and unmerged. Every item needs an accepting review of its exact commit before it lands; security items also need an attack pass.
 
@@ -60,50 +60,42 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | Failing on development | Red-team coverage floor, `cargo-audit`, `npm-audit`, the macOS affected-tests job's Swift toolchain error | CI |
 | The real-name list the commit hooks read is not readable, so those names are unchecked; the guard refuses `llama-server --help` | Fix both | `scripts/hooks` |
 | Example network addresses in documents | Review and merge | #121 |
+| `docs/access-widening-person-files.patch` targets files that do not exist | Delete it | `docs/` |
 
 ## 6. Later
 
 | Item | Where |
 |---|---|
 | Native-speed isolated code execution on the phone; starts only when the owner asks | `app/phone-isolation/README.md` in #119 |
-| macOS signing certificate opt-in; images and other input across the product; macOS read-ahead patch for llama.cpp; Splash engine trial; delegate runs visible in the app; alerts on unanswered agent questions; remaining browser failures; cleanup of merged worktrees; the same required checks on `main` | |
+| macOS signing certificate opt-in; images and other input across the product; macOS read-ahead patch for llama.cpp; Splash engine trial; delegate runs visible in the app; alerts on unanswered agent questions; remaining browser failures; cleanup of merged worktrees | |
 
-## A person has to do these (guard paths an agent cannot edit)
-
-| Item | State | Where |
-|---|---|---|
-| Rename `caller` to `agent_marker` and the push-credential role `lander` to `publisher` | Built on branch `w3-held` (worktree `/Users/adammikulis/Documents/repos/poolhouse.worktrees/w3-renames`, commit `c67c750c9`, 119 files). It cannot land alone: apply `guarded-scripts.patch` (54 changed lines) to `scripts/release-key`, `scripts/github-protection-apply` and `scripts/github-protection`, then run `scripts/redteam_coverage.py --write` and push. The `--lander` flag in `scripts/github-protection` becomes `--publisher`; `tests/test_github_protection.py` and `tests/test_github_protection_device.py` wait for it | `git show c67c750c9` |
-| Release signing key | Does not exist (owner: yes, 2026-10-13); `scripts/release-key create --write` needs the owner's selected approval. Every pin and trusted build roots in it | `docs/person-delegation.md`, `docs/release-readiness.md` |
-| GitHub protection | `scripts/github-protection-apply --apply` not run (the release environment first, then the rest once the agent identity and signing key exist) | `docs/github-protection.md` |
-| Release question patch | `docs/access-widening-person-files.patch` is not applied (a person at a terminal; the edit guard stops an agent). The command is in the patch's own header; delete the file after | `src/poolhouse/workspace/person_release.py` |
-
-## Owner decisions
-
-| Decision | Where |
-|---|---|
-| Accepted risks of the session-capability design (section 7) | `docs/design-session-capabilities.md` |
-| Weaker act classes of the phone-free design (a 7 day hold for every pool, `member_remove` by a computer key against a phone owner, the floors now inert) | `docs/design-phone-free-pools.md` |
-| Multi-pool leaver offline longer than the one-day grace (accepted risk) | `docs/design-multi-pool-devices.md` |
-| Lead agents installing login units: decided 2026-10-16, not built; findings F1 to F16 are open in the current code, F15 and F1 first | `docs/agent-login-unit-install.md` |
-| A refused or shut-down pool deleted after 3 days (owner, 2026-10-13); a compromised pool is sealed read-only and never restorable. Not built | `docs/design-phone-free-pools.md` |
-| Not in the first release: the Box enforcer, decoys, two-box layering, lab mode | none in the repository |
-
-## Open, checked
+## Release setup and guard paths
 
 | Item | State | Where |
 |---|---|---|
-| `node_key.migrate` passphrase branch | Reported unreachable by the rename review (the `elif passphrase` arm in `migrate`); not re-proved here. Delete it with its test once confirmed | `src/poolhouse/node_key.py` |
-| `models_adopt` old-name handling | Not removed; the brief that named it gave no further detail, so read the module before cutting | `src/poolhouse/serve/models_adopt.py` |
-| `bench` builds a `telemetry.Call` itself | `Call.from_reply(reply, 0.0)` in the backend instead of the client's own record | `src/poolhouse/bench/backends.py` |
-| Canned node replies in tests | Seven files marked PLUMBING ONLY: `test_fleet_plan.py`, `test_setup.py`, `test_fleet_tls.py`, `test_node_health_deadline.py`, `test_node_service_pool.py`, `test_fleet_pausing.py`, `test_fleet_roster.py`. Replacing them with `two_nodes` needs node-side service unbind | `tests/` |
-| `contracts/node/retained-features.json` (908 KB) | About 480 stale paths for deleted code. No script, source file or test reads it, but 11 files of `contracts/node/` (`operation-mapping.json`, ten `domain-evidence/*.json`) and `contracts/glossary-allowlist.toml` cite it with a sha256, so deleting it means rewriting those pins | `contracts/node/` |
-| `scripts/sync-dev` | Still its own shell fast-forward, beside `scripts/primary_sync.py`. Merging them changes the messages `tests/test_sync_dev.py` asserts and adds a Python dependency to a script meant for a plain clone | `scripts/sync-dev` |
-| Phone and computer approval | Not driven on a real phone or a real OS prompt; the phone-admin-add listing is refused until it is bound to the verified pool, epoch and charter; `NativeGovernance` is not wired into the production review path | `docs/phone-approval.md`, `docs/design-phone-free-pools.md` |
-| Founding dialog on the owner's Mac | Never seen; the failure now prints the system's own words. Needs the owner's Mac and a person at the prompt | `docs/design-phone-free-pools.md` |
-| Session credential sandbox | Not proven: the generated Codex configuration has no read-deny rules, a hard link made before confinement stays readable, and the installed wrappers were not tested. Do not claim S1 or S7 credentials are protected | `docs/agent-sandbox.md` |
-| Registration of a retired session's native id | A different terminal can register it and spend its existing grants; do not reclaim sessions until revival creates authority that cannot inherit them | `docs/design-session-capabilities.md` |
+| Release signing key | Does not exist; the owner wants it, and `scripts/release-key create --write` needs the owner's approval. Every pin and trusted build roots in it | `docs/person-delegation.md`, `docs/release-readiness.md` |
+| GitHub protection | `main` does not require the pull request and checks the development branch does; `scripts/github-protection-apply --apply` has not been run (the release environment first, then the rest once the agent identity and signing key exist) | `docs/github-protection.md` |
+| Rename `caller` to `agent_marker` and the push-credential role `lander` to `publisher` | An earlier build is the local commit `c67c750c9` (local branch `hold/w3-renames`). Its changes to `scripts/release-key`, `scripts/github-protection-apply` and `scripts/github-protection` need the guard-code rule in section 5 | `git show c67c750c9` |
+
+## Open from earlier work
+
+| Item | State | Where |
+|---|---|---|
+| Phone approval protocol | Remove it with its node code, phone endpoint, document and `app/phone-governance-jni`: a protection never waits for a person's tap. After #114, which removes the old app | `docs/phone-approval.md`, `app/poolhouse-node/src/gov/` |
+| Lead agents installing login units | Decided, not built; findings F1 to F16 are open, F15 and F1 first | `docs/agent-login-unit-install.md` |
+| A refused or shut-down pool is deleted after 3 days; a compromised pool is sealed read-only and never restorable | Not built | `docs/design-phone-free-pools.md` |
+| Session credential sandbox | Not proven: the generated Codex configuration has no read-deny rules, a hard link made before confinement stays readable, and the installed wrappers are untested. Do not claim S1 or S7 credentials are protected | `docs/agent-sandbox.md` |
+| Registration of a retired session's native id | A different terminal can register it and spend its grants; do not reclaim sessions until revival creates authority that cannot inherit them | `docs/design-session-capabilities.md` |
+| Design reviews | Second attack notes open: session capabilities N1 to N3, pool keys G1, G2, G4 and G10, signed ordering N2 to N8 (revise before building) | `docs/notes/attack-*.md` |
 | Model sharing between devices | No node design: add-device with a model, join-with-code sharing, accept, remove and `fetch` | `docs/pool.md` |
-| Test shards between two real devices | Not driven: the Windows inbound-rule prompt, WSL in NAT against mirrored mode, a WSL device without `~/.poolhouse/wsl-dev-venv` | `docs/test-farm.md` |
-| Design reviews open | Second attack notes: session capabilities N1 to N3, pool keys G1, G2, G4 and G10, signed ordering N2 to N8 (revise before building) | `docs/notes/attack-*.md` |
-| LiteRT on Android | No benchmark has run; the S26 Ultra was not given the app or a model | `docs/litert-lm-gemma4-pin-2026-10-16.md` |
-| Isolated launcher | A person's coding launch runs in place; `--sandbox` and delegates use the macOS confinement (print mode). `poolhouse-delegate` (OpenCode 2.4.2, Qwen3.8-Flash-Next) was proven live on 2026-11-27: read-only with note and question, and six of six one-line fixes with the test run inside the box. A refused write now ends a delegate `partial` or `unapplied` (seen with the pinned OpenCode against the marked canned server; no model run yet, and not on the installed runtime). `--on` sends a key only to a server shown to be this computer's own (a worktree run on 2026-11-27 against the running Qwen3.8-Flash-Next server passed `localhost` and refused `[::1]`; that was before the key needed its process's start time; a server the installed build keyed is proved from its lease record and listener at first use (tested on real processes with records in the old form, not against the live server); no harness was run in it, and not on the installed runtime). Open: Linux, WSL and Windows confinement; harder delegate tasks unmeasured; a refused write a program makes without its shell line naming it is not seen; the egress proxy's wiring (no `--allow-net`); the unwired `workspace.task_caps` hook module; nothing calls `service_draft`/`service_bind`; older test failures (`test_workspace_local_agent`, testfarm approval's session quota, setup-preparation context, saved-models picker) | `docs/design-isolated-launcher.md`, `docs/harnesses.md` |
+| Test shards between two real devices | Not driven on real hardware, including the Windows inbound-rule prompt | `docs/test-farm.md` |
+| Isolated launcher and delegates | Linux and Windows confinement; harder delegate tasks unmeasured; a refused write a program makes without its shell line naming it is not seen; no `--allow-net` for the egress proxy; the `workspace.task_caps` hook module is not wired; a refused write ending a run `partial` or `unapplied`, and the `--on` key proof, lack a live run on the installed runtime; older failures to re-run (`test_workspace_local_agent`, the testfarm approval's session quota, setup-preparation context, saved-models picker) | `docs/design-isolated-launcher.md`, `docs/harnesses.md` |
+| Canned node replies in tests | `test_fleet_plan.py`, `test_setup.py`, `test_fleet_tls.py`, `test_node_health_deadline.py`, `test_node_service_pool.py`, `test_fleet_pausing.py` and `test_fleet_roster.py` answer for the node; replacing them with `two_nodes` needs node-side service unbind | `tests/` |
+| `node_key.migrate` passphrase branch | Reported unreachable (the `elif passphrase` arm), not proved. Delete it with its test once confirmed | `src/poolhouse/node_key.py` |
+| `bench` builds a `telemetry.Call` itself | `Call.from_reply(reply, 0.0)` in the backend instead of the client's own record | `src/poolhouse/bench/backends.py` |
+| `contracts/node/retained-features.json` | Mostly paths of deleted code; no script, source or test reads it, but other files in `contracts/` cite it with a sha256, so deleting it means rewriting those pins | `contracts/node/` |
+| `scripts/sync-dev` | Its own shell fast-forward beside `scripts/primary_sync.py`; merging them changes messages `tests/test_sync_dev.py` asserts and adds a Python dependency to a script for a plain clone | `scripts/sync-dev` |
+
+## Not in the first release
+
+The Box enforcer, decoys, two-box layering and lab mode.
