@@ -340,7 +340,7 @@ WSL onboarding, execution dispatch or any POOL/GOV completion claim.
 | --- | --- | --- | --- | --- |
 | AND-1 | The APK builds, its protocol checks pass and Android lint is clean | `python app/android/build.py lint` (an Android SDK and JDK; the `android` workflow) | built; protocol checks pass | SDK licence accepted by a person |
 | AND-2 | A release APK is signed (alias `poolhouse-preview`) and sideloaded | `ANDROID_SIGNING_STORE`, `ANDROID_SIGNING_PASSWORD` | not built: a person's signing material | OW-9 |
-| AND-3 | A phone running Android 11 or later links by scanning the computer's code and reaches it on the home network and over Tailscale | drive: `app/android/README.md`, "Linking" | not driven | `docs/phone-api.md` on the computer |
+| AND-3 | A phone running Android 12 or later links by scanning the computer's code and reaches it on the home network and over Tailscale | drive: `app/android/README.md`, "Linking" | not driven | `docs/phone-api.md` on the computer |
 | AND-4 | From the phone a person talks to a live Claude session, answers its question, starts and stops work and serves a model | drive: `docs/phone-api.md` | built against a canned sample computer; not driven against a live computer | AND-3 |
 | AND-5 | An iPhone app | none | not built; blocked until the product takes off (`docs/service.md` 9.1) | section 6 |
 

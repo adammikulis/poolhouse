@@ -117,7 +117,7 @@ private fun StartDelegate(pool: PoolSession, state: PoolState, started: (String)
             return@Column
         }
         val chosen = projects.firstOrNull { it.id == project } ?: projects.first()
-        Chips(projects, chosen, { it.name.ifBlank { it.path } }, Section.WORK.tint(), { project = it.id }, Modifier.padding(horizontal = 0.dp))
+        Chips(projects, chosen, { it.name.ifBlank { it.path } }, Section.WORK.tint(), { project = it.id }, inset = 0.dp)
         OutlinedTextField(task, { if (it.length <= MESSAGE_LIMIT) task = it }, placeholder = { Text("What should it do?") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 6)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {

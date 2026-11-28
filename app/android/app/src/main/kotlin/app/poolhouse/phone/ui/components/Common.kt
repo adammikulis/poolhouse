@@ -210,10 +210,10 @@ fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modi
     }
 }
 
-/** A row of choices of which one is picked, scrolling when the phone is narrow. */
+/** A row of choices of which one is picked, scrolling when the phone is narrow; `inset` is its space at either side. */
 @Composable
-fun <T> Chips(options: List<T>, selected: T, label: (T) -> String, tint: Color, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+fun <T> Chips(options: List<T>, selected: T, label: (T) -> String, tint: Color, onSelect: (T) -> Unit, inset: Dp = 16.dp) {
+    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = inset, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         for (option in options) {
             val on = option == selected
             val shape = RoundedCornerShape(8.dp)

@@ -50,7 +50,7 @@ fun SettingsScreen(model: PhoneViewModel, pool: PoolSession, state: PoolState) {
             }
             Card {
                 Text("Appearance", style = MaterialTheme.typography.titleSmall)
-                Chips(ThemeChoice.entries, model.theme, { it.label }, Pool.colors.accent, model::choose, Modifier.padding(horizontal = 0.dp))
+                Chips(ThemeChoice.entries, model.theme, { it.label }, Pool.colors.accent, model::choose, inset = 0.dp)
             }
             Card {
                 Fact("App version", version)

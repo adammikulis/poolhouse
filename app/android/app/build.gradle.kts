@@ -15,7 +15,8 @@ android {
 
     defaultConfig {
         applicationId = "app.poolhouse.phone"
-        minSdk = 30
+        // Android 12: the least the on-device model's runtime (:llm) runs on.
+        minSdk = 31
         targetSdk = 37
         versionName = productVersion
         versionCode = versionNumbers[0] * 1_000_000 + versionNumbers[1] * 1_000 + versionNumbers[2]
