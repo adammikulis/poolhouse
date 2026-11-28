@@ -290,3 +290,6 @@ gym-view .gym-stage:fullscreen { padding-bottom:var(--version-footer-height); }
 #root gym-view .gym-stage:fullscreen > gym-scene,#root gym-view .gym-stage:fullscreen > img { height:var(--app-height,100dvh); }
 
 .calculation-notice { margin:24px auto; max-width:760px; width:calc(100% - 48px); }
+.experimental-note { margin-right:auto; padding-left:12px; white-space:nowrap; }
+.experimental-note summary { cursor:pointer; }
+.experimental-note > .card { position:fixed; left:12px; bottom:calc(var(--version-footer-height) + 8px); box-sizing:border-box; width:min(520px, calc(100vw - 24px)); max-height:var(--app-height, 100dvh); overflow-y:auto; margin:0; white-space:normal; font-size:var(--ui-font-size); color:var(--text); }

@@ -97,4 +97,5 @@ def project_tasks(workspace_node, monkeypatch, tmp_path):
         assert Page(ui, handler).route()
         return codes[0], json.loads(handler.wfile.getvalue())
 
+    call.ui = ui   # a test that wants the app's real project registry puts it here
     return call, workspace_node, projects
