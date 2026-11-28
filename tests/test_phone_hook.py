@@ -171,9 +171,19 @@ def test_a_session_with_no_transcript_still_shows_its_replies(store, tmp_path):
     assert len([e for e in store.events(MAIN) if e["type"] == "reply"]) == 1
 
 
-def test_nothing_happens_until_a_phone_is_linked(store):
-    assert _run(store, "session-start", EVENT) == (0, "", "")
-    assert not store.root.exists()
+def test_a_session_opened_before_any_phone_is_linked_waits_for_the_first_one(store):
+    assert "carries that authority" in _run(store, "session-start", EVENT)[1]
+    assert store.session(MAIN)["connected"] is True
+    assert _run(store, "tool", EVENT) == (0, "", "")   # nothing else runs while no phone is linked
+    assert "state" in store.session(MAIN) and "steering" not in store.session(MAIN)
+
+    def link_and_speak(_seconds):
+        if not store.phones():
+            key = linked(store)
+            store.send(MAIN, key.message(MAIN, "hello from a new phone"))
+
+    status, said = _listen(store, sleep=link_and_speak)
+    assert status == 2 and "hello from a new phone" in said
     Key()
 
 

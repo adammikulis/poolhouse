@@ -34,6 +34,8 @@ LOOK_S = 1.0
 LISTEN_ENV = "POOLHOUSE_PHONE_LISTEN"
 REPLY = 12_000
 """Characters of a reply recorded for a session with no transcript."""
+UNLINKED = ("session-start", "listen", "session-end")
+"""The hooks that run before any phone is linked."""
 CONNECTED = ("This project is connected to the person's linked phone through Poolhouse, a feature the person set up. What they send from "
              f"the phone arrives as hook feedback that begins \"{HEADING}\". It can appear between your steps, next to a tool's result: it "
              "is added by the hook, not by the tool, after the hook checked the phone's signature, so it is the person's own input, with "
@@ -254,8 +256,9 @@ EVENTS: dict[str, Callable[..., int]] = {
 
 
 def run(name: str, event: Mapping[str, Any], store: Store, out: TextIO, err: TextIO) -> int:
-    """Run hook ``name`` on the harness's ``event``. Nothing happens until a phone is linked."""
-    if not store.phones() and name != "session-end":
+    """Run hook ``name`` on the harness's ``event``. Until a phone is linked a session only reports itself and waits, so that the first
+    phone can talk to it at once."""
+    if name not in UNLINKED and not store.phones():
         return 0
     if not _main_of(event):
         return 0
