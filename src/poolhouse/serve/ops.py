@@ -27,6 +27,7 @@ from poolhouse.ownership import lease_file, recorded_servers
 from poolhouse.serve import (
     broker_wire,
     chat_template as chat_template_mod,
+    engines,
     fit as fit_mod,
     inuse,
     kvcache,
@@ -83,11 +84,12 @@ class Drafting:
     metrics: bool | None = None          # whether the server answers /metrics
     counted: Speculative | None = None   # its counters since it came up
     note: str = ""                       # why multi-token prediction is on or off, from its lease
+    own: str = ""                        # the drafter of an engine that starts its own, as it reported it
 
     @property
     def loaded(self) -> bool:
-        """Whether a draft head was named on the server's command line."""
-        return bool(self.head or self.spec_type)
+        """Whether the server drafts: a head named on its command line, or an engine's own drafter."""
+        return bool(self.head or self.spec_type or self.own)
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +116,7 @@ class Snapshot:
     device: str = ""
     kv_cache: str = ""
     kv_notes: tuple[str, ...] = ()
+    engine: str = ""                      # the engine the lease record names, "" for a server with no record
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,10 +255,21 @@ def look(port: int, records: dict[int, dict], served: Mapping[int, Any] | None =
         warmup_s=_float_or_none(entry.get("warmup_s")),
         log=str(entry["log"]) if entry.get("log") else None,
         iq_warning=str(entry["iq_warning"]) if entry.get("iq_warning") else None,
-        drafting=(drafting_of(url, (served or {}).get(port) or {}, params,
-                              str(entry.get("mtp_note") or ""))
-                  if served is not None and port in served else None),
+        drafting=_drafting(url, entry, params, served),
+        engine=str(entry.get("backend") or ""),
     )
+
+
+def _drafting(url: str, entry: Mapping[str, Any], params: Any, served: Mapping[int, Any] | None) -> Drafting | None:
+    """What the server on the port drafts with: an engine with its own drafter says so on its record; a llama-server's
+    command line says so, when it is among ``served``."""
+    engine = engines.ENGINES.get(str(entry.get("backend") or ""))
+    if engine is not None and engine.drafts_itself:
+        return Drafting(own=str(entry.get("mtp") or ""), note=str(entry.get("mtp_note") or ""))
+    port = int(url.rsplit(":", 1)[-1])
+    if served is None or port not in served:
+        return None
+    return drafting_of(url, served.get(port) or {}, params, str(entry.get("mtp_note") or ""))
 
 
 def judge(manager: ServerManager, snapshot: Snapshot, spec: ServerSpec) -> Snapshot:

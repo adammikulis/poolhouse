@@ -25,7 +25,7 @@ from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.health import refuses_key, serving_params
 from poolhouse.node_health import Refused
 from poolhouse.ownership import recorded_servers
-from poolhouse.serve import admission, inuse, ledger, node_memory, unmanaged
+from poolhouse.serve import admission, engines, inuse, ledger, node_memory, unmanaged
 from poolhouse.serve.backend import Lease, ServerBackend, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.events import Event, emit
 from poolhouse.serve.leases import merge_state, orphaned
@@ -73,7 +73,7 @@ class Admitting:
         told = self.say or logger.info
         began = time.monotonic()
         memory_until = began + admission.wait_s()
-        wanted = admission.estimate_bytes(spec)
+        wanted = engines.wanted_bytes(spec)
         need = -(-wanted // admission.MIB)
         ledger.never_fits(spec.model, need)
         request: dict | None = None
@@ -221,6 +221,8 @@ class Admitting:
             told(f"port {spec.port}: not adopting pid {seen.pid} -- it refuses this build's key")
             return None
         mismatch = serving_mismatch(spec, reported_models(base_url), serving_params(base_url))
+        if other := admission.engine_difference(spec.engine, {}):   # a server found running is a llama-server
+            mismatch.append(other)
         if mismatch:
             told(f"port {spec.port}: not adopting pid {seen.pid} -- " + "; ".join(mismatch))
             return None

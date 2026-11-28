@@ -124,11 +124,21 @@ def live(entry: Mapping[str, Any]) -> bool:
 def pending_serves(spec: ServerSpec, entry: Mapping[str, Any]) -> bool:
     """Whether the server being started on ``entry`` will serve ``spec`` when it is up."""
     held = max(1, int(entry.get("parallel") or 1))
-    return (int(entry.get("context") or 0) // held >= int(spec.context) // max(1, int(spec.parallel or 1))
+    return (not engine_difference(spec.engine, entry)
+            and int(entry.get("context") or 0) // held >= int(spec.context) // max(1, int(spec.parallel or 1))
             and held >= max(1, int(spec.parallel or 1))
             and bool(entry.get("embedding")) == bool(spec.embedding)
             and bool(entry.get("reranking")) == bool(spec.reranking)
             and not (spec.mmproj and not entry.get("mmproj")))
+
+
+def engine_difference(asked: str, entry: Mapping[str, Any]) -> str:
+    """How the engine of the server on ``entry`` differs from the one ``asked`` for ("" is llama.cpp, or tree decoding), or
+    "" when it is that one. One engine never answers for another, whatever else matches."""
+    running = str(entry.get("engine") or "")
+    if running == asked:
+        return ""
+    return f"engine: {asked or 'llama.cpp'} was asked for and the server runs {running or 'llama.cpp'}"
 
 
 def servings(entry: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -148,8 +158,9 @@ def differences(spec: ServerSpec, entry: Mapping[str, Any], mismatches: list[str
     """Each way the server on ``entry`` differs from ``spec``, in plain words: ``mismatches``
     (from `serving_mismatch`) and then the recorded settings that were asked for and are not
     the server's. Empty when it can serve ``spec`` as it is, by any of its `servings`."""
+    other = engine_difference(spec.engine, entry)
     found = [_unlike(spec, one) for one in servings(entry)]
-    return [*mismatches, *next((one for one in found if not one), found[0])]
+    return [*mismatches, *([other] if other else []), *next((one for one in found if not one), found[0])]
 
 
 def _unlike(spec: ServerSpec, entry: Mapping[str, Any]) -> list[str]:

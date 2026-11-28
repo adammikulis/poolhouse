@@ -1,0 +1,491 @@
+{
+ "engine": {
+  "repo": "Niko1221/Strata",
+  "version": "0.2.23",
+  "engine_version": "0.1.70",
+  "commit": "4560d03793482ef367294cfbd86a4df8d5679e72",
+  "source_url": "https://github.com/Niko1221/Strata/archive/4560d03793482ef367294cfbd86a4df8d5679e72.tar.gz",
+  "source_sha256": "218fbc70f96f74e404d4597647d5d9405b7ce8f40590965bee11d7d915888d9f",
+  "source_content_sha256": "a45897b86a88740116fe458b4ef207f94f0432f907ace6f961419c5f280665c7",
+  "license": "MIT"
+ },
+ "metal_cpp": {
+  "url": "https://developer.apple.com/metal/cpp/files/metal-cpp_26.zip",
+  "sha256": "4df3c078b9aadcb516212e9cb03004cbc5ce9a3e9c068fa3144d021db585a3a4",
+  "license": "Apache-2.0"
+ },
+ "windows": {
+  "asset": "strata-engine-0.1.70-windows-x86_64-cuda-cuda13.tar.gz",
+  "url": "https://github.com/Niko1221/Strata/releases/download/v0.2.23/strata-engine-0.1.70-windows-x86_64-cuda-cuda13.tar.gz",
+  "bytes": 494708298,
+  "sha256": "b8a45d1c495af4ff37fe7a1db530646214ffee80a99145aefd856f2d9cfd6757",
+  "content_sha256": "d0736a7371f1def3e77d8c7e79bebbb158484cae8cdc8e23c7e99d3c399ff631",
+  "provenance": "none: uploaded by hand to the release, no build attestation and no CI run that builds it; the tag is unsigned and the release mutable",
+  "minimum_driver": 580
+ },
+ "mtp": {
+  "repo": "Qwen/Qwen3.8-Flash-Next",
+  "revision": "de4b8e4d43b917e7706784d8bb445c9af86a3540",
+  "tensors": {
+   "mtp.fc_embedding.weight": "241d6e87ded317a61b1aeb3ca4e28c53f1caba09ad5be66092e91fe5e3e14751",
+   "mtp.fc_hidden.weight": "97c8e427ad0177e2c713ed24a397d815b523eda15ef453f1ae6463f6c70a8f96",
+   "mtp.hyper_connection_mixer.hc_norm.weight": "ce948a398e15aeaa403c424cda34e6eed296ab2570d591bb5ff3da642b255d64",
+   "mtp.hyper_connection_mixer.input_mix_weight_down.weight": "c633d2841fda463e82045e0b93fb8cb8d511ec0c9eda616020f01aca18d71947",
+   "mtp.hyper_connection_mixer.input_mix_weight_up.weight": "6565285f0ba2923703252763cfc11d8a9bda40ab42e7548e12464b04dbdbec13",
+   "mtp.layers.0.attn_hyper_connection.block_inject_weight.weight": "c8afff64e7f54412d02120097c4255033c55245e1c1eed84cc630d428ccb864c",
+   "mtp.layers.0.attn_hyper_connection.hc_norm.weight": "1fb619aeaaf637ccd70f46f1f8f8116e6a46448cb43026b246de8ee8286ed809",
+   "mtp.layers.0.attn_hyper_connection.input_mix_weight_down.weight": "e80ac8bf3e270e9d5a949ec7c913329dc8de017d69851334820fae7b8c86a7f5",
+   "mtp.layers.0.attn_hyper_connection.input_mix_weight_up.weight": "f80f1fd44e1183e7764ea496b11ff89ead9dd758f861d4e79a770bf54956b1a5",
+   "mtp.layers.0.mlp.experts.down_proj": "539c46234f73bac70450f731f40e715f77ac32faf77def0f3f800e58aaabbbc0",
+   "mtp.layers.0.mlp.experts.gate_up_proj": "839e98f9642ebc884b178abd2090b6dc8b0bcd81ed92d7f7a08314c6a68f96d5",
+   "mtp.layers.0.mlp.gate.weight": "f0d35fa41b360a08bc0c5b1e5766aa42df960291716ee189208b5d2599462c20",
+   "mtp.layers.0.mlp.shared_expert.down_proj.weight": "d2ced8c81367cc494599d1a8cdc279c3dd6579b628ded05acd7495e99cee01d8",
+   "mtp.layers.0.mlp.shared_expert.gate_proj.weight": "f4a81109165853b3b64f36d809f98094b599763364070f5fa079200e1c386d4c",
+   "mtp.layers.0.mlp.shared_expert.up_proj.weight": "172586861eea53efbff10afc43ded5b6e49c83879e9efc01e089c652bbb0a156",
+   "mtp.layers.0.mlp.shared_expert_gate.weight": "acdd306d9996d356e4667a16ff63af6fef086fc7f570f1bc00bbe882a2a93f6e",
+   "mtp.layers.0.mlp_hyper_connection.block_inject_weight.weight": "c5782dd92b479a1f8ef43d683fe9c917fd9e8fba81f23c1aae8817bfe4b476a6",
+   "mtp.layers.0.mlp_hyper_connection.hc_norm.weight": "21a504876b5e7b788301557c68dfb757999430eba36c66ec8ab96a63604dbfd1",
+   "mtp.layers.0.mlp_hyper_connection.input_mix_weight_down.weight": "b71240036dea954e034d5ae04e097bcd7ac51cb28a44e4c93d198af3447278a1",
+   "mtp.layers.0.mlp_hyper_connection.input_mix_weight_up.weight": "40756866bf2a5e82c28e407f717b6fa07614d593f78e79c7ceb2cd4ffe6dda94",
+   "mtp.layers.0.self_attn.indexer.index_qk_proj.weight": "2befafae6e944c1fc651fd73d4d527eb6f138a6c1679065b003128ee3150e859",
+   "mtp.layers.0.self_attn.indexer.k_layernorm.weight": "2db621f6a08b4085756fc69d60a4a1bd1d7fbf5d406456d2477075842efaae54",
+   "mtp.layers.0.self_attn.indexer.q_layernorm.weight": "afaf59f68e251939970ffdeacad0667dffc657a522bea62cdc44a52816fc49d6",
+   "mtp.layers.0.self_attn.k_norm.weight": "8f924b0357cf936e14fc34518205d000e1423aa60626827df81b0804fae8cdfd",
+   "mtp.layers.0.self_attn.k_proj.weight": "1a295dc2d6e633e808aeb19e00c97856a1817bbfcc83f5b610e2bfcacfcb8c38",
+   "mtp.layers.0.self_attn.o_proj.weight": "9d2fcf0ac6ac19de87f638f710cfd1af6ad14141e75b7d3d5d29fbd06f374219",
+   "mtp.layers.0.self_attn.q_norm.weight": "57957aa1e7c5a3ac628bff0ec5522ad55a39b8c0b8bd2d324ae640e3771617ef",
+   "mtp.layers.0.self_attn.q_proj.weight": "5220aef3d288f40759f7356af9ef453e5ac0256a38749a9bb803a4e9db58150d",
+   "mtp.layers.0.self_attn.v_proj.weight": "39cb12f5424e965fa71fb81db0ee230c701b7b1e0b72c36641fde7e0e41bff41",
+   "mtp.pre_fc_norm_embedding.weight": "04c4a570850e06f2d8913da8220d54d4c7f87db6eb6d45480b938e8ba41d6a86",
+   "mtp.pre_fc_norm_hidden.weight": "b933b44559879449b1baf2af8385c5c237347307e3fd452394870cb53e6eab6d"
+  }
+ },
+ "dflash2": {
+  "repo": "incoai/Qwen3.8-Flash-Next-DFlash2",
+  "revision": "a22a1744e85c17364dcc54a6a420af7135d4c7f6",
+  "license": "Apache-2.0",
+  "files": [
+   {
+    "name": "config.json",
+    "bytes": 1236,
+    "sha256": "2409575986f9ea24d455343eb469c0e6940def5edab1d1be503bb8eb4cc3b1b9"
+   },
+   {
+    "name": "model.safetensors",
+    "bytes": 1206140008,
+    "sha256": "d6723f2a359eaf33ec0c95f22ae8edda896774020c552296a85e1913b4d3186f"
+   }
+  ],
+  "pack": {
+   "name": "qwen3.8-flash-next-dflash2.q4_0.pack",
+   "bytes": 522458112,
+   "sha256": "cda40d62d0eb8f37ed6e272142641a1d2f0de4a32f9e14d0416e7a71534849f1"
+  },
+  "converted": {
+   "name": "qwen3.8-flash-next-dflash2.q4_0-selq4.pack",
+   "bytes": 339694592,
+   "sha256": "4a42b98220ea7880664002c8edda1563aecbae754b762a2e2f31b2b91ee93ecd"
+  }
+ },
+ "models": {
+  "q2_0": {
+   "repo": "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF",
+   "revision": "ed59f92082b1e93c0e96d60a8b11aab089b52f09",
+   "directory": "Q2_0",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-00001-of-00002.gguf",
+     "bytes": 37623740192,
+     "sha256": "69820c02ec7d0b45ef2ebb19d6620299db749fe2aded7f39f93c6b88b199b720"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-GSQ-RCO-Q2_0-00002-of-00002.gguf",
+     "bytes": 28800138432,
+     "sha256": "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113"
+    }
+   ],
+   "experts_gb": 34.0,
+   "ram_gb": 48
+  },
+  "iq2_xs": {
+   "repo": "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF",
+   "revision": "ed59f92082b1e93c0e96d60a8b11aab089b52f09",
+   "directory": "IQ2_XS",
+   "metal": false,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00001-of-00002.gguf",
+     "bytes": 39225954592,
+     "sha256": "92cee27ae5bbadcd732416a0f7a7f0acc092399dbbe8f5a5efa707c2ec0a49d7"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf",
+     "bytes": 28800138432,
+     "sha256": "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113"
+    }
+   ],
+   "experts_gb": 35.5,
+   "ram_gb": 48
+  },
+  "iq3_xxs": {
+   "repo": "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF",
+   "revision": "ed59f92082b1e93c0e96d60a8b11aab089b52f09",
+   "directory": "IQ3_XXS",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00001-of-00002.gguf",
+     "bytes": 47039860096,
+     "sha256": "219ea929900dfa9ef091f3aa473fdba6874b65fcb36526d7d851ac9e95856d15"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_XXS-00002-of-00002.gguf",
+     "bytes": 28800138432,
+     "sha256": "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113"
+    }
+   ],
+   "experts_gb": 42.9,
+   "ram_gb": 60
+  },
+  "iq3_s": {
+   "repo": "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF",
+   "revision": "ed59f92082b1e93c0e96d60a8b11aab089b52f09",
+   "directory": "IQ3_S",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00001-of-00002.gguf",
+     "bytes": 54817524224,
+     "sha256": "4c1eb2ceb4915e1192f4f386021897bde56a97f40a0bb78bb86465e0f7d2aca3"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-GSQ-RCO-IQ3_S-00002-of-00002.gguf",
+     "bytes": 28800138432,
+     "sha256": "316b46f3a2dbd68c900f43136ab9449f9dcc3725dfd8c794847c204bc161e113"
+    }
+   ],
+   "experts_gb": 50.3,
+   "ram_gb": 62
+  },
+  "unsloth-ud-iq1_m": {
+   "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+   "revision": "d96201194f103c906994f283f504209dc8d2a10c",
+   "directory": "UD-IQ1_M",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ1_M-00001-of-00003.gguf",
+     "bytes": 10946618,
+     "sha256": "b0d883bb9464021f31074145af74bfc2aa2d4bf0cf506f26f6f5107f4ca6ce17"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ1_M-00002-of-00003.gguf",
+     "bytes": 39196009888,
+     "sha256": "bddcd79634ccddbb2e0951345c73c6ae8bd7b12594f55a2a529474701757391e"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ1_M-00003-of-00003.gguf",
+     "bytes": 28800138432,
+     "sha256": "05716382c280d999b81afff92b2d527fadbfd926ac225ffdc273f2d1d13331c6"
+    }
+   ],
+   "experts_gb": 34.8,
+   "ram_gb": 48
+  },
+  "unsloth-ud-q2_0": {
+   "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+   "revision": "d96201194f103c906994f283f504209dc8d2a10c",
+   "directory": "UD-Q2_0",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q2_0-00001-of-00003.gguf",
+     "bytes": 10946618,
+     "sha256": "38803c4e8d13077165aa9854502b3d4e7fef750e72a21d27a38ee42089f96ad6"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q2_0-00002-of-00003.gguf",
+     "bytes": 41738806688,
+     "sha256": "57af20207d5f18fa72fba503806d98d65f58ba3982fe55c89c6ed6e691471acc"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q2_0-00003-of-00003.gguf",
+     "bytes": 28800138432,
+     "sha256": "05716382c280d999b81afff92b2d527fadbfd926ac225ffdc273f2d1d13331c6"
+    }
+   ],
+   "experts_gb": 37.4,
+   "ram_gb": 48
+  },
+  "unsloth-ud-iq2_xs": {
+   "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+   "revision": "d96201194f103c906994f283f504209dc8d2a10c",
+   "directory": "UD-IQ2_XS",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ2_XS-00001-of-00003.gguf",
+     "bytes": 10946618,
+     "sha256": "91e8dc8f1428ce25d48fd1f711e4bf1f42215c5bac0f32eeb5608e6ec7ae91e9"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ2_XS-00002-of-00003.gguf",
+     "bytes": 47021008288,
+     "sha256": "11a67c82f54a9edf683d6b708062de78d803921a18a6cb2bf1dd55949b4ef9bd"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ2_XS-00003-of-00003.gguf",
+     "bytes": 28800138432,
+     "sha256": "05716382c280d999b81afff92b2d527fadbfd926ac225ffdc273f2d1d13331c6"
+    }
+   ],
+   "experts_gb": 42.3,
+   "ram_gb": 48
+  },
+  "unsloth-ud-q2_k_xl": {
+   "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+   "revision": "d96201194f103c906994f283f504209dc8d2a10c",
+   "directory": "UD-Q2_K_XL",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q2_K_XL-00001-of-00004.gguf",
+     "bytes": 10946618,
+     "sha256": "297e174dc185f2bf3ab1856461059cb8a05aa741bc27edf42461cde87e5420af"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q2_K_XL-00002-of-00004.gguf",
+     "bytes": 49732486272,
+     "sha256": "a4782511810bb61bd6b3236607a0aad05b1bfa04b90356defd202bb17e7db16d"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q2_K_XL-00003-of-00004.gguf",
+     "bytes": 1037181344,
+     "sha256": "4dffc4a1cea7ad484f2d5c711b747840e459b040b636cc8ddaa524d01e60662e"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q2_K_XL-00004-of-00004.gguf",
+     "bytes": 28800138432,
+     "sha256": "5de8b5dbf89409acc39468decafd4a4a95b13c29d88a14b0356107897829ec36"
+    }
+   ],
+   "experts_gb": 46.0,
+   "ram_gb": 48
+  },
+  "unsloth-ud-iq3_xxs": {
+   "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+   "revision": "d96201194f103c906994f283f504209dc8d2a10c",
+   "directory": "UD-IQ3_XXS",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ3_XXS-00001-of-00004.gguf",
+     "bytes": 10946618,
+     "sha256": "9d5644b371ffac921427c8021cc7242dab8e3ba37d7b48d1e79fe3770fbf9915"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ3_XXS-00002-of-00004.gguf",
+     "bytes": 49946027488,
+     "sha256": "aacaff3bdb9032c2c3be428167930809735f65d3cfb204eba07d85e421e7ddf4"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ3_XXS-00003-of-00004.gguf",
+     "bytes": 4869325888,
+     "sha256": "ef8f14e790ab471b363f146d5e8664eefbaf03e5776f317a1fb96a2bc7707b07"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ3_XXS-00004-of-00004.gguf",
+     "bytes": 28800138432,
+     "sha256": "5de8b5dbf89409acc39468decafd4a4a95b13c29d88a14b0356107897829ec36"
+    }
+   ],
+   "experts_gb": 50.3,
+   "ram_gb": 48
+  },
+  "unsloth-ud-q3_k_xl": {
+   "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+   "revision": "d96201194f103c906994f283f504209dc8d2a10c",
+   "directory": "UD-Q3_K_XL",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q3_K_XL-00001-of-00004.gguf",
+     "bytes": 10946618,
+     "sha256": "7666000ba91eb5527f8e12e0414de36766dc82a082876337f7827c2caa859143"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q3_K_XL-00002-of-00004.gguf",
+     "bytes": 49742117248,
+     "sha256": "e954cb3044ae087a003ce8cc1631c9d40fe15ae64a8befcf4aa06457848c647c"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q3_K_XL-00003-of-00004.gguf",
+     "bytes": 10911746208,
+     "sha256": "fcce26b1e5e6e54559a7e7c2f8d6e37067ec695ff1f14bce662810bde78abe1f"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q3_K_XL-00004-of-00004.gguf",
+     "bytes": 28800138432,
+     "sha256": "5de8b5dbf89409acc39468decafd4a4a95b13c29d88a14b0356107897829ec36"
+    }
+   ],
+   "experts_gb": 56.2,
+   "ram_gb": 48
+  },
+  "unsloth-ud-iq4_xs-v31": {
+   "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+   "revision": "d96201194f103c906994f283f504209dc8d2a10c",
+   "directory": "UD-IQ4_XS",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00004.gguf",
+     "bytes": 10946618,
+     "sha256": "93ff23a08e5cd7501f24fa16f5b415d5807d0175e04edd3ed6a7a41b601a4eef"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ4_XS-00002-of-00004.gguf",
+     "bytes": 49604491008,
+     "sha256": "13d5dc8b93d039e4cfade5a9af7037f10c97f7ec4e53f75bd2e9ae34aae54aeb"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ4_XS-00003-of-00004.gguf",
+     "bytes": 15256783680,
+     "sha256": "f6b9b5934908a2043732269dd740155d0f921d0763a1dcdd3452246311651f87"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-IQ4_XS-00004-of-00004.gguf",
+     "bytes": 28800138432,
+     "sha256": "5de8b5dbf89409acc39468decafd4a4a95b13c29d88a14b0356107897829ec36"
+    }
+   ],
+   "experts_gb": 60.4,
+   "ram_gb": 48
+  },
+  "unsloth-ud-q4_k_xl": {
+   "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+   "revision": "d96201194f103c906994f283f504209dc8d2a10c",
+   "directory": "UD-Q4_K_XL",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+     "bytes": 10946618,
+     "sha256": "acc44040f74d0e55fb89c3967056cce5dbda1bcc52e909c3ba6fc72b5e9c0858"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+     "bytes": 49720539552,
+     "sha256": "45792ae869072d8229384c51c7c73dd959e191505252b41dd71852d9746f5ce4"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+     "bytes": 32803030176,
+     "sha256": "8c76e79d444b16a663d9c8db54e585ed3b1da13eebd2619c37b0c355da803c82"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf",
+     "bytes": 28800138432,
+     "sha256": "5de8b5dbf89409acc39468decafd4a4a95b13c29d88a14b0356107897829ec36"
+    }
+   ],
+   "experts_gb": 77.0,
+   "ram_gb": 48
+  },
+  "unsloth-ud-q5_k_xl": {
+   "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+   "revision": "38bb39ee97821de2c9009abb7e93950eec396e66",
+   "directory": "UD-Q5_K_XL",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q5_K_XL-00001-of-00006.gguf",
+     "bytes": 10946618,
+     "sha256": "610922cdb1afe1094e95d7a3e86b12ee33317ebbf7320ac9344e21b6ae4bb69f"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q5_K_XL-00002-of-00006.gguf",
+     "bytes": 682434912,
+     "sha256": "494ca4ed3dbf97bc28da88af3890b8877b9032f909812d00c0526a9ca5e91d2e"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q5_K_XL-00003-of-00006.gguf",
+     "bytes": 54400261312,
+     "sha256": "34efd79a80a1ce540a517a5d56171924b66ce1c38b04c904f17ad6d8ef17cf20"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q5_K_XL-00004-of-00006.gguf",
+     "bytes": 49990245824,
+     "sha256": "9ee6bbe462e6830864382d629101490625b1c95afa15492b7ad550c7bed2dd13"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q5_K_XL-00005-of-00006.gguf",
+     "bytes": 49882416192,
+     "sha256": "0b2437f661f584030cb5aeb8fb1bb70f6422518a6746bfcc0304167c7b6b8beb"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q5_K_XL-00006-of-00006.gguf",
+     "bytes": 3320101792,
+     "sha256": "55dd96c5ad0863b06b6393151b9ad0ac727b8d58a62e02a296ca5d5ddbfee4a3"
+    }
+   ],
+   "experts_gb": 98.4,
+   "ram_gb": 108
+  },
+  "unsloth-ud-q6_k_xl": {
+   "repo": "unsloth/Qwen3.8-Flash-Next-GGUF",
+   "revision": "38bb39ee97821de2c9009abb7e93950eec396e66",
+   "directory": "UD-Q6_K_XL",
+   "metal": true,
+   "cuda": true,
+   "files": [
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q6_K_XL-00001-of-00006.gguf",
+     "bytes": 10946624,
+     "sha256": "8bdc6bad55b6699f46f60708829932ff4018d7ac9bd309c388534fa31753bdb7"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q6_K_XL-00002-of-00006.gguf",
+     "bytes": 682434912,
+     "sha256": "494ca4ed3dbf97bc28da88af3890b8877b9032f909812d00c0526a9ca5e91d2e"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q6_K_XL-00003-of-00006.gguf",
+     "bytes": 54400261312,
+     "sha256": "34efd79a80a1ce540a517a5d56171924b66ce1c38b04c904f17ad6d8ef17cf20"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q6_K_XL-00004-of-00006.gguf",
+     "bytes": 49814108512,
+     "sha256": "0ea4b599880a5a52fcd9c188ba1443f646c69c96571904ddbd6a79246a01a997"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q6_K_XL-00005-of-00006.gguf",
+     "bytes": 49419317344,
+     "sha256": "9948e81ae8368144b135a7403d8c0f2cf9a6c2f9f692313865855b2832e696c9"
+    },
+    {
+     "name": "Qwen3.8-Flash-Next-UD-Q6_K_XL-00006-of-00006.gguf",
+     "bytes": 14838313984,
+     "sha256": "e4ae255234f42b18012f6d6eec5bf615b57479b7e0a0233c47436a321ffeec3f"
+    }
+   ],
+   "experts_gb": 109.2,
+   "ram_gb": 118
+  }
+ }
+}

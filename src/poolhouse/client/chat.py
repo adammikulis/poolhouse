@@ -322,8 +322,11 @@ class Client:
             if effort is not None:
                 body["reasoning_effort"] = effort
 
-        if not self._is_hosted_openai and body.get("n_predict") is None:
-            body["n_predict"] = -1
+        if not self._is_hosted_openai:
+            if body.get("n_predict") is None:
+                body["n_predict"] = -1
+            elif body["n_predict"] > 0:   # an engine that reads only OpenAI's name for the reply's length is held to it too
+                body.setdefault("max_tokens", body["n_predict"])
         return body
 
     # --------------------------------------------------------------- calls

@@ -15,7 +15,6 @@ import psutil
 from poolhouse import maintenance, runtime
 from poolhouse.lock import Busy
 from poolhouse.log import warn
-from poolhouse.net import packages
 from poolhouse.redact.secrets import env_secrets, redact
 from poolhouse.serve import broker_wire, process as processes
 from poolhouse.serve.process import pid_exists, started_at
@@ -161,8 +160,7 @@ def _transaction(record, known):
 
 
 def _replace(environment, base, expected):
-    result = packages.run(environment.python, ['install', '--no-index', '--no-deps', '--no-compile',
-                          '--force-reinstall', str(base)], timeout=3600, env=process_environment())
+    result = compute_install.replace_wheel(environment.python, base, environment=process_environment())
     if result.returncode:
         raise OSError('The app-owned managed runtime could not be synchronized')
     result = compute_install.install(environment.python, base.parent, environment=process_environment())
