@@ -398,8 +398,10 @@ def resolved(model: str, draft: str, mmproj: str, *, build: str = "") -> tuple[s
     'auto' is answered the way `poolhouse-serve up` answers it. A bare file name -- which is
     what a bench run records and so what a record keeps -- is looked for in the Hub cache,
     the same way `up` resolves a bare model name. Anything already a path or an ``hf:``
-    reference is left exactly as it is, and anything that cannot be found is served without
-    rather than handed on as a file name llama-server would try to open.
+    reference is left exactly as it is. A head not on this machine that the model's own
+    repository serves under that name becomes its ``hf:`` reference, fetched when a server
+    starts with it; anything else that cannot be found is served without rather than handed on
+    as a file name llama-server would try to open.
     """
     from poolhouse.serve.serving import draft_for, projector_for
 
@@ -407,13 +409,13 @@ def resolved(model: str, draft: str, mmproj: str, *, build: str = "") -> tuple[s
     if head.lower() == "auto":
         head = draft_for(model, "auto", build=build)
     elif head and "/" not in head and not head.startswith("hf:"):
-        from poolhouse.hub import located
+        from poolhouse.hub import beside, located, repo_of
 
         try:
             found = located(head)
+            head = str(found) if found is not None else beside(repo_of(model), head.lower())
         except Exception:  # noqa: BLE001 - a head we cannot find is served without
-            found = None
-        head = str(found) if found is not None else ""
+            head = ""
     seeing = str(mmproj or "")
     if seeing.lower() == "auto":
         seeing = projector_for(model, "auto")

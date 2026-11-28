@@ -285,8 +285,8 @@
     "model": "Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
     "workload": "ask",
     "serve": {
-      "build": "unsloth",
-      "draft": "mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf",
+      "build": "",
+      "draft": "mtp-Qwen3.8-Flash-Next-Q4_K_M.gguf",
       "spec_type": "draft-mtp",
       "cache_type": "q8_0",
       "draft_cache_type": "",
@@ -330,7 +330,7 @@
       "precision": 0.769448717948718,
       "seconds_per_question": 26.718600000000002,
       "host": "Mac",
-      "note": "set from the fastest row whose F1 held: `Qwen3.8-Flash--all-plain-kv-q8_0-rb0`, 100 question(s) at 80% F1, 26.7 s/question -- asked as the record already said: this run predates asking records"
+      "note": "set from the fastest row whose F1 held: `Qwen3.8-Flash--all-plain-kv-q8_0-rb0`, 100 question(s) at 80% F1, 26.7 s/question -- asked as the record already said: this run predates asking records. Measured on the unslothai/llama.cpp b10715-mix build with its shared Q8_0 head; the build and head named above replaced them on 2026-11-28 and this run was not repeated on them"
     }
   }
 ]
