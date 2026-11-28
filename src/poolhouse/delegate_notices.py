@@ -1,6 +1,7 @@
 """What the lead is told while a delegate runs, without polling: that an attempt was broken off or a review failed, that a restart began, that the
-preflight found the box wanting, that a test run in the box failed for what looks like setup, and that nothing has happened for a long while. How a
-run ended is told by the runner's own last message (`delegate_run`).
+preflight found the box wanting, that a test run in the box failed for what looks like setup, that a request rewrote history the model server had
+read or a step read it again, and that nothing has happened for a long while. How a run ended is told by the runner's own last message
+(`delegate_run`).
 
 A notice is a message to the lead on the board, from the delegate's session, and nothing waits for an answer. It is read from the run's record, so
 it says what the record says; each is also an event of the record, and `poolhouse-delegate wait` returns when one is new.
@@ -79,6 +80,12 @@ class Teller:
         elif kind == "preflight" and not event.get("ok"):
             found = str(event.get("lacks") or event.get("untested"))
             self._tell("preflight failed", f"the preflight in the box failed: {found}", once=f"preflight {event.get('untested')}")
+        elif kind == "rewrite":   # the first of each is told; a run that goes on doing it would fill the lead's inbox, and its record holds all
+            self._tell("history rewritten", f"{event.get('why')}. Later ones of this run are in its record only.", once="rewrite")
+        elif kind == "reread":
+            self._tell("prompt read again", f"step {event.get('turn')} read {int(event.get('input_tokens') or 0):,} tokens of its prompt again; "
+                       f"only {int(event.get('cache_read_tokens') or 0):,} came from the server's cache. Later ones of this run are in its record "
+                       "only.", once="reread")
         elif kind == "test" and event.get("setup"):
             self._tell("test setup", f"a test run in the box failed and it looks like setup, not the work: command {event.get('command')!r}, "
                        f"{delegate_record.counts(event)}: {event['setup']}", once=f"setup {event['setup']}")

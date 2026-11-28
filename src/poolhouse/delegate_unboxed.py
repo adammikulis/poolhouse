@@ -49,6 +49,7 @@ from poolhouse import (
 )
 from poolhouse.client import families
 from poolhouse.errors import Denied
+from poolhouse.isolation import prompt_watch
 from poolhouse.isolation.environment import OPENCODE_OFFLINE, SHELL, SHELL_DEFAULT_S, SHELL_MAX_S
 from poolhouse.log import say as log
 from poolhouse.workspace import nudge_fence
@@ -83,16 +84,21 @@ def environment(own: Path, binary: str) -> dict[str, str]:
             "POOLHOUSE_NONINTERACTIVE": "1", "GIT_CONFIG_NOSYSTEM": "1", "PYTHONDONTWRITEBYTECODE": "1"}
 
 
-def _written(rec: store.Delegate, own: Path, bridged: tuple[tuple[str, str, int], str], ask: delegate_review.Pass, folder: Path) -> None:
-    """The config, the plugin and the shell bound of one pass on ``folder``, in its own home ``own``; ``bridged`` is the model as the pass reaches
-    it (address, name and window) and its token."""
+def _written(rec: store.Delegate, own: Path, bridged: tuple[tuple[str, str, int], str], ask: delegate_review.Pass,
+             places: tuple[Path, list[list[str]]]) -> None:
+    """The config, the plugin and the shell bound of one pass, in its own home ``own``; ``bridged`` is the model as the pass reaches it (address,
+    name and window) and its token; ``places`` are the folder the pass is on and the paths earlier passes' prompts named, with what stands for each,
+    to which this pass adds its own."""
+    folder, earlier = places
     (served, token), config = bridged, own / "config"
     for each in (config, own / "tmp"):
         each.mkdir(mode=0o700)
     hook = runtime.module_argv(delegate_guard.__name__, folder, "--tier", ask.tier, "--root", str(folder), "--home", str(home.user_home()),
                                "--state", str(home.home()), "--scratch", str(own / "tmp"), "--calls", str(own / "calls.jsonl"))
     lead = runtime.module_argv(lead_mcp.__name__, folder, "--state", str(home.home()), "--board", rec.board, "--lead", rec.lead, "--name", rec.name)
-    settings: dict[str, Any] = {"hook": hook, "root": str(folder), "tools": list(ask.tools), "fixed": [[str(folder), "."], [str(own), "$HOME"]]}
+    here = [[str(folder), "."], [str(own), "$HOME"]]   # what differs from pass to pass is kept out of the prompt, so the server reuses it
+    settings: dict[str, Any] = {"hook": hook, "root": str(folder), "tools": list(ask.tools), "fixed": [*here, *earlier]}
+    earlier.extend(here)
     if "shell" in ask.tools and os.name != "nt":   # the program that ends a command with all it started ends a process group, which Windows has not
         (config / "bounded.py").write_text(delegate_confined.BOUNDED, encoding="utf-8")
         settings["shell"] = {"argv": [sys.executable, "-I", str(config / "bounded.py")], "program": SHELL, "default": SHELL_DEFAULT_S, "most": SHELL_MAX_S}
@@ -146,6 +152,9 @@ class _InPlace:
         self.tried = False
         self.before: delegate_candidate.Folder | None = None
         self.uncompared = "no copy of the folder was taken before the work"
+        self.paths: list[list[str]] = []
+        self.watches: dict[tuple[str, int], prompt_watch.Watch] = {}
+        """What compares the prompts of each pass, by its phase and round: one for every attempt of it."""
 
     def run(self) -> harness.Answer:
         """The work, and its self-check when the record asks for one."""
@@ -194,6 +203,7 @@ class _InPlace:
         began, hooks = time.time(), delegate_confined.Hooks()
         url, alias, window = self.model.url, self.model.alias, self.model.window
         bridge = isolation.ModelBridge(url, isolation.Lease.of(alias, window, 1), key=serverkeys.for_url(url))
+        bridge.watch = self.watches.setdefault((ask.phase, ask.round), bridge.watch)
         broke = ""
         try:
             folder = Path(self.rec.workdir)
@@ -203,10 +213,10 @@ class _InPlace:
                 self.before.copy(folder)
             reached = (f"http://127.0.0.1:{bridge.start()}", alias, window)
             delegate_recorder.of(self.rec.name).hide(bridge.token, serverkeys.for_url(url) or "")
-            _written(self.rec, own, (reached, bridge.token), ask, folder)
+            _written(self.rec, own, (reached, bridge.token), ask, (folder, self.paths))
             if ask.session:
                 delegate_resume.carry_conversation(self.scratch / "data", own / "data")
-            answer, broke = self._followed(ask, own, folder, hooks, bridge.busy)
+            answer, broke = self._followed(ask, own, folder, hooks, bridge)
             if broke:
                 shutil.rmtree(self.scratch / "data", ignore_errors=True)
                 delegate_resume.carry_conversation(own / "data", self.scratch / "data")
@@ -232,7 +242,7 @@ class _InPlace:
         return ran
 
     def _followed(self, ask: delegate_review.Pass, own: Path, folder: Path, hooks: delegate_confined.Hooks,
-                  busy: Callable[[], int]) -> tuple[harness.Answer, str]:
+                  bridge: isolation.ModelBridge) -> tuple[harness.Answer, str]:
         """The answer of the pass, and what broke it off from outside."""
         rec, alias = self.rec, self.model.alias
         seen = delegate_refusals.Writes(str(folder))
@@ -271,7 +281,7 @@ class _InPlace:
 
         taken_up = ("--session", ask.session) if ask.session else ()
         argv = (self.binary, "run", "--standalone", "--format", "json", "--model", f"{opencode.PROVIDER}/{alias}", *taken_up, "--title", "delegate")
-        running = inplace.Direct(argv, environment(own, self.binary), str(folder), busy)
+        running = inplace.Direct(argv, environment(own, self.binary), str(folder), bridge.busy, bridge.look)
         store.set_phase(rec.name, ask.phase, ask.round)
         store.set_status(rec.name, "working", alias)
         record.started()
