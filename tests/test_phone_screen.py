@@ -114,13 +114,20 @@ def test_the_screen_lists_switches_and_removes_a_phone(page):
     assert _call(base, "DELETE", f"/ui/phones/{phone}", session=cookie)["phones"] == []
 
 
+def _hooked(project):
+    """The phone hook events written into ``project``."""
+    held = json.loads((project / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+    return {hook["args"][-1] for groups in held["hooks"].values() for group in groups for hook in group["hooks"]
+            if "poolhouse.cli.phone" in hook.get("args", [])}
+
+
 def test_connecting_a_project_writes_its_hooks(page, tmp_path):
     ui, base = page
     project = tmp_path / "project"
     project.mkdir()
     got = _call(base, "POST", "/ui/phones/projects", {"path": str(project), "connected": True}, _person(ui))
     assert [p["connected"] for p in got["projects"]] == [True]
-    assert "phone hook listen" in (project / ".claude" / "settings.local.json").read_text()
+    assert "listen" in _hooked(project)
 
 
 def test_linking_connects_the_projects_claude_ran_in_and_respects_a_no(page, tmp_path, monkeypatch):
@@ -146,7 +153,7 @@ def test_linking_connects_the_projects_claude_ran_in_and_respects_a_no(page, tmp
     for thread in threading.enumerate():
         if thread.name == "phone-connect":
             thread.join(20)
-    assert "phone hook listen" in (work / ".claude" / "settings.local.json").read_text()
+    assert "listen" in _hooked(work)
 
 
 def test_the_command_signs_in_to_the_daemon_and_does_what_the_screen_does(page, tmp_path, monkeypatch, capsys):

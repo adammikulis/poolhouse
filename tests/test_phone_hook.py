@@ -214,11 +214,11 @@ def test_connecting_a_project_writes_its_own_settings_and_disconnecting_takes_on
     stops = [h for group in held["hooks"]["Stop"] for h in group["hooks"]]
     assert stops[0] == foreign and len(stops) == 3
     waking = [h for h in stops if h.get("asyncRewake")]
-    assert [h["command"] for h in waking] == ["poolhouse phone hook listen"]
+    assert [h["args"][-3:] for h in waking] == [["poolhouse.cli.phone", "hook", "listen"]]
     assert waking[0]["timeout"] > phone_hook.LISTEN_S
     assert held["hooks"]["PreToolUse"][0]["matcher"] == "AskUserQuestion"
     assert held["hooks"]["PreToolUse"][0]["hooks"][0]["timeout"] > phone_hook.QUESTION_S
-    wired = {h["command"].split()[-1] for groups in held["hooks"].values() for g in groups for h in g["hooks"] if "phone hook" in h["command"]}
+    wired = {h["args"][-1] for groups in held["hooks"].values() for g in groups for h in g["hooks"] if "poolhouse.cli.phone" in h.get("args", [])}
     assert wired == set(phone_hook.EVENTS)
     agent_hooks.phone(project, connect=False)
     assert json.loads(settings.read_text()) == {"hooks": {"Stop": [{"hooks": [foreign]}]}, "env": {"A": "1"}}
