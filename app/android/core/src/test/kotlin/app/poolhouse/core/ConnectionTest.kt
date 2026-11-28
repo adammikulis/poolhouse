@@ -20,9 +20,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -191,5 +195,42 @@ class ConnectionTest {
         computer.endStream()
         until { it.connection is Connection.Unlinked }
         Unit
+    }
+
+    /** The stream reports a change only for a linked phone, so the screens that show the computers ask again while they are open. */
+    @Test
+    fun theDevicesAreReadAgainWhileAScreenShowsThemAndTheAppIsOnScreen() = runBlocking {
+        var free = 0
+        computer.answers["GET /phone/v1/devices"] = {
+            computer.ok("""{"devices":[{"id":"canned-computer","name":"canned computer","kind":"computer","online":true,"free":${++free}}]}""")
+        }
+        val client = PhoneClient(linked(), key)
+        val store = PoolStore(PhoneApi(client), client::hello, scope, object : SeenStore {
+            override fun load() = emptyMap<String, Double>()
+            override fun save(seen: Map<String, Double>) = Unit
+        })
+        fun asked() = computer.received.count { it == "GET /phone/v1/devices" }
+        store.resume()
+        withTimeout(10_000) { store.state.first { it.devices.value != null } }
+
+        val screen = scope.launch { store.watchDevices(50) }
+        val later = withTimeoutOrNull(5_000) { store.state.first { (it.devices.value?.devices?.single()?.free ?: 0) >= 4 } }
+        assertTrue("the devices were asked for ${asked()} times while shown", later != null)
+
+        // Off screen nothing is asked.
+        store.pause()
+        delay(300)
+        val paused = asked()
+        delay(300)
+        assertEquals(paused, asked())
+
+        // Once the screen is left, only the stream's own reading remains.
+        screen.cancelAndJoin()
+        store.resume()
+        delay(500)
+        val closed = asked()
+        delay(300)
+        assertEquals(closed, asked())
+        store.pause()
     }
 }

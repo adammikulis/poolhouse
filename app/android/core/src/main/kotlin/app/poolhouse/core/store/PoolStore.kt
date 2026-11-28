@@ -150,6 +150,17 @@ class PoolStore(
         }
     }
 
+    /**
+     * Reads the computers again and again until cancelled, for as long as a screen shows them: the stream reports a change only for a
+     * linked phone (docs/phone-api.md). Nothing is asked while the app is off screen.
+     */
+    suspend fun watchDevices(everyMs: Long = 5_000) {
+        while (true) {
+            if (follower?.isActive == true) read("devices")
+            delay(everyMs)
+        }
+    }
+
     private fun unlinked(error: PhoneError) = change { it.copy(connection = Connection.Unlinked(error.message ?: "")) }
 
     private fun take(message: StreamItem.Message) {

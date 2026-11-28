@@ -23,6 +23,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -164,8 +165,15 @@ private fun PhonePool(model: PhoneViewModel) {
     }
 }
 
+/** Asks for the computers again while the screen that shows them is open. */
+@Composable
+private fun KeepDevicesCurrent(pool: PoolSession) {
+    LaunchedEffect(pool) { pool.store.watchDevices() }
+}
+
 @Composable
 private fun LinkedPool(model: PhoneViewModel, pool: PoolSession, state: PoolState) {
+    KeepDevicesCurrent(pool)
     val devices = state.devices.value
     val now = rememberNow()
     val computers = devices?.devices.orEmpty().filter { !it.isThisPhone(pool.link.phone) }
@@ -272,6 +280,7 @@ private fun Measure(name: String, fraction: Float, value: String) {
 
 @Composable
 fun DeviceScreen(model: PhoneViewModel, pool: PoolSession, state: PoolState, id: String) {
+    KeepDevicesCurrent(pool)
     val d = state.devices.value?.devices?.firstOrNull { it.id == id }
     val mine = id == "phone:${pool.link.phone}"
     val now = rememberNow()
