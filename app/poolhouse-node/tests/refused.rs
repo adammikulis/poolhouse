@@ -17,6 +17,23 @@ fn a_device_put_out_of_the_pool_is_told_so_when_it_next_dials() {
 }
 
 #[test]
+fn a_refused_device_that_sends_its_request_late_still_reads_why() {
+    use poolhouse_node::peer::PeerClient;
+
+    let (a, b) = (device(), device());
+    a.join_with_code(&b);
+    a.ok("member_remove", "", &a.token, json!({"fingerprint": b.fp()}));
+    let mut dialed = PeerClient::connect(&b.net.me, a.addr(), Some(&a.fp())).unwrap();
+    // long enough for the refusal to be sent before the request leaves
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    let first = dialed.call(&json!({"op": "hello"})).unwrap_err().to_string();
+    assert!(first.contains("received fatal alert"), "{first}");
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    let second = dialed.call(&json!({"op": "hello"})).unwrap_err().to_string();
+    assert!(!second.contains("reset") && !second.contains("Broken pipe"), "the connection was reset under the refusal: {second}");
+}
+
+#[test]
 fn a_peer_that_refuses_our_log_is_named_in_the_member_listing_after_a_sync_that_otherwise_worked() {
     use poolhouse_node::peer::PeerClient;
     use serde_json::Value;

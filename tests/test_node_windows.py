@@ -143,6 +143,12 @@ def test_a_process_probe_on_windows_never_sends_a_signal(monkeypatch):
 
 
 # -- the real node ------------------------------------------------------------------------
+def windows_node(test):
+    """``test`` runs on Windows alone; its time limit counts its own run, not the release build the ``built`` fixture waits for."""
+    skipped = pytest.mark.skipif(sys.platform != "win32", reason="needs the Windows node")
+    return skipped(pytest.mark.timeout(120, func_only=True)(test))
+
+
 @pytest.fixture(scope="module")
 def built() -> Path:
     with pytest.MonkeyPatch.context() as patch:
@@ -167,12 +173,12 @@ def select(binary: Path) -> Path:
     return prefix
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="needs the Windows node")
+@windows_node
 def test_the_node_binary_is_an_exe(built):
     assert built.name == "poolhouse-node.exe"
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="needs the Windows node")
+@windows_node
 def test_the_node_answers_over_its_pipe_and_leaves_on_its_stop_event(built, home):
     state = home / "n"
     child = start_process([str(built), "run", "--state", str(state)], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -193,7 +199,7 @@ def test_the_node_answers_over_its_pipe_and_leaves_on_its_stop_event(built, home
             child.kill()
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="needs the Windows node")
+@windows_node
 def test_ensure_starts_the_node_under_its_supervisor_and_stop_ends_both(built, home):
     select(built)
     state = home / "node"
