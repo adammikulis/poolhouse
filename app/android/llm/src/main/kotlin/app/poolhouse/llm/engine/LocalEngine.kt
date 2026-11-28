@@ -81,8 +81,8 @@ data class LoadSettings(
     val images: Boolean,
     /** A directory the runtime may fill with compiled kernels. */
     val cacheDir: File,
-    /** Whether a model file that carries a draft model uses it to write faster. */
-    val drafting: Boolean = false,
+    /** Whether a model file that carries a draft model uses it to write faster; loaded without it where it cannot. */
+    val drafting: Boolean = true,
 )
 
 /** A model held in memory. One reply runs at a time. */
@@ -90,6 +90,12 @@ interface LoadedModel : AutoCloseable {
     val accelerator: Accelerator
     val contextSize: Int
     val acceptsImages: Boolean
+
+    /** Whether the reply is written with the model file's draft model. */
+    val drafting: Boolean get() = false
+
+    /** Why the draft model asked for could not be used, or null. */
+    val draftingRefused: String? get() = null
 
     /**
      * Writes the reply to the last of `turns` into `onText` piece by piece and returns when it has ended. The calling

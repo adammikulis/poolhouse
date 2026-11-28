@@ -44,13 +44,36 @@ private const val TAG = "PoolhouseLlm"
 private const val TOP_K = 64
 private const val TOP_P = 0.95
 
+/** One way to load a model: the processors of the text and of the picture encoder, and whether with the drafter. */
+data class Attempt(val text: Accelerator, val vision: Accelerator, val drafting: Boolean)
+
+/** The ways to load with `settings`, best first. */
+fun attempts(settings: LoadSettings): List<Attempt> {
+    // The image encoder runs where the weights allow: with the text on the GPU, else on the CPU.
+    val processors = buildList {
+        if (settings.accelerator == Accelerator.GPU) {
+            add(Accelerator.GPU to Accelerator.GPU)
+            if (settings.images) add(Accelerator.GPU to Accelerator.CPU)
+        }
+        add(Accelerator.CPU to Accelerator.CPU)
+    }
+    val drafting = if (settings.drafting) listOf(true, false) else listOf(false)
+    return processors.flatMap { (text, vision) -> drafting.map { Attempt(text, vision, it) } }
+}
+
 /**
  * `activation` is the precision the GPU computes in. The runtime's own is 16 bits, in which the model miscopied digits
  * and hashes out of long input; 32 bits copied them exactly, at the cost of memory and of speed on long input
  * (docs/phone-models.md). Null leaves the runtime's own, which only a measurement asks for.
  */
 class LiteRtEngine(private val activation: ActivationDataType? = ActivationDataType.FLOAT32) : LocalEngine {
-    fun config(weights: String, settings: LoadSettings, text: Accelerator, vision: Accelerator): EngineConfig = EngineConfig(
+    fun config(
+        weights: String,
+        settings: LoadSettings,
+        text: Accelerator,
+        vision: Accelerator,
+        drafting: Boolean = settings.drafting,
+    ): EngineConfig = EngineConfig(
         modelPath = weights,
         backend = backend(text),
         visionBackend = if (settings.images) backend(vision) else null,
@@ -59,7 +82,7 @@ class LiteRtEngine(private val activation: ActivationDataType? = ActivationDataT
         maxNumImages = null,
         cacheDir = settings.cacheDir.absolutePath,
         activationDataType = activation.takeIf { text == Accelerator.GPU },
-        speculativeDecodingConfig = SpeculativeDecodingConfig(SpeculativeDecodingMode.ON).takeIf { settings.drafting },
+        speculativeDecodingConfig = SpeculativeDecodingConfig(SpeculativeDecodingMode.ON).takeIf { drafting },
     )
 
     override fun load(weights: File, settings: LoadSettings): LoadedModel {
@@ -67,25 +90,20 @@ class LiteRtEngine(private val activation: ActivationDataType? = ActivationDataT
         Engine.setNativeMinLogSeverity(LogSeverity.WARNING)
         ExperimentalFlags.enableBenchmark = true
         settings.cacheDir.mkdirs()
-        // The image encoder runs where the weights allow: with the text on the GPU, else on the CPU.
-        val tries = buildList {
-            if (settings.accelerator == Accelerator.GPU) {
-                add(Accelerator.GPU to Accelerator.GPU)
-                if (settings.images) add(Accelerator.GPU to Accelerator.CPU)
-            }
-            add(Accelerator.CPU to Accelerator.CPU)
-        }
         var first: Throwable? = null
-        for ((text, vision) in tries) {
-            val engine = Engine(config(weights.absolutePath, settings, text, vision))
+        var refused: String? = null
+        for ((text, vision, drafting) in attempts(settings)) {
+            val engine = Engine(config(weights.absolutePath, settings, text, vision, drafting))
             try {
                 engine.initialize()
-                Log.i(TAG, "loaded ${weights.name} on ${text.label}, images ${if (settings.images) vision.label else "off"}")
-                return LiteRtModel(engine, text, settings.contextSize, settings.images)
+                val pictures = if (settings.images) vision.label else "off"
+                Log.i(TAG, "loaded ${weights.name} on ${text.label}, images $pictures, drafting $drafting")
+                return LiteRtModel(engine, text, settings.contextSize, settings.images, drafting, refused.takeUnless { drafting })
             } catch (failure: RuntimeException) {
-                Log.w(TAG, "could not load on ${text.label}: ${failure.message}")
+                Log.w(TAG, "could not load on ${text.label}, drafting $drafting: ${failure.message}")
                 runCatching { engine.close() }
                 if (first == null) first = failure
+                if (drafting && refused == null) refused = failure.message
             }
         }
         throw IllegalStateException("LiteRT-LM could not load this model: ${first?.message}", first)
@@ -100,6 +118,8 @@ private class LiteRtModel(
     override val accelerator: Accelerator,
     override val contextSize: Int,
     override val acceptsImages: Boolean,
+    override val drafting: Boolean,
+    override val draftingRefused: String?,
 ) : LoadedModel {
     private var conversation: Conversation? = null
 

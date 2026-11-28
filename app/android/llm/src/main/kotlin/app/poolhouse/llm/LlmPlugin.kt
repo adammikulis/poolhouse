@@ -13,11 +13,13 @@ import app.poolhouse.llm.ui.ModelsActivity
 
 class LlmPlugin : PhonePlugin {
     override fun entries(context: Any): List<PluginEntry> {
-        val chosen = LocalModels.of(context as Context).chosen()
+        val models = LocalModels.of(context as Context)
+        val chosen = models.chosen()
+        val without = if (models.left().isEmpty()) "Download a model to chat with no computer" else "Use the model already on this phone"
         return listOf(
             PluginEntry(
                 "Model on this phone",
-                chosen?.let { "${it.title}, with no computer" } ?: "Download a model to chat with no computer",
+                chosen?.let { "${it.title}, with no computer" } ?: without,
                 LocalChatActivity::class.java.name,
             ),
             PluginEntry("Phone models", "Download, choose and remove models", ModelsActivity::class.java.name),

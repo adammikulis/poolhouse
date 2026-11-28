@@ -2,7 +2,6 @@
 package app.poolhouse.llm.model
 
 import app.poolhouse.llm.engine.CancelToken
-import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.RandomAccessFile
@@ -68,12 +67,9 @@ class Downloader(private val store: ModelStore, private val source: Source = Htt
             progress(model.bytes)
             return true
         }
-        val directory = store.directory(model).apply { mkdirs() }
+        store.prepare()
         val file = model.file
-        val finished = File(directory, file.name)
-        val part = File(directory, file.name + PART)
-        // A whole file with no record of its check is checked again as it stands.
-        if (finished.isFile && !part.exists()) finished.renameTo(part)
+        val part = store.part(model)
         if (part.length() > file.bytes) part.delete()
         val digest = MessageDigest.getInstance("SHA-256")
         var held = 0L
@@ -90,7 +86,7 @@ class Downloader(private val store: ModelStore, private val source: Source = Htt
             }
         }
         if (held < file.bytes) {
-            if (file.bytes - held > directory.usableSpace) {
+            if (file.bytes - held > store.freeSpace()) {
                 throw DownloadFailed("Not enough storage: ${gigabytes(file.bytes - held)} more is needed.")
             }
             source.open(model.url, held).use { body ->
@@ -124,13 +120,11 @@ class Downloader(private val store: ModelStore, private val source: Source = Htt
         }
         if (cancel.cancelled) return false
         if (held < file.bytes) throw DownloadFailed("The download stopped early. Try again to continue it.")
-        val actual = digest.digest().joinToString("") { "%02x".format(it) }
-        if (actual != file.sha256) {
+        if (digest.digest().hex() != file.sha256) {
             part.delete()
             throw DownloadFailed("${file.name} did not match its checksum, so it was removed. Try again.")
         }
-        if (!part.renameTo(finished)) throw DownloadFailed("The downloaded file could not be kept.")
-        store.markVerified(model)
+        store.keep(model, part)
         progress(file.bytes)
         return true
     }
