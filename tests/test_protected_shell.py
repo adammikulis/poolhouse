@@ -263,6 +263,7 @@ SHAPES = {
     "after a substitution that prints nothing": "$(true) @@",
     "after a comment in backticks": "`# x`@@",
     "after a closed descriptor": "exec 3>&-@@",
+    "after a redirect bash ends at the mark": "<>! @@\ncat <<'X'",
 }
 """Shapes a shell takes a command in, from the attack passes; `@@` is where the command stands."""
 

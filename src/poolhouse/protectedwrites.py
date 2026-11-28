@@ -184,6 +184,14 @@ def _script_text(path: Path) -> str:
         return ""
 
 
+def _fits(name: str, pattern: str) -> bool:
+    """Whether the glob ``pattern`` matches ``name``, whatever the case of either."""
+    try:
+        return fnmatch.fnmatchcase(name.casefold(), pattern.casefold())
+    except re.error:  # before Python 3.10, a range that runs backwards (`[t-3]`) raises; later ones match no name with it
+        return False
+
+
 class Shell:
     """What the command line being read knows: the working folder, the variables set so far and what it may do."""
 
@@ -225,12 +233,11 @@ class Shell:
         anchor = Path(pattern).anchor
         try:
             found = [str(p) for p in Path(anchor).glob(pattern[len(anchor):])] if anchor else []
-        except (ValueError, OSError):  # a pattern the matcher cannot take (`a**b`) names no existing file
+        except (ValueError, OSError, re.error):  # a pattern the matcher cannot take (`a**b`, `a[t-3]`) names no existing file
             found = []
         roots = [self.here, *self.here.parents]
         guards = [os.path.normpath(root / "/".join(held)) for root in roots for held in HELD]
-        folded = pattern.casefold()
-        return [*found, *map(os.path.realpath, found), *(g for g in guards if fnmatch.fnmatchcase(g.casefold(), folded))]
+        return [*found, *map(os.path.realpath, found), *(g for g in guards if _fits(g, pattern))]
 
     def hits(self, words: list[str], test: Callable[[str], bool]) -> str:
         """The first of ``words`` that names a path for which ``test`` holds, else an empty string."""
@@ -245,7 +252,8 @@ class Shell:
         """The files a copy of ``sources`` to ``dest`` writes: ``dest`` itself, or a file of each name inside a folder."""
         out: list[str] = []
         for place in self.paths(dest):
-            out += [f"{place}/{Path(s).name}" for s in sources] if Path(place).is_dir() else [place]
+            inside = os.path.lexists(place) and Path(place).is_dir()  # `lexists` is False for a name too long, which `is_dir` raises on
+            out += [f"{place}/{Path(s).name}" for s in sources] if inside else [place]
         return out
 
     def lands_on(self, sources: list[str], dests: list[str]) -> str:
@@ -334,8 +342,7 @@ def _find_hit(args: list[str], shell: Shell) -> str:
     patterns = [args[i + 1] for i, a in enumerate(args[:-1]) if a in ("-name", "-iname", "-path", "-ipath", "-wholename")]
     names = [Path("/".join(held)) for held in HELD]
     limited = bool(patterns) and not FIND_LOGIC.intersection(args)
-    could = not limited or any(fnmatch.fnmatchcase(text.casefold(), p.casefold())
-                               for p in patterns for n in names for text in (n.name, str(n), "./" + str(n)))
+    could = not limited or any(_fits(text, p) for p in patterns for n in names for text in (n.name, str(n), "./" + str(n)))
     return shell.guarded(_find_starts(args), deep=True) if could else ""
 
 

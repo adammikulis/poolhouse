@@ -63,7 +63,9 @@ def decide() -> int:
         return 0
     given = event.get("tool_input") if isinstance(event, dict) else None
     name = str(event.get("tool_name") or "") if isinstance(given, dict) else ""
-    rules = rules_loader.load() if name and name not in HELD_ELSEWHERE else None
+    rules, broken = rules_loader.usable() if name and name not in HELD_ELSEWHERE else (None, "")
+    if broken:  # no call is judged by rules that are not there, so the session keeps the tools that mend them
+        print(f"poolhouse claude-tool-guard: the rules did not load ({broken}).", file=sys.stderr)
     if rules is None:
         return 0
     why = rules.protected().tool_refusal(name, given, cwd=str(event.get("cwd") or ""), subagent=bool(event.get("agent_id")))

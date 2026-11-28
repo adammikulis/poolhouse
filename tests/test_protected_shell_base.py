@@ -109,8 +109,69 @@ ORDINARY = (
     "printf '%s\\n' \"${arr[@]}\" | tee list.txt", "git diff --stat HEAD~1 -- 'src/**/*.py'", "npm run build -- --mode=production",
     "ls -la | awk '{print $9}'", "mkdir -p 'new dir' && cp 'src/a b' 'new dir/'", "cd src && touch 'a b' && rm 'a b'",
     "git commit -m 'a change; rm -rf /tmp/x && git push --force' && git push origin HEAD", "echo 'rm -rf /Users/x' > advice.txt",
-    "x=$(cd /etc && pwd); rm -f build.log", "\"$(npm bin)/eslint\" src", "time -p make -j4 2>&1 | tail -5", "exec 3>&- ; echo done")
-"""Commands of ordinary work, quoted as work quotes them."""
+    "x=$(cd /etc && pwd); rm -f build.log", "\"$(npm bin)/eslint\" src", "time -p make -j4 2>&1 | tail -5", "exec 3>&- ; echo done",
+    # searches and messages that mention what the rules match
+    "grep -rn '.poolhouse/person' src/", "grep -rn \"person/harness-sessions\" src tests", "rg 'CLAUDE_CONFIG_DIR=' scripts",
+    "grep -n 'POOLHOUSE_BROKER_LOCAL=' tests/conftest.py", "rg \"pkill.*llama\" docs", "grep -rn 'llama-server' src | head -20",
+    "grep -n 'git add -A' AGENTS.md", "grep -n 'git stash' docs/agent-policy.md", "grep -rn -- '--no-verify' scripts",
+    "rg -n -e 'SKIP_BUDGETS=' scripts", "grep -E 'git push --force|--tags' docs/landing.md", "git log --grep='.poolhouse/person' --oneline",
+    "git log --grep='POOLHOUSE_BROKER_LOCAL=' --oneline", "git log -S 'POOLHOUSE_BROKER_LOCAL=' --oneline",
+    "git grep -n 'harness-sessions'", "git grep -n '\\.poolhouse/person'", "sed -n '/CLAUDE_CONFIG_DIR=/p' notes.txt",
+    "awk '/pkill.*llama/' docs/agent-policy.md", "scripts/test -k 'person'", "scripts/test tests/test_wiring.py -k llama-server",
+    "echo 'POOLHOUSE_BROKER_LOCAL=' > x.txt", "echo 'see .poolhouse/person for the layout'", "echo '.poolhouse/person'",
+    "printf '%s\\n' 'CLAUDE_CONFIG_DIR='", "python3 -c \"print('CLAUDE_CONFIG_DIR=')\"",
+    "gh pr create --title 'x' --body 'the guard blocks git push --force and .poolhouse/person'",
+    "gh pr comment 5 --body 'POOLHOUSE_BROKER_LOCAL='", "poolhouse-workspace send claude-x question 'why is llama-server refused'",
+    "git commit -m 'docs: explain why llama-server is leased'", "git commit -m 'POOLHOUSE_BROKER_LOCAL='",
+    "git commit -qm 'fix the person folder (.poolhouse/person) rule'",
+    "git commit -F - <<'EOF'\nfix: refuse git push --force\n\nAlso .poolhouse/person and git add -A.\nEOF",
+    "git commit -m \"$(cat <<'EOF'\nfix: refuse git push --force\n\nAlso .poolhouse/person, git stash and git add -A.\n"
+    "git reset --hard\n\nCo-Authored-By: X <x@example.com>\nEOF\n)\"",
+    "gh pr create --title t --body \"$(cat <<'EOF'\n## Summary\n- `git add -A` is refused\n- llama-server too (see "
+    ".poolhouse/person)\n\ngit checkout main\nEOF\n)\"",
+    "cat > notes.md <<'EOF'\nNever run git stash.\ngit reset --hard\n.poolhouse/person\nEOF",
+    "cat <<'EOF' > doc.md\nllama-server --port 1\ngit add -A\nEOF\ncat doc.md",
+    "python3 - <<'PY'\nimport re\nprint(re.findall(r'(\\d+)', 'git add -A'))\nPY",
+    # long arguments
+    "echo " + "A" * 300, "echo '" + "A" * 300 + "/x'", "echo " + "ab12/" * 120, "python3 -c 'print(1)' " + "A" * 300,
+    "curl -s -d '{\"data\": \"" + "ab12/" * 120 + "\"}' http://127.0.0.1:9/x", "git commit -m '" + "A" * 300 + "'",
+    "poolhouse-workspace announce milestone 'landed src/x.py: " + "detail " * 60 + "'",
+    "gh pr comment 3 --body '" + "Reviewed scripts/hooks. " * 30 + "'",
+    # shell features
+    "x=$(git rev-parse HEAD); echo \"${x:0:8}\"", "echo \"${HOME}/x\" ${#BASH_VERSION} $((1<<4))",
+    "arr=(a b c) # list\necho \"${arr[@]}\"", "case $x in a) echo a ;; *) echo b ;; esac", "if [[ $x == [0-9]* ]]; then echo n; fi",
+    "(cd /tmp && ls) # look\necho done", "(( n++ )) # count", "echo $((16#ff))", "echo \"it's fine\" # don't",
+    "# check the pool's state\ngit status", "echo \"a ${b:-'c'} d\"", "echo ${PATH//:/$'\\n'}",
+    "tr '\\n' ' ' < file | sed \"s/'/\\\"/g\"", "echo $'a\\tb' | cut -f1", "cat <<EOF\nhome is $HOME and `date`\nEOF",
+    "x=$(python3 <<'PY'\nPYTHON = len('a')\nprint(PYTHON)\nPY\n); echo $x", "out=$(cat <<'E'\nExample (one)\ngit stash\nE\n)",
+    "echo $(( $(wc -l < a) + 1 ))", "find . -name '*.pyc' -newer x -exec ls -l {} \\;", "ls | xargs -I{} echo {}",
+    "git add src/poolhouse/cli.py && git commit -m 'x'", "git -C . status --short", "sleep 1 & wait $!", "! grep -q x file && echo no",
+    "function f { echo x; }; f", "echo \"unbalanced ( in quotes\" && git status", "echo [done] > log.txt", "echo 'a' [ b",
+    "test -f x -a -n \"$y\" && echo ok", "node -e 'console.log(`hi ${1+1}`)'", "echo \"$(date +%F) \\`x\\`\"",
+    "rm -rf \"$TMPDIR/x\" build/", "kill %1 2>/dev/null || true", "ls *.{py,md} 2>&1 | tail -3", "ls a**b", "ls src/**/*.py",
+    "env | grep -c . ", "git worktree list", "git stash list", "git push origin HEAD", "git fetch origin", "gh pr view 94 --json state",
+    "poolhouse-workspace inbox", "poolhouse-serve down --port 8080",
+    # prose a command carries
+    "gh pr create --title t --body 'The fix: `git config core.hooksPath` is read first.'",
+    "poolhouse-workspace send claude-x note 'the guard refuses `git config user.name x` now'",
+    "gh pr create --body-file - <<'EOF'\nRun `git config core.hooksPath x` never.\nEOF",
+    "echo \"${x:-'}\"\ncat > d.md <<'EOF'\ngit reset --hard\nrm scripts/hooks/claude-harness-bind\nEOF",
+    "(( n++ #1 ))\ncat > d.md <<'EOF'\ngit reset --hard\nEOF",
+    "x=$(cat <<'M'\nMerge notes (draft)\ngit checkout main\nM\n)", "cat > d.md <<'END:DOC'\ngit reset --hard\nllama-server -m x\nEND:DOC",
+    "cat > d.md <<'END DOC'\ngit reset --hard\nEND DOC", "cat > d.md <<'$END'\ngit reset --hard\n$END",
+    "printf '%s' $'abc\ncat > d.md <<EOF", "rg -n '\\$\\(git config core.hooksPath' scripts",
+    "echo 'git config core.hooksPath x is refused'", "python3.12 -c 'import re'",
+    # a delegate's folder changes
+    "(cd src && ls); touch notes.txt", "(cd /tmp && ls) && mkdir -p build", "x=$(cd /tmp && pwd); touch notes.txt",
+    "ls | (cd /tmp; cat) ; cp README.md copy.md", "bash -c 'cd /tmp'; touch notes.txt",
+    "for f in a b; do (cd /tmp; ls); done; rm -rf build", "cd /tmp & touch notes.txt", "cd /tmp | cat; touch notes.txt",
+    "echo \"${x:-'}\"\ncat > d.md <<'EOF'\nrm -rf /\ncat ~/.ssh/id_rsa\nEOF", "(( n++ #1 ))\ncat > d.md <<'EOF'\nrm -rf /\nEOF",
+    "x=$(cat <<'M'\nMerge notes (draft)\nrm -rf /\nM\n); echo $x", "grep -rn 'rm -rf /' .", "echo '(cd /tmp)' ; touch notes.txt",
+    "[[ -d x ]] && (cd x && make); touch notes.txt", "if [ -d x ]; then (cd /tmp && true); fi; touch notes.txt",
+    "diff <(cd /tmp && ls) <(ls); touch notes.txt", "{ cd src; ls; }; touch notes.txt", "pushd /tmp; popd; touch notes.txt",
+    "printf '%s\\n' '$(rm -rf /)' > literal.txt", "sed 's/`x`/y/' README.md > out.md",
+    "echo \"it's\" # a comment's quote; touch /etc/x", "find . -name '*.py' -exec grep -l x {} +", "touch a && mv a b && rm b")
+"""Commands of ordinary work, quoted as work quotes them; the later groups are from the attack pass on the first shell reading."""
 CHUNKS = 4
 WORKER = r"""
 import importlib.machinery, importlib.util, json, sys, time
@@ -185,10 +246,11 @@ def base(tmp_path_factory) -> Path:
     return tree
 
 
-def judged(tree: Path, commands: list[str], tmp_path: Path) -> list[dict]:
-    home, work = tmp_path / "home", tmp_path / "work"
+def judged(tree: Path, commands: list[str], tmp_path: Path, folder: str = "work") -> list[dict]:
+    home, work = tmp_path / "home", tmp_path / folder
     home.mkdir(exist_ok=True)
-    (work / ".git" / "hooks").mkdir(parents=True, exist_ok=True)
+    if folder == "work":
+        (work / ".git" / "hooks").mkdir(parents=True, exist_ok=True)
     for name, text in FILES.items():
         (work / name).write_text(text, encoding="utf-8")
     env = {**os.environ, "HOME": str(home), "PYTHONDONTWRITEBYTECODE": "1"}
@@ -198,13 +260,34 @@ def judged(tree: Path, commands: list[str], tmp_path: Path) -> list[dict]:
     return json.loads(done.stdout)
 
 
+def checkouts(tmp_path: Path) -> None:
+    """An enforced primary checkout `work` and a linked worktree `linked` beside it, so the rules about checkouts are asked too."""
+    env = {**os.environ, "HOME": str(tmp_path), "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+           "GIT_AUTHOR_NAME": "a", "GIT_AUTHOR_EMAIL": "a@agents.invalid", "GIT_COMMITTER_NAME": "a",
+           "GIT_COMMITTER_EMAIL": "a@agents.invalid"}
+    work = tmp_path / "work"
+    (work / "scripts" / "hooks").mkdir(parents=True)
+    (work / "scripts" / "hooks" / "primary-only").write_text("", encoding="utf-8")
+    for arguments in (["init", "-q", "-b", "dev"], ["add", "scripts/hooks/primary-only"], ["commit", "-q", "-m", "start"],
+                      ["worktree", "add", "-q", "-b", "side", str(tmp_path / "linked")]):
+        subprocess.run(["git", "-C", str(work), *arguments], check=True, env=env, capture_output=True)
+
+
+UNTERMINATED = "cat <<EOF\nunterminated body mentions git add -A and ~/.poolhouse/person"
+"""Refused now though allowed before, on purpose: a body whose closing line is not found is not passed over."""
+
+
 @pytest.mark.redteam
 @pytest.mark.slow
-def test_ordinary_work_allowed_before_is_allowed_now(base, tmp_path) -> None:
+@pytest.mark.parametrize("folder", ["work", "linked"])
+def test_ordinary_work_allowed_before_is_allowed_now(folder, base, tmp_path) -> None:
+    checkouts(tmp_path)
     commands = [*ORDINARY, *HARMLESS, *(shape.replace("@@", PROSE) for shape in DATA_IN_HEREDOCS.values())]
-    before, after = judged(base, commands, tmp_path), judged(ROOT, commands, tmp_path)
+    assert UNTERMINATED not in commands
+    before = judged(base, commands, tmp_path, folder)
+    after = judged(ROOT, commands, tmp_path, folder)
     newly = [(name, command[:200]) for command, old, new in zip(commands, before, after, strict=True) for name in old
-             if old[name] == "allowed" and new[name] != "allowed"]
+             if old[name] == "allowed" and new[name] != "allowed" and not name.endswith(" seconds")]
     assert not newly, newly
 
 

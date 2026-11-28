@@ -85,3 +85,32 @@ def load():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+UNLOADABLE = (ArithmeticError, AssertionError, AttributeError, ImportError, LookupError, NameError, OSError, RuntimeError,
+              SyntaxError, TypeError, ValueError)
+"""What running a rule file that is damaged, half written or missing a file it loads raises."""
+
+
+def usable() -> tuple[object, str]:
+    """The rules (`load`) with every file they need loaded, and why they could not be, an empty string when they could. Rules that
+    cannot load are no judgement on a call: a guard that blocked every call then would leave a session no way to mend them."""
+    try:
+        rules = load()
+        if rules:
+            rules.protected()
+    except UNLOADABLE as why:
+        return None, f"{type(why).__name__}: {why}"
+    return rules, ""
+
+
+INTERRUPTS = hasattr(signal, "setitimer") and sys.version_info >= (3, 11)
+"""Whether the clock of `closed` stops a pattern match that is running: not on Windows, nor under a Python before 3.11."""
+MOST_MATCHED, MOST_UNBROKEN = 20_000, 4_000
+"""The longest text, and the longest stretch of it with no blank but with an operator, that the guards' patterns finish in time on."""
+
+
+def too_long_to_match(text: str) -> bool:
+    """Whether the patterns could run on ``text`` past the time a harness waits, where nothing stops them (`INTERRUPTS`)."""
+    return not INTERRUPTS and (len(text) > MOST_MATCHED or any(
+        len(run) > MOST_UNBROKEN and any(operator in run for operator in ";&|(") for run in text.split()))

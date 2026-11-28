@@ -2,7 +2,8 @@
 """A PreToolUse hook on Bash and Monitor that refuses shell commands that harm other agents' work, the broker or the repository.
 
 Claude Code runs this before every Bash and Monitor call. Exit 2 blocks the command and hands the
-message back. A command the guard fails on, or cannot judge in time, is blocked the same way (`rules_loader.closed`).
+message back. A command the guard fails on, or cannot judge in time, is blocked the same way (`rules_loader.closed`); rule files
+that do not load leave the built-in hard rules only (`rules_loader.usable`).
 Set POOLHOUSE_GUARD=off to disable the soft rules for a session; the hard rules (pushes of main, tags,
 force and deletions, minting identities, the person folder) stay in force. Every refusal is decided here, at once, and says why
 and what to do instead: nothing waits for a person.
@@ -19,10 +20,12 @@ must not block every Bash call.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 import shlex
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -257,15 +260,29 @@ def judge(event: dict, switched: bool, rules) -> str:
     if why:
         return (f"blocked: {why}\n\n(poolhouse scripts/hooks/claude-bash-guard. Set "
                 f"POOLHOUSE_GUARD=off switches off the soft rules only.)")
-    # the patterns meet every way the command reads, so a way that passes over less only adds a refusal
-    texts = [without_heredocs(raw), *(rules.protected().other_texts(raw, rules.protected().blanked) if rules else ())]
-    commands = [MESSAGE.sub(r"\1 ''", without_search_patterns(text)) for text in texts]
+    release = functools.lru_cache(maxsize=None)(
+        rules.release_refusal if rules else lambda _: "the release rules could not be loaded")
+    cwd = event.get("cwd") or ""
+    if why := matched([without_heredocs(raw)], switched, lambda: release(cwd)):
+        return why
+    # then every other way the command reads, which only adds a refusal: the first has been judged whatever these take
+    others = rules.protected().other_texts(raw, rules.protected().blanked) if rules else []
+    return matched(others, switched, lambda: release(cwd))
+
+
+def matched(readings: list[str], switched: bool, release: Callable[[], str]) -> str:
+    """The text that refuses a command by the patterns of `REFUSE`, met in any of ``readings``; ``release`` says why a push of
+    main may not run now."""
+    if any(rules_loader.too_long_to_match(text) for text in readings):
+        return ("blocked: the command is longer than the guard's patterns finish in time on under this Python: put the data in a "
+                "file or a heredoc, or split the command.\n\n(poolhouse scripts/hooks/claude-bash-guard. No switch opens this rule.)")
+    commands = [MESSAGE.sub(r"\1 ''", without_search_patterns(text)) for text in readings]
     for pattern, instead in REFUSE:
         if switched and pattern not in HARD:
             continue
         if any(re.search(pattern, command, re.M) for command in commands):
             if pattern is PUSH_MAIN and not any(re.search(PUSH_FLAGS, command) for command in commands):
-                missing = rules.release_refusal(event.get("cwd") or "") if rules else "the release rules could not be loaded"
+                missing = release()
                 if not missing:
                     continue
                 instead = f"{instead} Right now: {missing}."
@@ -285,7 +302,10 @@ def decide() -> int:
         return 2
     if event.get("tool_name") not in SHELL_TOOLS:
         return 0
-    rules = rules_loader.load()
+    rules, broken = rules_loader.usable()
+    if broken:  # only the patterns that need no rule file apply, those no switch opens, so the files can still be mended
+        print(f"poolhouse claude-bash-guard: the rules did not load ({broken}); only the built-in hard rules apply.", file=sys.stderr)
+        switched = True
     if rules and rules.protected().too_deep(event):
         print(rules_loader.NESTED, file=sys.stderr)
         return 2

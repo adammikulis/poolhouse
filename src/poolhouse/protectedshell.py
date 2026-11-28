@@ -156,6 +156,10 @@ class _Redirect(str):
     """A redirect operator among the words of a command, told apart from a quoted word that spells one."""
 
 
+class _Quoted(str):
+    """A word that the text quotes in whole or in part: what it holds is a program's data."""
+
+
 @dataclass(frozen=True)
 class Command:
     """One command: its words, the files its redirections write and read, and the words of its here-strings. ``fed``: its output
@@ -177,7 +181,8 @@ class Reading:
     """The heredoc bodies passed over."""
     kept: str
     """The text without its comments and the heredoc bodies passed over."""
-    text: str
+    written: str
+    """The text as written but for the heredoc bodies passed over."""
     sure: bool
     """Whether the pass knew everywhere what the shell passes over."""
 
@@ -190,6 +195,7 @@ class _Level:
         self.tokens: list[str] = []
         self.parts: list[str] = []
         self.word = False
+        self.quoted = False
         self.brackets = 0
         self.cases = 0
 
@@ -254,6 +260,8 @@ class _Pass:
         self.stack = [_Frame("top", _Level(False))]
         self.commands: list[Command] = []
         self.cuts: list[tuple[int, int]] = []
+        self.skipped: list[tuple[int, int]] = []
+        """The cuts that are heredoc bodies."""
         self.bodies: list[str] = []
         self.sure = True
         self.cutting = True
@@ -299,8 +307,8 @@ class _Pass:
             word = "".join(level.parts)
             if word in ("case", "esac") and (not level.tokens or level.tokens[-1] in BEFORE_A_COMMAND):
                 level.cases = max(0, level.cases + (1 if word == "case" else -1))
-            level.tokens.append(word)
-        level.parts, level.word = [], False
+            level.tokens.append(_Quoted(word) if level.quoted else word)
+        level.parts, level.word, level.quoted = [], False, False
 
     def end(self, level: _Level) -> None:
         """End the command being read."""
@@ -363,7 +371,7 @@ class _Pass:
         elif char == "'":
             self.single()
         elif char == '"':
-            level.word = True
+            level.word = level.quoted = True
             self.push(_Frame("dq", level, odd=frame.odd))
             self.at += 1
         elif char == "$":
@@ -428,6 +436,8 @@ class _Pass:
             return
         else:
             self.add(after or "\\")
+            if not after.isalpha():  # `\git` only steps past an alias; `\.` quotes
+                self.stack[-1].level.quoted = True
         self.at += 2
 
     def past_a_tick(self, end: int) -> bool:
@@ -445,6 +455,7 @@ class _Pass:
         if "\n" in held:
             self.newline_inside()
         self.add(held)
+        self.stack[-1].level.quoted = True
         self.at = end + 1
 
     def ticking(self) -> bool:
@@ -481,6 +492,7 @@ class _Pass:
             if "\n" in found.group(1):
                 self.newline_inside()
             self.add(held.split("\0", 1)[0])  # the shell ends the quoted part at a NUL
+            frame.level.quoted = True
             self.at = found.end()
         elif after == '"' and not quoted:
             frame.level.word = True
@@ -521,7 +533,7 @@ class _Pass:
         elif char == "'" and not frame.quoted:
             self.single()
         elif char == '"':
-            level.word = True
+            level.word = level.quoted = True
             self.push(_Frame("dq", level, odd=True))
             self.at += 1
         elif char == "\\":
@@ -577,7 +589,7 @@ class _Pass:
     def redirect(self) -> None:
         level = self.stack[-1].level
         if level.word and re.fullmatch(r"\d+|\{\w+\}", "".join(level.parts)):
-            level.parts, level.word = [], False  # the descriptor the redirect is for
+            level.parts, level.word, level.quoted = [], False, False  # the descriptor the redirect is for
         self.flush(level)
         found = REDIRECT.match(self.text, self.at, self.limit())
         operator, self.at = found.group(0), found.end()
@@ -623,6 +635,7 @@ class _Pass:
                 self.sure = self.cutting = False  # nothing more is passed over, so no body is looked through twice
                 return
             self.cuts.append((start, after))
+            self.skipped.append((start, after))
             self.bodies.append(self.text[start:end])
             if heredoc.quoted:
                 self.at = after
@@ -637,7 +650,8 @@ class _Pass:
         if self.ticking() and "`" in body:
             return True
         inside = heredoc.level is not self.stack[0].level
-        return inside and any(line.lstrip("\t").startswith(heredoc.word) and ")" in line for line in body.split("\n"))
+        closes = re.compile(r"\t*" + re.escape(heredoc.word) + r"[ \t]*\)")
+        return inside and any(closes.match(line) for line in body.split("\n"))
 
     def end_body(self) -> None:
         index = self.limits[-1]
@@ -719,7 +733,7 @@ def _commands_of(tokens: list[str], fed: bool, loose: bool) -> list[Command]:
             written.append(target)
         if "<" in found and found != "<<<" and not descriptor:
             read.append(target)
-        i += 2
+        i += 1 if found.endswith("!") else 2  # zsh's `>!` forces the file; bash takes the `!` for it, and the word stays
     parts: list[list[str]] = [[]]
     for i, word in enumerate(plain):
         if word == "always" and plain[i - 1:i] == ["}"]:  # zsh's `{ ... } always { ... }`
@@ -744,18 +758,23 @@ def _loosely(text: str) -> list[Command]:
     return out
 
 
-def read(text: str) -> Reading:
-    """``text`` read as the shell reads it, each character once."""
-    one = _Pass(text)
-    one.run()
+def _without(text: str, cuts: list[tuple[int, int]]) -> str:
     kept, last = [], 0
-    for start, end in sorted(one.cuts):
+    for start, end in sorted(cuts):
         if start >= last:
             kept.append(text[last:start])
         last = max(last, end)
-    kept.append(text[last:])
-    found = one.commands if one.sure else [*one.commands, *_loosely(text)]
-    return Reading(found, one.bodies, "".join(kept), text, one.sure)
+    return "".join([*kept, text[last:]])
+
+
+def read(text: str) -> Reading:
+    """``text`` read as the shell reads it, each character once. Where the pass was not sure, the text is read again with its
+    quotes ignored; the heredoc bodies it did pass over stay data."""
+    one = _Pass(text)
+    one.run()
+    written = _without(text, one.skipped)
+    found = one.commands if one.sure else [*one.commands, *_loosely(written)]
+    return Reading(found, one.bodies, _without(text, one.cuts), written, one.sure)
 
 
 def readings(text: str) -> list[Reading]:
@@ -775,20 +794,22 @@ def held(word: str) -> list[Command]:
 
 
 def blanked(word: str) -> str:
-    """``word`` for a rule that matches a pattern in text: one that holds quoted text stands as `_`, so no pattern is found in it."""
-    return word if SIMPLE_WORD.fullmatch(word) else "_" if word else "''"
+    """``word`` for a rule that matches a pattern in text: one the text quotes, or one that could pass for more than a word, stands
+    as `_`, so what a search looks for or a message says is no command."""
+    return word if not isinstance(word, _Quoted) and SIMPLE_WORD.fullmatch(word) else "_" if word else "''"
 
 
 def other_texts(command: str, stripped: str, spell: Callable[[str], str] | None = None) -> list[str]:
     """The ways ``command`` reads besides ``stripped``, for a rule that reads text: without its comments and the heredoc bodies
-    passed over, and as written where the reading is not sure. With ``spell``, also one line for each command, from its first word
-    on, each word as ``spell`` writes it; a `cd` inside a substitution moves no later line, so it is left out."""
+    passed over, and, where the reading is not sure, with the comments left in. With ``spell``, also one line for each command, its
+    first word (the program) without its quotes and each other word as ``spell`` writes it; a `cd` inside a substitution moves no
+    later line, so it is left out."""
     found: list[str] = []
     for one in readings(command):
         found.append(one.kept)
         if not one.sure:
-            found.append(one.text)
+            found.append(one.written)
         if spell:
-            found.append("\n".join(" ".join(map(spell, c.words)) for c in one.commands
+            found.append("\n".join(" ".join(spell(w if i else str(w)) for i, w in enumerate(c.words)) for c in one.commands
                                    if not (c.loose or (c.fed and c.words[:1] in (["cd"], ["pushd"])))))
     return [text for text in dict.fromkeys(found) if text.strip() and text != stripped]
