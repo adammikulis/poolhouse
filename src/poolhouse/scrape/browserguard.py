@@ -1,6 +1,7 @@
 """A browser that cannot reach this machine or its network: every connection it makes goes through a proxy on a loopback port of
-its own, loopback addresses included. The proxy resolves the name once, refuses it unless every address is public (`allowed`, the
-rule of every guarded fetch) and connects to the address it checked, so a first address, a redirect, a form, either socket API and a
+its own, loopback addresses included. The proxy resolves the name once, refuses it unless every address is public and is neither
+one of this machine's nor on a network one of its interfaces is on (`allowed`, the rule of every guarded fetch) and connects to
+the address it checked, so a first address, a redirect, a form, either socket API and a
 name whose answer changes are all held to that one rule, whatever in the page asked. What a proxy cannot carry, datagrams, is taken
 away, and downloads are off. The proxy serves only the browser it was made for, which holds a password made for that one guard:
 another program on this machine, one confined to loopback among them, gets a 407 and goes nowhere."""
@@ -40,8 +41,8 @@ USER = "poolhouse"
 
 
 def allowed(url: str, limits: Limits | None = None) -> list[str]:
-    """The addresses the browser may connect to for the http(s) ``url``: those its host names when every one is public, and
-    none otherwise."""
+    """The addresses the browser may connect to for the http(s) ``url``: those its host names when every one is public and
+    none is this machine's or on its network (`httpguard.resolve`), and none otherwise."""
     try:
         _parts, host, port = split(url)
         return resolve(host, port, limits or Limits())
@@ -102,7 +103,7 @@ class Guard:
             where = url.partition("://")[2].partition("/")[0]
             self.refused.append(where)
             logger.warning("the browser was stopped from reaching %s", where)
-            raise wire.Refusal(403, "that address is not on the public internet")
+            raise wire.Refusal(403, "that address is not one the browser may reach")
         port = split(url)[2]
         for address in addresses:
             try:

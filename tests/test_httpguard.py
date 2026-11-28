@@ -5,9 +5,12 @@ import ipaddress
 import socket
 import threading
 import time
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler
+from types import SimpleNamespace
 from typing import ClassVar
 
+import psutil
 import pytest
 
 from poolhouse import httpguard
@@ -112,10 +115,48 @@ def site():
     "127.0.0.1", "127.255.0.9", "::1", str(ipaddress.IPv4Address(0)), "10.1.2.3", "172.16.0.1", "172.31.255.255",
     "192.168.1.1", "169.254.169.254", "169.254.0.1", "fe80::1", "fc00::1", "fd12:3456::1",
     "100.64.0.1", "224.0.0.1", "ff02::1", "240.0.0.1", "::ffff:127.0.0.1", "::ffff:10.0.0.1",
-    "64:ff9b::7f00:1", "2002:7f00:1::1", "fe80::1%en0", "192.0.2.1",
+    "64:ff9b::7f00:1", "2002:7f00:1::1", "fe80::1%en0", "192.0.2.1", "fec0::1",
 ])
 def test_addresses_that_are_not_the_public_internet_are_refused(address):
     assert httpguard.allowed_address(address) is False
+
+
+@pytest.fixture
+def interfaces(monkeypatch):
+    """PLUMBING ONLY: this machine as holding public addresses, in the shape `psutil.net_if_addrs` answers."""
+    def held(family, address, netmask):
+        return SimpleNamespace(family=family, address=address, netmask=netmask)
+
+    listed = {"en0": [held(socket.AF_INET, "93.184.216.7", "255.255.255.0"),
+                      held(socket.AF_INET6, "2600:1700:abcd:12::5%en0", "ffff:ffff:ffff:ffff::"),
+                      held(-1, "aa:bb:cc:dd:ee:ff", None)],
+              "utun0": [held(socket.AF_INET, "8.8.4.4", str(ipaddress.IPv4Address(0)))]}
+    monkeypatch.setattr(psutil, "net_if_addrs", lambda: listed)
+
+
+@pytest.mark.parametrize("address", [
+    "93.184.216.7", "93.184.216.200", "::ffff:93.184.216.34", "64:ff9b::5db8:d822", "2600:1700:abcd:12::5",
+    "2600:1700:abcd:12:ffff::1", "8.8.4.4",
+])
+def test_a_public_address_of_this_machine_or_of_a_network_it_is_on_is_refused(interfaces, address):
+    limits = Limits(resolver=lambda host, port: [address])
+    with pytest.raises(Refused, match="this machine or its network"):
+        httpguard.resolve("tessyn.example", 80, limits)
+    assert httpguard.resolve("tessyn.example", 80, replace(limits, allow_hosts=frozenset({"tessyn.example"}))) == [address]
+
+
+@pytest.mark.parametrize("address", ["93.184.217.1", "8.8.8.8", "8.8.4.5", "2600:1700:abcd:13::5", "2606:4700::1111"])
+def test_a_public_address_beyond_this_machines_networks_is_allowed(interfaces, address):
+    assert httpguard.resolve("tessyn.example", 80, Limits(resolver=lambda host, port: [address])) == [address]
+
+
+def test_every_address_this_computer_really_holds_is_refused():
+    held = [one.address for listed in psutil.net_if_addrs().values() for one in listed
+            if one.family in (socket.AF_INET, socket.AF_INET6)]
+    assert held
+    for address in held:
+        with pytest.raises(Refused):
+            httpguard.resolve("tessyn.example", 80, Limits(resolver=lambda host, port, found=address: [found]))
 
 
 @pytest.mark.parametrize("address", ["8.8.8.8", "1.1.1.1", "93.184.216.34", "2606:4700::1111",
