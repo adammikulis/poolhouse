@@ -151,8 +151,11 @@ class BenchRunner : Instrumentation() {
     private fun measure() {
         val model = model()
         val checking = System.nanoTime()
-        val weights = store().verified(model)
-        say(JSONObject().put("event", "checked").put("path", weights.path).put("seconds", (System.nanoTime() - checking) / 1e9))
+        val shared = store().verified(model)
+        say(JSONObject().put("event", "checked").put("path", shared.path).put("seconds", (System.nanoTime() - checking) / 1e9))
+        // `-e from private` loads a copy in the app's own storage, to compare with loading from the shared folder.
+        val weights = if (text("from", "shared") == "private") File(targetContext.filesDir, "bench-private/${shared.name}") else shared
+        if (weights != shared) shared.copyTo(weights, overwrite = true)
         val accelerator = if (text("accelerator", "gpu") == "cpu") Accelerator.CPU else Accelerator.GPU
         val context = number("context", 4096)
         val pictures = text("image", "no") == "yes"
@@ -227,6 +230,7 @@ class BenchRunner : Instrumentation() {
         } finally {
             watch.stop()
             say(JSONObject().put("event", "memory").put("memory", watch.report()))
+            if (weights != shared) weights.delete()
         }
     }
 
@@ -294,7 +298,7 @@ class BenchRunner : Instrumentation() {
                 CancelToken(),
             ) { reply.append(it) }
             val ok = task.check(reply.toString())
-            if (ok && task.name.startsWith("copy")) copied++ else if (ok) passed++
+            if (ok && task in COPY_TASKS) copied++ else if (ok) passed++
             say(
                 JSONObject().put("event", "task").put("task", task.name).put("pass", ok).put("reply", reply.toString().take(900))
                     .put("tokensPerSecond", result.stats.outputTokensPerSecond),
