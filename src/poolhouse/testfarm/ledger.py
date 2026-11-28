@@ -15,6 +15,8 @@ from pathlib import Path
 from poolhouse.files import read_json, write_json
 
 FILE = "remote-results.json"
+RUNS = "remote-runs"
+MOST_RUNS = 100
 MOST_PASSES = 4000
 CLEAN_EXITS = (0, 1)
 """A run whose files can be trusted one by one: pytest passed, or failed some tests. A timeout or a cancel cannot."""
@@ -61,6 +63,17 @@ class Ledger:
         for old in sorted(kept, key=lambda k: kept[k]["at"])[:-MOST_PASSES]:
             del kept[old]
         write_json(self.path, everything)
+
+    def keep_run(self, result: dict) -> Path:
+        """Write one run's whole result beside the ledger, for a report to attach as the tools produced it; the file.
+
+        ``result["shard"]`` is the id the sender made, which names the file."""
+        kept = self.path.parent / RUNS / f"{result['shard']}.json"
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        write_json(kept, result)
+        for old in sorted(kept.parent.glob("*.json"), key=lambda p: p.stat().st_mtime)[:-MOST_RUNS]:
+            old.unlink(missing_ok=True)
+        return kept
 
     def passes_of(self, device: dict, platform: dict, tier: str, result: dict,
                   file_key: Callable[[str], str]) -> dict[str, str]:

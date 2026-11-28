@@ -134,7 +134,8 @@ def send(run: Run, part: Part, root: Path, timeout: int) -> None:
     if run.commit and result.get("tree_sha256") != run.digest:
         part.error = f"its result names another tree than commit {run.commit}"
     else:
-        part.result = {**result, "commit": run.commit}  # the sender's word, never the device's
+        # The last three are the sender's word, never the device's.
+        part.result = {**result, "commit": run.commit, "device": part.fingerprint, "shard": shard}
 
 
 def local(root: Path, tier: str, files: list[str]) -> int:
@@ -198,6 +199,7 @@ def finish(run: Run, part: Part, sent: bool) -> int:
     if run.commit:
         print(f"commit {run.commit} (tree {run.digest[:12]})")
     print("\n".join(report.show(part.result, part.name, part.reused)))
+    print(f"result file: {run.ledger.keep_run(part.result)}")
     record(run, part)
     return int(part.result["exit"])
 

@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tarfile
 import time
+from pathlib import Path
 
 import pytest
 from testfarm_kit import (
@@ -183,6 +184,10 @@ def test_a_commit_runs_as_committed_every_time_and_the_result_is_tied_to_it(pool
         out = capsys.readouterr().out
         assert f"commit {commit} (tree {digest[:12]})" in out and "1 passed in" in out
         assert jobs_on(b) == run, "a commit is run again each time: a stored pass verifies nothing"
+        (named,) = [line.removeprefix("result file: ") for line in out.splitlines() if line.startswith("result file: ")]
+        kept = json.loads(Path(named).read_text(encoding="utf-8"))
+        assert (kept["commit"], kept["tree_sha256"], kept["exit"], kept["device"]) == (commit, digest, 0, fp), "a report attaches this file"
+        assert kept["files"]["tests/test_a.py"]["passed"] == 1
     page = a.call("read", BOARD, a.token, kind="message", limit=200)["entries"]
     posted = [e["fields"]["body"] for e in page if e["fields"].get("body", "").startswith("test-result device=")]
     assert posted and all(line.endswith(f"commit={commit}") for line in posted)

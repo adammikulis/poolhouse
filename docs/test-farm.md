@@ -29,6 +29,10 @@ whatever the ledger holds. `quick` and `--split` work from the working tree and 
 the sender's statement; a device is trusted to have run what it was sent, as in every shard. [The phone
 worker](../app/phone-worker/README.md) is a device that takes such runs.
 
+Every remote run, of a commit or not, writes its whole result to a file and prints `result file: PATH` (the last
+100 are kept). A report of a run attaches that file or those lines: counts, digests and exit codes come from the
+tools, never retyped by a model.
+
 ## How the owner turns it on (devices reached through the node)
 
 Nothing runs on a device until its person says so, per device, and the default is off. There are two switches,
