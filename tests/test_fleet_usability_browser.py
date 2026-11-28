@@ -3,7 +3,6 @@
 import pytest
 from test_fleet_ui import Serving
 
-
 pytestmark = pytest.mark.slow
 
 

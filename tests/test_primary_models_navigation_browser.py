@@ -4,7 +4,6 @@ from browser_expect import expect
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401 (fixture)
 
-
 pytestmark = pytest.mark.slow
 
 

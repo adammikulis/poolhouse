@@ -5,7 +5,6 @@ from browser_expect import expect
 from test_fleet_ui import Serving
 from test_tasks_ui import overview
 
-
 pytestmark = pytest.mark.slow
 
 

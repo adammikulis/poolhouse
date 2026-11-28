@@ -6,7 +6,6 @@ import pytest
 from browser_expect import expect
 from test_fleet_ui import Serving
 
-
 pytest_plugins = ['node_kit']
 pytestmark = pytest.mark.slow
 
