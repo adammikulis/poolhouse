@@ -208,7 +208,7 @@ def judged(monkeypatch, folder: Path, **found) -> str | None:
     """What the merge rule makes of pull request 12 into development at commit ``a...``, of which GitHub says ``found``."""
     monkeypatch.setattr(release_check, "pull_request", lambda *_words: {"baseRefName": DEV, "headRefOid": "a" * 40, **found})
     monkeypatch.setattr(release_check.devbranch, "development_branch", lambda _cwd: DEV)
-    return release_check._development(str(folder), "12", "a" * 40)
+    return release_check._pull_request(str(folder), "12", "a" * 40, "")
 
 
 @pytest.mark.parametrize("rollup", [5, True, "SUCCESS", {"context": "lead-review", "state": "SUCCESS"}, [None, 4, "SUCCESS", []],
