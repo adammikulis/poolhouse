@@ -17,12 +17,13 @@ import os
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from poolhouse.board.client import NodeError
 from poolhouse.board.session import PAGE, Session
 from poolhouse.errors import Denied
+from poolhouse.isolation import session_verbs
 from poolhouse.isolation.serving import IDLE_SECONDS
 from poolhouse.workspace import board_cli, nudge_fence
 
@@ -172,6 +173,8 @@ class Reach:
     """Runs one of the two tools (`lead_only`)."""
     news: Callable[[], str]
     """What the lead sent that the agent was not given yet, for the post-tool hook; empty when there is none."""
+    verbs: Mapping[str, session_verbs.Verb] = field(default_factory=lambda: session_verbs.LEAD)
+    """The tools ``run`` answers: the lead's two, and those a launch adds (`poolhouse.delegate_memory`)."""
 
 
 def lead_only(ask: Callable[[str], str], note: Callable[[str], str]) -> Callable[[str, Mapping[str, Any]], Any]:

@@ -547,6 +547,14 @@ and one list of entries in one shape: every self-check round (`kind` `self-check
   inbox fenced as data. A message from any other session is not returned to the agent. A question ends when the lead ends, and
   with `stop`. Each request of the MCP client opens a connection of its own, since the bridge ends a connection that is silent
   for its idle time and a model is silent far longer between two calls.
+- **Project memory.** `--memory` (every session card's delegate unless its card says otherwise) gives it what the project's memory holds about the
+  task (`--about` names the words) in its first message, never in the system prompt, and, in a sandbox, two more tools of the same server:
+  `lead_recall(query)` and `lead_remember(fact)` (`isolation.session_verbs.MEMORY`, `poolhouse.delegate_memory`). The runner holds the store and
+  its key; the sandbox reads and writes neither. Only the project's store is used, never the person's. A remembered fact is a proposal, refused
+  when it holds a credential, personal details, an instruction or the state of work, and is saved, marked agent-observed and naming the card and
+  commit, only when the lead's checked `correct` grade accepts the run; any lower grade discards it. Nobody is asked.
+- **Session cards.** `poolhouse-delegate cards` works the backlog's cards one at a time, each delegate bound to the lead that released the runner
+  (docs/cards/README.md). A card delegate's result reaches that lead as a `handoff` message.
 - **Result.** When the run ends the lead gets one status message (the state, why it failed or what was not applied with the counts
   and the kept patches, then the start of the answer). The counts come from the confinement as data (`Confinement.published()`), never
   from its words, and `result.json` holds the paths applied, refused, in conflict and withheld, the patches and the applied paths of the kind that runs

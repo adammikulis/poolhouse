@@ -26,9 +26,12 @@ from pathlib import Path
 
 from poolhouse import (
     authority,
+    cards_cli,
+    cards_ledger,
     coding_policy,
     delegate_confined,
     delegate_grade,
+    delegate_memory,
     delegate_record,
     delegate_resume,
     delegate_review,
@@ -133,6 +136,11 @@ def _folder(source: str, edit: bool) -> str:
          help="the attempts to continue a run something outside its task broke off, such as its model's server going away (default: %(default)s)"),
     flag("--in-place", action="store_true",
          help="with --edit: change the project folder itself, not a worktree and branch of the delegate's own"),
+    flag("--memory", action="store_true",
+         help="give it the project's memory: what matches is in its first message, a sandboxed one has recall and remember, and what it "
+              "proposes is saved when your checked grade accepts its work"),
+    flag("--about", default="", help="with --memory: the words its first recall is made with (default: the task)"),
+    flag("--card", default="", metavar="ID", help="the session card it works (`poolhouse-delegate cards`)"),
     flag("--wait", action="store_true", help="return only when it ends, asks or has something to tell (run this in the background to be woken then)")])
 def start(args: argparse.Namespace) -> int:
     """Register the agent as a subagent of the calling session, then run it detached; prints its name."""
@@ -163,9 +171,11 @@ def start(args: argparse.Namespace) -> int:
             with contextlib.suppress(Denied, NodeError, ValueError, OSError):
                 harnessid.launcher(client, board, lead).retire(made.name)
             raise
+    remembered = delegate_memory.opened(made.name, source, args.about or args.task) if args.memory else ""
     rec = store.Delegate(made.name, lead, board, args.task, workdir, model, args.name, source, edit, args.max_turns,
                          [made.native.model, made.native.harness, made.native.id], permissions=tier, sandboxed=not why, kind=kind,
-                         review_rounds=rounds, commit=delegate_grade.commit_of(source), resumes=args.resumes, branch=branch)
+                         review_rounds=rounds, commit=delegate_grade.commit_of(source), resumes=args.resumes, branch=branch,
+                         card=args.card, memory=args.memory, recalled=remembered)
     store.save(rec)
     delegate_grade.opened(rec)
     job = jobs.detach(delegate_run.__name__, [rec.name], log=store.log_file(rec.name), kind=JOB,
@@ -279,7 +289,8 @@ WARM_TASK = "Reply with the single word ready. Use no tools."
 def warm(args: argparse.Namespace) -> int:
     """Run a delegate on a trivial task: the server is leased and stays up, and its prompt cache holds the part every delegate shares."""
     return start(argparse.Namespace(task=WARM_TASK, project="", name="warm", parent="", model=args.model, max_turns=1, edit=args.edit, permissions="",
-                                    kind="warm", review_rounds=delegate_review.ROUNDS, no_review=True, resumes=0, in_place=True, wait=False))
+                                    kind="warm", review_rounds=delegate_review.ROUNDS, no_review=True, resumes=0, in_place=True, wait=False,
+                                    memory=False, about="", card=""))
 
 
 @COMMANDS.command("status", help="one line per agent: what it is doing now and for how long, and how its last test run went",
@@ -426,7 +437,26 @@ def grade(args: argparse.Namespace) -> int:
     store.keep(args.name, grade=made)
     unverified = "" if made["verified"] else "; unverified, since no check was given (--check)"
     say(f"graded {args.name} {args.verdict} as {grader.name}{unverified}")
+    if rec := store.load(args.name):
+        _followed(rec, grader.name, made)
     return 0
+
+
+def _followed(rec: store.Delegate, grader: str, made: dict) -> None:
+    """What a grade decides beyond the record, when it is the lead's: the run's card is accepted or rejected, and the facts it proposed for the
+    project's memory are saved or discarded. A card's lead is also the session that has released the runner since."""
+    leads = {rec.lead, str(cards_ledger.read(Path(rec.source))["release"].get("lead"))} if rec.card else {rec.lead}
+    if rec.card and grader in leads and (told := cards_ledger.graded(Path(rec.source), rec.card, rec.name, made)):
+        say(told)
+    if told := delegate_memory.settle(rec, grader in leads, made["verdict"], made["verified"]):
+        say(told)
+
+
+@COMMANDS.command("cards", help="the session cards of the project's backlog and the runner that works them (docs/cards/README.md)",
+                  options=cards_cli.OPTIONS)
+def cards(args: argparse.Namespace) -> int:
+    """List, check, split, release, hold and run the cards (`poolhouse.cards_cli`)."""
+    return cards_cli.command(args, main)
 
 
 @COMMANDS.command("record", help="print a delegate's grading record: the run, its passes, the self-check and the grades", options=[flag("name")])

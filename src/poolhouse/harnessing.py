@@ -647,7 +647,8 @@ def confined(args: argparse.Namespace, run: Session, how: Harness,
     plan = isolation.Plan(how.name, how.binary, str(run.cwd), coding_policy.Policy(args.permissions, args.execution_mode), base_url,
                           isolation.Lease.of(alias, window, args.slots), serverkeys.for_url(base_url), helper.name, decide,
                           lead.run, render, notice,
-                          args.launch.grants, helper.name if how.conversation is None else how.conversation, dict(how.extras), how.interactive)
+                          args.launch.grants, helper.name if how.conversation is None else how.conversation, dict(how.extras), how.interactive,
+                          verbs=lead.verbs)
     confinement = isolation.prepare(plan)
     try:
         yield confinement

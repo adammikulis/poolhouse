@@ -4,17 +4,20 @@ The backlog, highest priority first. Take work from the numbered tiers top down;
 
 A branch named below without a pull request is on GitHub and unmerged, except one called local. Every item needs an accepting review of its exact commit before it lands; security items also need an attack pass.
 
+A row's sessions for the local model are cards in [docs/cards](docs/cards/README.md), worked by `poolhouse-delegate cards`; a card has no place or state of its own.
+
 ## 1. Speed of the local model (active)
 
-The local delegate takes no work until every row here is landed and installed, or measured and dropped.
+The local delegate takes no work until rows 1 to 4 here are landed and installed, or measured and dropped.
 
 | Order | Item | Next | Where |
 |---|---|---|---|
 | 1 | A long delegate run keeps the server's prompt cache | Review, checks, merge, install, restart the model server, rerun a long delegate task as the live proof | #113 |
 | 2 | Current llama.cpp with the newest draft head serves Qwen3.8-Flash-Next by default | Start it through the broker from the branch, compare clean speed with the older fork, attack pass on the automatic head download, settle overlap with the Strata change | #120, branch `backup/bench-engines` |
 | 3 | Strata engine | Run its tests, attack pass, merge, install; measure on the Apple silicon computer, then on a Windows computer with a 24 GB card and 64 GB of memory. Publishers ISTA-DASLab and incoai are not admitted for agent downloads: the owner decides | #116 |
-| 4 | Faster serving settings the measurements show, then the 27B quant comparisons | Scheduled jobs first need three failing tests settled and an attack pass | #107, `docs/examples/qwen3.8-27b-quants.queue` |
+| 4 | Faster serving settings the measurements show | Serve with the settings the comparisons of rows 1 to 3 show to be faster | #113, #116, #120 |
 | 5 | Delegate work resumes, one small testable task at a time | The two runtime selection tests that fail on development, the test-node build test that needs `cargo`, and `scripts/test quick --explain` running tests | `tests/test_runtime_selection.py`, `tests/test_testnode.py`, `scripts/test` |
+| 6 | One agent toolbox for every harness: send and ask any agent by name, read and reply, notes, project memory and cards, one implementation behind command and tools, replacing the lead-only server | Design, build and attack pass, by a lead: confinement and access rules | `src/poolhouse/lead_bridge.py`, `src/poolhouse/isolation/session_verbs.py` |
 
 ## 2. Security of pool membership (active)
 
@@ -45,6 +48,7 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | Private compute-only guest access with a one-scan join | Coverage rows, pull request, attack pass, app screens; then the llama.cpp change that lets one shared server keep each person's context apart in memory | branch `worktree-agent-afb66e817d395794c` |
 | Tailscale inside Poolhouse | Compile the helper, daemon control, sign-in and share screens | #115 (draft) |
 | Screens saying what each device can do | Show only what works across devices | #117 |
+| Poolhouse runs its own commands later, when the device is free | Settle three failing tests, attack pass, merge | #107 |
 
 ## 5. Landing, checks and friction (paused)
 

@@ -1,0 +1,12 @@
+title = "Delete the patch that targets files that do not exist"
+row = "`docs/access-widening-person-files.patch`"
+task = """
+docs/access-widening-person-files.patch changes src/poolhouse/workspace/person_targets.py and person_release.py, neither of which exists. Confirm
+that with `git ls-files`, confirm with `git grep -n access-widening-person-files` that only HANDOFF.md and this card name the patch, and delete the
+file. Change no code and apply no part of the patch.
+"""
+read = ["docs/access-widening-person-files.patch"]
+write = ["docs/access-widening-person-files.patch"]
+check = "test ! -e docs/access-widening-person-files.patch"
+closes = true
+memory = false

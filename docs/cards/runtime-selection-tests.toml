@@ -1,0 +1,12 @@
+title = "The failing runtime selection tests pass"
+row = "Delegate work resumes"
+step = 2
+task = """
+HANDOFF.md reports two tests of tests/test_runtime_selection.py failing on development. Run the check first and note which tests fail and with what
+error. Find the cause of each before changing anything, then fix it where it is: in the code under test when the code is wrong, in the test only when
+the test states something that is no longer the intended behaviour, and say which and why. If both pass in your sandbox, or fail only because of
+what the sandbox refuses, change nothing and report exactly what you saw.
+"""
+read = ["tests/test_runtime_selection.py", "src/poolhouse/runtime.py", "src/poolhouse/runtime_store.py", "src/poolhouse/fleet/runtime_wheel.py:1-120"]
+write = ["tests/test_runtime_selection.py", "src/poolhouse/runtime.py", "src/poolhouse/runtime_store.py", "src/poolhouse/fleet/runtime_wheel.py"]
+check = "scripts/test all tests/test_runtime_selection.py"

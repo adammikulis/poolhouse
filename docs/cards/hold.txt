@@ -1,0 +1,1 @@
+The owner ordered no Qwen work until the speed changes (HANDOFF.md section 1) are merged and installed. A lead releases the hold once they are.

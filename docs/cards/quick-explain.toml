@@ -1,0 +1,15 @@
+title = "scripts/test quick --explain runs no test"
+row = "Delegate work resumes"
+step = 1
+task = """
+`scripts/test quick --explain` is asked what a change selects, and today it prints that and then runs the tests (function `quick` in scripts/test).
+With --explain it must print the selection and why, run no pytest, start no background map recording, and exit 0. That holds on all three paths of
+`quick` and `first_quick`: a change that forces the full tier (say why it would), a checkout with no .testmondata yet, and the ordinary selection.
+Without --explain nothing changes. Add one test to tests/test_quick_select.py named test_explain_prints_the_selection_and_runs_nothing: load the
+runner with `load_runner` of tests/test_gatescope.py, replace its `run` and `start_recording` with functions that fail the test, call `quick`
+with explain on a change for each of the three paths, and assert what is printed. Correct the sentences of tests/README.md that describe --explain.
+"""
+read = ["scripts/test:100-125", "scripts/test:318-400", "scripts/test:676-753", "tests/test_quick_select.py:1-80", "tests/test_gatescope.py:60-95", "tests/README.md:25-70"]
+write = ["scripts/test", "tests/test_quick_select.py", "tests/README.md"]
+check = "scripts/test all tests/test_quick_select.py::test_explain_prints_the_selection_and_runs_nothing"
+creates = ["tests/test_quick_select.py::test_explain_prints_the_selection_and_runs_nothing"]

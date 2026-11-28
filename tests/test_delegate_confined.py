@@ -234,6 +234,31 @@ if "mode:edits-nothing" in task:
     tool("edit", file_path=cfg["root"] + "/src/none.py")
     finish()
     ended(CANNED + " done and landed")
+if "mode:card" in task:   # tests/test_delegate_cards.py: a session card's delegate, with its lead's two tools and the project memory's two
+    talk = subprocess.Popen(server, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+
+    def said(number, method, **params):
+        talk.stdin.write(json.dumps({{"jsonrpc": "2.0", "id": number, "method": method, "params": params}}) + "\\n")
+        talk.stdin.flush()
+        return json.loads(talk.stdout.readline())["result"]
+
+    def lead(number, name, **arguments):
+        return said(number, "tools/call", name=name, arguments=arguments)["content"][0]["text"]
+
+    step("working the card")
+    said(1, "initialize")
+    recalled = lead(2, "recall", query="junk")
+    proposed = lead(3, "remember", fact="the root module is at the top")
+    answer = lead(4, "ask", question="which junk is meant?")
+    lead(5, "note", text="removing junk.txt")
+    os.remove("junk.txt")
+    command = task.split("exactly as written, with no pipe after it:\\n    ")[1].split("\\n")[0]
+    check = asked("shell", command=command)[0]
+    status = subprocess.run(["/bin/sh", "-c", command], check=False).returncode
+    hook("post", {{"tool_use_id": check}})
+    event("tool_use", part={{"id": check, "tool": "shell", "state": {{"status": "completed", "input": {{"command": command}}, "metadata": {{"exit": status}}}}}})
+    finish()
+    ended(f"{{CANNED}} offered={{','.join(cfg['tools'])}} | recalled={{recalled}} | proposed={{proposed}} | answer={{answer}} | ")
 open("src/feature.py", "w").write("def feature():\\n    return 1\\n")
 if "mode:clean" in task:
     ended(CANNED + " done")
