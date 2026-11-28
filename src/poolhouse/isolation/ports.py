@@ -3,7 +3,8 @@
 The window is a block of ports below the system's ephemeral range, none of them in use when it is chosen and no two live launches sharing one
 (a file lock per block). The profile lets the box reach those ports over TCP and serve on a socket it is handed; it binds none. This bridge, in
 the launcher, binds ``127.0.0.1`` or ``::1`` on a port of the window and passes the socket over a Unix socket (`loopback_window`), so nothing the
-box serves is on any other address. macOS only: a Linux box has a loopback of its own.
+box serves is on any other address. It answers the processes the launch admits (`serving.admitted`) and closes every other connection unread.
+macOS only: a Linux box has a loopback of its own.
 """
 
 from __future__ import annotations
@@ -16,11 +17,12 @@ import secrets
 import socket
 import subprocess
 import threading
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from contextlib import AbstractContextManager
 from pathlib import Path
 
 from poolhouse import lock
+from poolhouse.isolation.serving import admitted
 
 __all__ = ["FIRST", "LAST", "SIZE", "PortBridge", "in_use"]
 
@@ -45,11 +47,12 @@ def in_use() -> frozenset[int]:
 class PortBridge:
     """The window of one launch: `start` chooses it and serves it, `stop` gives it up. ``root`` is a short private directory for the socket,
     ``locks`` the directory every launch of this account claims its block in, ``avoid`` ports no window may hold (a model server's, the
-    harness's own)."""
+    harness's own). ``admit`` is told the process id of each connecting process and says whether it is one of the launch's: no window answers
+    every process of the user."""
 
-    def __init__(self, root: str, locks: Path, avoid: Collection[int] = ()) -> None:
+    def __init__(self, root: str, locks: Path, avoid: Collection[int] = (), *, admit: Callable[[int], bool]) -> None:
         self.path = os.path.realpath(root) + "/ports"
-        self.locks, self.avoid = locks, frozenset(avoid)
+        self.locks, self.avoid, self._admit = locks, frozenset(avoid), admit
         self.ports = range(0)
         self._claim: AbstractContextManager[Path] | None = None
         self._next = 0
@@ -99,7 +102,8 @@ class PortBridge:
                 return
             with connection, contextlib.suppress(OSError):
                 connection.settimeout(2.0)
-                self._answer(connection)
+                if admitted(connection, self._admit):
+                    self._answer(connection)
 
     def _answer(self, connection: socket.socket) -> None:
         try:

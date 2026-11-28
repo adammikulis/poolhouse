@@ -35,7 +35,7 @@ OUTPUT_CAP = "BASH_MAX_OUTPUT_LENGTH"
 """The characters of one command's output the model is given: the served window's count of tokens, so at the four bytes a token the session
 bridge allows a frame it is about a quarter of the window, and one command cannot fill it."""
 
-ALWAYS = ("PATH", "HOME", "TMPDIR", "SHELL", "LANG", "POOLHOUSE_AGENT", "PYTHONDONTWRITEBYTECODE", "GIT_CONFIG_NOSYSTEM")
+ALWAYS = ("PATH", "HOME", "TMPDIR", "TMPPREFIX", "SHELL","LANG", "POOLHOUSE_AGENT", "PYTHONDONTWRITEBYTECODE", "GIT_CONFIG_NOSYSTEM")
 """Set for every harness. ``POOLHOUSE_AGENT`` marks the tools the harness runs; no person check relies on it (3.5). ``GIT_CONFIG_NOSYSTEM``
 keeps git from the system's configuration: Homebrew's lies in its `etc`, which no session reads, and git ends with an error when it cannot."""
 DERIVED = ("PYTHONPATH", WINDOW_PORTS)
@@ -97,6 +97,8 @@ class Inputs:
     """The folders Python of the box imports from first: the launch's `sitecustomize` and the working copy (`environments.sources`)."""
     window: str = ""
     """The setting of the box's window of loopback ports (`isolation.ports.PortBridge.setting`)."""
+    temp: str = ""
+    """The session's ``TMPDIR`` (`Spec.temp`); empty where the agent home's holds the temporary files."""
 
 
 def allowed(harness: str, interactive: bool = False) -> frozenset[str]:
@@ -138,7 +140,9 @@ def environment(inputs: Inputs) -> dict[str, str]:
     """The environment of a launch: the always set, the terminal names of an interactive launch and the harness's own table. Nothing is
     read from the process environment, so no variable of the launcher, the person's shell or a project reaches the harness."""
     names = allowed(inputs.harness, inputs.interactive)
-    made = {"PATH": os.pathsep.join(inputs.path), "HOME": inputs.home, "TMPDIR": str(Path(inputs.home) / "tmp"), "SHELL": SHELL,
+    temporary = inputs.temp or str(Path(inputs.home) / "tmp")
+    made = {"PATH": os.pathsep.join(inputs.path), "HOME": inputs.home, "TMPDIR": temporary, "SHELL": SHELL,
+            "TMPPREFIX": str(Path(temporary) / "zsh"),   # zsh makes its here-documents beside this name, in the shared /tmp unless told
             "LANG": "en_US.UTF-8", "POOLHOUSE_AGENT": "1", "PYTHONDONTWRITEBYTECODE": "1", "GIT_CONFIG_NOSYSTEM": "1"}
     if inputs.sources:
         made["PYTHONPATH"] = os.pathsep.join(inputs.sources)

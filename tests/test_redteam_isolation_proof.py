@@ -1,7 +1,11 @@
 """The proof, attacked: the real probe under the real Seatbelt, a profile weakened by one rule at a time, a hostile project, and the attestation.
 
 The attacker is the code a coding harness runs. A mutant is the generated Seatbelt profile with one rule deleted or widened: the proof must stop
-the launch naming the attempt that got through, and a control that fails (a bridge that cannot be reached) is a deviation too.
+the launch naming the attempt that got through, and a control that fails (a bridge that cannot be reached) is a deviation too. The box allows by
+default and refuses named harms, so a mutant removes a refusal or adds an allowance.
+
+Owner-order: "can't you just make the sandbox just like the rest of things so the agent can test whatever they need safely?", "including with
+gpu", "No agent should be inhibited from doing their work that is given them."
 """
 
 from __future__ import annotations
@@ -65,33 +69,41 @@ def reads_in_the_home(inside=""):
     return lambda text: text + f'(allow file-read* (subpath "{Path.home()}{inside}"))\n'
 
 
-def binds_the_model_port(text):
-    """A rule that lets the box bind the one port it reaches, as a rule naming a port of this machine does for every address of it."""
-    port = re.search(r'\(remote ip "localhost:(\d+)"\)', text).group(1)
-    return text + f'(allow network-bind (local ip "localhost:{port}"))\n'
+def binds_a_withheld_port(text):
+    """A rule that lets the box bind a port its profile names, as a rule naming a port of this machine does for every address of it."""
+    port = re.search(r'\(deny network-outbound \(remote ip "localhost:(\d+)"\)', text).group(1)
+    return text + f'(allow network-bind network-inbound (local ip "localhost:{port}"))\n'
+
+
+def writes_the_control_names(text):
+    """The stage's control names no longer refused a write: the one rule that names them is gone."""
+    kept = [line for line in text.splitlines() if not (line.startswith("(deny file-write* file-link") and "/.claude" in line)]
+    assert len(kept) < len(text.splitlines()), "no rule refuses the control names"
+    return "\n".join(kept) + "\n"
 
 
 MUTANTS = {
-    "a port the box reaches can be bound": (binds_the_model_port, "P09"),
-    "the default is allow": (swap(r"\(deny default", "(allow default"), "P01"),
-    "any signal is allowed": (swap(r"\(allow signal \(target children\)\)", "(allow signal)"), "P11"),
-    "process info of others is readable": (drop("(deny process-info-pidinfo)"), "P12"),
+    "a port the box is withheld can be bound": (binds_a_withheld_port, "P09"),
+    "the mark of the box is given to it": (add('(allow mach-lookup (global-name "com.poolhouse.box"))'), "P24"),
+    "any signal is allowed": (drop("(deny signal"), "P11"),
+    "process info of others is readable": (drop("(deny process-info*"), "P12"),
+    "the arguments of others are readable": (drop("(deny sysctl-read"), "P12"),
     "everything under /private/var is readable": (add('(allow file-read* (subpath "/private/var"))'), "P01"),
     "everything under /private/var is writable": (add('(allow file-write* (subpath "/private/var"))'), "P03"),
-    "any loopback port is reachable": (swap(r"localhost:\d+", "localhost:*"), "P07"),
+    "a withheld loopback port is reachable": (drop("(deny network-outbound (remote ip"), "P07"),
     "any outbound network is allowed": (add("(allow network-outbound)"), "P07"),
-    "a socket can be bound": (add("(allow network-bind)"), "P09"),
-    "any unix socket is reachable": (swap(r'\(remote unix-socket \(literal "[^"]+"\)\)', "(remote unix-socket)"), "P10"),
-    "registry property reads are allowed": (drop("(deny iokit-get-properties)"), "P22"),
+    "a socket can be bound": (add('(allow network-bind network-inbound (local ip "localhost:*"))'), "P09"),
+    "another program's unix socket is reachable": (add('(allow network-outbound (remote unix-socket (subpath "/private/var")))'), "P10"),
+    "registry property reads are allowed": (drop("(deny iokit-get-properties"), "P22"),
     "the host uuid call is allowed": (drop("(deny syscall-unix"), "P22"),
-    "the control names are writable": (drop("(deny file-write* (subpath"), "P04"),
-    "every system name is readable": (swap(r"\(allow sysctl-read[^\n]*", "(allow sysctl-read)"), "P12"),
+    "the control names are writable": (writes_the_control_names, "P04"),
     "the home folder is readable": (reads_in_the_home(), "P02"),
     "the keychain folder is readable": (reads_in_the_home("/Library/Keychains"), "P17"),
-    "any mach service is reachable": (add("(allow mach-lookup)"), "P17"),
+    "any mach service is reachable": (add("(allow mach-lookup)"), "P16"),
+    "a credential service is reachable": (add('(allow mach-lookup (global-name "com.apple.SecurityServer"))'), "P17"),
     "any program may start": (add('(allow process-exec (subpath "/"))'), "P18"),
     "a terminal device is open to it": (add('(allow file-read* file-write* file-ioctl (regex #"^/dev/ttys[0-9]+$"))'), "P14"),
-    "the bridge is not reachable": (swap(r'\(allow network-outbound \(remote ip "localhost:\d+"\)\)', ""), "P20"),
+    "the bridge is not reachable": (add('(deny network-outbound (remote ip "localhost:*"))'), "P20"),
 }
 
 
@@ -200,7 +212,7 @@ def test_a_probe_that_is_not_answered_inside_the_budget_is_a_deviation_and_the_p
     with world(tmp_path) as w:
         began = time.monotonic()
         with pytest.raises(IsolationFailed) as stopped:
-            proof.run(w.profile, w.services, lan=False, budget=0.4)
+            proof.run(w.profile, w.services, lan=False, budget=0.01)   # less than any interpreter takes to start
     assert time.monotonic() - began < 3 and stopped.value.attempt.startswith("P")
 
 
