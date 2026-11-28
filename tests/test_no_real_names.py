@@ -301,6 +301,23 @@ def test_a_real_looking_address_is_still_refused(tmp_path):
     assert "pellard.co" in said
 
 
+def test_a_decorator_after_a_newline_escape_in_a_string_is_not_an_address(tmp_path):
+    """A decorator written after a newline escape was read as an address whose name is the escape's letter, and refused a commit
+    of new tests. Mutation: read the line with its escapes."""
+    where = repo(tmp_path, graph={"nodes": []})
+    code, said = check(where, tmp_path, **{"t.py": 'A = "x = 1\\n@pytest.mark.skip\\n\\t@pytest.fixture"\n'})
+    assert code == 0, said
+
+
+def test_an_address_after_a_newline_escape_is_still_refused_without_the_escape_letter(tmp_path):
+    where = repo(tmp_path, graph={"nodes": []})
+    address = "ada.lovelace@" + "pellard.co"
+    code, said = check(where, tmp_path, **{"t.py": f'A = "to:\\n{address}"\n'})
+    assert code == 1
+    assert f"'{address}'" in said or f" {address}" in said
+    assert "n" + address not in said
+
+
 def test_the_middle_of_a_uuid_is_not_a_phone_number(tmp_path):
     """`6f1b2a3c-4d5e-4f60-8172-839405a6b7c8` holds `60-8172-839405`, which is digits and
     dashes and the right length. Mutation: drop the UUIDISH check."""

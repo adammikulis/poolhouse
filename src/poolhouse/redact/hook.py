@@ -374,7 +374,8 @@ def contacts(line: str, allowed: set[str], rules: Shapes | None = None,
     given."""
     rules = rules or _rules()
     cleared = why.append if why is not None else (lambda _: None)
-    for found in EMAIL.finditer(line):
+    # the letter of a written newline or tab belongs to the escape, never to an address after it
+    for found in EMAIL.finditer(re.sub(r"\\[nrt]", "  ", line)):
         address = found.group(0)
         fired = rules.reserved(address.rsplit("@", 1)[-1]) or rules.not_contact(address)
         if fired:
