@@ -119,7 +119,8 @@ def test_the_pool_actions_refuse_what_names_nothing(alone, ui):
                        ("/ui/pool/join", {"host": "127.0.0.1", "code": "x", "fingerprint": "f" * 64}),
                        ("/ui/pool/found", {"name": "home", "policy": "wide-open"}),
                        ("/ui/pool/found", {"name": ""}),
-                       ("/ui/pool/remove-device", {})):
+                       ("/ui/pool/remove-device", {}),
+                       ("/ui/pool/share", {"device": "studio", "shared": "yes"})):
         status, answer, _ = ui.call(path, method="POST", body=body, cookie=cookie)
         assert status == 400 and answer["error"], (path, body, answer)
 

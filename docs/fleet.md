@@ -141,9 +141,9 @@ poolhouse-pool status                                  # the devices that answer
 
 ```
 NAME             URL                          ROOM             STATE        COMMIT       UPDATES      SERVING
-studio           http://192.168.2.44:8770     96.0G            idle         0ce5bc5 3h   main 4m      quince-2b.gguf:8099
-larch            http://192.168.2.27:8770     20.5/24.0 GB     measuring    0ce5bc5 3h   releases 2h  -
-harrowgate       http://192.168.2.31:8770     20.5/24.0 GB     idle         9f2c1ab 6d   off          -
+studio           https://192.168.2.44:8770    96.0G            idle         0ce5bc5 3h   main 4m      quince-2b.gguf:8099
+larch            https://192.168.2.27:8770    20.5/24.0 GB     measuring    0ce5bc5 3h   releases 2h  -
+harrowgate       https://192.168.2.31:8770    20.5/24.0 GB     idle         9f2c1ab 6d   off          -
 ```
 
 COMMIT is what each device is running and how old that commit is; UPDATES is how it keeps

@@ -1,7 +1,7 @@
 {
- "surfaces": 898,
+ "surfaces": 899,
  "by_status": {
-  "covered": 569,
+  "covered": 570,
   "partial": 189,
   "uncovered": 51,
   "n/a": 89,
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 124,
+   "covered": 125,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
@@ -8513,6 +8513,19 @@
   },
   {
    "id": "route:fleet/pool_routes.py:/ui/pool/remove-device",
+   "kind": "route",
+   "source": "fleet/pool_routes.py:PoolRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_ui_founded.py::test_a_founded_pool_asks_for_a_session",
+    "tests/test_fleet_ui_founded.py::test_the_pool_actions_refuse_what_names_nothing"
+   ],
+   "note": "the pool actions need a signed-in session once a person founded the pool, and refuse a body that names nothing before the node is asked"
+  },
+  {
+   "id": "route:fleet/pool_routes.py:/ui/pool/share",
    "kind": "route",
    "source": "fleet/pool_routes.py:PoolRoutes.route",
    "trust": "network member or local browser",

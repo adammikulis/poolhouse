@@ -37,6 +37,81 @@ fn trio() -> [(Dev, String); 3] {
     })
 }
 
+/// The boards ``to`` lists for ``from``, in `boards` and in `hello`.
+fn listed(from: &Dev, to: &Dev) -> (Value, Value) {
+    let mut c = reach(from, to);
+    (c.call(&json!({"op": "boards"})).unwrap()["boards"].clone(), c.call(&json!({"op": "hello"})).unwrap()["boards"].clone())
+}
+
+/// Whether ``to`` refuses ``from`` the board `demo` for a pull, a vector and a push, each as a denial.
+fn refused(from: &Dev, to: &Dev) -> bool {
+    let mut c = reach(from, to);
+    let origin = origin_of(from);
+    [json!({"op": "pull", "board": "demo", "origin": origin, "vector": {}}), json!({"op": "vector", "board": "demo", "origin": origin}),
+     json!({"op": "push", "board": "demo", "origin": origin, "logs": {}, "trusted_vector": {}})].iter().all(|ask| matches!(c.call(ask), Err(Error::Denied(_))))
+}
+
+/// An open pool founded on the first device, a second that joined it with a code and a third that joined it without one.
+fn open_pool_of_three() -> (Dev, Dev, Dev) {
+    let (a, member, guest) = (device(), device(), device());
+    kit::govnode::found(&a, kit::gov::person(kit::govnode::ANN, "ann"), "open");
+    a.join_with_code(&member);
+    guest.net.join_pool(a.addr(), "", &a.fp()).unwrap();
+    assert_eq!(a.member(&guest.fp()).unwrap()["by"], "open");
+    sync(&member, &a);
+    (a, member, guest)
+}
+
+#[test]
+fn a_device_that_joined_without_a_code_gets_nothing_of_a_board_nobody_shared_with_it() {
+    let (a, member, guest) = open_pool_of_three();
+    let at = a.session("demo", "writer").1;
+    let reader = member.session("demo", "reader").1;
+    let theirs = guest.session("demo", "visitor").1;
+    a.say("demo", &at, "for the owner's devices");
+    guest.say("demo", &theirs, "from the guest");
+    sync(&member, &a);
+    assert!(member.texts("demo", &reader).contains(&"for the owner's devices".to_string()), "a device that joined with the code holds the board");
+    for serving in [&a, &member] {
+        assert_eq!(listed(&guest, serving), (json!([]), json!([])), "a board nobody shared with the caller is not listed");
+        assert!(refused(&guest, serving), "nor pulled, compared or pushed to");
+    }
+    // the caller's own client, and this device's when it is the one that dials, move nothing either
+    sync(&guest, &a);
+    sync(&a, &guest);
+    sync(&member, &guest);
+    assert_eq!(guest.texts("demo", &theirs), vec!["from the guest"]);
+    assert!(!a.texts("demo", &at).contains(&"from the guest".to_string()));
+}
+
+#[test]
+fn the_device_that_serves_a_board_decides_with_whom_it_is_shared() {
+    let (a, member, guest) = open_pool_of_three();
+    let at = a.session("demo", "writer").1;
+    let theirs = guest.session("demo", "visitor").1;
+    a.say("demo", &at, "shared by choice");
+    let share = |token: &str, device: &Dev, board: &str, shared: bool| a.call("board_share", "", token, json!({"device": device.fp(), "board": board, "shared": shared}));
+    assert_eq!(share(&at, &guest, "demo", true)["error"]["code"], "denied", "a session without the grant shares nothing");
+    kit::govnode::grant(&a, "demo", &a.token, &["board_share"]);
+    assert_eq!(share(&a.token, &guest, "demo", true)["ok"], true);
+    assert_eq!(listed(&guest, &a), (json!(["demo"]), json!(["demo"])), "the one board shared, and no other");
+    sync(&guest, &a);
+    assert!(guest.texts("demo", &theirs).contains(&"shared by choice".to_string()));
+
+    assert!(!refused(&member, &a));
+    assert_eq!(share(&a.token, &member, "demo", false)["ok"], true);
+    assert!(refused(&member, &a), "a board withheld from a member is refused to it");
+    assert!(!listed(&member, &a).0.as_array().unwrap().contains(&json!("demo")));
+    a.say("demo", &at, "after it was withheld");
+    sync(&a, &member);
+    sync(&member, &a);
+    let reader = member.session("demo", "reader").1;
+    assert!(!member.texts("demo", &reader).contains(&"after it was withheld".to_string()));
+
+    assert_eq!(share(&a.token, &guest, "", false)["ok"], true);
+    assert_eq!(listed(&guest, &a), (json!([]), json!([])), "the latest choice for every board replaces the one for a board");
+}
+
 #[test]
 fn a_third_device_gets_rows_through_a_relay_and_they_still_verify() {
     let [(a, at), (b, bt), (c, ct)] = trio();

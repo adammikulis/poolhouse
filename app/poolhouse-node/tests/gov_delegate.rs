@@ -97,6 +97,17 @@ fn a_weak_key_ends_a_delegate_at_once_and_what_it_admitted_before_stays() {
 }
 
 #[test]
+fn an_admit_a_member_signs_by_segment_is_listed_as_open_whatever_it_claims() {
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Open);
+    let member = ident(20);
+    put_admit(&mut g, &member, &[A]);
+    let guest = ident(30);
+    device_admit(&mut g, 20, &guest, "segment");
+    assert_eq!(g.devices()[&guest.fingerprint()].by, "open", "no person vouched for it, so it is not listed as having joined with a code");
+    assert_eq!(g.devices()[&member.fingerprint()].by, "join-code");
+}
+
+#[test]
 fn an_open_pools_member_admits_five_an_hour_and_only_with_via_segment() {
     let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Open);
     let member = ident(20);

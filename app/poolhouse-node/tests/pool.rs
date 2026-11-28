@@ -104,8 +104,24 @@ fn join_policy_open_enrols_a_device_that_names_the_fingerprint() {
     assert!(open.is_member(&b.fp()) && b.is_member(&open.fp()));
     kit::govnode::grant(&b, "demo", &b.token, &["sync_now"]);
     b.ok("sync_now", "", &b.token, json!({}));
+    assert!(!b.texts("demo", &b.token).contains(&"from the open pool".to_string()), "joining without a code shares no board");
+    kit::govnode::grant(&open, "demo", &open.token, &["board_share"]);
+    open.ok("board_share", "", &open.token, json!({"device": b.fp(), "shared": true}));
+    b.ok("sync_now", "", &b.token, json!({}));
     assert!(b.texts("demo", &b.token).contains(&"from the open pool".to_string()));
     assert_eq!(b.status()["policy"], "open", "the policy is one attribute of the pool, and it never changes in place");
+}
+
+#[test]
+fn a_caller_from_loopback_is_not_on_the_pools_network_unless_the_node_is_told_so() {
+    let mut cfg = poolhouse_node::net::NetConfig::standard(0, 0);
+    (cfg.listen, cfg.beacon, cfg.sync_every) = ("127.0.0.1:0".parse().unwrap(), None, None);
+    let (a, stranger) = (device_with(cfg), identity(9));
+    found(&a, person(ANN, "ann"), "open");
+    let mut c = PeerClient::connect(&stranger, a.addr(), Some(&a.fp())).unwrap();
+    let asked = c.call(&json!({"op": "join_open", "name": "guest"}));
+    assert!(matches!(asked, Err(Error::Denied(_))), "{asked:?}");
+    assert!(!a.is_member(&stranger.fingerprint()), "a forwarded connection arrives from loopback and admits nobody");
 }
 
 // -- refusals ----------------------------------------------------------------

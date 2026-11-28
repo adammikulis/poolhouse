@@ -443,7 +443,7 @@ pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, (seen, ready): (&Seen,
         out.signed_by.insert(fp.clone(), by.get(&c.id).cloned().unwrap_or_default());
         out.admitted_by.insert(fp.clone(), c.id.clone());
         let _ = id;
-        out.devices.insert(fp.clone(), Device { fingerprint: fp, cert: hex(&c.der), name: clean(&c.admit.name), status, at, by: c.admit.how.clone() });
+        out.devices.insert(fp.clone(), Device { fingerprint: fp, cert: hex(&c.der), name: clean(&c.admit.name), status, at, by: if c.admit.via == "segment" { "open".into() } else { c.admit.how.clone() } });
     }
     for (fp, id) in &removed {
         let known = cands.iter().find(|c| &c.fingerprint == fp);

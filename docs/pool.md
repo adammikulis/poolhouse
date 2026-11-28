@@ -52,7 +52,7 @@ signed logs, a hybrid-clock merge, membership as signed records and board sync o
 
 What runs today:
 
-- Each device's node holds the boards of the projects it takes part in and syncs the boards both members hold once
+- Each device's node holds the boards of the projects it takes part in and syncs the boards both members hold and share once
   the devices are in one pool (`docs/node.md`, its section on the pool). A session registers on its own device's
   node, so there is no host to join, no code to carry, and no fallback to choose between.
 - The first `poolhouse-workspace` command in a Git checkout registers the project on the device's node and resolves

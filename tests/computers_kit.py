@@ -1,7 +1,8 @@
 """Real nodes that stand for two or more computers of one person, started with the flags a computer's own node gets.
 
 The device's node is started with ``--lan`` alone (`node_pool.network_args`). One machine cannot hold two nodes on the same LAN ports, so each
-node here listens on a loopback address of its own and is given no other flag: in particular no sync interval, which the node chooses itself.
+node here listens on a loopback address of its own and is told that loopback stands for the network (``--allow-loopback``); it is given no
+other flag: in particular no sync interval, which the node chooses itself.
 Each computer has its own state root and its own keystore (a file standing in for the operating system's, so the node's key is the keystore's
 as on a person's computer); both are this process's while a call is made for it (`Computer.use`).
 """
@@ -87,7 +88,7 @@ def computers(binary: Path, monkeypatch: pytest.MonkeyPatch, *hosts: str) -> Ite
             _home(monkeypatch, root)
             keystore.Keystore(wires=keystore.Wires(interactive=lambda: True)).provision()  # as after a computer's first run
             node_supervise.point(state, binary, node_binary_module.sha256(binary))
-            node_launch.ensure_node(state, extra=["--listen", f"{host}:0"])
+            node_launch.ensure_node(state, extra=["--listen", f"{host}:0", "--allow-loopback"])
             said = node_health.call(state, "pool_status")
             assert said["device_key"]["custody"] == "keystore", said["device_key"]
             made.append(Computer(root, state, int(said["listen"].rsplit(":", 1)[1]), monkeypatch))

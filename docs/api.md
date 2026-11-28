@@ -51,7 +51,8 @@ ph.pool.join("192.168.2.27", "...")     # this device now belongs to that pool
 ```
 
 An `open` pool (`ph.pool.found("home", "open")`) takes a device on the same network without a code, only the fingerprint of the device that
-answers: `ph.pool.join(host, fingerprint=...)`. The devices sync by themselves, every 20 seconds. Either way, look:
+answers (`ph.pool.status().nearby` lists the ones heard, with the words to compare): `ph.pool.join(host, fingerprint=...)`. The pool's
+devices then send it no board until each shares them (`ph.pool.share(name)` there). Members sync by themselves, every 20 seconds. Either way, look:
 
 ```python
 for m in ph.pool.members():
@@ -101,22 +102,23 @@ appears in the changelog. Before 1.0 a minor release may change the surface, and
 ## ph.pool: the devices you pooled
 
 A pool is the set of devices that trust one another. Every device is a pool of one until another joins. A device
-JOINS a pool: automatically on the same network under the `open` policy, with a short code under `secure`. A
-member can be removed.
+JOINS a pool only when its person asks: with a short code, or, for an `open` pool on its own network, by choosing it
+from the pools it hears. A device serves a board only to the members it shares it with. A member can be removed.
 
 | Name | Contract |
 |---|---|
-| `ph.pool.status()` | The `Pool` of this device: id, project, policy, address it listens on, and every member, with `governance` (`unfounded`: a pool of one no person founded, which admits nobody, or `governed`), the pool's `name` and `missing`, one sentence on what the pool still needs from its person (a pool, a strong key, a signature; empty when nothing). |
+| `ph.pool.status()` | The `Pool` of this device: id, project, policy, address it listens on, its fingerprint `words`, `nearby` (the pools heard while it is in none, each a `Nearby` with `words`, `fingerprint`, `pool`, `host`, `port`), and every member, with `governance` (`unfounded`: a pool of one no person founded, which admits nobody, or `governed`), the pool's `name` and `missing`, one sentence on what the pool still needs from its person (a pool, a strong key, a signature; empty when nothing). |
 | `ph.pool.found(name=None, policy="secure", *, admin=None)` | Make this device's pool, governed by a key this computer makes (or by `admin`, another computer's key): the node drafts the charter, the key signs it, the node takes it back, and this device is the first member. Returns a `Founding` (`pool`, `already`, `say`); a device already in a founded pool answers "already in the pool X" and changes nothing. Nobody is asked and nothing waits: the key is kept under the computer's keystore, or in a file under the passphrase of `POOLHOUSE_SIGNING_PASSPHRASE` where there is none, and a computer that can do neither raises `ph.pool.Refusal` before the node makes a key. |
-| `ph.pool.members(include_removed=False)` | The devices of the pool as `Member`s: name, fingerprint, `this_device`, `connected`, `address`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none`, `self` or `unknown`: how this device reaches it) and `reach_hint` (the exact fix when it is not `direct`). |
+| `ph.pool.members(include_removed=False)` | The devices of the pool as `Member`s: name, fingerprint, `this_device`, `connected`, `address`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none`, `self` or `unknown`: how this device reaches it), `reach_hint` (the exact fix when it is not `direct`), `shared` (whether this device shares its boards with it) and `joined_by`. |
 | `ph.pool.policy()` | `"open"` or `"secure"`: how devices join. |
 | `ph.pool.listen(*, agreed=False)` | Turn this device's network on (TCP 7447, signed beacon on UDP 7448) so devices can join. `agreed=True` is required: it is a person's decision. |
 | `ph.pool.add_device(ttl_s=300)` | Make the short-lived code another device joins with (policy `secure`). A window to a pool is opened with a ticket the node makes at once for exactly that window (the pool, for ten minutes), so a pool approved by a typed yes, or a Mac whose 30 days of admitting have lapsed, still adds a device. Returns the node's answer (`code`, `expires_in_s`, `port`, `fingerprint`) with `addresses`, what the other device types as this one's address (the LAN's first, with the port when it is not 7447; empty while the network is off), and the pool's `policy`. A device that cannot let others in raises `ph.pool.Refusal`, which names the computer that made the pool. |
 | `ph.pool.join(host, code="", *, port=7447, fingerprint="")` | Join the pool of the device at `host`: with the `code` its `add_device` made (`secure`), or, for an `open` pool on this device's own network, with the `fingerprint` of the device that answers (64 hex digits, from its beacon or its `add_device`). `host` is an address or name, `host:port` (else `port`), an IPv6 address (in brackets when a port follows) or a web address, whose host is used and whose port is not; anything else raises `ph.Error`, as does an address with a `%` zone. A device already in a pool does not change pool. The grant to join is signed at once by this device's key when policy allows it. |
+| `ph.pool.share(device, shared=True, *, board="")` | Share this device's boards (every one, or `board`) with a member by name or fingerprint, or stop with `shared=False`. This device decides what it serves: a member that joined with a code is shared every board until told otherwise, one that joined without a code none. What was already sent stays there. Returns the `Member`. Raises `ph.pool.Refusal`. |
 | `ph.pool.renew()` | Give this device another 30 days of admitting devices without asking (the delegate a pool starts with). It changes who governs the pool, so this computer's key signs it at once and it takes effect after the pool's wait; until then a window is opened with a ticket. Returns this device's `Member`. Raises `ph.pool.Refusal`. |
 | `ph.pool.remove(device)` | Remove a member by name or fingerprint; it stops syncing and taking work. Not this device. In a governed pool it is an act of the pool's admins, signed by a person's key; a device's word alone removes nobody. |
 | `ph.pool.capacity()` | `Capacity` of this device: cores, CPU slots and how many are leased, memory and what is free, accelerators and their memory, leases held and queued. |
-| `ph.pool.Pool`, `ph.pool.Member`, `ph.pool.Capacity`, `ph.pool.Founding` | The frozen dataclasses above. |
+| `ph.pool.Pool`, `ph.pool.Member`, `ph.pool.Nearby`, `ph.pool.Capacity`, `ph.pool.Founding` | The frozen dataclasses above. |
 | `ph.pool.Refusal` | Raised (a `ph.Denied`) when a pool call needs the person: `str(e)` is one sentence of at most 160 characters to pass on, `e.needs` is `approval`, `device`, `time` or `none`, `e.where` is where they tap or answer, `e.then` is `wait`, `retry`, `ask-owner` or `stop`. |
 
 ```python

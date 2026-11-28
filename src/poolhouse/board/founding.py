@@ -183,7 +183,7 @@ def _checked(session: Session, policy: str) -> Founded | None:
     if (done := _already(session.client.call("pool_status", "", session.token))) is not None:
         return done
     if policy not in POLICIES:
-        raise Refusal("A pool lets devices join by themselves (open) or with a code (secure); say which.", needs="none")
+        raise Refusal("A pool lets devices on this network join without a code (open) or only with one (secure); say which.", needs="none")
     return None
 
 
@@ -232,9 +232,9 @@ def found_on_computer(session: Session, name: str, policy: str = "secure", *, ks
 
 
 def ticket_for(session: Session, op: str, args: dict[str, Any], *, ks: keystore.Keystore | None = None) -> dict[str, Any]:
-    """The ticket for the operation ``op`` (`add_device` or `join_pool`) with ``args``, made at once, as the params the call then carries: the
+    """The ticket for the operation ``op`` (`add_device`, `join_pool` or `board_share`) with ``args``, made at once, as the params the call then carries: the
     ticket, and for a window the act this computer's key signs under that same ticket, which lets this device admit what proves the window's
-    code. The device's own session holds no grant; it opens a window or joins a pool with this ticket for exactly that."""
+    code. The device's own session holds no grant; it opens a window, joins a pool or shares boards with this ticket for exactly that."""
     try:
         drawn = session.client.call("op_draft", "", session.token, op=op, args=args)
     except NodeError as err:

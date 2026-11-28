@@ -276,7 +276,7 @@ answered or acknowledged handoffs; automatic SubagentStop does not retire its ch
 thread, which closes the request whether or not it was read ([docs/node.md](node.md), "Replies, threads and held text");
 any other message to a retired session is refused.
 
-There is no sync command: the node dials the members of the pool each cycle and swaps the boards both hold in both
+There is no sync command: the node dials the members of the pool each cycle and swaps the boards both hold and share in both
 directions ([docs/node.md](node.md), its section on the pool). Every entry is in the device's signed log at once.
 `outbox` lists what you sent with a `sync` field: `provisional` until every device that has synced the board holds
 it, `synced` after, and `synced` at once when no other device is a member. A row from another device appears as an

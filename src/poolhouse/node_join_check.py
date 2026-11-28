@@ -158,8 +158,9 @@ def step_enrolled(c: Check) -> Step:
     shown = _until(c, lambda s: bool(node_join.others(s)), c.wait_s)
     others = node_join.others(shown)
     if not others:
-        why = (shown.get("last_join") or {}).get("error") or "no enrolment was attempted"
-        return Step("enrolled", False, why, "one of the two devices must have founded an open pool, and both must be on the same network; a device that is in a pool does not change pool")
+        heard = ", ".join(f"{n['words']} at {n['host']}" for n in shown.get("nearby", []))
+        why = f"heard {heard}, and nobody chose to join it" if heard else "no pool was heard to join"
+        return Step("enrolled", False, why, "on one device make an open pool; on the other, open Poolhouse and press Join this pool beside the words that match the first one's screen (no device joins by itself)")
     first = others[0]
     return Step("enrolled", True, f"{first['fingerprint'][:16]} by {first['by']}, pool {shown['pool']}")
 
@@ -177,7 +178,7 @@ def step_converge(c: Check) -> Step:
 
     _until(c, other_wrote, c.wait_s)
     if not seen:
-        return Step("converge", False, "the other device's message did not arrive", "run the check on the other device too, then sync: poolhouse pool status")
+        return Step("converge", False, "the other device's message did not arrive", "run the check on the other device too; a device that joined without a code gets boards only after the other presses Share boards for it (Devices, Pool connections)")
     return Step("converge", True, f"received: {seen[0]}")
 
 

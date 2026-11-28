@@ -22,7 +22,7 @@ fn sample(addr: &str) -> (Beacon, ed25519_dalek::SigningKey) {
 }
 
 fn cfg_with(beacon: poolhouse_node::beacon::BeaconConfig) -> NetConfig {
-    NetConfig { listen: "127.0.0.1:0".parse().unwrap(), beacon: Some(beacon), sync_every: None, project: None }
+    NetConfig { listen: "127.0.0.1:0".parse().unwrap(), beacon: Some(beacon), sync_every: None, project: None, loopback_is_segment: true }
 }
 
 #[test]
@@ -70,7 +70,7 @@ fn unfounded_nodes_advertise_without_joining_or_founding() {
         assert_eq!(node.members.devices().len(), 1);
     }
     assert!(!a.is_member(&b.fp()) && !b.is_member(&a.fp()));
-    assert!(a.status()["last_join"].is_null() && b.status()["last_join"].is_null());
+    assert_eq!((a.status()["nearby"].clone(), b.status()["nearby"].clone()), (json!([]), json!([])), "a device in no pool offers none to join");
 }
 
 #[test]
@@ -103,8 +103,13 @@ fn a_node_does_not_send_a_loopback_address_unless_a_test_allows_it() {
 }
 
 
+/// The entry of `pool_status` `nearby` for the device `fp`, when it lists one.
+fn nearby(d: &Dev, fp: &str) -> Option<serde_json::Value> {
+    d.status()["nearby"].as_array().and_then(|all| all.iter().find(|n| n["fingerprint"] == fp).cloned())
+}
+
 #[test]
-fn under_open_a_device_in_no_pool_joins_the_pool_whose_beacon_it_hears_and_syncs() {
+fn a_device_in_no_pool_only_lists_an_open_pool_it_hears_and_joins_it_when_it_is_chosen() {
     let (pa, pb) = (udp_port(), udp_port());
     let a = device_with(cfg_with(beacon(pa, &[pb])));
     let b = device_with(cfg_with(beacon(pb, &[pa])));
@@ -113,11 +118,22 @@ fn under_open_a_device_in_no_pool_joins_the_pool_whose_beacon_it_hears_and_syncs
     a.say("demo", &at, "from a");
     b.say("demo", &bt, "from b");
     found(&a, person(ANN, "ann"), "open");
-    eventually("the two devices to share a pool", 15, || a.pool() == b.pool() && a.is_member(&b.fp()) && b.is_member(&a.fp()));
-    assert!(!a.pool().is_empty(), "the pool they share was founded by a person");
-    let by = [a.member(&b.fp()).unwrap()["by"].clone(), b.member(&a.fp()).unwrap()["by"].clone()];
-    assert!(by.contains(&json!("open")), "enrolment is recorded as automatic: {by:?}");
+    eventually("b to hear the beacons of the founded pool", 10, || b.status()["beacon_heard"].as_u64().unwrap() > 5);
+    std::thread::sleep(Duration::from_millis(1500));
+    assert_eq!(b.pool(), "", "b joined a pool nobody chose");
+    assert!(!a.is_member(&b.fp()) && !b.is_member(&a.fp()), "a beacon enrols nobody");
+
+    let heard = nearby(&b, &a.fp()).expect("the pool heard is listed for the person to choose");
+    assert_eq!(heard["pool"], a.pool().as_str());
+    assert_eq!(heard["words"], poolhouse_node::phone::words(&a.fp()).as_str(), "the words the person compares are those of the device that answers");
+    assert_eq!((heard["host"].as_str(), heard["port"].as_u64()), (Some("127.0.0.1"), Some(u64::from(a.net.port))));
+    b.net.join_pool(a.addr(), "", &a.fp()).unwrap();
+    assert!(a.is_member(&b.fp()) && b.is_member(&a.fp()));
+    assert_eq!(a.member(&b.fp()).unwrap()["by"], "open");
+    assert_eq!(b.status()["nearby"], json!([]), "a device in a pool is offered no other");
     kit::govnode::grant(&b, "demo", &b.token, &["sync_now"]);
+    kit::govnode::grant(&a, "demo", &a.token, &["sync_now", "board_share"]);
+    a.ok("board_share", "", &a.token, json!({"device": b.fp(), "shared": true}));
     a.ok("sync_now", "", &a.token, json!({}));
     b.ok("sync_now", "", &b.token, json!({}));
     for (d, t) in [(&a, &at), (&b, &bt)] {
@@ -153,7 +169,7 @@ fn forge_beacon(to_port: u16, z: &Dev, claimed: &str) {
 }
 
 #[test]
-fn a_beacon_that_names_no_founded_pool_is_ignored_and_only_a_founded_open_pool_gets_through() {
+fn only_a_beacon_that_names_a_founded_pool_is_listed_and_no_beacon_joins() {
     let pa = udp_port();
     let a = device_with(cfg_with(beacon(pa, &[])));
     let z = device();
@@ -161,15 +177,16 @@ fn a_beacon_that_names_no_founded_pool_is_ignored_and_only_a_founded_open_pool_g
     forge_beacon(pa, &z, "ffffffffffffffff");
     forge_beacon(pa, &z, "");
     std::thread::sleep(Duration::from_millis(1200));
-    assert!(!a.is_member(&z.fp()) && !z.is_member(&a.fp()), "a beacon naming no founded pool (an old id, or none) is ignored, even from an open device");
-    assert_eq!(a.pool(), "");
+    assert_eq!(a.status()["nearby"], json!([]), "a beacon naming no founded pool (an old id, or none) is not listed");
     forge_beacon(pa, &z, &z.pool());
-    eventually("the control beacon (the id of z's founded pool) to enrol", 10, || a.is_member(&z.fp()) && z.is_member(&a.fp()));
-    assert_eq!(a.pool(), z.pool());
+    eventually("the control beacon (the id of z's founded pool) to be listed", 10, || nearby(&a, &z.fp()).is_some());
+    std::thread::sleep(Duration::from_millis(800));
+    assert!(!a.is_member(&z.fp()) && !z.is_member(&a.fp()), "listing a pool joins nothing");
+    assert_eq!(a.pool(), "");
 }
 
 #[test]
-fn a_device_in_a_pool_answers_no_beacon_and_a_secure_pool_takes_nobody_that_asks() {
+fn a_device_in_a_pool_is_offered_no_other_and_a_secure_pool_takes_no_choice_without_a_code() {
     let pa = udp_port();
     let a = device_with(cfg_with(beacon(pa, &[])));
     let (member, z, y) = (device(), device(), device());
@@ -177,13 +194,15 @@ fn a_device_in_a_pool_answers_no_beacon_and_a_secure_pool_takes_nobody_that_asks
     found(&z, person(ANN, "ann"), "open");
     forge_beacon(pa, &z, &z.pool());
     std::thread::sleep(Duration::from_millis(800));
-    assert!(!a.is_member(&z.fp()) && !z.is_member(&a.fp()), "a device that is in a pool joins no other, whatever the beacon says");
+    assert_eq!(a.status()["nearby"], json!([]), "a device that is in a pool joins no other, whatever the beacon says");
+    assert!(!a.is_member(&z.fp()) && !z.is_member(&a.fp()));
 
     let pl = udp_port();
     let lone = device_with(cfg_with(beacon(pl, &[])));
     found(&y, person(ANN, "ann"), "secure");
     forge_beacon(pl, &y, &y.pool());
-    std::thread::sleep(Duration::from_millis(1200));
-    assert!(!lone.is_member(&y.fp()) && !y.is_member(&lone.fp()), "y's pool is secure, so a beacon enrols nobody");
+    eventually("the secure pool to be listed", 10, || nearby(&lone, &y.fp()).is_some());
+    assert!(lone.net.join_pool(y.addr(), "", &y.fp()).is_err(), "y's pool is secure, so choosing it takes its code");
+    assert!(!lone.is_member(&y.fp()) && !y.is_member(&lone.fp()));
     assert_eq!(lone.pool(), "");
 }

@@ -112,8 +112,8 @@ def test_a_carried_key_whose_name_is_not_plain_text_is_refused_before_anything_i
     assert spy.data == []
 
 
-def test_policy_refuses_an_agent_exactly_the_grants_that_end_a_place_in_the_pool_change_who_governs_it_or_release_what_failed_a_scan():
-    assert set(person_key.AGENT_REFUSED) == {"member_remove", "admin_manage", "device_trust", "quarantine_release"}
+def test_policy_refuses_an_agent_exactly_the_grants_that_end_a_place_in_the_pool_change_who_governs_it_or_get_its_boards_or_release_what_failed_a_scan():
+    assert set(person_key.AGENT_REFUSED) == {"member_remove", "admin_manage", "device_trust", "board_share", "quarantine_release"}
     assert all(person_key.agent_refusal(action) for action in person_key.AGENT_REFUSED)
     for action in ("sync_now", "pool_leave", "note_verify", "task_authority", "add_device", "file_delete"):
         assert person_key.agent_refusal(action) == "", action

@@ -44,7 +44,7 @@ fn held_pools(root: &Path) -> Result<Vec<PathBuf>> {
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Policy {
-    /// A device on the same network segment is enrolled automatically.
+    /// A device on the same network segment that asks to join is enrolled without a code.
     Open,
     /// A device is enrolled only through a join code both people know.
     Secure,

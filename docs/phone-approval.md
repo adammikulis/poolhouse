@@ -215,7 +215,7 @@ Every approval about connecting something (`add_device`, `join_pool`, `link_read
 `shard_call`, `shard_consent`, `sync_now`, and adding a phone) states the pool's join policy as a labelled line near the
 top, with what it means for the person, taken from the node's own pool state at the moment of the request:
 
-- `POOL: OPEN. Devices on the same network join without asking.`
+- `POOL: OPEN. A device on the same network can join without a code and is shared no board until you share one.`
 - `POOL: SECURE. Each device needs your code to join.`
 - For `join_pool` the pool being joined tells its policy only when this device connects, so the line says that:
   `POOL: this device's pool is SECURE; the pool it would join states its own policy when it connects.`

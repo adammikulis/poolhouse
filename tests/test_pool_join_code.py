@@ -129,6 +129,7 @@ def test_a_member_says_which_computer_adds_devices(two):
     assert "OK" not in said and "denied" not in said, said
 
 
+@pytest.mark.timeout(180)
 def test_an_open_pool_is_joined_by_the_page_with_the_fingerprint_and_no_code(two, tmp_path):
     a, b = two
     a.use()
@@ -146,6 +147,25 @@ def test_an_open_pool_is_joined_by_the_page_with_the_fingerprint_and_no_code(two
         serving.close()
     assert status == 200, answer
     assert ph.pool.status().name == "home"
+
+    # a computer that joined without a code gets no board until the other one shares it, with one press on its page
+    a.use()
+    (guest,) = (m for m in ph.pool.members() if not m.this_device)
+    assert guest.shared is False and guest.joined_by == "open"
+    writer, written = a.session("writer")
+    writer.call("post", BOARD, written, kind="message", fields={"type": "note", "to": "#general", "body": "after it was shared", "subject": ""})
+    serving = Serving(tmp_path / "first")
+    try:
+        _, _, headers = serving.ticket_session()
+        cookie = headers["Set-Cookie"].split(";")[0]
+        status, answer, _ = serving.call("/ui/pool/share", method="POST", cookie=cookie, body={"device": guest.fingerprint, "shared": True})
+    finally:
+        serving.close()
+    assert status == 200 and answer["member"]["shared"] is True, answer
+    b.use()
+    reader, read = b.session("reader")
+    until("the shared board to reach the computer that joined", SYNC_WAIT_S,
+          lambda: any(e["fields"].get("body") == "after it was shared" for e in reader.call("read", BOARD, read, kind="message")["entries"]))
 
 
 # -- what a person types -----------------------------------------------------------------

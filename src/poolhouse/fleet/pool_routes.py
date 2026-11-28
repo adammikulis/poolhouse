@@ -1,7 +1,7 @@
 """``/ui/pool*`` and ``/ui/fleet``: this device's pool as its node reports it, acting on it, and the machines in it.
 
 Every pool action here is the node's own (`poolhouse.api.pool`, which the command that starts the daemon hands in as `ui.pool_actions`): the page founds a pool, makes the short code that adds a device,
-joins another device's pool and removes a member by asking the node, which asks the person where only they can answer. Nothing in
+joins another device's pool, shares boards with a member and removes one by asking the node, which asks the person where only they can answer. Nothing in
 this module holds a key, a join code or a membership record.
 """
 
@@ -53,6 +53,8 @@ class PoolRoutes:
             return self._guarded(self._join)
         if self.path == "/ui/pool/remove-device" and self.method == "POST":
             return self._guarded(self._remove)
+        if self.path == "/ui/pool/share" and self.method == "POST":
+            return self._guarded(self._share)
         if self.path == "/ui/pool" and self.method == "DELETE":
             return self._guarded(lambda: {"left": self.ui.pool_actions.leave()})
         if self.path == "/ui/fleet" and self.method == "GET":
@@ -111,6 +113,13 @@ class PoolRoutes:
 
     def _remove(self) -> dict[str, Any]:
         return {"removed": asdict(self.ui.pool_actions.remove(_text(self.body(), "device", most=128)))}
+
+    def _share(self) -> dict[str, Any]:
+        req = self.body()
+        shared = req.get("shared")
+        if type(shared) is not bool:
+            raise _Refused("shared must be true or false")
+        return {"member": asdict(self.ui.pool_actions.share(_text(req, "device", most=128), shared))}
 
     def _pause_fleet(self) -> bool:
         req = self.body()

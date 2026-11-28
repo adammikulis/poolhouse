@@ -16,6 +16,29 @@
         el("code", { id: "pool-join-fingerprint" }, String(got.fingerprint))) : null];
   }
 
+  /** The pools this computer hears while it is in none: each by the words the answering computer shows, with the one click that joins it. */
+  function nearbyList(list, join) {
+    const draw = async () => {
+      const got = await M.api("/ui/pool");
+      const heard = (got && got.pool && got.pool.nearby) || [];
+      const drawn = heard.map((n) => `${n.fingerprint} ${n.host} ${n.port}`).join();
+      if (list.dataset.drawn !== drawn) {
+        list.dataset.drawn = drawn;
+        list.replaceChildren(...(heard.length ? [el("div", { class: "hint" }, "Join one only when its words match what that computer shows.")] : []),
+          ...heard.map((n) => {
+            const button = el("button", { class: "small" }, "Join this pool");
+            button.onclick = () => join(button, n);
+            return el("div", { class: "pool-nearby" }, el("code", {}, String(n.words)), ` at ${n.host} `, button);
+          }));
+      }
+      // Looks again while the list is on a screen; one that was shown and taken away is done with.
+      if (list.isConnected) list.dataset.shown = "yes";
+      if (list.isConnected || !list.dataset.shown) setTimeout(draw, 5000);
+    };
+    setTimeout(draw, 0);
+    return list;
+  }
+
   /** What a person does to the pool this device's node is in: found it, add a device to it, join another device's pool. */
   class PoolActions extends HTMLElement {
     setup({ onComplete, founded = false, before = async () => {} }) {
@@ -44,7 +67,7 @@
       const name = el("input", { id: "pool-found-name", type: "text", maxlength: "64", placeholder: "Pool name" });
       const policy = el("select", { id: "pool-found-policy" },
         el("option", { value: "secure" }, "Devices join with a code"),
-        el("option", { value: "open" }, "Devices on this network join by themselves"));
+        el("option", { value: "open" }, "Devices on this network can join without a code"));
       const found = el("button", { class: "small" }, "Found this pool");
       found.disabled = true;
       name.oninput = () => { found.disabled = !name.value.trim(); };
@@ -70,6 +93,10 @@
         { method: "POST", body: JSON.stringify({ host: host.value.trim(),
           ...(code.value.trim() ? { code: code.value.trim() } : { fingerprint: print() }) }) },
         () => { code.value = ""; return el("div", { class: "ok" }, "Joined."); });
+      const nearbyNote = el("div", { role: "status", "aria-live": "polite" });
+      const nearby = founded ? null : nearbyList(el("div", { id: "pool-nearby" }), (button, n) => act(button, nearbyNote, "Joining…",
+        "/ui/pool/join", { method: "POST", body: JSON.stringify({ host: n.host, port: n.port, fingerprint: n.fingerprint }) },
+        () => el("div", { class: "ok" }, "Joined.")));
 
       this.replaceChildren(
         ...(founded ? [] : [el("div", { class: "group", id: "pool-found-form" },
@@ -83,6 +110,7 @@
           add, addNote),
         el("div", { class: "group", id: "pool-join-form" },
           el("h3", {}, "Join another pool"),
+          ...(nearby ? [nearby, nearbyNote] : []),
           el("div", { class: "hint" }, "Use the address and code a device in that pool showed."),
           el("label", { for: "pool-join-host" }, "Address"), host,
           el("label", { for: "pool-join-code-in" }, "Code"), code,

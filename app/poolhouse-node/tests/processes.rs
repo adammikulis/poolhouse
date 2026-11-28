@@ -1,5 +1,5 @@
 //! Two real `poolhouse-node` processes on one machine, each with its own state directory, find each
-//! other by the signed beacon, enrol under `open` and share a board. Nothing here is in-process.
+//! other by the signed beacon, one chooses the `open` pool it hears and the other shares a board with it. Nothing here is in-process.
 
 mod kit;
 
@@ -88,7 +88,7 @@ fn converge(a: &Proc, b: &Proc) {
     eventually("both processes to list each other as active members", 30, || a.member(&fb).is_some() && b.member(&fa).is_some());
     assert_eq!(a.status()["pool"], b.status()["pool"], "one pool");
     let by = [a.member(&fb).unwrap()["by"].clone(), b.member(&fa).unwrap()["by"].clone()];
-    assert!(by.contains(&json!("open")), "the enrolment is recorded as automatic: {by:?}");
+    assert!(by.contains(&json!("open")), "the enrolment is recorded as one without a code: {by:?}");
     eventually("the boards to converge", 30, || a.texts() == vec!["from a", "from b"] && b.texts() == vec!["from a", "from b"]);
 }
 
@@ -97,14 +97,29 @@ fn found(p: &Proc, policy: poolhouse_node::membership::Policy) {
     kit::govnode::found_remote(&mut |m, params| p.call(m, "", &p.token, params), &kit::govnode::cert_of(&p.state()), policy, &[]);
 }
 
+/// ``b`` lists the open pool of ``a``, joins it when that is chosen, and ``a`` then shares its boards with it.
+fn choose_and_share(a: &Proc, b: &Proc) {
+    let (fa, fb) = (a.status()["fingerprint"].as_str().unwrap().to_string(), b.status()["fingerprint"].as_str().unwrap().to_string());
+    let mut heard = Value::Null;
+    eventually("b to list the pool it hears", 30, || {
+        heard = b.status()["nearby"].as_array().and_then(|all| all.iter().find(|p| p["fingerprint"] == fa.as_str()).cloned()).unwrap_or(Value::Null);
+        !heard.is_null()
+    });
+    assert_eq!(b.status()["pool"], "", "hearing a pool joins nothing");
+    b.call("join_pool", "", &b.token, json!({"host": heard["host"], "port": heard["port"], "fingerprint": fa}));
+    kit::govnode::approve_process(&a.state(), "demo", &a.token, &["board_share"]);
+    a.call("board_share", "", &a.token, json!({"device": fb, "shared": true}));
+}
+
 #[test]
-fn a_process_in_no_pool_finds_an_open_pool_by_unicast_beacon_joins_it_and_converges() {
+fn a_process_in_no_pool_lists_an_open_pool_by_unicast_beacon_joins_the_one_chosen_and_converges() {
     let (pa, pb) = (free_udp(), free_udp());
     let a = Proc::start(&loopback_args(pa, pb), "x");
     let b = Proc::start(&loopback_args(pb, pa), "y");
     a.say("from a");
     b.say("from b");
     found(&a, poolhouse_node::membership::Policy::Open);
+    choose_and_share(&a, &b);
     converge(&a, &b);
 }
 
@@ -137,6 +152,7 @@ fn two_processes_join_by_multicast_beacon_on_the_loopback_interface() {
     a.say("from a");
     b.say("from b");
     found(&a, poolhouse_node::membership::Policy::Open);
+    choose_and_share(&a, &b);
     converge(&a, &b);
     assert!(a.status()["beacon_own"].as_u64().unwrap() > 0, "a node hears its own beacon on the group: {}", a.status());
 }

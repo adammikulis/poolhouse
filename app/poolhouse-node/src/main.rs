@@ -84,7 +84,8 @@ fn net_config(args: &[String]) -> Result<Option<NetConfig>, String> {
     let beacon = flag(args, "--beacon-bind").or(lan(args).then_some(beacon_bind.as_str())).map(|b| beacon_config(args, b)).transpose()?;
     let sync_every = flag(args, "--sync-ms").map(|n| n.parse::<u64>().map(Duration::from_millis).map_err(|e| e.to_string())).transpose()?.or(Some(SYNC_EVERY));
     let project = if beacon.is_some() && !args.iter().any(|a| a == "--no-project") { project_key(args)? } else { None };
-    Ok(Some(NetConfig { listen: addr(listen)?, beacon, sync_every, project }))
+    let loopback_is_segment = args.iter().any(|a| a == "--allow-loopback");
+    Ok(Some(NetConfig { listen: addr(listen)?, beacon, sync_every, project, loopback_is_segment }))
 }
 
 /// The build this node advertises: `--build-id`, `--build-seq`, `--wire-version` and `--pinned` over the environment.

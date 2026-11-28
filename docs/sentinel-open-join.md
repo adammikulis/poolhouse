@@ -1,6 +1,7 @@
 # The sentinel and automatic connection: making join policy `open` safe
 
-Status: design, 2026-10-09. Nothing in sections 3 to 6 is built. Owner statement this serves: "feel
+Status: design, 2026-10-09. Nothing in sections 3 to 6 is built. Since 2026-11-28 no device joins by itself and a device
+admitted without a code is shared no board (`docs/node.md`); sections 1 and 2 describe the earlier node. Owner statement this serves: "feel
 free to buff up the sentinel ... it's how we can make devices auto-connect while still being safe."
 This file sits beside `docs/sentinel.md` (the built sentinel: its design, tests and measurements) and
 does not replace it; that file is 514 lines and the brief's 400-line cap would have meant deleting

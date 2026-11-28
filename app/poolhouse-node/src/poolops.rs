@@ -101,6 +101,7 @@ impl crate::node::Node {
             let mut row = json!({
                 "reach": reach, "reach_hint": hint, "network": if d.fingerprint == me { self.network.as_str() } else { f.map_or("", |f| f.network.as_str()) },
                 "fingerprint": d.fingerprint, "name": name, "status": d.status, "since": d.at, "by": d.by, "self": d.fingerprint == me,
+                "shared": self.shares_by_default(&d.fingerprint),
                 "connected": f.is_some_and(|f| f.sessions > 0), "addr": f.and_then(|f| f.addr.clone()),
                 "last_seen_ms": f.map_or(0, |f| f.last_seen_ms), "last_sync_ms": f.map_or(0, |f| f.last_sync_ms),
                 "last_error": f.map(|f| f.last_error.clone()).unwrap_or_default(),

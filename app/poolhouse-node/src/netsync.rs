@@ -38,8 +38,13 @@ fn locked_for<'a>(node: &'a Mutex<Node>, peer: &str) -> Result<NodeWriteGuard<'a
     Ok(n)
 }
 
+/// The board ``id``, under the node's lock and only while this device shares it with ``peer``: the client sends and takes no more than
+/// this device would serve.
 fn with_board<T>(node: &Mutex<Node>, peer: &str, id: &str, f: impl FnOnce(&mut Hosted) -> Result<T>) -> Result<T> {
     let mut n = locked_for(node, peer)?;
+    if !n.shares(id, peer) {
+        return Err(Error::Denied("this device does not share that board with that device".into()));
+    }
     let h = n.boards.get_mut(id).ok_or_else(|| Error::Denied("this device does not hold that board".into()))?;
     f(h)
 }
@@ -156,7 +161,7 @@ pub fn refused_note(reports: &BTreeMap<String, Report>) -> String {
     format!("synced, but these logs were refused (damaged, a gap or past a limit): {}{more}", all[..all.len().min(3)].join(", "))
 }
 
-/// Swap builds, then sync every board both devices hold; origin to refusal code per board.
+/// Swap builds, then sync every board both devices hold and share with each other; origin to refusal code per board.
 pub fn sync_all(node: &Mutex<Node>, c: &mut PeerClient) -> Result<BTreeMap<String, Report>> {
     let registry=locked(node)?.activity.clone();
     let effect=registry.admit_effect(Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
@@ -168,7 +173,7 @@ pub(crate) fn sync_all_admitted(node: &Mutex<Node>, c: &mut PeerClient, effect: 
     sync_members_admitted(node, c, effect)?;
     crate::gov::wire::sync_acts(node, c)?;
     let theirs = peer_boards(c)?;
-    let mine: Vec<String> = locked(node)?.boards.keys().cloned().collect();
+    let mine = locked_for(node, &c.fingerprint)?.boards_shared_with(&c.fingerprint);
     let mut out = BTreeMap::new();
     for id in mine.into_iter().filter(|b| theirs.contains(b)) {
         let report = sync_board_admitted(node, c, &id, effect)?;

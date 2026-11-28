@@ -1,8 +1,8 @@
 """Join this device to a pool by the beacon: start the node with its network on, and show who is in. A library: `poolhouse pool listen` and
 `poolhouse pool join` are the commands.
 
-A device in no pool joins an `open` pool whose signed beacon it hears on the same network; each enrolment is recorded (by `open`, with the certificate fingerprint) and can be revoked
-with `member_remove`. A `secure` pool takes no one without a join code; a pool is founded on this device by its own key, with nothing asked. `pool-join-check` (scripts/) walks every step
+A device in no pool lists the pools whose signed beacons it hears on the same network (`pool_status` `nearby`) and joins none by itself: its person chooses an `open` one, and that enrolment is
+recorded (by `open`, with the certificate fingerprint) and can be revoked with `member_remove`. A `secure` pool takes no one without a join code; a pool is founded on this device by its own key, with nothing asked. `pool-join-check` (scripts/) walks every step
 of this on one device and says which fails and what to change.
 """
 

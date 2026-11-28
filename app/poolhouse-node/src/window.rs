@@ -1,4 +1,5 @@
-//! What the person's own session does with no grant: open a join window (`add_device`) and join a pool (`join_pool`).
+//! What the person's own session does with no grant: open a join window (`add_device`), join a pool (`join_pool`) and say with which
+//! device it shares its boards (`board_share`).
 //!
 //! Neither is allowed because of who asks. Each is one answer at the computer's own prompt for exactly that operation: the node drafts a card
 //! from the operation's own parameters (`op_draft`), writes the sentence the prompt shows, and the person's yes makes a ticket for the SHA-256
@@ -15,7 +16,7 @@ use crate::presence::card::Draft;
 use crate::row::canonical;
 
 /// The operations a ticket opens.
-pub const OPS: [&str; 2] = ["add_device", "join_pool"];
+pub const OPS: [&str; 3] = ["add_device", "join_pool", "board_share"];
 const DOMAIN: &str = "poolhouse/person-op/v1\n";
 /// How long a window lasts when the call names none, and the most it may last.
 const WINDOW_S: u64 = 120;
@@ -74,7 +75,18 @@ pub fn describe(op: &str, pool: &str, name: &str, args: &Map<String, Value>) -> 
                               "fingerprint": text(args, "fingerprint")});
             (body, format!("Poolhouse - put this computer in the pool at {host}. Say yes only if you are joining it now."))
         }
-        _ => return Err(Error::Invalid("a ticket opens add_device or join_pool".into())),
+        "board_share" => {
+            only(args, &["device", "board", "shared"])?;
+            let (device, board) = (text(args, "device"), text(args, "board"));
+            let named = crate::cert::valid_fingerprint(device) && (board.is_empty() || crate::row::valid_name(board));
+            let Some(shared) = args.get("shared").and_then(Value::as_bool).filter(|_| named) else {
+                return Err(Error::Invalid("A board is shared with a device named by its fingerprint, or withheld from it.".into()));
+            };
+            let body = json!({"op": op, "pool": pool, "device": device, "board": board, "shared": shared});
+            let what = if board.is_empty() { "every board of this computer".into() } else { format!("the board {board}") };
+            (body, format!("Poolhouse - {} {what} with the device {}.", if shared { "share" } else { "stop sharing" }, crate::phone::words(device)))
+        }
+        _ => return Err(Error::Invalid("a ticket opens add_device, join_pool or board_share".into())),
     };
     Ok(Op { bytes: format!("{DOMAIN}{}", canonical(&body)).into_bytes(), sentence })
 }

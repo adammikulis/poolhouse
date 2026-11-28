@@ -39,8 +39,8 @@ python -m poolhouse.device_setup
    | node, listening | the node did not start | read `node.log` in the state directory it names |
    | beacon-send, beacon-receive | a firewall blocks the beacon | step 2 again; a third-party firewall needs the same two rules |
    | member-beacon | the other device is not beaconing | step 5 on the Mac, now |
-   | enrolled | policy differs, or the device already has members | both devices on policy `open`; see "Secure pools" |
-   | converge | the board message did not cross | rerun with the other device up |
+   | enrolled | nobody chose the pool, its policy is not `open`, or the device already has members | on the joining device press Join this pool beside the matching words; see "Secure pools" |
+   | converge | the board message did not cross | rerun with the other device up; after a join without a code, press Share boards for this device on the other one |
 5. **The Mac side.** The Mac must be on the same wifi or cable (not a guest network, not a VPN) with its node
    running and policy `open`: from the Mac's checkout, `python -m poolhouse.device_setup` (a Mac agent does
    this; it changes nothing on the Mac except starting the node and turning the network on). Run the Windows
@@ -113,9 +113,9 @@ commit, a file or a report; the pool does not keep it after use.
 
 Found by reading `docs/workspace.md`, `poolhouse.jobs` and the node's ops:
 
-- **Board messages across the pool** work: every member holds the project's board, so `send`, `inbox`, `thread` and
+- **Board messages across the pool** work between members that joined with a code and hold the project's board, so `send`, `inbox`, `thread` and
   `board read` reach the other device's sessions once the devices share a pool, with no invitation and no token to
-  carry (docs/node.md, "Sync"). Use them to ask the agent on the other device to do something. A session on this
+  carry (a member that joined without a code is shared no board until chosen: docs/node.md, "Sharing a board with a device"). Use them to ask the agent on the other device to do something. A session on this
   device registers on this device's node; a message from another device shows its sender as `name@dN`.
 - **A local model** is started on the device it runs on, with `poolhouse-workspace agent start` there
   (docs/local-agent.md). Nothing starts one on another device from here.

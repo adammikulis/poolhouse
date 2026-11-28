@@ -10,8 +10,9 @@ the OS keystore through `keyring`, or the Android keystore.
 
 The fleet daemon (device to device, and phone to device) is in good shape: pinned TLS, signed and sealed
 requests, no CA. The gaps are elsewhere. (a) The board is replicated by the node (`app/poolhouse-node`, `docs/node.md` "Sync"): per-device signed
-logs over TLS 1.3 pinned to each device's certificate, every row verified on arrival; what stays open is that every member
-holds every board it syncs in the clear. (b) The sealing layer has no forward secrecy.
+logs over TLS 1.3 pinned to each device's certificate, every row verified on arrival; what stays open is that every device a
+board is shared with (`docs/node.md`, "Sharing a board with a device") holds all of it, direct messages included, in the clear.
+Nothing is end-to-end encrypted between members. (b) The sealing layer has no forward secrecy.
 (c) Several stores at rest are plaintext: the TLS private key, job records and
 logs, saved conversations, session token files, the board logs. (d) File, model and `/infer`
 streams are signed but not sealed; they rely on the transport.
@@ -52,7 +53,7 @@ the client by a MAC over the request, not by a client certificate and not bound 
 | Job records and logs (`fleet/jobs.py` writes `job.json`, `log`) | **plaintext** | none | none | Command lines and output of every job, including remote dispatch, on disk |
 | Sentinel events (`sentinel/sealed.py`) | HMAC only | HMAC-SHA256 | key beside the file | Tamper-evident, not confidential |
 | Session token files (`<state>/client/<board>/<name>.token`, `board/credentials.py`) | plaintext, 0600 in a 0700 folder, sentinel-registered; the node keeps only the SHA-256 | none | file | Agent capability tokens |
-| Log replica (the node's copies of other devices' logs) | plaintext JSON lines, 0600 in 0700 folders, each row verified when it arrived | signed hash chain, Ed25519 device key | the keystore, a passphrase file or a weak 0600 file (section 10) | Every member holds every board it syncs in the clear |
+| Log replica (the node's copies of other devices' logs) | plaintext JSON lines, 0600 in 0700 folders, each row verified when it arrived | signed hash chain, Ed25519 device key | the keystore, a passphrase file or a weak 0600 file (section 10) | Every device a board is shared with holds all of it in the clear |
 | Backups and bundles | no backup writer found that encrypts | none | none | Anything a person copies from `~/.poolhouse` is plaintext |
 
 Keystore usage: `keystore.py` is the only importer of `keyring`, and the machine's own keystore (and the administrator
@@ -80,7 +81,7 @@ suites, and the phone sets 1.3 then 1.2. The owner has decided to raise the floo
 |---|---|---|---|
 | Passive LAN or Wi-Fi observer | In | Pinned TLS (ECDHE, forward secret at the TLS layer) + sealed bodies. Failure only with `POOLHOUSE_FLEET_TLS=off` or an `http://` LAN project host | Remove TLS-off; seal streams (slices 1, 2b) |
 | Active malicious device on the LAN, not joined | In | Pinned certificates, no first-use trust; MAC with nonce; the node's join exchange; `lan.py` | Nothing structural |
-| Malicious or compromised member | In, partly. It can read everything its pool syncs | Per-device keys and certificates; the pool removes a device | E2E to addressee (slices 4, 5) |
+| Malicious or compromised member | In, partly. It can read everything in the boards shared with it, direct messages included | Per-device keys and certificates; the pool removes a device | E2E to addressee (slices 4, 5) |
 | Network operator or overlay (Tailscale coordination server, relay) | In | Transport never trusted | Keep |
 | Stolen or lost powered-off disk | In | Memory, requests, reputation, activity, files, signing key are encrypted under the keystore | Encrypt the rest (slice 3) |
 | Stolen unlocked laptop or a live session | Out | Needs OS lock and disk encryption (FileVault, BitLocker, LUKS); the OS keystore releases the master to the logged-in user | State in `SECURITY.md` |
@@ -289,7 +290,8 @@ because it keeps a downgrade path for the benefit of old phones only. Order: the
 before certificate pinning (slice 2b); a pinned certificate has nothing to pin to until a device has its own
 identity.
 
-**Board DMs and notes are end-to-end encrypted to the addressee's device (HPKE).** Decided, accepting that
+**Board DMs and notes are to be end-to-end encrypted to the addressee's device (HPKE).** Decided and **not built**: today they are
+plain rows that every device the board is shared with receives and can read. Decided accepting that
 host-side search, summaries and agent recall of DMs stop unless the addressee's device indexes them locally.
 Rejected: a per-board key only (the host cannot read, but every member can, which is not a DM), and "not
 now", because the board host is the likeliest compromised party and the DM store is the one that grows.

@@ -9,7 +9,7 @@ GRANTING = ('grants', 'grants_enrol', 'grants_foreign', 'grants_hostile', 'grant
 GOVERNING = ('gov_acts', 'gov_charter', 'gov_describe', 'gov_expiry', 'gov_first', 'gov_floods', 'gov_found', 'gov_net', 'gov_old_version', 'gov_strength', 'gov_removal', 'governance',
              'gov_levels', 'gov_levels_edges', 'gov_typed', 'gov_join', 'approvals_window', 'computer_signer', 'computer_pool', 'gov_window',
              'crash', 'processes', 'beacon', 'builds', 'builds_relayed', 'device_trust', 'netsync', 'netsync_pins', 'pool', 'reach', 'refused', 'removal',
-             'removal_channels', 'reverse', 'shard', 'tasks_foreign')
+             'removal_channels', 'reverse', 'shard', 'tasks_foreign', 'gov_delegate', 'listener_limits')
 
 
 @pytest.mark.slow

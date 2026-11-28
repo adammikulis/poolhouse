@@ -23,6 +23,7 @@ use crate::gate::{unhurried, Gate, Permit};
 use crate::lineage::Peer;
 use crate::membership::{Device, Standing};
 use crate::netsync::sync_all_admitted;
+use crate::nearby::Nearby;
 use crate::node::Node;
 use crate::join_code::{context_for, new_code, Session, Window};
 use crate::peer::{self, PeerClient};
@@ -33,8 +34,6 @@ use crate::tls::{server_config, StandingFn};
 
 /// How often a node on a network swaps pool records and boards with every member, unless it is started with another interval.
 pub const SYNC_EVERY: Duration = Duration::from_secs(20);
-/// How long a device does not ask again a pool that refused it a join.
-const REFUSED_FOR: Duration = Duration::from_secs(10);
 /// The connections the peer listener holds together: half of the 256 descriptors macOS gives a process by default, so that peers
 /// leave the node the rest.
 const MOST_PEER_CONNECTIONS: usize = 128;
@@ -52,15 +51,20 @@ pub struct NetConfig {
     pub beacon: Option<BeaconConfig>,
     /// How often to swap pool records and boards with every member; None for only on request.
     pub sync_every: Option<Duration>,
-    /// The project key (`projectid::project_of`) of this device: while it is in no pool it joins an `open` pool of that project that
-    /// it hears. A device never founds a pool by itself; founding is asked for by a command. None leaves the device as it is.
+    /// The project key (`projectid::project_of`) of this device: while it is in no pool it lists the founded pools of that project that
+    /// it hears (`pool_status` `nearby`) for the person to choose from. A device never founds or joins a pool by itself; each is asked
+    /// for by a call. None leaves the device as it is.
     pub project: Option<String>,
+    /// Whether a caller from a loopback address counts as on this device's network, so an `open` pool admits it without a code: only
+    /// where the devices of a pool are processes of one machine (a test). Whatever forwards a connection to this listener calls from
+    /// loopback, so it is false otherwise.
+    pub loopback_is_segment: bool,
 }
 
 impl NetConfig {
     /// Listen on every interface on ``port`` with the default beacon on ``beacon_port``.
     pub fn standard(port: u16, beacon_port: u16) -> NetConfig {
-        NetConfig { listen: SocketAddr::from(([0, 0, 0, 0], port)), beacon: Some(BeaconConfig::multicast(beacon_port)), sync_every: Some(SYNC_EVERY), project: None }
+        NetConfig { listen: SocketAddr::from(([0, 0, 0, 0], port)), beacon: Some(BeaconConfig::multicast(beacon_port)), sync_every: Some(SYNC_EVERY), project: None, loopback_is_segment: false }
     }
 }
 
@@ -73,12 +77,10 @@ pub struct Net {
     pub stop: Arc<AtomicBool>,
     pub shards: Arc<Shards>,
     window: Mutex<Option<Window>>,
-    joining: Mutex<BTreeSet<String>>,
-    /// Devices whose pool refused this one a join lately, and when.
-    refused: Mutex<BTreeMap<String, std::time::Instant>>,
+    /// The pools heard while this device is in none.
+    nearby: Nearby,
     beacon_stats: OnceLock<Arc<BeaconStats>>,
-    /// The last attempt to join a pool automatically, and how it ended.
-    last_join: Mutex<Value>,
+    loopback_is_segment: bool,
     /// Members that opened a connection to this device and keep it open for requests to go down (they cannot be dialed: they are behind NAT).
     reverse: Mutex<BTreeMap<String, Arc<Mutex<PeerClient>>>>,
     /// Members this device is keeping such a connection to, so each is attached once, with a handle that closes the connection.
@@ -147,14 +149,13 @@ fn merged(mut base: Value, more: Value) -> Value {
     base
 }
 
-/// A join failure as a person should read it: what happened and what to do about it.
-fn join_hint(e: &Error) -> String {
-    let text = e.to_string();
-    let blocked = matches!(e, Error::Io(io) if matches!(io.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock | std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ConnectionRefused));
+/// A join failure as a person should read it: a connection that never got through says what to do about it.
+fn join_hint(e: Error) -> Error {
+    let blocked = matches!(&e, Error::Io(io) if matches!(io.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock | std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ConnectionRefused));
     if blocked {
-        return format!("{text}: the other device did not accept the connection; allow this program through its firewall on the private network (macOS: Privacy & Security > Local Network)");
+        return Error::Invalid(format!("{e}: the other device did not accept the connection; allow this program through its firewall on the private network (macOS: Privacy & Security > Local Network)"));
     }
-    text
+    e
 }
 
 /// A dial's failure as the device that made it should read it: a TLS alert at the handshake is how a member refuses a device it put out of
@@ -183,7 +184,7 @@ impl Net {
         let port = listener.local_addr()?.port();
         let net = Arc::new(Net {
             node, activity, server_config: server_config(&me, standing)?, me, port, stop, shards,
-            window: Mutex::new(None), joining: Mutex::new(BTreeSet::new()), refused: Mutex::new(BTreeMap::new()), beacon_stats: OnceLock::new(), last_join: Mutex::new(Value::Null),
+            window: Mutex::new(None), nearby: Nearby::default(), beacon_stats: OnceLock::new(), loopback_is_segment: cfg.loopback_is_segment,
             reverse: Mutex::new(BTreeMap::new()), attaching: Mutex::new(BTreeMap::new()),
             places: Gate::new(MOST_PEER_CONNECTIONS, MOST_PEER_PER_ADDRESS, PEER_RESERVED),
             lingering: Gate::new(MOST_LINGERING, MOST_LINGERING, 0), this: OnceLock::new(),
@@ -298,33 +299,21 @@ impl Net {
         Ok(())
     }
 
-    /// What the beacon has sent and heard, and how the last automatic join ended.
-    fn network_facts(&self) -> Value {
+    /// What the beacon has sent and heard, and the pools a device in no pool (``alone``) may choose from.
+    fn network_facts(&self, alone: bool) -> Value {
         let count = |f: fn(&BeaconStats) -> &std::sync::atomic::AtomicU64| self.beacon_stats.get().map_or(0, |s| f(s).load(Ordering::Relaxed));
         let text = |f: fn(&BeaconStats) -> &Mutex<String>| self.beacon_stats.get().and_then(|s| f(s).lock().ok().map(|t| t.clone())).unwrap_or_default();
         json!({
             "beacon_sent": count(|s| &s.sent), "beacon_send_errors": count(|s| &s.send_errors), "beacon_heard": count(|s| &s.heard),
             "beacon_own": count(|s| &s.own), "beacon_rejected": count(|s| &s.rejected),
             "beacon_last_send_error": text(|s| &s.last_send_error), "beacon_last_reject": text(|s| &s.last_reject),
-            "last_join": self.last_join.lock().map(|j| j.clone()).unwrap_or(Value::Null),
+            "nearby": if alone { self.nearby.list() } else { json!([]) },
         })
     }
 
-    fn record_join(&self, fingerprint: &str, addr: SocketAddr, result: &Result<()>) {
-        let Ok(_activity) = self.activity.maintenance(Source::Network) else { return };
-        let (ok, error) = match result {
-            Ok(()) => (true, String::new()),
-            Err(e) => (false, join_hint(e)),
-        };
-        if let Ok(mut j) = self.last_join.lock() {
-            *j = json!({"fingerprint": fingerprint, "addr": addr.to_string(), "ok": ok, "error": error, "at": wall_ms()});
-        }
-    }
-
-    /// A valid beacon was heard. A member's address is remembered; a non-member is answered only by a device in no pool yet, only when
-    /// the sender's pool is founded (has an id) and is of this device's project, and not again for ten seconds after a refusal (a
-    /// pool that is not `open` refuses it). Two devices in no pool never join each other, and a device in a pool joins no other.
-    fn heard(self: &Arc<Net>, b: Beacon) {
+    /// A valid beacon was heard. A member's address is remembered. A device in no pool lists the founded pool of its project that a
+    /// non-member names, for the person to choose; nothing is dialed and nothing is joined. A device in a pool lists no other.
+    fn heard(&self, b: Beacon) {
         let Ok(mut node) = tracked_node(&self.node, Source::Beacon) else { return };
         if b.fingerprint == node.cert.fingerprint() {
             return;
@@ -340,44 +329,22 @@ impl Net {
                 }
             }
             Standing::Unknown => {
-                let eligible = node.members.can_join_other() && b.pool.len() == 32 && b.project == node.members.project && crate::netif::on_segment(b.addr);
-                drop(node);
-                let waiting = self.refused.lock().is_ok_and(|r| r.get(&b.fingerprint).is_some_and(|at| at.elapsed() < REFUSED_FOR));
-                let admitted = self.activity.admit_effect(Source::Beacon,EffectFlow::Join);
-                if eligible && !waiting && admitted.is_ok() && self.joining.lock().is_ok_and(|mut j| j.insert(b.fingerprint.clone())) {
-                    let admitted = admitted.expect("checked admission");
-                    let (net, fp) = (self.clone(), b.fingerprint.clone());
-                    let started = std::thread::Builder::new().name("peer-join".into()).spawn(move || {
-                        let admitted = admitted; // Owned before spawn; retained through result and cleanup.
-                        let result = net.join_open_admitted(addr, &fp, &admitted);
-                        net.record_join(&fp, addr, &result);
-                        if result.is_err() {
-                            if let Ok(mut r) = net.refused.lock() {
-                                r.insert(fp.clone(), std::time::Instant::now());
-                            }
-                        }
-                        if let Ok(mut j) = net.joining.lock() {
-                            j.remove(&fp);
-                        }
-                    });
-                    // A device with no thread to join on tries at a later beacon.
-                    if started.is_err() {
-                        if let Ok(mut j) = self.joining.lock() {
-                            j.remove(&b.fingerprint);
-                        }
-                    }
+                if node.members.can_join_other() && b.pool.len() == 32 && b.project == node.members.project && crate::netif::on_segment(b.addr) {
+                    self.nearby.heard(&b);
                 }
             }
         }
     }
 
+    /// Whether a caller at ``ip`` is on this device's network, for an admit without a code. Loopback is no network: a connection that
+    /// something on this device forwards arrives from it.
+    pub(crate) fn on_my_network(&self, ip: IpAddr) -> bool {
+        if ip.to_canonical().is_loopback() { self.loopback_is_segment } else { crate::netif::on_segment(ip) }
+    }
+
     // -- joining ----------------------------------------------------------
     /// Join the pool of the device at ``addr`` whose certificate has fingerprint ``expect``,
-    /// under its policy `open`; the device is enrolled here and this one there.
-    pub fn join_open(&self, addr: SocketAddr, expect: &str) -> Result<()> {
-        let effect=self.activity.admit_effect(Source::Network,EffectFlow::Join).map_err(activity_error)?;
-        self.join_open_admitted(addr,expect,&effect)
-    }
+    /// under its policy `open`; the device is enrolled here and this one there. Only `join_pool` asks for it.
     fn join_open_admitted(&self, addr: SocketAddr, expect: &str, effect: &AdmittedEffect) -> Result<()> {
         let _child=self.activity.continue_effect(effect,Source::Network,EffectFlow::Join).map_err(activity_error)?;
         if !crate::netif::on_segment(addr.ip()) {
@@ -504,7 +471,7 @@ impl Net {
             if !crate::cert::valid_fingerprint(fingerprint) {
                 return Err(Error::Invalid("without a passphrase the device is named by its fingerprint".into()));
             }
-            self.join_open_admitted(addr, fingerprint, effect)?;
+            self.join_open_admitted(addr, fingerprint, effect).map_err(join_hint)?;
             return Ok(json!({"pool": tracked_node(&self.node, Source::Network)?.members.id, "peer": fingerprint, "approved": self.approved_words()?}));
         }
         let mut c = PeerClient::connect(&self.me, addr, None)?;
@@ -769,7 +736,7 @@ impl Net {
         match parsed {
             Ok(c) if NETWORK.contains(&c.method.as_str()) => respond(request, self.network(&c, peer)),
             Ok(c) if c.method == "pool_status" => match tracked_node(&self.node, Source::Network) {
-                Ok(mut n) => respond(request, n.gov_tick().map(|_| merged(n.pool_status(), self.network_facts()))),
+                Ok(mut n) => respond(request, n.gov_tick().map(|_| merged(n.pool_status(), self.network_facts(n.members.can_join_other())))),
                 Err(error) => respond(request, Err(error)),
             },
             _ => {
@@ -917,7 +884,7 @@ mod activity_tests {
         let directory=tempfile::tempdir().unwrap();
         let node=Arc::new(Mutex::new(Node::open(directory.path()).unwrap()));
         let net=Net::start(node,NetConfig { listen:"127.0.0.1:0".parse().unwrap(),
-            beacon:None,sync_every:None,project:None }).unwrap();
+            beacon:None,sync_every:None,project:None,loopback_is_segment:false }).unwrap();
         Running { net, _directory:directory }
     }
     #[test]

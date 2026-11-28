@@ -7,12 +7,12 @@
 //!
 //! | op | who | what |
 //! |---|---|---|
-//! | `hello` | anyone not revoked | pool id, join policy, fingerprints, build and wire version, how the device is attached to the network (`network`); the boards held, to members |
+//! | `hello` | anyone not revoked | pool id, join policy, fingerprints, build and wire version, how the device is attached to the network (`network`); to a member, the boards shared with it |
 //! | `join_open` | anyone, under policy `open`; a member gets the record again | enrol the caller; reply with the pool record |
 //! | `join_exchange`, `join_confirm` | anyone, while a join code is open | SPAKE2 (`join_code`) |
 //! | `members` | members | swap the builds members report; no row and no policy in it is read |
 //! | `acts` | members | swap the signed acts of a governed pool, in pages (`gov::wire`) |
-//! | `boards`, `vector`, `pull`, `push` | members | board sync (`netsync`) |
+//! | `boards`, `vector`, `pull`, `push` | members, for the boards this device shares with the caller (`sharing`) | board sync (`netsync`) |
 //! | `shard_caps`, `shard_put`, `shard_start`, `shard_status`, `shard_cancel` | members | test shards (`shard`) |
 
 use std::collections::BTreeMap;
@@ -55,8 +55,8 @@ fn reply_of(result: Result<Value>) -> Value {
     }
 }
 
-fn hello(node: &Node, standing: Standing) -> Value {
-    let boards: Vec<&String> = if standing == Standing::Active { node.boards.keys().collect() } else { Vec::new() };
+fn hello(node: &Node, fp: &str, standing: Standing) -> Value {
+    let boards = node.boards_shared_with(fp);
     let mut out = json!({"pool": node.members.id, "policy": node.members.policy.name(), "fingerprint": node.cert.fingerprint(), "project": node.members.project,
            "board_fingerprint": crate::device::fingerprint(&node.key), "member": standing == Standing::Active, "boards": boards, "network": node.network});
     out.as_object_mut().expect("an object").extend(node.build.json().as_object().cloned().unwrap_or_default());
@@ -112,14 +112,14 @@ fn open_join_allowed(node: &mut Node, ip: IpAddr, place: Option<&Permit>) -> Res
 
 /// A device that asks to join under `open`: it is enrolled and handed the pool's record. A device that is a member already is handed
 /// the record again and nothing else changes.
-fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Standing, place: Option<&Permit>) -> Result<Value> {
+fn join_open(net: &Net, node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Standing, place: Option<&Permit>) -> Result<Value> {
     if standing == Standing::Active {
         return record_json(node, &cert_fingerprint(der));
     }
     if node.members.policy != Policy::Open {
         return Err(Error::Denied("this pool takes a device only through a join code".into()));
     }
-    if !crate::netif::on_segment(ip) {
+    if !net.on_my_network(ip) {
         return Err(Error::Denied("this pool takes a device without a code only from its own network".into()));
     }
     let name = req.get("name").and_then(Value::as_str).unwrap_or("");
@@ -142,21 +142,23 @@ fn members(node: &mut Node, fp: &str, req: &Value) -> Result<Value> {
     Ok(json!({"pool": node.members.id, "builds": node.builds_known(), "service": node.own_service_binding()}))
 }
 
-fn hosted<'a>(node: &'a mut Node, req: &Value, bfp: &str) -> Result<&'a mut crate::node::Hosted> {
+/// The board a request names, for the member ``fp`` that asks: one this device does not share with it answers as one it does not hold.
+fn hosted<'a>(node: &'a mut Node, req: &Value, fp: &str, bfp: &str) -> Result<&'a mut crate::node::Hosted> {
     let (id, origin) = (text(req, "board")?, text(req, "origin")?);
     if !valid_name(id) || !valid_origin(origin) {
         return Err(Error::Invalid("a board and an origin are named".into()));
     }
-    let h = node.boards.get_mut(id).ok_or_else(|| Error::Denied("this device does not hold that board".into()))?;
+    let shared = node.shares(id, fp);
+    let h = node.boards.get_mut(id).filter(|_| shared).ok_or_else(|| Error::Denied("this device does not hold that board".into()))?;
     if !h.board.peer_agrees(bfp, origin) {
         return Err(Error::Denied(crate::sync::DIFFERENT_LOG.into()));
     }
     Ok(h)
 }
 
-fn pull(node: &mut Node, bfp: &str, req: &Value) -> Result<Value> {
+fn pull(node: &mut Node, fp: &str, bfp: &str, req: &Value) -> Result<Value> {
     let vector = vector_of(req, "vector")?;
-    let h = hosted(node, req, bfp)?;
+    let h = hosted(node, req, fp, bfp)?;
     h.board.acknowledge(bfp, &vector)?;
     h.board.seal()?;
     let logs = rows_since(&h.board, &seqs(&vector));
@@ -166,15 +168,15 @@ fn pull(node: &mut Node, bfp: &str, req: &Value) -> Result<Value> {
     Ok(json!({"origin": h.board.origin(), "trusted_vector": h.board.trusted_vector(), "logs": logs}))
 }
 
-fn vector(node: &mut Node, bfp: &str, req: &Value) -> Result<Value> {
-    let h = hosted(node, req, bfp)?;
+fn vector(node: &mut Node, fp: &str, bfp: &str, req: &Value) -> Result<Value> {
+    let h = hosted(node, req, fp, bfp)?;
     Ok(json!({"origin": h.board.origin(), "vector": h.board.vector()}))
 }
 
-fn push(node: &mut Node, bfp: &str, req: &Value) -> Result<Value> {
+fn push(node: &mut Node, fp: &str, bfp: &str, req: &Value) -> Result<Value> {
     let logs: BTreeMap<String, Vec<Row>> = serde_json::from_value(req.get("logs").cloned().unwrap_or(json!({}))).map_err(|_| Error::Invalid("logs map origins to rows".into()))?;
     let trusted = vector_of(req, "trusted_vector")?;
-    let h = hosted(node, req, bfp)?;
+    let h = hosted(node, req, fp, bfp)?;
     let mut report = Report::default();
     let stored = take_from(&mut h.board, &logs, bfp, text(req, "origin")?, &mut report)?;
     h.board.acknowledge(bfp, &trusted)?;
@@ -210,9 +212,9 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value, place
     match (op, standing) {
         ("hello", _) => {
             node.observe_build(&fp, req);
-            Ok(hello(node, standing))
+            Ok(hello(node, &fp, standing))
         }
-        ("join_open", _) => join_open(node, der, req, ip, standing, place),
+        ("join_open", _) => join_open(net, node, der, req, ip, standing, place),
         // a device whose admit was signed before it dialed (`add_device` with `presigned`) is a member already, and proves it holds the
         // code like any other: it is handed the record again and nothing else changes
         ("join_exchange" | "join_confirm", _) => net.join_code_step(node, der, op, req, place),
@@ -220,10 +222,10 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value, place
         ("members", _) => members(node, &fp, req),
         ("service_binding", _) => crate::services::peer_binding(node, req),
         ("acts", _) => crate::gov::wire::serve(node, req),
-        ("boards", _) => Ok(json!({"boards": node.boards.keys().collect::<Vec<_>>()})),
-        ("vector", _) => vector(node, &bfp, req),
-        ("pull", _) => pull(node, &bfp, req),
-        ("push", _) => push(node, &bfp, req),
+        ("boards", _) => Ok(json!({"boards": node.boards_shared_with(&fp)})),
+        ("vector", _) => vector(node, &fp, &bfp, req),
+        ("pull", _) => pull(node, &fp, &bfp, req),
+        ("push", _) => push(node, &fp, &bfp, req),
         (op, _) if crate::shard::OPS.contains(&op) => {
             if matches!(op, "shard_put" | "shard_start") {
                 node.work_gate()?;

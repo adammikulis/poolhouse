@@ -283,7 +283,7 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
 
     drawPool(pool, error) {
       const signature = JSON.stringify([error, pool && [pool.id, pool.name, pool.policy, pool.governance, pool.listening, pool.joining_open, pool.missing,
-        pool.members.map(m => [m.fingerprint, m.name, m.active, m.connected])]]);
+        pool.members.map(m => [m.fingerprint, m.name, m.active, m.connected, m.shared])]]);
       if (signature === this.poolSignature) return;
       this.poolSignature = signature;
       const joined = this.querySelector("#pool-joined");
@@ -309,9 +309,16 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
               await refresh();
             }, title: M.plain("action.leave") }, M.t("action.leave")) : null)),
           ...M.kids(pool.missing ? el("div", { class: "hint" }, pool.missing) : null),
+          ...M.kids(pool.words ? el("div", { class: "hint" }, "This computer's fingerprint words: ", el("code", { id: "pool-words" }, pool.words)) : null),
           ...members.map(m => el("div", { class: "row" },
             el("span", {}, el("b", {}, m.name),
-              el("span", { class: "why" }, m.this_device ? "This device" : m.connected ? "Connected" : "Known")),
+              el("span", { class: "why" }, (m.this_device ? "This device" : m.connected ? "Connected" : "Known")
+                + (m.this_device || m.shared ? "" : " · gets none of this computer's boards"))),
+            ...M.kids(m.this_device || (m.shared && m.joined_by !== "open") ? null : el("button", { class: "ghost small", onclick: async () => {
+              const done = await api("/ui/pool/share", { method: "POST", body: JSON.stringify({ device: m.fingerprint, shared: !m.shared }) });
+              if (done.error || done.ok === false) { fail(done.error || "Could not change what this device is shared."); return; }
+              await refresh();
+            } }, m.shared ? "Stop sharing boards" : "Share boards")),
             ...M.kids(m.this_device ? null : el("button", { class: "ghost small", onclick: async () => {
               const removed = await api("/ui/pool/remove-device", { method: "POST", body: JSON.stringify({ device: m.fingerprint }) });
               if (removed.error || removed.ok === false) { fail(removed.error || "Could not remove this device."); return; }
