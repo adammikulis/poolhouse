@@ -342,6 +342,8 @@ WSL onboarding, execution dispatch or any POOL/GOV completion claim.
 | AND-2 | A release APK is signed (alias `poolhouse-preview`) and sideloaded | `ANDROID_SIGNING_STORE`, `ANDROID_SIGNING_PASSWORD` | not built: a person's signing material | OW-9 |
 | AND-3 | A phone running Android 12 or later links by scanning the computer's code and reaches it on the home network and over Tailscale | drive: `app/android/README.md`, "Linking" | not driven | `docs/phone-api.md` on the computer |
 | AND-4 | From the phone a person talks to a live Claude session, answers its question, starts and stops work and serves a model | drive: `docs/phone-api.md` | built against a canned sample computer; not driven against a live computer | AND-3 |
+| AND-6 | With no computer, a person downloads a model on the phone, chats with it, and finds it still there after removing and installing the app | `python app/android/phone_check.py ... download chat reinstall` on a phone | built; the module's tests pass; no model run on a phone through the one app | the shared-folder model store |
+| AND-7 | The phone is a pool node inside the one app | none | not built: the node runtime and its isolated runner are not in the app | `app/android/README.md`, "Where a node goes" |
 | AND-5 | An iPhone app | none | not built; blocked until the product takes off (`docs/service.md` 9.1) | section 6 |
 
 ### 3.15 The docs and onboarding text
