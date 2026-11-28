@@ -1,7 +1,7 @@
 {
- "surfaces": 898,
+ "surfaces": 899,
  "by_status": {
-  "covered": 569,
+  "covered": 570,
   "partial": 189,
   "uncovered": 51,
   "n/a": 89,
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 124,
+   "covered": 125,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
@@ -8171,6 +8171,22 @@
     "tests/test_dataset_samples.py"
    ],
    "note": "Catalogue and confined previews require current session checks and reject duplicate or extra query fields. Explicit preview-row import binds one durable request to its run, scope and authorization epoch; typed resources recheck current ownership and reserve raw workspace and producer-artifact namespaces. Tests attack duplicate submission, revocation, copied bindings, atomic artifact promotion and aliases. Catalogue fixtures and HTTP/engine checks do not prove live Hugging Face or installed import UI."
+  },
+  {
+   "id": "route:fleet/device_uses.py:/ui/device-uses",
+   "kind": "route",
+   "source": "fleet/device_uses.py:DeviceUsesRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_device_uses.py::test_the_route_takes_no_path_beyond_its_own",
+    "tests/test_redteam_device_uses.py::test_the_route_changes_nothing_and_needs_the_page_header",
+    "tests/test_redteam_device_uses.py::test_a_founded_pool_answers_only_a_signed_in_window",
+    "tests/test_redteam_device_uses.py::test_a_members_name_never_reaches_the_request_given_to_an_agent",
+    "tests/test_redteam_device_uses.py::test_a_fingerprint_that_is_not_one_gets_no_request_to_copy"
+   ],
+   "note": "the list is read-only; a member's name stays plain text on the page and never reaches the request a person gives an agent"
   },
   {
    "id": "route:fleet/features_routes.py:/ui/features",
