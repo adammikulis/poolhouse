@@ -154,11 +154,13 @@ def name_session(environment: dict, model: str, event: dict | None = None) -> st
     return name
 
 
-def persist_session(environment: dict, session: str = '') -> None:
+def persist_session(environment: dict, started: dict) -> None:
     """Append to the shell environment file the harness offers: the exports of ``environment`` and the line that gives each shell of
-    the session ``session`` the identity of its caller (`shell_identity.loader`), which must come after them."""
+    the session of the start event ``started`` the identity of its caller (`shell_identity.loader`), which must come after them.
+    The line counts as installed at once only where the harness reads the file anew (`shell_identity.READ_ANEW`); elsewhere the
+    first shell that runs it says so."""
     target = os.environ.get('CLAUDE_ENV_FILE')
-    session = environment.get('POOLHOUSE_SESSION_ID') or session
+    session = environment.get('POOLHOUSE_SESSION_ID') or started.get('session_id')
     if not target or not isinstance(session, str) or not session:
         return
     try:
@@ -189,7 +191,8 @@ def persist_session(environment: dict, session: str = '') -> None:
                 import shell_identity
                 state = hook_state.state_dir()
                 output.write(shell_identity.loader(state) + '\n')
-            shell_identity.mark_installed(state, session)
+            if started.get('source') in shell_identity.READ_ANEW:
+                shell_identity.mark_installed(state, session)
         finally:
             if descriptor is not None:
                 os.close(descriptor)

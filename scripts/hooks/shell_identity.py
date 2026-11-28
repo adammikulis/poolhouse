@@ -28,6 +28,10 @@ that drops its own marker finds no identity to fall back on, and not the lead's.
 KEPT_S = 3600
 """How long a record waits for its shell: a call refused after the hook ran leaves one behind."""
 
+READ_ANEW = ("startup", "resume", "clear", "fork")
+"""The sources of a session start after which Claude Code reads the shell environment file anew. A compacted session keeps what it read
+before (seen with 2.1.332), so a line added then counts only once a shell has run it."""
+
 
 def exports(native: str, name: str = "", board: str = "") -> str:
     """The lines that make a shell the subagent the board knows by ``native``, under ``name`` when the board gave it one."""
@@ -48,7 +52,8 @@ def folder(root: Path, session: str) -> Path:
 
 
 def installed(root: Path, session: str) -> bool:
-    """Whether the shells of ``session`` run the `loader` line, so that a record made for it reaches the command."""
+    """Whether the shells of ``session`` run the `loader` line, so that a record made for it reaches the command: a shell has run it,
+    or the session read it anew (`READ_ANEW`)."""
     return bool(session) and (folder(root, session) / "installed").is_file()
 
 
@@ -156,10 +161,20 @@ def resolve(root: Path, session: str, shell_text: str, cwd: str) -> str:
     return exports(agent, str(held.get("name") or ""), str(held.get("board") or "")) if agent else ""
 
 
+def ran_here(root: Path, session: str) -> None:
+    """Note that a shell of ``session`` runs the `loader` line. A shell that cannot write the note still gets its caller."""
+    try:
+        if not installed(root, session):
+            mark_installed(root, session)
+    except OSError as error:
+        print(f"poolhouse: this shell could not note that it names its caller ({type(error).__name__})", file=sys.stderr)
+
+
 def main(argv: list[str]) -> int:
     session = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
     if session:
         print(resolve(Path(argv[0]), session, sys.stdin.read(), str(Path.cwd())))
+        ran_here(Path(argv[0]), session)
     return 0
 
 

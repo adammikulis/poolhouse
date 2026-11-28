@@ -204,7 +204,8 @@ request (`scripts/lead-review` refuses the author, so it must know who runs it).
 
 UNNAMED = ("note: this session's shells cannot yet say which helper they run for (the session began before the line that does was added, or "
            "the harness offered it no shell environment file), so this command runs as the session that started you: what it writes or "
-           "claims is recorded under that session. The line is added when a session starts, resumes or compacts.\n"
+           "claims is recorded under that session. Its shells read the line when the session starts, resumes or is cleared; compacting "
+           "is not enough.\n"
            "(poolhouse scripts/hooks/claude-bash-guard. Only a command that records a review verdict is refused for this.)")
 
 VERDICT = re.compile(
@@ -223,7 +224,8 @@ delegate's work, a pull request review that approves or asks for changes, or a s
 
 UNNAMED_VERDICT = ("blocked: this command records a review verdict, and this session's shells cannot yet say which helper they run for, so "
                    "the verdict would be recorded as the session that started you and the check that nobody reviews their own work could "
-                   "not tell you apart. Restarting, resuming or compacting the session adds the line that names helpers, and fixes this.\n\n"
+                   "not tell you apart. Restarting, resuming or clearing the session gives its shells the line that names helpers, and fixes "
+                   "this; compacting does not.\n\n"
                    "(poolhouse scripts/hooks/claude-bash-guard. No switch opens this rule.)")
 
 

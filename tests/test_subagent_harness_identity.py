@@ -61,13 +61,16 @@ class Scene:
         self.exports = harness / "sessionstart-hook-0.sh"
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
 
-    def session_start(self) -> None:
-        """Run the session start hook with the shell environment file the harness offers it."""
-        event = {"session_id": "sess1", "cwd": str(self.world.proj.root), "model": "claude-sonnet-5-5"}
+    def session_start(self, source: str = "startup", session: str = "sess1") -> Path:
+        """Run the session start hook, as for ``source``, with the shell environment file the harness offers it; that file."""
+        exports = self.exports.parents[1] / session / self.exports.name
+        exports.parent.mkdir(mode=0o700, exist_ok=True)
+        event = {"session_id": session, "source": source, "cwd": str(self.world.proj.root), "model": "claude-sonnet-5-5"}
         done = subprocess.run([sys.executable, str(self.hooks / "claude-session-start")], input=json.dumps(event), text=True,
                               capture_output=True, timeout=90, check=False,
-                              env={**os.environ, **self.inherited(), "CLAUDE_ENV_FILE": str(self.exports)})
-        assert done.returncode == 0 and self.exports.is_file(), done.stderr
+                              env={**os.environ, **self.inherited(), "CLAUDE_ENV_FILE": str(exports)})
+        assert done.returncode == 0 and exports.is_file(), done.stderr
+        return exports
 
     def inherited(self) -> dict[str, str]:
         """The environment every command of the lead's session, and so of its subagents, starts with: the lead's name and the
@@ -116,10 +119,12 @@ class Scene:
         guard = self.asked(agent, command, cwd, tool_name=tool)
         assert guard.returncode == 0 and not guard.stdout.strip(), (guard.stdout, guard.stderr)
 
-    def shell(self, command: str, cwd: Path | None = None, program: str = "/bin/bash") -> subprocess.CompletedProcess:
-        """Run ``command`` unchanged in a shell the lead's session starts, wrapped as the harness wraps it."""
-        text = wrapped(self.exports.read_text(), command, self.tmp / "claude-0a1b-cwd")
-        return subprocess.run([program, "-c", text], cwd=cwd or self.world.proj.root, env=self.inherited(),
+    def shell(self, command: str, cwd: Path | None = None, program: str = "/bin/bash",
+              session: str = "sess1") -> subprocess.CompletedProcess:
+        """Run ``command`` unchanged in a shell the lead's session ``session`` starts, wrapped as the harness wraps it."""
+        text = wrapped((self.exports.parents[1] / session / self.exports.name).read_text(), command, self.tmp / "claude-0a1b-cwd")
+        return subprocess.run([program, "-c", text], cwd=cwd or self.world.proj.root,
+                              env={**self.inherited(), "CLAUDE_CODE_SESSION_ID": session},
                               text=True, capture_output=True, timeout=120, check=False)
 
     def run(self, agent: str, command: str, cwd: Path | None = None, tool: str = "Bash") -> subprocess.CompletedProcess:
@@ -447,7 +452,7 @@ def test_before_a_sessions_shells_name_their_caller_a_subagent_records_no_review
     scene.start("rev1")
     done = scene.asked("rev1", command, session_id="an-earlier-session")
     assert done.returncode == 2 and not done.stdout.strip(), (done.returncode, done.stdout)
-    assert "records a review verdict" in done.stderr and "Restarting, resuming or compacting the session" in done.stderr, done.stderr
+    assert "records a review verdict" in done.stderr and "Restarting, resuming or clearing the session" in done.stderr, done.stderr
     for agent, session in ((LEAD, "an-earlier-session"), ("rev1", "sess1")):
         allowed = scene.asked(agent, command, session_id=session)
         assert "records a review verdict" not in allowed.stderr, (agent, session, allowed.stderr)
@@ -458,6 +463,27 @@ def test_before_a_sessions_shells_name_their_caller_every_other_command_of_a_sub
     scene.start("rev1")
     done = scene.asked("rev1", command, session_id="an-earlier-session")
     assert done.returncode == 0, (command, done.stderr)
+
+
+@pytest.mark.redteam
+def test_a_compacted_session_counts_the_shell_line_only_once_a_shell_has_run_it(scene):
+    """Claude Code keeps the shell environment it read before it compacted, so the line the start hook adds then may reach no shell:
+    until one has run it, a subagent records no review verdict."""
+    scene.start("rev1")
+    scene.session_start("compact", "sess2")
+    assert scene.asked("rev1", RECORDS_A_VERDICT[0], session_id="sess2").returncode == 2
+    ran = scene.shell("true", session="sess2")
+    assert ran.returncode == 0, ran.stderr
+    allowed = scene.asked("rev1", RECORDS_A_VERDICT[0], session_id="sess2")
+    assert allowed.returncode == 0, allowed.stderr
+
+
+@pytest.mark.parametrize("source", ["startup", "resume", "clear", "fork"])
+def test_a_session_whose_shells_read_the_line_anew_counts_it_at_once(scene, source):
+    scene.start("rev1")
+    scene.session_start(source, "sess2")
+    allowed = scene.asked("rev1", RECORDS_A_VERDICT[0], session_id="sess2")
+    assert allowed.returncode == 0, allowed.stderr
 
 
 @pytest.mark.redteam

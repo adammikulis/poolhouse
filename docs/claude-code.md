@@ -41,11 +41,12 @@ and never limits (docs/claude-subagents.md, "Tool-call milestones").
   refuses a subagent one kind of command only: one that records a review verdict (`scripts/lead-review`, `land-review`,
   `poolhouse-delegate grade`, `gh pr review --approve` or `--request-changes`, a status or review written with `gh api`), since it
   would be recorded as the session that started it and the author check could not tell the two apart. Every other command runs,
-  as the session that started it: what it writes or claims is recorded under that session, and the hook says so beside it. The
-  line is added when a session starts, resumes or compacts, which also lifts the refusal. The refusal reads the command's text, so
-  a review recorded through a program the subagent writes, the Python library or an MCP tool is past it; an MCP tool acts as the
-  session in every case. On Windows, an environment file holding this line gives PowerShell commands none of the file's
-  variables; Bash commands receive them.
+  as the session that started it: what it writes or claims is recorded under that session, and the hook says so beside it. A
+  session's shells read the line when it starts, resumes or is cleared, which also lifts the refusal. Compacting is not enough:
+  Claude Code 2.1.332 keeps the shell environment it read before, so a line added then counts only once a shell has run it. The
+  refusal reads the command's text, so a review recorded through a program the subagent writes, the Python library or an MCP tool
+  is past it; an MCP tool acts as the session in every case. On Windows, an environment file holding this line gives PowerShell
+  commands none of the file's variables; Bash commands receive them.
 - The guards leave alone what harms nothing outside the worktree: `git checkout` and `git restore` there, `git apply --check`, a
   subagent stopping a task, `gh workflow run` of a workflow that only checks, and code that merely names git's settings.
 - The guards read the text of a command, so they stop the forms their tests list and no more: expansions, `eval`, base64, heredocs
