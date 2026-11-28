@@ -616,9 +616,9 @@ def test_stopping_a_bench_job_terminates_the_detached_pid(tmp_path):
         pid = box.member.job(handle.id)["pid"]
         box.member.stop(handle.id)
         assert box.member.job(handle.id)["state"] == "stopped"
-        from poolhouse.fleet.measuring import _alive
+        from poolhouse.lock import pid_alive
 
-        assert _await(lambda: not _alive(pid), timeout=10), "the pid should be gone"
+        assert _await(lambda: not pid_alive(pid), timeout=10), "the pid should be gone"
         time.sleep(0.3)
         assert box.member.job(handle.id)["state"] == "stopped", "the watcher must not unsettle it"
     finally:
@@ -629,7 +629,7 @@ def test_stopping_a_bench_job_terminates_the_detached_pid(tmp_path):
 
 def test_a_job_stopped_while_preparing_stays_stopped_when_its_pid_arrives(tmp_path):
     from poolhouse.fleet.jobs import Job as DaemonJob
-    from poolhouse.fleet.measuring import _alive
+    from poolhouse.lock import pid_alive
 
     runner = JobRunner(tmp_path / "runner", slots=1)
     job = runner.hold(DaemonJob(id="j1", name="bench", argv=["python", "-m", "poolhouse.bench"],
@@ -642,7 +642,7 @@ def test_a_job_stopped_while_preparing_stays_stopped_when_its_pid_arrives(tmp_pa
         runner.adopt(job)
         assert runner.jobs[job.id].state == "stopped"
         proc.wait(timeout=10)
-        assert not _alive(proc.pid)
+        assert not pid_alive(proc.pid)
     finally:
         proc.kill()
         proc.wait(timeout=10)
