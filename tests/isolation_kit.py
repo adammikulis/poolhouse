@@ -100,13 +100,15 @@ def world(tmp_path: Path, *, plan: bool = False, harness: str = "claude") -> Ite
     path = os.path.realpath(Path(short) / "session")
     stop = threading.Event()
     threading.Thread(target=_serve_unix, args=(path, stop), daemon=True).start()
+    withheld = socket.create_server(("127.0.0.1", 0))   # where the model server a real launch withholds from its box would listen
     spec = Spec(harness, str(stage), str(agent), str(install), server.server_port, session_socket=path,
-                policy=coding_policy.Policy(coding_policy.READ_ONLY if plan else coding_policy.GUARDED))
+                policy=coding_policy.Policy(coding_policy.READ_ONLY if plan else coding_policy.GUARDED), withheld=(withheld.getsockname()[1],))
     env = environment(Inputs(harness, str(agent), path=("/usr/bin", "/bin"), base_url=f"http://127.0.0.1:{server.server_port}", token="tok", alias=MODEL))
     profile = build(spec, (), env)
     try:
         yield World(base, spec, Services(server.server_port, path), profile, server.server_port, path)
     finally:
+        withheld.close()
         stop.set()
         server.shutdown()
         server.server_close()

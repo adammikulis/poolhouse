@@ -97,6 +97,8 @@ class Inputs:
     """The folders Python of the box imports from first: the launch's `sitecustomize` and the working copy (`environments.sources`)."""
     window: str = ""
     """The setting of the box's window of loopback ports (`isolation.ports.PortBridge.setting`)."""
+    temp: str = ""
+    """The session's ``TMPDIR`` (`Spec.temp`); empty where the agent home's holds the temporary files."""
 
 
 def allowed(harness: str, interactive: bool = False) -> frozenset[str]:
@@ -138,7 +140,7 @@ def environment(inputs: Inputs) -> dict[str, str]:
     """The environment of a launch: the always set, the terminal names of an interactive launch and the harness's own table. Nothing is
     read from the process environment, so no variable of the launcher, the person's shell or a project reaches the harness."""
     names = allowed(inputs.harness, inputs.interactive)
-    made = {"PATH": os.pathsep.join(inputs.path), "HOME": inputs.home, "TMPDIR": str(Path(inputs.home) / "tmp"), "SHELL": SHELL,
+    made = {"PATH": os.pathsep.join(inputs.path), "HOME": inputs.home, "TMPDIR": inputs.temp or str(Path(inputs.home) / "tmp"), "SHELL": SHELL,
             "LANG": "en_US.UTF-8", "POOLHOUSE_AGENT": "1", "PYTHONDONTWRITEBYTECODE": "1", "GIT_CONFIG_NOSYSTEM": "1"}
     if inputs.sources:
         made["PYTHONPATH"] = os.pathsep.join(inputs.sources)

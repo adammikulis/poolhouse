@@ -197,11 +197,13 @@ def test_confined_and_the_attestation_give_one_answer_for_the_same_profile(tmp_p
 
 
 @pytest.mark.parametrize("plan", [False, True])
-def test_every_profile_the_engine_builds_refuses_by_default_and_a_process_in_it_is_confined_and_attested(tmp_path, plan):
+def test_every_box_the_engine_builds_for_a_launch_is_known_as_its_own_and_a_process_in_it_is_confined_and_attested(tmp_path, plan):
+    """Owner-order: "can't you just make the sandbox just like the rest of things so the agent can test whatever they need safely?" The box of
+    a launch allows by default on macOS, so it is known by the service it refuses (`confinement.BOX_MARKER`) and not by its default."""
     from poolhouse.sandbox.confinement import seatbelt_state
     with world(tmp_path, plan=plan) as w:
         made = Seatbelt().wrap(["/bin/sleep", "30"], w.profile.policy.validated())
-        assert "(deny default" in made.argv[2] and "(allow default" not in made.argv[2]
+        assert "(allow default)" in made.argv[2] and "(deny default" not in made.argv[2]
         child = start_process(made.argv, stdin=-3, stdout=-3, stderr=-3)
         try:
             deadline = time.monotonic() + 5

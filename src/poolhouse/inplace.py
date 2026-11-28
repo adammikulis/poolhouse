@@ -148,7 +148,7 @@ def started(args: Any, session: harnessing.Session, how: harnessing.Harness,
     stance = f"permissions {args.permissions if args.sandbox or args.asked else 'your own settings'}; mode {args.execution_mode}"
     if args.sandbox:
         with harnessing.confined(args, session, how, boxed) as confinement:
-            how.say(f"{stance}; working on a copy of {session.cwd}, in a sandbox with no network but the model; changes arrive when the turn ends")
+            how.say(f"{stance}; working on a copy of {session.cwd}, in a sandbox with no network beyond this computer; changes arrive when the turn ends")
             yield confinement
         return
     with run(how, session, direct) as running:

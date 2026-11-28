@@ -17,11 +17,11 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import home
+from poolhouse import home, secretpaths
 from poolhouse.isolation import environments
 
-__all__ = ["MANAGERS", "Declaration", "Identity", "Resolved", "declarations", "declared", "interpreter_roots", "reach", "resolve",
-           "system_toolchain"]
+__all__ = ["MANAGERS", "TEMPORARY", "Declaration", "Identity", "Resolved", "declarations", "declared", "installed", "interpreter_roots",
+           "interpreter_trees", "private_trees", "reach", "resolve", "system_toolchain", "tool_credentials", "user_temporary"]
 
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,39}")
 """What a version declaration may name: one plain token, never a path."""
@@ -130,19 +130,78 @@ def system_toolchain() -> tuple[str, ...]:
     return tuple(os.path.realpath(path) for path in found if Path(path).is_dir() and os.path.realpath(path) == path)
 
 
-DEVELOPER_LINK = "/private/var/db/xcode_select_link"
-"""The link `xcode-select` keeps to the developer folder the machine has selected."""
+PRIVATE = ("/Users", "/System/Volumes/Data/Users", "/Volumes", "/private/var/root", "/private/var/folders", "/private/var/at",
+           "/Library/Keychains", "/opt/homebrew/etc", "/opt/homebrew/var", "/usr/local/etc", "/usr/local/var")
+"""The trees of a Mac an open box reads, writes and reaches nothing of, unless a tree it is granted lies inside one: every home folder, other
+volumes, the per-user temporary and cache folders, the keychains and the settings and data of installed services. The system's own credential
+files (`secretpaths.ABSOLUTE`) are added to them."""
+TEMPORARY = "/private/tmp"
+"""The shared temporary folder an open box writes and reads, except what was in it before the box's profile was made (`private_trees`)."""
+HOME_TOOLS = (".pyenv", ".local/bin", ".local/lib", ".local/share/uv", ".local/share/pnpm", ".nvm", ".volta", ".rustup", ".cargo/bin",
+              ".cache/huggingface/hub", "Library/Python", "Library/Caches/ms-playwright", ".bun", ".deno", "go/pkg/mod")
+"""Where version managers, package managers and test tools keep the programs, libraries, browsers and downloaded models they installed, under
+the home folder (each tool's documented layout): an open box reads and runs them, writes none, and finds each at the same place under its own
+home."""
+TOOL_CREDENTIALS = (".bun/.npmrc", ".volta/.npmrc", ".nvm/.npmrc", ".pyenv/.netrc")
+"""The files inside `HOME_TOOLS` that hold a registry's token."""
 
 
-def developer_selection() -> tuple[str, ...]:
-    """The link a session may look at, never what it names: Apple's `/usr/bin/git` (and every shim like it) reads where it points and ends at
-    once when it may not, so a program that names the shim, or a `PATH` that finds it first, had no git. A folder it names that the session
-    cannot read is passed over for the command-line tools (`system_toolchain`)."""
-    return (DEVELOPER_LINK,) if sys.platform == "darwin" and Path(DEVELOPER_LINK).is_symlink() else ()
+def user_temporary() -> str:
+    """The account's temporary folder as macOS gives it to its libraries (``_CS_DARWIN_USER_TEMP_DIR``), as its real path; empty elsewhere. It
+    is among the private trees of every box."""
+    found = os.confstr(65537) if sys.platform == "darwin" else None
+    return os.path.realpath(found) if found else ""
+
+
+def private_trees() -> tuple[str, ...]:
+    """The trees an open box is refused unless granted: `PRIVATE`, this account's home and Poolhouse's state wherever they are, and each entry
+    of the shared temporary folder as it is now, so that another program's sockets, scripts and files there stay its own. What is made there
+    later is temporary like the box's own (a link is passed over: what it leads to is judged where it is)."""
+    own = [os.path.realpath(each) for each in (home.user_home(), home.home(), home.cache())]
+    try:
+        with os.scandir(TEMPORARY) as entries:
+            before = sorted(entry.path for entry in entries if not entry.is_symlink() and entry.path.isprintable())
+    except OSError:
+        before = []
+    system = (os.path.realpath(each) for each in (*PRIVATE, *secretpaths.ABSOLUTE))
+    return tuple(dict.fromkeys((*system, *(each for each in own if each != "/"), *_managed_versions(), *before)))
+
+
+def installed() -> dict[str, str]:
+    """The folders of `HOME_TOOLS` this account has: each by its place under the home folder, with its real path."""
+    found = ((each, home.user_home() / each) for each in HOME_TOOLS)
+    return {each: os.path.realpath(path) for each, path in found if path.is_dir()}
+
+
+def _managed_versions() -> tuple[str, ...]:
+    """The folders of this account's version managers that keep one folder per interpreter (`VERSION_FOLDERS`), as real paths."""
+    found = (home.user_home() / each for each in VERSION_FOLDERS)
+    return tuple(os.path.realpath(each) for each in found if each.is_dir())
+
+
+def interpreter_trees() -> tuple[str, ...]:
+    """What of each interpreter a version manager installed an open box reads: its programs, libraries and headers, and no more of its prefix
+    (`reach`: not the settings, state or keyring a tool keeps beside it)."""
+    roots = (Path(folder) / name for folder in _managed_versions() for name in _names(Path(folder)))
+    found = (root / part for root in roots for part in ("bin", "lib", "include", "Frameworks"))
+    return tuple(str(each) for each in found if each.is_dir() and not each.is_symlink() and os.path.realpath(each) == str(each))
+
+
+def _names(folder: Path) -> list[str]:
+    try:
+        return sorted(each.name for each in folder.iterdir())
+    except OSError:
+        return []
+
+
+def tool_credentials() -> tuple[str, ...]:
+    """The files of `TOOL_CREDENTIALS` this account has, as the paths they resolve to."""
+    found = (home.user_home() / each for each in TOOL_CREDENTIALS)
+    return tuple(dict.fromkeys(os.path.realpath(each) for each in found if each.is_file()))
 
 
 PREFIXES = ("/opt/homebrew", "/usr/local")
-SETTINGS = ("openssl*/openssl.cnf", "openssl*/cert.pem")
+SETTINGS =("openssl*/openssl.cnf", "openssl*/cert.pem")
 """Under a prefix's `etc`, the files a program of the system toolchain ends without: OpenSSL's configuration (node and `openssl` refuse to
 start when they may not open it) and its list of public certificate authorities. Nothing else of `etc`, no key folder among it."""
 

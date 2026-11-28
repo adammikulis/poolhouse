@@ -23,7 +23,7 @@ from poolhouse.isolation.refusals import (
     refusal_line,
     sentence,
 )
-from poolhouse.sandbox.seatbelt import EXPOSURES
+from poolhouse.sandbox.seatbelt_open import EXPOSURES
 from tests.sandbox_kit import AbsentBackend
 
 SRC = Path(__file__).resolve().parent.parent / "src"
@@ -37,7 +37,8 @@ def test_the_report_has_one_entry_per_guarantee_and_names_each_exposure_of_the_p
     assert [each.id for each in report.guarantees] == [f"G{n}" for n in range(1, 14)]
     assert {each.state for each in report.guarantees} <= {"enforced", "watched", "unenforceable"}
     assert {each.id for each in report.guarantees if each.state == "watched"} <= set(WATCHABLE)
-    assert {each.id for each in report.exposures} == {each.id for each in EXPOSURES} == {"X1", "X2"}
+    # Owner-order: "can't you just make the sandbox just like the rest of things so the agent can test whatever they need safely?"
+    assert {each.id for each in report.exposures} == {each.id for each in EXPOSURES} == {"X1", "X2", "X3", "X4"}
     assert report.to_dict()["can_start"] is report.can_start and len(report.to_dict()["guarantees"]) == 13
 
 

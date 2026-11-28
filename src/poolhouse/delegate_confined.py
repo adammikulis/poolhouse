@@ -19,6 +19,7 @@ import os
 import queue
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -111,12 +112,20 @@ a file. Two of them reach {lead}:
   result. Ask only what the files cannot tell you.
 {work}Finish with your result as plain text: what you {did}. {lead} reads it as data.
 """
+OPEN_LIMITS = """\
+shell runs in the same working copy, inside a sandbox that lets a command do what it does in a shell on this computer (GPU compute, headless
+browsers, the installed tools and libraries and connections to this computer's own loopback among it) and refuses these: writing anywhere but
+the copy, your home folder and temporary files; reading keys, credentials and the person's own folders; any network beyond this computer; the
+model server's own port; listening on a port (a Python server on 127.0.0.1 is given one of the sandbox's, no other program can listen); opening
+apps; and starting a sandbox of its own (sandbox-exec)."""
+CLOSED_LIMITS = """\
+shell runs in the same working copy, inside a sandbox with these limits: no network; no localhost port of this computer reached by a test; no
+Poolhouse node; no nested sandbox; and no real model."""
 SHELL_WORK = """\
-shell runs in the same working copy, inside a sandbox with these limits: no network; no localhost port can be opened, and no localhost port of
-this computer reached by a test; no Poolhouse node; no nested sandbox; and no real model. The project's environments (its main checkout's
-where this copy has none) and the .git folder are read-only (git status, diff, log and show work, a commit fails). A command ends at its timeout ({default}s unless you give another as
-`timeout`, in milliseconds, at most {most}s) and never runs in the background. A test that needs what the sandbox lacks cannot run here: in your
-result, name every test you could not run and why.
+{limits} The project's environments (its main checkout's where this copy has none) and the .git folder are read-only (git status, diff, log and
+show work, a commit fails). A command ends at its timeout ({default}s unless you give another as `timeout`, in milliseconds, at most {most}s)
+and never runs in the background. A test that needs what the sandbox refuses cannot run here: in your result, name every test you could not run
+and why.
 When your turn ends your changes are applied to the project; only changes to .git, to a coding tool's settings, to credential files and
 links that lead out of the project are refused and kept aside for {lead}.
 """
@@ -402,7 +411,8 @@ def leased(model: str, say: Callable[[str], None]) -> Iterator[tuple[str, Any, s
 def brief_of(rec: store.Delegate) -> str:
     """The system prompt of ``rec``: the same for every delegate of one lead that does the same kind of work."""
     shell = SHELL_WORK if rec.sandboxed else UNSANDBOXED_WORK
-    work = shell.format(lead=rec.lead, default=int(SHELL_DEFAULT_S), most=int(SHELL_MAX_S)) if rec.edit else READ_WORK
+    limits = OPEN_LIMITS if sys.platform == "darwin" else CLOSED_LIMITS
+    work = shell.format(lead=rec.lead, limits=limits, default=int(SHELL_DEFAULT_S), most=int(SHELL_MAX_S)) if rec.edit else READ_WORK
     project = "a working copy of the project" if rec.sandboxed else "the project folder itself"
     return REQUIRED_BRIEFING.format(owner=rec.lead) + BRIEF.format(
         lead=rec.lead, tools=", ".join(tools_of(rec.edit)), work=work, folder=project if rec.source else "an empty folder",
