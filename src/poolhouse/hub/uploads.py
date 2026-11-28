@@ -5,6 +5,10 @@ downloaded ``unsloth/*`` repository on the official Hub, sending no token, and k
 replaced, a model file it added, and a draft head or projector it added or changed. It only lists: nothing is downloaded or
 deleted, and a change only informs. The first listing of a repository is what counts as already seen.
 
+The daemon makes the check once a day (`watch`), and serving a downloaded model makes the day's check where none ran
+(`serving`). A server about to start with a draft head asks once whether that file was replaced (`replaced`), and
+`serve.drafthead` fetches the newer one.
+
 ``<state>/hub/uploads.json`` is a flat file because it is one switch and a small cache that the next check can rebuild.
 """
 
@@ -15,6 +19,7 @@ import threading
 import time
 import urllib.parse
 from collections.abc import Callable, Iterable
+from http.client import HTTPException
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +32,8 @@ PUBLISHER = "unsloth"
 EVERY_S = 24 * 3600
 FIRST_AFTER_S = 300.0
 LOOK_S = 3600.0
+UNREACHABLE = (OSError, RuntimeError, ValueError, HTTPException)
+"""What a listing of the Hub raises when it cannot be had."""
 _LOG = logging.getLogger(__name__)
 
 
@@ -114,19 +121,45 @@ def _changes(repo: str, held: dict[str, Path], listed: dict[str, list], seen: di
     return out
 
 
+def _asks(state: dict[str, Any]) -> bool:
+    """Whether the Hub may be asked: the check is on and ``$HF_ENDPOINT`` points at the official Hub."""
+    return state.get("enabled", True) is not False and urllib.parse.urlsplit(remote.endpoint()).hostname in publishers.HOSTS
+
+
+def asks_about(path: Path) -> bool:
+    """Whether Poolhouse may ask the Hub about the cached file ``path`` by itself: this publisher's, the check on and
+    ``$HF_ENDPOINT`` the official Hub."""
+    found = hfstore.identify(path)
+    return bool(found and found[2] and found[0].split("/")[0].lower() == PUBLISHER and _asks(_kept()))
+
+
+def replaced(path: Path) -> bool:
+    """Whether the repository the cached file ``path`` came from serves other bytes under its name now, asked now.
+    False where `asks_about` says not to ask, and where the Hub cannot be asked."""
+    found = hfstore.identify(path)
+    if not found or not asks_about(path):
+        return False
+    try:
+        one = next((one for one in remote.listing(found[0], auth="") if one.path == found[2]), None)
+    except UNREACHABLE as exc:
+        _LOG.info("%s could not be asked whether %s changed: %s", found[0], found[2], exc)
+        return False
+    return one is not None and bool(_differs(path, one.size, one.sha256 or one.oid))
+
+
 def check(post: Callable[[str], object] | None = None, *, now: float = 0.0) -> list[dict[str, Any]]:
     """List every downloaded repository once and return what differs. ``post`` is given each change's line the first time it is
     found; one it raises `OSError`, `RuntimeError` or `LookupError` for is offered again by the next check. Nothing is asked
     when the check is off or ``$HF_ENDPOINT`` points anywhere but the official Hub."""
     state = _kept()
-    if state.get("enabled", True) is False or urllib.parse.urlsplit(remote.endpoint()).hostname not in publishers.HOSTS:
+    if not _asks(state):
         return []
     repos, found, errors = dict(state.get("repos") or {}), [], {}
     for repo, held in sorted(downloaded().items()):
         before = repos.get(repo) or {}
         try:
             listed = {one.path: [one.size, one.sha256 or one.oid] for one in remote.listing(repo, auth="")}
-        except (OSError, RuntimeError, ValueError) as exc:
+        except UNREACHABLE as exc:
             errors[repo] = str(exc)[:300]
             found.extend(before.get("changes") or [])
             continue
@@ -173,6 +206,29 @@ def due(now: float = 0.0) -> bool:
     return enabled() and (now or time.time()) - float(_kept().get("checked_at") or 0) >= EVERY_S
 
 
+def serving(*served: str | Path, say: Callable[[str], object] = _LOG.warning) -> threading.Thread | None:
+    """The day's `check`, made when a model is served from this publisher: a machine that runs no daemon never reaches
+    `watch`. ``served`` are the files a server started with (weights, draft head); ``say`` is given each change found in
+    their repositories. The check runs beside the server, which it neither delays nor fails, and the thread outlives a
+    short command until the listing is done. None when no check is due or nothing served is this publisher's."""
+    repos = {found[0] for path in served if path and (found := hfstore.identify(path))
+             and found[0].split("/")[0].lower() == PUBLISHER}
+    if not repos or not due():
+        return None
+
+    def once() -> None:
+        try:
+            for change in check():
+                if change["repo"] in repos:
+                    say(change["text"])
+        except (*UNREACHABLE, KeyError, TypeError):  # a file, the Hub or the kept cache
+            _LOG.exception("The model upload check failed")
+
+    thread = threading.Thread(target=once, name="model-uploads-serving")
+    thread.start()
+    return thread
+
+
 def watch(post: Callable[[str], object] | None = None, *, first_after_s: float = FIRST_AFTER_S, look_s: float = LOOK_S,
           rounds: int = 0) -> threading.Thread:
     """`check` once a day for as long as this process runs; the time of the last one is kept, so restarts add no checks."""
@@ -184,7 +240,7 @@ def watch(post: Callable[[str], object] | None = None, *, first_after_s: float =
             try:
                 if due():
                     check(post)
-            except (OSError, RuntimeError, ValueError, KeyError, TypeError):  # a file, the Hub or the kept cache
+            except (*UNREACHABLE, KeyError, TypeError):  # a file, the Hub or the kept cache
                 _LOG.exception("The model upload check failed")
             time.sleep(look_s)
 

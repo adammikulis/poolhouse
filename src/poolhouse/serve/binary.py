@@ -254,14 +254,14 @@ def borrows(binary: str | Path | None) -> bool:
     if not binary:
         return False
     path = home.expand(binary)
+    info = manifest_of(path)
+    if repo := str(info.get("repo") or "").strip().lower():
+        return repo != MAINLINE
     try:
         path.relative_to(managed_named())
         return True
     except ValueError:
-        pass
-    info = manifest_of(path)
-    repo = str(info.get("repo") or MAINLINE).strip().lower()
-    return (bool(info.get("name")) and not info.get("track")) or repo != MAINLINE
+        return bool(info.get("name")) and not info.get("track")
 
 
 def named_builds(name: str = "llama-server") -> list[tuple[str, Path]]:

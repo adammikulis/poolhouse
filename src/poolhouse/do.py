@@ -68,7 +68,7 @@ EXAMPLES: dict[str, tuple[tuple[str, str], ...]] = {
                       'models_fetch(reference="hf:unsloth/quince-2b-GGUF/quince-2b-Q4_K_M.gguf")'),
                      ("get the flash-next head too",
                       'models_fetch(reference="hf:unsloth/Qwen3.8-Flash-Next-GGUF/'
-                      'mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf")')),
+                      'MTP/mtp-Qwen3.8-Flash-Next-Q4_K_M.gguf")')),
     "bench_run": (("run benchmarks with qwen3.8-flash-next",
                    'ask_user(question="Full hundred questions (~45 min) or a sample of 10 '
                    '(~5 min)?", choices=["the hundred", "a sample of 10"]) first, then '
@@ -155,7 +155,7 @@ EXAMPLES: dict[str, tuple[tuple[str, str], ...]] = {
                   '(~5 min)?", choices=["the hundred", "a sample of 10"])'),
                  (ACCEPTANCE,
                   'first, listing what both lookups found: ask_user(question="llama.cpp: '
-                  'Qwen3.8-Flash-Next-UD-Q4_K_XL (draft head mtp-Qwen3.8-Flash-Next-shared-Q8_0 '
+                  'Qwen3.8-Flash-Next-UD-Q4_K_XL (draft head mtp-Qwen3.8-Flash-Next-Q4_K_M '
                   'found); Ollama: qwen3.8-flash-next:125b-mlx (safetensors, nvfp4). Use '
                   'these?", choices=["yes", "no"]); then ask_user(question="graph Q&A on the '
                   'invented community -- sample of 10 (~5 min) or the hundred (~45 min)? plus '

@@ -29,15 +29,18 @@ def draft_for(repo: str, *, borrows: bool = False) -> str:
     sit at the root, under `MTP/`, or in a sibling `-MTP-GGUF` repository; the root copy is
     preferred, and among several at one level a `*shared*` head is.
 
-    ``borrows`` says whether the binary about to serve this head can load one that needs a
-    fork. A head whose own README says it needs one (``draft_note``) is offered only then.
+    ``borrows`` says whether the binary about to serve loads a head that borrows its target's
+    embeddings (`naming.borrowed_head`). A mainline build is given a head that carries its own,
+    and none when the repository ships only borrowing ones.
     """
-    found, where = _head_in(repo, prefer=("shared-q8_0", "shared"))
-    if not found:
-        return ""
-    if not borrows and hub.draft_note(where):
-        return ""
-    return found
+    found, _where = _head_in(repo, prefer=("shared-q8_0", "shared") if borrows else (),
+                             avoid=() if borrows else ("shared",))
+    return "" if _unloadable(found, borrows) else found
+
+
+def _unloadable(found: str, borrows: bool) -> bool:
+    """Whether ``found`` borrows its target's embeddings and the serving build cannot lend them."""
+    return bool(found) and not borrows and hub.borrowed_head(found.rsplit("/", 1)[-1])
 
 
 def _head_in(repo: str, *, prefer: tuple[str, ...] = (),
@@ -211,11 +214,13 @@ def head_choice(model: str | Path, asked: str = "auto", *,
 def heads_for(model: str | Path, *, files: Sequence[Path] | None = None,
               builds: Sequence[tuple[str, Path]] | None = None,
               binary: str | Path | None = None) -> list[Head]:
-    """The draft heads this machine could serve with ``model``, smallest first.
+    """The draft heads this machine could serve with ``model``: the ones the serving build loads
+    first, smallest first among them.
 
     The size is what the head adds to memory. A head that borrows its target's embeddings
     is named for the fork build that loads it, and is left out when this machine has no
-    such build.
+    such build. It comes after every head that needs no other build, so a smaller one never
+    moves a model onto an older llama.cpp.
     """
     here, named = hub.forks(binary, builds)
     fork = named[0] if named else ""
@@ -230,7 +235,7 @@ def heads_for(model: str | Path, *, files: Sequence[Path] | None = None,
             continue
         out.append(Head(path=str(path), bytes=size, spec_type=hub.spec_for(path.name),
                         build=fork if needs and not here else ""))
-    return sorted(out, key=lambda h: (h.bytes, h.name))
+    return sorted(out, key=lambda h: (bool(h.build), h.bytes, h.name))
 
 
 @dataclass(frozen=True)
@@ -293,7 +298,7 @@ def choose_head(model: str | Path, *, binary: str | Path | None, prefer: tuple[s
         return Chosen("", "", "no head shipped beside the weights", borrows)
 
     note = hub.draft_note(where) if where else ""
-    if note and not borrows:
-        return Chosen("", "", "withheld: the repository's README says it needs a fork and "
-                      "this build is mainline", borrows, note)
+    if _unloadable(found, borrows):
+        return Chosen("", "", "withheld: this head borrows its target's embeddings, which only "
+                      "a fork build loads", borrows, note)
     return Chosen(found, hub.spec_for(found), why, borrows, note)

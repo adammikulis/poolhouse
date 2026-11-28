@@ -51,8 +51,12 @@ command and store.
 - **UD-Q4_K_XL against UD-IQ4_XS on Metal**, plain asking, thinking on, no head: 43.7 s a
   question at 64% F1 on nine questions against 70.1 s at 54% on ten. (The table tensor itself
   is IQ4_NL in both builds.)
-- **The MTP head loads only on the unsloth fork** (`b10715-mix-86bd2d3`+; mainline's
-  qwen4exp MTP graph is PR #27836, open). The shared-Q8_0 head against the same run with the
+- **Mainline llama.cpp drafts with the self-contained head** (`MTP/mtp-...-Q4_K_M.gguf` or
+  `-Q8_0`) as re-exported on 2026-10-05. The export before it gives the draft block a compress ratio
+  of 0, and a server aborts creating the draft context (`GGML_ASSERT` under
+  `llama_kv_cache::set_input_k_idxs`); `serve.drafthead` fetches the newer copy when a server starts.
+  The `shared` heads were not re-exported and load only on the unsloth fork
+  (`b10715-mix-86bd2d3`+). On that fork, the shared-Q8_0 head against the same run with the
   head taken out, UD-Q4_K_XL, thinking off, q8_0 cache: 1.27-1.32x at length 4 (72-78%
   accepted), 1.25-1.51x at 2, 1.14-1.74x at 7, 0.99-1.07x at 8. On UD-IQ4_XS, thinking on:
   1.46-1.73x at 4, 0.73-0.95x at 8; the shared and unshared Q8_0 heads are within 0.01x of

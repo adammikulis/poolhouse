@@ -480,10 +480,9 @@ and one list of entries in one shape: every self-check round (`kind` `self-check
   served now with room for a coding session (`--model` names another; with none up the broker leases the default). Repeating
   a start that is still running returns the first; `--name` tells two agents on one task apart.
 - **Fast without setup.** Four things make the second delegate (and the first after `warm`) start in seconds, not minutes:
-  (1) `poolhouse-serve up` with no `--binary`, `--build`, `--draft` or `--spec` serves a model whose multi-token-prediction head
-  borrows its target's embeddings (a `shared` head, e.g. Qwen3.8-Flash-Next) on the fork build that loads it, with that head,
-  the same `Head` a harness session takes (`hub.heads_for`); the mainline `current` has no MTP graph for such a model and used to
-  serve it without one (`lifecycle_cli.fork_head`). (2) A server a delegate started is left up when it ends (`Want.keep`,
+  (1) `poolhouse-serve up` with no `--binary`, `--build`, `--draft` or `--spec` takes the same `Head` a harness session takes
+  (`hub.heads_for`): one the mainline `current` loads where there is one, and a fork build only for a model whose heads all
+  borrow its embeddings (`lifecycle_cli.fork_head`). (2) A server a delegate started is left up when it ends (`Want.keep`,
   recorded under its own pid as `up` leaves one; `poolhouse-serve down` ends it) and the next delegate takes it as it stands.
   (3) A delegate's system prompt names neither the delegate nor anything else that differs between two of one lead's delegates
   (`Delegate.message()` carries who it is and the task): its one OpenCode agent's prompt is the brief, and the plugin takes the paths that

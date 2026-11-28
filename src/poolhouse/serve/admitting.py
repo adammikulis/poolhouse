@@ -58,10 +58,11 @@ class Admitting:
         def adopt(self, spec: ServerSpec) -> ServerInfo | None: ...
         def _port_lock(self, port: int) -> threading.Lock: ...
 
-    def _admitted(self, spec: ServerSpec, *, on_event: Event | None = None,
-                  reuse: bool = False, load_s: float = 0.0) -> Lease | ServerInfo:
+    def _admitted(self, spec: ServerSpec, *, on_event: Event | None = None, reuse: bool = False,
+                  load_s: float = 0.0, asked: ServerSpec | None = None) -> Lease | ServerInfo:
         """The record for a server about to start, written once the machine's ledger and the node have given it the memory and the
-        slot; or, with ``reuse``, the running server that already serves ``spec``.
+        slot; or, with ``reuse``, the running server that already serves ``spec``, or ``asked``, what the lease asked for
+        before a draft head was chosen for it.
 
         The ledger (`poolhouse.serve.ledger`, the records every process writes: the core's servers among them) is asked first and
         its reservation written in the same step as the look, so a core server starting at the same moment sees this one. The
@@ -75,7 +76,7 @@ class Admitting:
         wanted = admission.estimate_bytes(spec)
         need = -(-wanted // admission.MIB)
         ledger.never_fits(spec.model, need)
-        asked: dict | None = None
+        request: dict | None = None
         reserved = handed = False
         waiting = last = ""
         try:
@@ -84,6 +85,8 @@ class Admitting:
                     records = recorded_servers(self.state_file)
                     found, loading = (self._compatible(spec, records, on_event) if reuse
                                       else (None, False))
+                    if found is None and reuse and asked is not None:
+                        found = self._compatible(asked, records, on_event)[0]
                     if found is not None:
                         return found
                     if not loading or time.monotonic() - began >= load_s:
@@ -92,11 +95,11 @@ class Admitting:
                             self._pending(spec, lease="", est_mb=need)
                             reserved = True
                         if reserved:
-                            asked = asked or node_memory.ask(self.table, spec, wanted, pid=os.getpid(),
-                                                           ttl_s=int(load_s) + admission.KEEP_S)
-                            if asked["state"] == "held":
+                            request = request or node_memory.ask(self.table, spec, wanted, pid=os.getpid(),
+                                                                 ttl_s=int(load_s) + admission.KEEP_S)
+                            if request["state"] == "held":
                                 handed = True
-                                return self._pending(spec, lease=asked["id"], est_mb=need)
+                                return self._pending(spec, lease=request["id"], est_mb=need)
                             waiting = f"waiting for memory -- {node_memory.said(self.table, wanted)}"
                         else:
                             waiting = f"waiting for memory -- {said}"
@@ -110,12 +113,12 @@ class Admitting:
                 if waiting != last:
                     told(f"port {spec.port}: {waiting}")
                     last = waiting
-                asked = self._polled(asked)
+                request = self._polled(request)
         finally:
             if not handed:
-                if asked is not None:
+                if request is not None:
                     with contextlib.suppress(OSError, Refused):
-                        self.table.release(asked["id"])
+                        self.table.release(request["id"])
                 if reserved:
                     self._mine.pop(str(spec.port), None)
                     self._save()
