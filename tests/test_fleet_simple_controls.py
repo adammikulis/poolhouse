@@ -3,6 +3,8 @@
 import pytest
 import test_fleet_page as fleet_page
 
+from tests.short_temp import temp_file
+
 browser = fleet_page.browser
 daemon = fleet_page.daemon
 joined = fleet_page.joined
@@ -255,7 +257,7 @@ def test_settings_switch_sections_without_losing_unsaved_values(joined, open_pag
     page.get_by_role('tab', name='Maintenance', exact=True).click()
     expect(page.locator('#settings-removal button.danger')).to_be_visible()
     expect(page.locator('#settings-chatting')).not_to_be_visible()
-    page.screenshot(path='/private/tmp/poolhouse-rebuild-settings-maintenance.png', full_page=True)
+    page.screenshot(path=temp_file('poolhouse-rebuild-settings-maintenance.png'), full_page=True)
     assert not errors
 
 

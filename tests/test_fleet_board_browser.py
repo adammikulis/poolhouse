@@ -6,6 +6,7 @@ import pytest
 from test_fleet_board_routes import board as board
 
 from poolhouse.board import person
+from tests.short_temp import temp_file
 
 pytest_plugins = ["node_kit"]
 pytestmark = pytest.mark.slow
@@ -64,7 +65,7 @@ def test_person_channel_thread_dm_drafts_and_live_reply(board, playwright):  # n
         assert me.token not in page.content() and node.worker.token not in page.content()
         page.set_viewport_size({'width': 390, 'height': 844})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-        page.screenshot(path='/private/tmp/poolhouse-board-audit-mobile.png', full_page=True)
+        page.screenshot(path=temp_file('poolhouse-board-audit-mobile.png'), full_page=True)
         page.evaluate("window.fleetModel.go('training')")
         expect(viewer).to_be_hidden()
         assert not errors

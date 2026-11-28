@@ -4,6 +4,8 @@ from browser_expect import expect
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401 (fixture)
 
+from tests.short_temp import temp_file
+
 pytestmark = pytest.mark.slow
 
 
@@ -91,6 +93,6 @@ def test_embedding_family_labels_in_fixture_library(studio_browser, tmp_path, th
             for button in library.get_by_role('button', name='Serve model', exact=True).all():
                 expect(button).to_be_disabled()
             library.locator('[data-family=MiniLM]').scroll_into_view_if_needed()
-            page.screenshot(path=f'/private/tmp/poolhouse-embedding-family-fixture-{theme}-{width}.png')
+            page.screenshot(path=temp_file(f'poolhouse-embedding-family-fixture-{theme}-{width}.png'))
         finally:
             served.close()

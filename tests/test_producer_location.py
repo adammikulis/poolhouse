@@ -11,11 +11,12 @@ from pathlib import Path
 import pytest
 
 from poolhouse.fleet import producer_location as location
+from tests.short_temp import short_temp
 
 
 @pytest.fixture
 def root():
-    with tempfile.TemporaryDirectory(prefix='loc-', dir='/tmp') as name:
+    with tempfile.TemporaryDirectory(prefix='loc-', dir=short_temp()) as name:
         path = Path(name).resolve()
         path.chmod(0o700)
         secret = path / 'app-identity'

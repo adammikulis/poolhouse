@@ -5,6 +5,7 @@ from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401 (fixture)
 
 from poolhouse.fleet.themes import PRESETS
+from tests.short_temp import temp_file
 
 pytestmark = pytest.mark.slow
 
@@ -50,7 +51,7 @@ def test_models_count_running_models_and_show_known_storage(feedback_page, theme
     expect(page.locator('.models-overview')).not_to_contain_text('Chat-ready')
     expect(page.locator('#models-running')).to_have_text('7')
     expect(page.locator('#models-free')).to_have_text('Unavailable')
-    page.screenshot(path=f'/private/tmp/poolhouse-model-summary-{theme}-{width}-running.png')
+    page.screenshot(path=temp_file(f'poolhouse-model-summary-{theme}-{width}-running.png'))
     primary = page.get_by_role('navigation', name='Main navigation')
     primary.get_by_role('link', name='Pool', exact=True).click()
     action = page.locator('.loaded-models').get_by_role('button', name='Open Models', exact=True)
@@ -65,12 +66,12 @@ def test_models_count_running_models_and_show_known_storage(feedback_page, theme
     expect(page.locator('#models-count')).to_have_text('Unavailable')
     expect(page.locator('#models-running')).to_have_text('7')
     expect(page.locator('#models-free')).to_have_text('Unavailable')
-    page.screenshot(path=f'/private/tmp/poolhouse-model-summary-{theme}-{width}-inventory-unavailable.png')
+    page.screenshot(path=temp_file(f'poolhouse-model-summary-{theme}-{width}-inventory-unavailable.png'))
     state['serving'] = False
     primary.get_by_role('link', name='Pool', exact=True).click()
     action.click()
     expect(page.locator('#models-running')).to_have_text('Unavailable')
-    page.screenshot(path=f'/private/tmp/poolhouse-model-summary-{theme}-{width}-serving-unavailable.png')
+    page.screenshot(path=temp_file(f'poolhouse-model-summary-{theme}-{width}-serving-unavailable.png'))
     assert not errors
 
 

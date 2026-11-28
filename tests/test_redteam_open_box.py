@@ -19,6 +19,7 @@ import mmap
 import os
 import pwd
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
@@ -336,6 +337,18 @@ def test_an_open_box_runs_the_installed_tools_and_reads_none_of_their_credential
            ("change-installed", "registry-credential", "tool-credential", "private-file", "keychain-list", "keychain-item", "clipboard-read",
             "clipboard-write", "preferences-read", "preferences-write"))
     assert "NOT-A-REAL" not in out, out
+
+
+def test_the_folder_a_test_makes_short_paths_in_holds_a_unix_socket_inside_the_box(box):  # noqa: F811
+    """Every test that needs a short path asks `tests.short_temp`; in a box that is the box's own temporary folder, never the shared ``/tmp``."""
+    shutil.copyfile(Path(__file__).with_name("short_temp.py"), box.project / "short_temp.py")
+    (box.project / "folders.py").write_text(
+        "import os, socket, tempfile\nfrom short_temp import short_temp\n"
+        "made = tempfile.mkdtemp(prefix='pp-sock-', dir=short_temp()) + '/s'\n"
+        "held = socket.socket(socket.AF_UNIX)\nheld.bind(made)\nheld.listen()\nsocket.socket(socket.AF_UNIX).connect(made)\n"
+        "print('own' if short_temp() == tempfile.gettempdir() == os.environ['TMPDIR'] else short_temp())\n")
+    out, _, _ = shelled(box, f"{PYTHON} folders.py\n")
+    assert out.strip().splitlines()[-1] == "own", out
 
 
 def test_an_open_box_reaches_this_machines_loopback_and_nothing_beyond_it_and_binds_no_address(box, earlier):  # noqa: F811

@@ -28,6 +28,7 @@ from poolhouse import (
 from poolhouse.activity import writer
 from poolhouse.activity.schema import Entry
 from poolhouse.board import client, place
+from tests.short_temp import short_temp
 
 pytest_plugins = ["node_kit"]
 
@@ -113,7 +114,7 @@ class World:
 def world(tmp_path, monkeypatch, node_binary):
     import keyring
     from onboard_support import FileKeyring
-    with tempfile.TemporaryDirectory(prefix="u", dir="/tmp" if os.name == "posix" else None) as user:
+    with tempfile.TemporaryDirectory(prefix="u", dir=short_temp() if os.name == "posix" else None) as user:
         state = Path(user).resolve() / ".poolhouse" / "node"
         state.parent.mkdir(mode=0o700)
         state.mkdir(mode=0o700)

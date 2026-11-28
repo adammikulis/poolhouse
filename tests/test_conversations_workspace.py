@@ -12,6 +12,7 @@ from poolhouse.board import person
 from poolhouse.fleet import extension_routes
 from poolhouse.workspace import board_page, fleet_routes
 from poolhouse.workspace.agent_display import describe
+from tests.short_temp import temp_file
 
 chat_browser, founded_node, governed = chat_fixtures.chat_browser, chat_fixtures.founded_node, chat_fixtures.governed
 pytest_plugins = ['node_kit']
@@ -187,7 +188,7 @@ def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_b
     expect(page.locator('#conversation-model').get_by_role('textbox', name='Message', exact=True)).to_be_in_viewport()
     expect(page.locator('#chat-send')).to_be_in_viewport()
     expect(sidebar).to_be_visible()
-    page.screenshot(path='/private/tmp/poolhouse-unified-conversations.png', full_page=True)
+    page.screenshot(path=temp_file('poolhouse-unified-conversations.png'), full_page=True)
 
 
 def test_project_selection_never_falls_back_to_local_board(chat_browser):
@@ -291,7 +292,7 @@ def test_conversation_surfaces_consume_resolved_theme_tokens(chat_browser, team,
     assert board.locator('main header').evaluate('node => getComputedStyle(node).backgroundColor') == expected[0]
     assert board.locator('.composer').evaluate('node => getComputedStyle(node).backgroundColor') == expected[0]
     assert board.get_by_label('Message', exact=True).evaluate('node => getComputedStyle(node).color') == expected[1]
-    page.screenshot(path=f'/private/tmp/poolhouse-conversations-theme-{theme}.png', full_page=True)
+    page.screenshot(path=temp_file(f'poolhouse-conversations-theme-{theme}.png'), full_page=True)
 
 
 def test_unshared_workspace_is_selected_and_team_messages_render(chat_browser, team, monkeypatch, tmp_path):
@@ -360,7 +361,7 @@ def test_sidebar_keeps_agent_directory_in_new_dm_and_searches_existing_conversat
     expect(direct.locator('[aria-label="1 unread messages"]')).to_be_visible()
     expect(page.locator('#chat-list').get_by_role('link', name='Experiment plan', exact=True)).to_be_visible()
     expect(page.locator('#conversation-models').get_by_role('button', name='● model-a', exact=True)).to_be_in_viewport()
-    page.screenshot(path='/private/tmp/poolhouse-sidebar-existing-dms.png', full_page=True)
+    page.screenshot(path=temp_file('poolhouse-sidebar-existing-dms.png'), full_page=True)
     search = page.get_by_label('Search conversations and channels', exact=True)
     expect(search).to_have_attribute('placeholder', 'Search chats & channels')
     search.fill('Experiment')
@@ -436,7 +437,7 @@ def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(cha
         if height == 420:
             short_history_states(page, board, composer, tmp_path)
         composer.fill('Unsent channel draft')
-        page.screenshot(path=f'/private/tmp/poolhouse-channel-fixed-{width}-{height}.png')
+        page.screenshot(path=temp_file(f'poolhouse-channel-fixed-{width}-{height}.png'))
         composer.fill('')
 
     page.get_by_role('button', name='Channels and model chats ▾').click()
@@ -444,7 +445,7 @@ def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(cha
     expect(composer).to_be_in_viewport()
     expect(board.get_by_role('button', name='Send', exact=True)).to_be_in_viewport()
     assert page.evaluate('document.documentElement.scrollHeight <= innerHeight')
-    page.screenshot(path='/private/tmp/poolhouse-channel-fixed-mobile-expanded.png')
+    page.screenshot(path=temp_file('poolhouse-channel-fixed-mobile-expanded.png'))
 
 
 def test_bounded_history_navigation_keeps_message_nodes_scroll_and_draft(chat_browser, team):

@@ -32,6 +32,7 @@ from poolhouse.sandbox import Net, Policy, policies, seatbelt as profiles
 from poolhouse.serve import free_port
 from poolhouse.serve.confined import confine
 from poolhouse.serve.process import kill_process_tree
+from tests.short_temp import short_temp
 from tests.test_redteam_isolation_shell import box, shelled  # noqa: F401  (box is a fixture)
 
 pytest_plugins = ["tests.confined_kit", "tests.sandbox_kit"]
@@ -347,7 +348,7 @@ def test_a_confined_model_server_is_reached_on_loopback_and_binds_no_address_its
 
 def test_a_socket_the_launcher_hands_over_takes_its_first_connection_every_time(tmp_path, monkeypatch):
     """macOS breaks a socket now and then (about one in eight) when its sender closes it while it is still in flight."""
-    root = tempfile.mkdtemp(prefix="pp-", dir="/tmp")
+    root = tempfile.mkdtemp(prefix="pp-", dir=short_temp())
     bridge = windows.PortBridge(root, tmp_path / "locks", admit=Admission())
     bridge.start()
     monkeypatch.setenv(loopback_window.ENV, bridge.setting)
@@ -378,7 +379,7 @@ def test_a_window_holds_no_port_in_use_or_fixed_and_no_two_launches_share_one(tm
         held.listen(1)
         assert held.getsockname()[1] in windows.in_use()
     locks = tmp_path / "locks"
-    roots = [tempfile.mkdtemp(prefix="pp-", dir="/tmp") for _ in range(2)]
+    roots = [tempfile.mkdtemp(prefix="pp-", dir=short_temp()) for _ in range(2)]
     every = range(windows.FIRST, windows.LAST + 1)
     left = range(windows.FIRST, windows.FIRST + 2 * windows.SIZE)
     first, second = (windows.PortBridge(root, locks, avoid=set(every) - set(left), admit=Admission()) for root in roots)

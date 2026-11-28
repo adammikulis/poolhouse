@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse.fleet import producer_bootstrap, producer_control as control, tls
+from tests.short_temp import short_temp
 
 NONCE = "1" * 64
 
@@ -20,7 +21,7 @@ NONCE = "1" * 64
 @pytest.fixture
 def factory():
     servers = []
-    with tempfile.TemporaryDirectory(prefix="control-", dir="/tmp") as directory:
+    with tempfile.TemporaryDirectory(prefix="control-", dir=short_temp()) as directory:
         root = Path(directory).resolve()
         root.chmod(0o700)
         secret = root / "app-identity"

@@ -18,6 +18,7 @@ import pytest
 from poolhouse import caller, credentials
 from poolhouse.fleet import signing
 from tests import memory_keys
+from tests.short_temp import short_temp
 
 ring = memory_keys.ring
 
@@ -214,7 +215,7 @@ def test_agent_loads_the_key_and_prints_the_git_lines(rk, monkeypatch, tmp_path,
     capsys.readouterr()
     rk.main(["show-public"])
     public = capsys.readouterr().out.strip()
-    sock = Path(tempfile.mkdtemp(prefix="ag", dir="/tmp")) / "s"
+    sock = Path(tempfile.mkdtemp(prefix="ag", dir=short_temp())) / "s"
     started = subprocess.run(["ssh-agent", "-a", str(sock)], capture_output=True, text=True, check=True)
     pid = int(started.stdout.split("SSH_AGENT_PID=")[1].split(";")[0])
     try:

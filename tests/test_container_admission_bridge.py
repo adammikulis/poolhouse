@@ -16,13 +16,15 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import testkit.container_bridge as bridge
 
+from tests.short_temp import short_temp
+
 
 @pytest.fixture
 def tmp_path():
     """A directory short enough for an AF_UNIX path, whatever the worktree or worker path is."""
     import shutil
     import tempfile
-    folder = Path(tempfile.mkdtemp(prefix="cb", dir="/tmp")).resolve()
+    folder = Path(tempfile.mkdtemp(prefix="cb", dir=short_temp())).resolve()
     yield folder
     shutil.rmtree(folder, ignore_errors=True)
 

@@ -3,6 +3,8 @@
 import pytest
 from test_fleet_ui import Serving
 
+from tests.short_temp import temp_file
+
 pytestmark = pytest.mark.slow
 
 
@@ -68,7 +70,7 @@ def test_training_environment_catalogue_drafts_and_pending_submission(usability_
     expect(page.get_by_role('button', name='Start training', exact=True)).to_be_enabled()
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    page.screenshot(path='/private/tmp/poolhouse-training-audit-mobile.png', full_page=True)
+    page.screenshot(path=temp_file('poolhouse-training-audit-mobile.png'), full_page=True)
     assert not errors
 
 
@@ -105,7 +107,7 @@ def test_settings_failure_is_visible_and_only_selected_libraries_install(usabili
     expect(page.locator('#settings-libs .err')).to_contain_text('Could not download the selected library')
     assert posts == [{'install': ['gym-drone'], 'remove': []}]
     expect(page.get_by_role('button', name='Apply library changes', exact=True)).to_be_enabled()
-    page.screenshot(path='/private/tmp/poolhouse-settings-audit.png', full_page=True)
+    page.screenshot(path=temp_file('poolhouse-settings-audit.png'), full_page=True)
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     assert not errors
@@ -170,7 +172,7 @@ def test_primary_workspaces_context_pages_and_theme_navigation(usability_page):
         page.evaluate('(theme)=>window.fleetModel.setPreferences({...window.fleetModel.preferences,resolved_theme:{base:theme}})', theme)
         expect(page.locator('html')).to_have_attribute('data-theme', theme)
         assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--poolhouse-pink').trim()") == '#ff5fa2'
-        page.screenshot(path=f'/private/tmp/poolhouse-rebuild-shell-{theme}.png', full_page=True)
+        page.screenshot(path=temp_file(f'poolhouse-rebuild-shell-{theme}.png'), full_page=True)
     page.evaluate("""()=>window.fleetModel.setPreferences({...window.fleetModel.preferences,
       resolved_theme:{base:'dark', colors:{background:'#112233', pink:'#aa77cc',yellow:'#111111'},font_size:18,density:'compact'}})""")
     assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--poolhouse-ui-bg').trim()") == '#112233'
@@ -185,7 +187,7 @@ def test_primary_workspaces_context_pages_and_theme_navigation(usability_page):
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     expect(primary.locator('a')).to_have_count(5)
-    page.screenshot(path='/private/tmp/poolhouse-rebuild-shell-narrow.png', full_page=True)
+    page.screenshot(path=temp_file('poolhouse-rebuild-shell-narrow.png'), full_page=True)
     assert not errors
 
 
@@ -327,18 +329,18 @@ def test_workspace_tools_and_utilities_at_all_sizes(usability_page, theme):
         expect(explore).to_be_in_viewport()
         if width in (1440, 390):
             expect(page.locator('html')).to_have_attribute('data-theme', theme)
-            page.screenshot(path=f'/private/tmp/poolhouse-explore-{theme}-{width}-rail.png')
+            page.screenshot(path=temp_file(f'poolhouse-explore-{theme}-{width}-rail.png'))
         explore.focus()
         explore.press('Enter')
         expect(page.locator('.demo-slice')).to_have_count(10)
         if width in (1440, 390):
-            page.screenshot(path=f'/private/tmp/poolhouse-explore-{theme}-{width}-guide.png')
+            page.screenshot(path=temp_file(f'poolhouse-explore-{theme}-{width}-guide.png'))
         page.locator('.demo-slice').filter(has_text='Find the right model').click()
         expect(page.locator('#models')).to_be_visible()
         if width in (1440, 390):
-            page.screenshot(path=f'/private/tmp/poolhouse-explore-{theme}-{width}-return.png')
+            page.screenshot(path=temp_file(f'poolhouse-explore-{theme}-{width}-return.png'))
         training.click()
         expect(page.locator('training-view > section.workspace')).to_be_visible()
         expect(page.get_by_role('button', name='Sign out', exact=True)).to_be_in_viewport()
-        page.screenshot(path=f'/private/tmp/poolhouse-nav-controls-{width}-{height}.png')
+        page.screenshot(path=temp_file(f'poolhouse-nav-controls-{width}-{height}.png'))
     assert not errors

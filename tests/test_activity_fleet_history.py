@@ -9,6 +9,7 @@ from test_fleet_ui import Serving
 from poolhouse.activity import writer
 from poolhouse.activity.log import ActivityLog
 from tests.activity_support import person, ring
+from tests.short_temp import temp_file
 
 __all__ = ['person', 'ring']
 
@@ -78,5 +79,5 @@ def test_history_groups_agents_expands_actions_and_filters_on_mobile(history, pl
         viewer.locator('#history-search').fill('')
         page.set_viewport_size({'width': 390, 'height': 844})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-        page.screenshot(path='/private/tmp/poolhouse-agent-history-mobile.png', full_page=True)
+        page.screenshot(path=temp_file('poolhouse-agent-history-mobile.png'), full_page=True)
         assert not errors

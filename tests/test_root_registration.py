@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import node_health
+from tests.short_temp import short_temp
 
 pytest_plugins = ["node_kit"]
 
@@ -181,7 +182,7 @@ node.sendall(frame(client)); client.sendall(frame(node))
 node.sendall(frame(client)); client.sendall(frame(node))
 client.close(); node.close(); listener.close()
 """
-    with tempfile.TemporaryDirectory(prefix="root-relay-", dir="/tmp") as scratch:
+    with tempfile.TemporaryDirectory(prefix="root-relay-", dir=short_temp()) as scratch:
         fake = str(Path(scratch) / "socket")
         process = subprocess.Popen([sys.executable, "-c", code, fake, str(node_health.socket_path(workspace_node.state))],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

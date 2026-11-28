@@ -5,6 +5,7 @@ from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401 (fixture)
 
 from poolhouse.fleet.themes import PRESETS
+from tests.short_temp import temp_file
 
 pytestmark = pytest.mark.slow
 
@@ -42,7 +43,7 @@ def test_operational_pages_share_shell_without_redundant_titles(tmp_path, studio
                     assert shell.locator(':is(.workspace-card, .panel) > h2').first.evaluate('node => getComputedStyle(node).fontSize') == '17px'
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
                 if route == 'knowledge':
-                    page.screenshot(path=f'/private/tmp/poolhouse-action-graph-{theme}-{width}.png')
+                    page.screenshot(path=temp_file(f'poolhouse-action-graph-{theme}-{width}.png'))
             nav.get_by_role('link', name='Pool', exact=True).click()
             pool = page.locator('pool-view .page-shell')
             expect(pool).to_be_visible()
@@ -119,8 +120,8 @@ def test_operational_action_controls_share_geometry_and_keyboard_focus(tmp_path,
                     expect(control).to_be_focused()
                     assert control.evaluate('node => getComputedStyle(node).outlineStyle') == 'solid'
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-                page.screenshot(path=f'/private/tmp/poolhouse-action-{route}-{theme}-{size[0]}-{size[1]}.png')
-            page.screenshot(path=f'/private/tmp/poolhouse-shared-actions-{theme}-{size[0]}-{size[1]}.png')
+                page.screenshot(path=temp_file(f'poolhouse-action-{route}-{theme}-{size[0]}-{size[1]}.png'))
+            page.screenshot(path=temp_file(f'poolhouse-shared-actions-{theme}-{size[0]}-{size[1]}.png'))
         finally:
             served.close()
 
@@ -140,21 +141,21 @@ def test_pool_availability_fields_are_labelled_and_use_sidebar_width(tmp_path, s
             assert reason.bounding_box()['width'] == pytest.approx(duration.bounding_box()['width'], abs=1)
             assert reason.bounding_box()['width'] >= 230
             reason.scroll_into_view_if_needed()
-            page.screenshot(path=f'/private/tmp/poolhouse-pause-{width}-initial.png')
+            page.screenshot(path=temp_file(f'poolhouse-pause-{width}-initial.png'))
             reason.fill('Preparing a local task')
             duration.select_option('30m')
             expect(reason).to_have_value('Preparing a local task')
             expect(duration).to_have_value('30m')
             reason.focus()
-            page.screenshot(path=f'/private/tmp/poolhouse-pause-{width}-typed.png')
+            page.screenshot(path=temp_file(f'poolhouse-pause-{width}-typed.png'))
             page.evaluate("document.querySelector('pool-view').drawPause(2, 1)")
             expect(reason).to_be_focused()
             expect(reason).to_have_value('Preparing a local task')
             expect(page.locator('#pause-state')).to_contain_text('1 of 2 machines is paused')
-            page.screenshot(path=f'/private/tmp/poolhouse-pause-{width}-polled.png')
+            page.screenshot(path=temp_file(f'poolhouse-pause-{width}-polled.png'))
             reason.clear()
             duration.select_option('2h')
-            page.screenshot(path=f'/private/tmp/poolhouse-pause-{width}-cleared.png')
+            page.screenshot(path=temp_file(f'poolhouse-pause-{width}-cleared.png'))
             actions = page.locator('#pool-pause .pause-actions')
             assert actions.bounding_box()['y'] >= reason.bounding_box()['y'] + reason.bounding_box()['height']
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')

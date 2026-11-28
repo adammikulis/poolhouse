@@ -16,6 +16,7 @@ from poolhouse import lock, maintenance, unix_socket
 from poolhouse.fleet import producer_bridge, producer_control, producer_process as process, tls
 from poolhouse.fleet.job_records import process_started
 from poolhouse.studio.store import digest
+from tests.short_temp import short_temp
 
 
 def wait(predicate):
@@ -30,7 +31,7 @@ def wait(predicate):
 @pytest.fixture
 def bridge(monkeypatch):
     source = str(Path(process.__file__).parents[2])
-    with tempfile.TemporaryDirectory(prefix='writer-', dir='/tmp') as name:
+    with tempfile.TemporaryDirectory(prefix='writer-', dir=short_temp()) as name:
         root = Path(name).resolve()
         monkeypatch.setattr(process, '_command', lambda fd: [sys.executable, '-I', '-B', '-c',
             f'import sys; sys.path.insert(0,{source!r}); from poolhouse.fleet.producer_process import child; child({fd})'])

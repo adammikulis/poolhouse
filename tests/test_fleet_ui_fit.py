@@ -28,6 +28,7 @@ from poolhouse.fleet.ui import asset_bytes, serve_page
 from poolhouse.http import Options, ServerError, open_stream
 from poolhouse.serve import charts, fit as fit_mod
 from poolhouse.serve.fit import Fit
+from tests.short_temp import temp_file
 
 GIB = 1024 ** 3
 ROOM = 96 * GIB
@@ -219,11 +220,11 @@ class TestTheSplitBetweenTheFitComponents:
             page.locator('#nav-guide').click()
             expect(page.locator('#nav-demo')).to_be_visible()
             expect(page.locator('.demo-slice')).to_have_count(10)
-            page.screenshot(path='/private/tmp/poolhouse-demo-guide.png', full_page=True)
+            page.screenshot(path=temp_file('poolhouse-demo-guide.png'), full_page=True)
             page.locator('.demo-slice').filter(has_text='Fine-tune a model').click()
             assert page.url.endswith('#training')
             expect(page.locator('training-view > section.workspace')).to_be_visible()
-            page.screenshot(path='/private/tmp/poolhouse-training-shell.png', full_page=True)
+            page.screenshot(path=temp_file('poolhouse-training-shell.png'), full_page=True)
             page.set_viewport_size({'width':390,'height':844})
             page.locator('#nav-guide').click()
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')

@@ -33,6 +33,7 @@ from poolhouse.board import credentials, person, session as board_session
 from poolhouse.board.client import Denied as NodeDenied
 from poolhouse.harnesspolicy import decide
 from poolhouse.interventions import Call
+from tests.short_temp import short_temp
 
 SRC = str(Path(__file__).resolve().parent.parent / "src")
 pytest_plugins = ["tests.confined_kit"]
@@ -212,7 +213,7 @@ class TestSessionFiles:
         odd.mkdir()
         rail = harnesshook.Rail(coding_policy.Policy("read-only"), "x y", (str(odd),), ())
         bridge = isolation.SessionBridge(isolation.Handlers(lambda event, payload: harnesshook.pre(payload, rail), lambda *_: {}),
-                                         isolation.Terms(4096), root=str(Path("/tmp")), unadmitted="a test rig: the only client is the hook command the test runs")
+                                         isolation.Terms(4096), root=short_temp(), unadmitted="a test rig: the only client is the hook command the test runs")
         socket_path = bridge.start()
         try:
             cmd = context(tmp_path, socket=socket_path, pid=os.getpid()).hook("pre")

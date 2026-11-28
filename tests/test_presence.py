@@ -26,6 +26,7 @@ from poolhouse import node_binary as node_binary_module, node_launch, node_super
 from poolhouse.board import client as board_client, grants, presence, session as board_session
 from poolhouse.board.client import Denied
 from poolhouse.fleet.onboard.manifest import Signer
+from tests.short_temp import short_temp
 
 pytest_plugins = ["node_kit"]
 
@@ -96,7 +97,7 @@ def test_the_secret_is_for_the_key_it_was_asked_about_and_no_other_key(workspace
 
 
 def test_a_node_started_with_no_presence_flag_asks_nobody_either(node_binary):
-    root = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
+    root = Path(tempfile.mkdtemp(prefix="ml", dir=short_temp()))
     state = root / "node"
     state.mkdir(mode=0o700)
     node_supervise.point(state, node_binary, node_binary_module.sha256(node_binary))

@@ -32,6 +32,7 @@ from poolhouse.isolation.egress_proxy import blocked
 from poolhouse.isolation.serving import Server
 from poolhouse.testing.canned import CANNED_MARKER
 from tests.isolation_kit import world
+from tests.short_temp import short_temp
 from tests.test_redteam_isolation_bridge import (  # noqa: F401  (the fixtures and helpers of the bridge tests)
     ALIAS,
     BODY,
@@ -329,7 +330,7 @@ def recorded():
 
     def build(window: int = 4096, **kw):
         kw.setdefault("unadmitted", "a test of the bridge's own frames")
-        found = SessionBridge(made.handlers(), Terms(window), root="/tmp", idle=2.0, **kw)
+        found = SessionBridge(made.handlers(), Terms(window), root=short_temp(), idle=2.0, **kw)
         found.start()
         bridges.append(found)
         return found
@@ -397,7 +398,7 @@ def test_a_failure_of_the_workspace_tells_the_session_one_fixed_sentence_and_not
 
 def test_a_bridge_admits_by_a_rule_or_says_why_it_has_none(tmp_path, recorded):
     with pytest.raises(ValueError, match="admit predicate"):
-        SessionBridge(recorded.handlers(), Terms(4096), root="/tmp")
+        SessionBridge(recorded.handlers(), Terms(4096), root=short_temp())
     made = recorded.build(unadmitted="a test of a bridge with no rule")
     assert any(kind == "isolation.session_bridge_unadmitted" and fields["meta"]["reason"] == "a test of a bridge with no rule"
                for kind, fields in recorded.logged), "the reason is logged where a person can read it"

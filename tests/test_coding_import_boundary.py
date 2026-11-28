@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import coding_policy, harnesshook, harnessing, isolation, pi, runtime
+from tests.short_temp import short_temp
 
 pytest_plugins = ["tests.sandbox_kit"]
 
@@ -38,7 +39,7 @@ def hook_against_a_real_bridge(project: Path, client: Path, tool_input: dict):
     """The hook command a confined harness runs, asking a real session bridge in this process; its answer and the process's exit status."""
     rail = harnesshook.Rail(coding_policy.Policy("read-only"), "isolated-worker", (str(project),), ())
     bridge = isolation.SessionBridge(isolation.Handlers(lambda event, payload: harnesshook.pre(payload, rail), lambda *_: {}),
-                                     isolation.Terms(4096), root="/tmp", unadmitted="a test rig: the only client is the hook command the test runs")
+                                     isolation.Terms(4096), root=short_temp(), unadmitted="a test rig: the only client is the hook command the test runs")
     path = bridge.start()
     try:
         context = isolation.Context(project, project, str(project), os.path.realpath(sys.executable), str(client), path, os.getpid(), "", "", 0)

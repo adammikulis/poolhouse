@@ -43,6 +43,7 @@ from tests.confined_kit import repository
 from tests.isolation_kit import MODEL, Canned
 from tests.isolation_world import git
 from tests.sandbox_kit import policy
+from tests.short_temp import short_temp
 
 pytest_plugins = ["node_kit", "tests.confined_kit"]
 CLIENT = Path(client.__file__)
@@ -77,7 +78,7 @@ class Room:
         handlers = Handlers(hook=self.decide, workspace=telling(node, self.lead, self.confined),
                             log=lambda kind, **fields: self.logged.append((kind, fields)), events=lambda name, fields: self.heard.append((name, fields)))
         kw.setdefault("unadmitted", "a test of the bridge's own frames, which every process of this test may send")
-        self.bridge = SessionBridge(handlers, Terms(4096), root="/tmp", idle=kw.pop("idle", 2.0), **kw)
+        self.bridge = SessionBridge(handlers, Terms(4096), root=short_temp(), idle=kw.pop("idle", 2.0), **kw)
         self.bridge.start()
         self.path = self.bridge.path
 
@@ -213,7 +214,7 @@ def test_a_session_cannot_act_as_another(workspace_node, tmp_path, monkeypatch):
     first = Room(workspace_node, tmp_path)
     other = workspace_node.member("other")
     handlers = Handlers(hook=first.decide, workspace=telling(workspace_node, first.lead, other))
-    second_bridge = SessionBridge(handlers, Terms(4096), root="/tmp", idle=2.0, unadmitted="a test of a second bridge")
+    second_bridge = SessionBridge(handlers, Terms(4096), root=short_temp(), idle=2.0, unadmitted="a test of a second bridge")
     second_bridge.start()
     try:
         assert first.path != second_bridge.path and Path(first.path).parent != Path(second_bridge.path).parent
@@ -250,7 +251,7 @@ def test_the_channel_is_a_private_directory_with_a_random_name_and_a_path_that_e
     directory = Path(room.bridge.directory)
     assert stat.S_IMODE(directory.stat().st_mode) == 0o700 and directory.stat().st_uid == os.getuid()
     assert stat.S_IMODE(Path(room.path).stat().st_mode) == 0o600 and stat.S_ISSOCK(Path(room.path).stat().st_mode)
-    squatted = SessionBridge(room.bridge.handlers, Terms(1), root="/tmp", unadmitted="a test of a squatted directory")
+    squatted = SessionBridge(room.bridge.handlers, Terms(1), root=short_temp(), unadmitted="a test of a squatted directory")
     assert len(directory.name) == len("ph-") + 16 and directory.name != Path(squatted.directory).name, "the name is random"
     Path(squatted.directory).mkdir(mode=0o755)
     Path(squatted.directory).chmod(0o755)
@@ -281,7 +282,7 @@ def test_a_process_the_launcher_does_not_admit_gets_no_answer_and_no_frame_is_re
 
 
 def test_the_client_sends_nothing_to_a_process_that_is_not_the_launcher(tmp_path):
-    path = str(Path(tempfile.mkdtemp(prefix="pp-imp-", dir="/tmp")) / "s")
+    path = str(Path(tempfile.mkdtemp(prefix="pp-imp-", dir=short_temp())) / "s")
     heard = tmp_path / "heard"
     script = (f"import socket\ns = socket.socket(socket.AF_UNIX); s.bind({path!r}); s.listen(8); print('up', flush=True)\n"
               f"while True:\n    c, _ = s.accept(); c.settimeout(1)\n    try:\n        data = c.recv(4096)\n    except OSError:\n        data = b''\n"
@@ -409,7 +410,7 @@ def test_a_hook_that_cannot_decide_blocks_the_call_and_never_allows_it():
     def broken(event: str, payload: dict) -> dict:
         raise RuntimeError("the classifier fell over")
 
-    made = SessionBridge(Handlers(hook=broken, workspace=lambda name, arguments: None), Terms(4096), root="/tmp", idle=2.0,
+    made = SessionBridge(Handlers(hook=broken, workspace=lambda name, arguments: None), Terms(4096), root=short_temp(), idle=2.0,
                          unadmitted="a test of a hook that fails")
     made.start()
     try:
@@ -515,7 +516,7 @@ def test_the_table_puts_the_label_in_front_of_every_text_a_reader_will_read_and_
 def test_no_claim_of_any_kind_is_taken_from_a_boxed_session_and_no_git_runs_in_a_folder_it_names(room, monkeypatch, tmp_path, kind):
     """A claim key of a path kind is resolved, and read with git, by the parent: a boxed session has no claim to make (a real repository the key points
     into, and git's own trace of what ran)."""
-    with tempfile.TemporaryDirectory(prefix="pc-", dir="/tmp") as made:
+    with tempfile.TemporaryDirectory(prefix="pc-", dir=short_temp()) as made:
         named = repository(Path(made).resolve() / "w")
         git(named, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "x")
         trace = tmp_path / "git-trace"
