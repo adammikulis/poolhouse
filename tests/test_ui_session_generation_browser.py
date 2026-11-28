@@ -172,13 +172,14 @@ def test_new_loss_waits_for_old_native_boot_tail_once_or_stays_signed_out(sessio
     }''')
     expect(page.locator('body')).to_have_attribute('data-tail-held', 'true')
     assert page.evaluate('fleetModel.route') == 'pool'
+    app.ui.gated = True  # a founded pool asks for a session, so an expired one is refused
     with app.ui.sessions._lock:
         for session in app.ui.sessions._sessions.values():
             session.expires_at = 0
     page.evaluate('''async () => {
-      window.oldDenial=await fleetModel.api('/ui/members');fleetModel.refused(oldDenial);
+      window.oldDenial=await fleetModel.api('/ui/fleet');fleetModel.refused(oldDenial);
       window.firstLoss=fleetModel.renewNativeSession(false);
-      fleetModel.refused(await fleetModel.api('/ui/members'));
+      fleetModel.refused(await fleetModel.api('/ui/fleet'));
       window.secondLoss=fleetModel.renewNativeSession(false);
     }''')
     assert page.evaluate('oldDenial.status') == 401
