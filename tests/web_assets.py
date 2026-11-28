@@ -10,6 +10,7 @@ import time
 from dataclasses import asdict
 from urllib.parse import urlsplit
 
+from poolhouse import contracts
 from poolhouse.api.pool import Member, Pool
 from poolhouse.fleet.page import render
 from poolhouse.fleet.page_security import PAGE_HEADERS
@@ -63,6 +64,16 @@ def pool_answer(governance="unfounded"):
     return {"pool": json.loads(json.dumps(asdict(pool)))}
 
 
+def device_uses_answer():
+    """/ui/device-uses for one made-up device that offers nothing, in the contract's own headings."""
+    words = contracts.load("device-uses.json")
+    here = words["this_device"]
+    device = {"id": "self", "self": True, "name": CANNED_NAME, "heading": here["heading"], "intro": here["intro"],
+              "note": here["note"], "uses": []}
+    return {"version": words["version"], "groups": words["groups"], "limit": words["limit"], "adding": words["adding"],
+            "others_heading": words["other_device"]["list_heading"], "devices": [device]}
+
+
 def shell_answers(theme="dark"):
     """What the page reads to draw its shell, by path, for a signed-in person on an idle device that finished setup."""
     appearance = {"active_theme": theme, "saved_themes": []}
@@ -76,6 +87,7 @@ def shell_answers(theme="dark"):
                          "name": CANNED_NAME, "group": CANNED_GROUP, "version": "CANNED", "autostart": {}, "schedule": {},
                          "machine": {}},
         "/ui/features": {"features": []},
+        "/ui/device-uses": device_uses_answer(),
         "/ui/fleet": fleet_answer(),
         "/ui/pool": pool_answer(),
         "/ui/setup/jobs": {"jobs": []},

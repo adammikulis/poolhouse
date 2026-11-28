@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "about": "What a device can do for a person, in the words every Poolhouse interface shows. A use is listed only when it works. Each use has one action per state: 'open' names a screen, 'panel' a tab on it, 'install' asks for the named libraries first (the computer fills the names, and 'sources' when no download source is chosen yet), 'copy' is text to put on the clipboard. 'view' is the screen the use needs; an interface without that screen leaves the use out. The computer answers GET /ui/device-uses with these words filled in.",
+  "groups": [
+    {"id": "without_model", "title": "No AI model needed"},
+    {"id": "with_model", "title": "Uses an AI model"}
+  ],
+  "limit": "One AI model, or one training run, always stays on one computer. Poolhouse does not split either one across computers.",
+  "this_device": {
+    "heading": "What this computer can do",
+    "intro": "Nothing has to be running first. Each box says what it needs.",
+    "note": "Your other computers cannot yet send this one chat, files, training or other jobs. The one exception is for developers: running project tests, once it is set up.",
+    "uses": [
+      {
+        "id": "models",
+        "group": "without_model",
+        "view": "models",
+        "title": "Keep AI models",
+        "summary": "Download models and store them here, ready to start later.",
+        "states": {
+          "ready": {"badge": "Ready", "detail": "Downloaded: {count}. Free space: {free} GB.", "action": {"label": "Manage models", "open": "models"}},
+          "empty": {"badge": "Ready", "detail": "Nothing downloaded yet. Free space: {free} GB.", "action": {"label": "Add a model", "open": "models"}}
+        }
+      },
+      {
+        "id": "training",
+        "group": "without_model",
+        "view": "studio",
+        "title": "Train a small model of your own",
+        "summary": "Teach a new model from your own text, or to sort text into categories.",
+        "states": {
+          "ready": {"badge": "Ready", "detail": "Bring your own examples.", "action": {"label": "Set up training", "open": "studio"}},
+          "install": {"badge": "Installs when you choose it", "detail": "Needs the training tools, about {size} MB. They download from the internet when you choose this.", "action": {"label": "Install and start", "open": "studio", "install": []}},
+          "internet_off": {"badge": "Internet downloads are off", "detail": "Needs the training tools. Allow internet downloads in Settings first.", "action": {"label": "Open Settings", "open": "settings"}}
+        }
+      },
+      {
+        "id": "jobs",
+        "group": "without_model",
+        "view": "tools",
+        "title": "Run long jobs in the background",
+        "summary": "Training and other long jobs wait their turn here. You can watch or stop them.",
+        "states": {
+          "idle": {"badge": "Ready", "detail": "Nothing is running.", "action": {"label": "See jobs", "open": "tools", "panel": "jobs"}},
+          "busy": {"badge": "Working", "detail": "Running: {running}. Waiting: {queued}.", "action": {"label": "See jobs", "open": "tools", "panel": "jobs"}}
+        }
+      },
+      {
+        "id": "speech",
+        "group": "without_model",
+        "view": "tools",
+        "title": "Turn speech into text",
+        "summary": "Write out what is said in a recording, on this computer.",
+        "states": {
+          "ready": {"badge": "Ready", "detail": "The speech engine is working. It is run from the Tools screen, which is made for developers.", "action": {"label": "Open speech tools", "open": "tools", "panel": "library"}}
+        }
+      },
+      {
+        "id": "chat",
+        "group": "with_model",
+        "view": "chat",
+        "title": "Chat with a model",
+        "summary": "Ask questions and get answers from a model running on this computer.",
+        "states": {
+          "running": {"badge": "Running now", "detail": "Running: {model}.", "action": {"label": "Start chatting", "open": "chat"}},
+          "downloaded": {"badge": "Needs a start", "detail": "Downloaded: {count}. None is running.", "action": {"label": "Start a model", "open": "models"}},
+          "needs_model": {"badge": "Needs a model", "detail": "Choose one and Poolhouse downloads it.", "action": {"label": "Choose a model", "open": "models"}}
+        }
+      },
+      {
+        "id": "benchmarks",
+        "group": "with_model",
+        "view": "benchmarks",
+        "title": "Compare models",
+        "summary": "Measure how well and how fast your models answer.",
+        "states": {
+          "ready": {"badge": "Ready", "detail": "Each model is started while it is measured.", "action": {"label": "Measure models", "open": "benchmarks"}},
+          "needs_model": {"badge": "Needs a model", "detail": "Download a model first.", "action": {"label": "Get a model to measure", "open": "models"}}
+        }
+      },
+      {
+        "id": "guests",
+        "group": "with_model",
+        "view": "guests",
+        "title": "Let a guest ask your model",
+        "summary": "A guest can ask your shared model questions, and nothing else: no files, projects, jobs or settings on this computer.",
+        "states": {
+          "ready": {"badge": "Only people you invite", "detail": "You set their limits and can remove them with one click. Poolhouse does not save or show what they send, but whoever controls this computer could still read it.", "action": {"label": "Manage guests", "open": "guests"}}
+        }
+      }
+    ]
+  },
+  "other_device": {
+    "heading": "What you can do with {name} from here",
+    "connected": "Connected",
+    "away": "Not connected right now",
+    "choose": "What you can do with it",
+    "list_heading": "Other computers in your pool",
+    "back": "Back to this computer",
+    "intro": "This list is only what works from this computer today.",
+    "note": "Chat, copying models and files, training, comparing models, speech and other jobs cannot be sent to {name} from here yet. To use it for those, open Poolhouse on {name}.",
+    "uses": [
+      {
+        "id": "tests",
+        "group": "without_model",
+        "title": "Run project tests on it",
+        "summary": "For developers: projects that use Poolhouse's test runner.",
+        "states": {
+          "developer": {"badge": "Developer setup", "detail": "Works after it is turned on, on both computers. {name} also needs Python 3.13 and a copy of Poolhouse's source code.", "action": {"label": "Copy a request for your coding agent", "copy": "Set up Poolhouse remote tests (docs/test-farm.md) so that the device {own} can run project tests on the device {device}."}}
+        }
+      }
+    ]
+  },
+  "adding": {
+    "title": "What another computer adds",
+    "lines": [
+      "It joins your pool.",
+      "From this computer you cannot yet send it chat, files, training or other jobs. Open Poolhouse on it to use it for those.",
+      "For developers: project tests can run on it, once that is set up."
+    ]
+  }
+}

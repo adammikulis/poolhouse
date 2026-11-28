@@ -117,11 +117,19 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
       const next = this.button('Continue', () => this.task(next, note, async () => {
         await this.saveDevice(); await this.go(1);
       }));
-      this.show('Welcome to Poolhouse', 'Set up this device once, then chat, code and work with your pool from one place.',
+      const uses = el('device-uses', {'data-load':''});
+      uses.options = {only:'self', before:() => this.leaveSetup()};
+      this.show('Welcome to Poolhouse', 'Set up this device once. A model is optional.',
         el('label', {for:input.id}, 'Device name'), input,
         el('p', {class:'hint'}, this.setup.in_pool ? `Connected to ${this.setup.group || 'your pool'}.`
           : 'This device starts its own private pool. You can connect other devices later.'), connect,
-        this.actions(next), note);
+        this.actions(next), note, el('div', {class:'wizard-section'}, uses));
+    }
+    async leaveSetup() {
+      await this.saveDevice();
+      await this.request('/ui/setup/prefs', post({download_sources:'both', autodownload_models:true}));
+      const saved = await this.request('/ui/setup/done', post(this.systemTheme ? {system_theme:this.systemTheme} : {}));
+      if (saved.ok !== true) throw Error('Setup could not be saved.');
     }
     async modelStep() {
       const epoch = this.epoch, session = M.sessionContext(), loading = this.note();

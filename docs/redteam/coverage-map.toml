@@ -935,6 +935,19 @@ tests = [
 ]
 note = "the settings list is read-only and takes no name; a hostile name, a hostile settings file or a safety floor turns nothing on"
 
+# -- what a device can do -------------------------------------------------------------------
+[[group]]
+match = ["route:fleet/device_uses.py:*"]
+status = "covered"
+tests = [
+  "tests/test_redteam_device_uses.py::test_the_route_takes_no_path_beyond_its_own",
+  "tests/test_redteam_device_uses.py::test_the_route_changes_nothing_and_needs_the_page_header",
+  "tests/test_redteam_device_uses.py::test_a_founded_pool_answers_only_a_signed_in_window",
+  "tests/test_redteam_device_uses.py::test_a_members_name_never_reaches_the_request_given_to_an_agent",
+  "tests/test_redteam_device_uses.py::test_a_fingerprint_that_is_not_one_gets_no_request_to_copy",
+]
+note = "the list is read-only; a member's name stays plain text on the page and never reaches the request a person gives an agent"
+
 # -- the Board ------------------------------------------------------------------------------
 [[group]]
 match = ["parser:workspace/boardroute.py"]

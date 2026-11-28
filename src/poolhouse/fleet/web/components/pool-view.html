@@ -2,6 +2,7 @@
 pool-view { display:contents; }
 pool-view .pool-heading { display:flex; align-items:center; gap:16px; margin-bottom:20px; }
 pool-view .pool-heading h1 { margin:0 0 4px; font-size:1.714rem; } pool-view .pool-heading p { margin:0; color:var(--muted); }
+pool-view device-uses { margin-bottom:24px; }
 pool-view #pool-stat { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:24px; }
 pool-view #pool-stat > div { background:var(--bg-raised); border:1px solid var(--line); padding:calc(18px * var(--ui-density,1)); border-radius:12px; }
 pool-view #pool-stat .n { font-size:1.857rem; } pool-view #pool-stat .k { color:var(--muted); font-size:0.857rem; margin-top:5px; }
@@ -36,10 +37,11 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
 <template>
   <main id="pool" class="page-shell" hidden>
     <header class="pool-heading page-heading"><div><h1 data-t="devices.title">Devices</h1><p class="sub" id="pool-sub"></p></div></header>
+    <device-uses></device-uses>
     <div class="stat" id="pool-stat"></div>
     <div class="pool-layout">
       <section aria-label="Pool devices"><div id="pool-cards"></div><section class="pool-jobs"><h2>Jobs on this device</h2><p class="hint">Training and tool jobs managed by this device. Each device card shows its pool slot usage.</p><workspace-jobs></workspace-jobs></section></section>
-      <aside class="pool-control"><div id="pool-pause"></div><div class="pool-config"><h3>How this device contributes</h3><p class="hint">Configure startup, training capabilities, and availability in device settings.</p><button class="ghost" id="pool-device-settings" type="button">Open device settings</button></div></aside>
+      <aside class="pool-control"><div id="pool-pause"></div><div class="pool-config"><h3>This device’s settings</h3><p class="hint">Startup, training libraries, and when this device takes work.</p><button class="ghost" id="pool-device-settings" type="button">Open device settings</button></div></aside>
     </div>
     <details class="pool-connections" data-advanced><summary>Pool connections &amp; joining</summary><div id="pool-joined"></div></details>
     <fleet-benchmark></fleet-benchmark>
@@ -176,6 +178,7 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
     }
 
     async draw() {
+      this.querySelector("device-uses")?.load?.();
       const r = await api("/ui/fleet");
       if (M.refused(r)) return;
       if (this.box.hidden) return;
@@ -206,7 +209,6 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
         alone
           ? el("div", { class: "empty" },
               el("div", { class: "big" }, "Your pool starts here"),
-              el("div", {}, "Install Poolhouse on another device to add its spare compute."),
               el("div", {}, "Add a device or join another device's pool below."))
           : null));
 
@@ -295,7 +297,7 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
       const members = (pool?.members || []).filter(m => m.active);
       joined.replaceChildren(
         el("h2", {}, "Pool connections"),
-        el("div", { class: "hint" }, "This device shares compute with the devices of the pool its node is in."),
+        el("div", { class: "hint" }, "The devices in this device's pool."),
         ...M.kids(error ? el("div", { class: "err", role: "alert" }, error) : null),
         ...(pool ? [
           el("div", { class: "row" },

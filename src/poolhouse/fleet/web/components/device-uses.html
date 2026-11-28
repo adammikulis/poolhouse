@@ -1,0 +1,161 @@
+<!-- device-uses: what a device can do for a person now, one action for each, and what another computer adds -->
+<style>
+device-uses { display:block; min-width:0; }
+device-uses:empty { display:none; }
+device-uses .uses { border:1px solid var(--line); border-radius:16px; background:var(--bg-raised); padding:calc(22px * var(--ui-density,1)); }
+device-uses .uses h2 { margin:0 0 4px; font-size:1.214rem; overflow-wrap:anywhere; }
+device-uses .uses h3 { margin:20px 0 10px; font-size:0.857rem; color:var(--muted); }
+device-uses .uses p { margin:0; }
+device-uses .use-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(230px,100%),1fr)); gap:12px; }
+device-uses .use { display:flex; flex-direction:column; align-items:flex-start; gap:8px; min-width:0; overflow-wrap:anywhere; border:1px solid var(--line); border-radius:12px; padding:calc(16px * var(--ui-density,1)); }
+device-uses .use h4 { margin:0; font-size:1.000rem; }
+device-uses .use button { width:auto; margin:auto 0 0; }
+device-uses .use input { width:100%; min-width:0; }
+device-uses .use-note { margin-top:16px; }
+device-uses .use-device { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; margin-top:10px; overflow-wrap:anywhere; }
+device-uses .use-device button, device-uses .use-back { width:auto; margin:0; }
+device-uses .use-back { margin-bottom:14px; }
+</style>
+<script>
+(function () {
+  const M = window.fleetModel, el = M.el;
+  const here = (view) => !view || !!document.querySelector(`${view}-view`);
+
+  /** `options.only` of 'self' leaves the other computers out; `options.before` runs before an action leaves the screen.
+      `data-part="adding"` shows what another computer adds; `data-load` reads the list as soon as it is on the page. */
+  class DeviceUses extends HTMLElement {
+    connectedCallback() {
+      if (this.wired) return;
+      this.wired = true;
+      this.options ||= {};
+      this.selected = 'self';
+      this.busy = new Set();
+      this.said = new Map();
+      if (this.hasAttribute('data-load') || this.dataset.part === 'adding') this.load();
+    }
+
+    async load(fresh = false) {
+      if (this.loading && !fresh) return;
+      const read = this.loading = {};
+      try {
+        const got = await M.api(fresh ? '/ui/device-uses?fresh=1' : '/ui/device-uses');
+        if (this.loading !== read || M.refused(got)) return;
+        if (!got.ok || !Array.isArray(got.devices)) return this.unread(got.error);
+        this.report = got;
+        this.paint();
+      } catch (error) { if (this.loading === read) this.unread(error.message); }
+      finally { if (this.loading === read) this.loading = null; }
+    }
+
+    unread(why) {
+      if (this.report) return;
+      this.replaceChildren(el('div', {class:'err', role:'alert'},
+        `What this computer can do could not be read. ${why || ''}`.trim()));
+    }
+
+    paint() {
+      if (!this.report) return;
+      if (this.dataset.part === 'adding') return this.paintAdding();
+      const devices = this.report.devices;
+      if (!devices.some(device => device.id === this.selected)) this.selected = 'self';
+      const shown = devices.find(device => device.id === this.selected);
+      const others = this.options.only === 'self' ? [] : devices.filter(device => !device.self);
+      const signature = JSON.stringify([shown, others.map(d => [d.id, d.name, d.status]), [...this.said], [...this.busy]]);
+      if (signature === this.signature) return;
+      this.signature = signature;
+      const focused = this.contains(document.activeElement) ? document.activeElement.dataset.focus : '';
+      this.replaceChildren(el('section', {class:'uses', 'data-device':shown.self ? 'self' : shown.id, 'aria-label':shown.heading},
+        shown.self ? null : el('button', {type:'button', class:'ghost small use-back', 'data-focus':'back',
+          onclick:() => this.choose('self')}, shown.back),
+        el('h2', {tabindex:'-1', 'data-focus':'heading'}, shown.heading),
+        el('p', {class:'hint'}, shown.self ? shown.intro : `${shown.status}. ${shown.intro}`),
+        ...this.groups(shown),
+        el('p', {class:'hint use-note'}, shown.note),
+        el('p', {class:'hint use-note use-limit'}, this.report.limit),
+        shown.self && others.length ? el('div', {class:'use-others'},
+          el('h3', {}, this.report.others_heading),
+          ...others.map(device => el('div', {class:'use-device'},
+            el('span', {}, el('b', {}, device.name), el('span', {class:'why'}, device.status)),
+            el('button', {type:'button', class:'ghost small', 'data-focus':device.id,
+              'aria-label':`${device.choose}: ${device.name}`, onclick:() => this.choose(device.id)}, device.choose)))) : null));
+      if (focused) this.querySelector(`[data-focus="${CSS.escape(focused)}"]`)?.focus({preventScroll:true});
+    }
+
+    paintAdding() {
+      const words = this.report.adding;
+      this.replaceChildren(el('div', {class:'hint'}, el('b', {}, words.title),
+        el('ul', {}, ...words.lines.map(line => el('li', {}, line)))));
+    }
+
+    groups(device) {
+      return this.report.groups.flatMap(group => {
+        const cards = device.uses.filter(use => use.group === group.id && here(use.view));
+        return cards.length ? [el('h3', {}, group.title),
+          el('div', {class:'use-grid'}, ...cards.map(use => this.card(device, use)))] : [];
+      });
+    }
+
+    card(device, use) {
+      const key = `${device.id}:${use.id}`, said = this.said.get(key);
+      return el('article', {class:'use', 'data-use':use.id, 'data-state':use.state},
+        el('h4', {}, use.title),
+        el('span', {class:'label'}, use.badge),
+        el('p', {}, use.summary),
+        el('p', {class:'hint'}, use.detail),
+        said ? el('p', {class:said.failed ? 'err' : 'hint', role:said.failed ? 'alert' : 'status'}, said.text) : null,
+        said?.copy ? el('input', {type:'text', readonly:true, 'aria-label':use.action.label, value:said.copy}) : null,
+        el('button', {type:'button', class:'small', 'data-focus':key, disabled:this.busy.has(key),
+          onclick:() => this.act(key, use.action)}, use.action.label));
+    }
+
+    choose(id) {
+      this.selected = id;
+      this.paint();
+      this.querySelector('h2')?.focus();
+    }
+
+    say(key, text, more = {}) {
+      this.said.set(key, {text, ...more});
+      this.paint();
+    }
+
+    async act(key, action) {
+      if (this.busy.has(key)) return;
+      this.busy.add(key);
+      this.said.delete(key);
+      this.paint();
+      try {
+        if (action.copy) return await this.copy(key, action.copy);
+        if (action.install?.length) await this.install(key, action);
+        await this.options.before?.();
+        M.go(action.open);
+        if (action.panel) document.querySelector(`${action.open}-view`)?.selectPanel?.(action.panel);
+      } catch (error) { this.say(key, error.message, {failed:true}); }
+      finally { this.busy.delete(key); this.paint(); }
+    }
+
+    async copy(key, text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        this.say(key, 'Copied. Paste it to your coding agent.');
+      } catch { this.say(key, 'Select this text and copy it for your coding agent.', {copy:text}); }
+    }
+
+    async install(key, action) {
+      this.say(key, 'Installing…');
+      if (action.sources) {
+        const saved = await M.api('/ui/settings', {method:'POST', body:JSON.stringify({download_sources:action.sources})});
+        if (!saved.ok || saved.error) throw Error(saved.error || 'The download setting could not be saved.');
+      }
+      const started = await M.api('/ui/libraries', {method:'POST', body:JSON.stringify({install:action.install})});
+      if (!started.ok || started.error) throw Error(started.error || 'The installation could not be started.');
+      const result = await M.followSetupJob(started.job, job => this.say(key, job.note || 'Installing…'));
+      await this.load(true);
+      const failed = Object.values(result.changed || {}).find(one => !one.ok);
+      if (failed) throw Error(failed.error || 'The installation did not finish.');
+      this.said.delete(key);
+    }
+  }
+  customElements.define('device-uses', DeviceUses);
+})();
+</script>

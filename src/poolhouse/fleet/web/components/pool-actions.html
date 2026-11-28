@@ -61,7 +61,7 @@
         el("div", { class: "group", id: "pool-add-form" },
           el("h3", {}, "Add a device"),
           el("div", { class: "hint" }, "Makes a short-lived code for another device to join this pool with."),
-          add, addNote),
+          add, addNote, el("device-uses", { "data-part": "adding" })),
         el("div", { class: "group", id: "pool-join-form" },
           el("h3", {}, "Join another pool"),
           el("div", { class: "hint" }, "Use the address and code a device in that pool showed."),
