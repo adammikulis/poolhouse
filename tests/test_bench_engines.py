@@ -1,12 +1,14 @@
 """The engine benchmark's own logic: arms, planted facts, contention counters, figures and the drafting choice."""
 
 import json
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 from poolhouse.bench import engine_workload as workload, engines, gpuwatch, plan_files
+from poolhouse.serve.backend import ServerSpec
 
 ROOT = Path(__file__).resolve().parents[1]
 CAMPAIGN = json.loads(engines.CAMPAIGN.read_text(encoding="utf-8"))
@@ -17,9 +19,20 @@ def test_every_arm_names_files_the_campaign_holds_and_drafts_except_the_diagnosi
         for arm in engines.arms_of(CAMPAIGN, device):
             named = [arm.model, arm.head, *(load.get("head", "") for load in (arm.tune or {}).get("loads", []))]
             assert all(key in CAMPAIGN["files"] for key in named if key), arm.name
-            assert arm.head or arm.name == "diag-nodraft"
+            # a Strata arm drafts with the engine's own drafter, which takes no head file
+            assert arm.head or arm.name == "diag-nodraft" or (arm.engine == "strata" and arm.spec_type in ("mtp", "dflash2"))
             assert arm.spec_type != "draft-dflash" or arm.head == "dflash2"
             assert arm.engine in engines.ENGINES
+
+
+def test_a_strata_arm_is_leased_from_its_engine_with_its_drafter_at_the_engines_own_window():
+    arms = {arm.name: arm for arm in engines.arms_of(CAMPAIGN, "mac")}
+    asked = engines.strata_spec(arms["strata-q20-dflash2"], 262144, 8090)
+    spec = ServerSpec(model="set.gguf", **asked)
+    assert (spec.engine, spec.spec_type, spec.spec_draft_max, spec.context, spec.parallel) == ("strata", "dflash2", None, 262144, 1)
+    assert spec.mtp is None and not spec.draft
+    with pytest.raises(ValueError, match="mtp, dflash2 or none"):
+        engines.strata_spec(replace(arms["strata-iq2"], spec_type="draft-mtp"), 262144, 8090)
 
 
 def test_arms_are_narrowed_in_the_order_asked_and_an_unknown_one_is_refused():

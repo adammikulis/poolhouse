@@ -61,6 +61,8 @@ python -m poolhouse.bench engines report
 A campaign file ([experiments/engines-qwen3.8-flash.json](experiments/engines-qwen3.8-flash.json)) names the model files
 and the arms of each device (`--device mac` or `windows`). `plan` prints what is here, what would be downloaded and the
 free disk; a file marked `local` is one converted on the device (the DFlash2 drafter), and its `made_by` says how.
+A `strata-` arm is served by the Strata engine once the installed runtime holds it: it names no draft head, drafts with
+`mtp` or `dflash2`, and `draft_n_max` 0 leaves the engine's own draft length.
 `tune` loads each candidate setting of an arm on its own server (llama.cpp ignores a per-request draft length for MTP
 and DFlash2), writes four kinds of text over one conversation and keeps the fastest; a load with no draft head gives
 the undrafted figure the others are compared with. `--start HH:MM` waits for a window and `--hard-until` ends one.

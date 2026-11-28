@@ -44,7 +44,7 @@ from poolhouse.client import Client
 from poolhouse.client.settings import Request, Transport
 from poolhouse.http import ServerError
 from poolhouse.log import say, warn
-from poolhouse.serve import binary as binaries
+from poolhouse.serve import binary as binaries, manager as managed
 from poolhouse.serve.serving import Config, Serving
 
 __all__ = ["Arm", "add_arguments", "arms_of", "best_draft", "figures", "run"]
@@ -141,8 +141,28 @@ def llama_up(args: Any, arm: Arm, files: Mapping[str, Path]) -> Iterator[tuple[s
             key: version.get(key) for key in ("commit", "version", "ref", "repo", "source", "built_at")}}
 
 
+def strata_spec(arm: Arm, context: int, port: int) -> dict[str, Any]:
+    """The lease of one Strata arm: one slot, the whole context, and its drafter (``mtp``, ``dflash2`` or ``none``) at the arm's
+    window, a draft length of 0 being the engine's own."""
+    if arm.spec_type not in ("mtp", "dflash2", "none"):
+        raise ValueError(f"arm {arm.name}: a Strata arm's spec_type is mtp, dflash2 or none, not {arm.spec_type}")
+    drafting = arm.spec_type != "none"
+    return {"engine": "strata", "port": port, "context": context, "parallel": 1, "spec_type": arm.spec_type if drafting else "",
+            "mtp": None if drafting else False, "spec_draft_max": arm.draft_n_max or None, "spec_p_min": arm.draft_p_min,
+            "cache_type_k": arm.kv, "cache_type_v": arm.kv, "extra_args": arm.extra_args}
+
+
+@contextlib.contextmanager
+def strata_up(args: Any, arm: Arm, files: Mapping[str, Path]) -> Iterator[tuple[str, dict[str, Any]]]:
+    """``(url, record)`` for a Strata ``arm`` leased from the broker and released on the way out; the record says which drafter
+    the server loaded and why."""
+    with managed.serve(str(files[arm.model]), timeout=1800.0, reason=f"engine benchmark of {arm.name}",
+                       **strata_spec(arm, args.context, args.serve_port)) as server:
+        yield server.base_url, {"loaded_s": server.load_s, "strata": {"drafting": server.mtp_note}}
+
+
 #: How each engine named in a campaign is leased.
-ENGINES: dict[str, Callable[..., Any]] = {"llama.cpp": llama_up}
+ENGINES: dict[str, Callable[..., Any]] = {"llama.cpp": llama_up, "strata": strata_up}
 
 
 def flags_of(pids: Sequence[int]) -> list[str]:

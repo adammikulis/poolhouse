@@ -145,6 +145,12 @@
      "spec_type": "draft-dflash",
      "tune": {"loads": [{"head": "dflash2", "draft_n_max": 7, "depths": [7], "spec_type": "draft-dflash"}]}
     },
+    {"name": "strata-iq2", "engine": "strata", "model": "iq2", "spec_type": "mtp", "draft_n_max": 0},
+    {"name": "strata-iq2-dflash2", "engine": "strata", "model": "iq2", "spec_type": "dflash2", "draft_n_max": 0},
+    {"name": "strata-iq3s", "engine": "strata", "model": "iq3s", "spec_type": "mtp", "draft_n_max": 0},
+    {"name": "strata-iq3s-dflash2", "engine": "strata", "model": "iq3s", "spec_type": "dflash2", "draft_n_max": 0},
+    {"name": "strata-q20", "engine": "strata", "model": "q20", "spec_type": "mtp", "draft_n_max": 0},
+    {"name": "strata-q20-dflash2", "engine": "strata", "model": "q20", "spec_type": "dflash2", "draft_n_max": 0},
     {"name": "diag-nodraft", "engine": "llama.cpp", "model": "iq2", "head": "", "spec_type": "none", "extra_args": ["-ub", "2048"]},
     {"name": "diag-ub512", "engine": "llama.cpp", "model": "iq2", "head": "full-q4", "extra_args": ["-ub", "512"]},
     {"name": "diag-kv-f16", "engine": "llama.cpp", "model": "iq2", "head": "full-q4", "extra_args": ["-ub", "2048"], "kv": "f16"}
