@@ -41,7 +41,7 @@ def load_bytes(source: Path | str | bytes) -> bytes:
     return Path(text).read_bytes()
 
 
-def _pillow():
+def pillow():
     """Pillow, installed the first time it is needed; an ``ImageError`` saying why it could not be."""
     try:
         return provision.module("PIL.Image", "vision")
@@ -71,7 +71,7 @@ def resize_to_fit(
     """Shrink so the long edge is at most ``max_edge``. Returns ``(bytes, was_resized)``."""
     import io
 
-    Image = _pillow()
+    Image = pillow()
     try:
         image = Image.open(io.BytesIO(data))
     except OSError as exc:
@@ -104,7 +104,7 @@ def to_supported_format(data: bytes) -> tuple[bytes, bool]:
 
     import io
 
-    Image = _pillow()
+    Image = pillow()
     no_heif = _open_heif_too() if detected == "heic" else ""
     try:
         image = Image.open(io.BytesIO(data))

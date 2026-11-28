@@ -12,7 +12,8 @@ from poolhouse import provision
 from poolhouse.asking import Asking
 from poolhouse.client.spent import Spent
 from poolhouse.graph.looking import ids_in, kind_of
-from poolhouse.vision.payloads import build_message
+from poolhouse.media import ImageError
+from poolhouse.vision.payloads import build_message, pillow
 
 
 @dataclass
@@ -140,8 +141,9 @@ def without_images(name: str, result: Any, out: Answer) -> tuple[Any, dict[str, 
     llama.cpp cannot carry an image inside a tool result, so what `web.tools(vision=True)`
     returns under ``_images`` comes out before the result is encoded and goes in as a user
     message of its own. A picture that cannot be prepared is said in the steps and not
-    sent: a model told to look at nothing answers about nothing, confidently. Preparing
-    them installs nothing, since what they are was chosen by wherever they came from.
+    sent: a model told to look at nothing answers about nothing, confidently. Pillow,
+    which every picture needs, is installed the first time; what a picture's own format
+    asks for beyond it was chosen by wherever it came from, and is not.
     """
     if not (isinstance(result, Mapping) and "_images" in result):
         return result, None, 0
@@ -149,13 +151,18 @@ def without_images(name: str, result: Any, out: Answer) -> tuple[Any, dict[str, 
     pictures = list(result.pop("_images") or ())
     if not pictures:
         return result, None, 0
-    with provision.nothing_installed():
-        seen, report = build_message(f"What {name} returned for the call above, as seen:",
-                                     pictures)
-    kept = sum(1 for p in seen["content"] if p.get("type") == "image_url")
-    if kept:
-        return result, seen, kept
-    why = "; ".join(report.warnings) or "no reason given"
+    try:
+        pillow()
+        with provision.nothing_installed():
+            seen, report = build_message(f"What {name} returned for the call above, as seen:",
+                                         pictures)
+    except ImageError as exc:
+        why = str(exc)
+    else:
+        kept = sum(1 for p in seen["content"] if p.get("type") == "image_url")
+        if kept:
+            return result, seen, kept
+        why = "; ".join(report.warnings) or "no reason given"
     out.steps.append(f"{name} returned {len(pictures)} image"
                      + ("" if len(pictures) == 1 else "s")
                      + f" and none could be shown: {why}")

@@ -858,8 +858,9 @@ no shape this repository has decided to live with. Budgets and red-team debt onl
   into Poolhouse's state or the project's environment (never a system Python or the account's own settings), says what
   it is doing, is done by one process while the others go on with what is already here, works offline once cached, and
   never happens at upgrade time. `POOLHOUSE_INSTALL_AT_NEED=off` and a LAN-only download source stop every download
-  that starts by itself. A status check, anything an outside page sets off (preparing a picture it chose among them) and a
-  model's tool call that reads or looks at a page or a saved datasheet install nothing (`provision.nothing_installed`). An
+  that starts by itself. A status check, anything an outside page sets off and what outside content chooses (a picture's
+  format reader, a browser for a page that comes back thin) install nothing (`provision.nothing_installed`); what a
+  model's tool needs whatever the content is (the browser, Pillow, the PDF readers) is installed when the tool is called. An
   interpreter or installer is started isolated from an empty directory
   (`poolhouse.safelaunch`), never from where the caller stands. What only the account holder can add is reported with
   why. `scripts/gates/install_instructions.py` (metric `install-instructions`) counts installer commands

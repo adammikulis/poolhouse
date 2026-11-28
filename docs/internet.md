@@ -60,9 +60,12 @@ one `taint.Label(Level.UNTRUSTED, origin)` takes where the taint ledger is in us
   on its network, and connects to the address it checked, so redirects, forms, WebSockets and a
   name whose answer changes are held to the one rule; WebRTC sends no datagram around it, and
   downloads are off. It serves only the browser it was made for, which holds that proxy's own
-  password; any other program gets a 407.
-- A model's tool call that reads or looks at a page or a saved datasheet installs and downloads
-  nothing, and neither does preparing the pictures such a call brought.
+  password; any other program gets a 407, and a connection that sends no request within ten seconds
+  is closed.
+- A model's tool call that reads or looks at a page or a saved datasheet installs what the call
+  itself needs the first time (the browser, Pillow, the PDF readers). What outside content chooses
+  is not installed: a picture's format reader beyond Pillow, and a browser for a page that comes
+  back thin to a plain read.
 
 ## Every path
 

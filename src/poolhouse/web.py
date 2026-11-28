@@ -544,8 +544,8 @@ def tools(*, engine: Engine | None = None, fetch: Callable[[str], str] | None = 
     raises: what went wrong comes back as ``{"none": reason}``. A URL a search returned or a
     person typed is fetched; one only fetched content mentioned needs an allow-listed or
     approved host (`poolhouse.net.untrusted.Origins`). Results are marked ``untrusted``.
-    Reading and looking install and download nothing, since a page's own words may be what asked
-    for them: they use the browser and libraries that are here.
+    The browser and the readers a call needs are installed the first time; a page that comes
+    back thin to a plain read is rendered only in a browser that is already here.
     """
     seen = untrusted.shared()
 
@@ -564,17 +564,15 @@ def tools(*, engine: Engine | None = None, fetch: Callable[[str], str] | None = 
     def reading(args: Mapping[str, Any]) -> Any:
         try:
             seen.admit(str(args.get("url") or ""))
-            with provision.nothing_installed():
-                return read(str(args.get("url") or ""), fetch=fetch, browse=browse,
-                            rendered=bool(args.get("rendered")))
+            return read(str(args.get("url") or ""), fetch=fetch, browse=browse,
+                        rendered=bool(args.get("rendered")))
         except Exception as exc:
             return {"none": f"could not read {args.get('url')!r}: {exc}"}
 
     def looking(args: Mapping[str, Any]) -> Any:
         try:
             seen.admit(str(args.get("url") or ""))
-            with provision.nothing_installed():
-                return look(str(args.get("url") or ""), browse=browse, fetch_bytes=fetch_bytes)
+            return look(str(args.get("url") or ""), browse=browse, fetch_bytes=fetch_bytes)
         except ImportError as exc:
             return {"none": f"no browser: {exc}"}
         except Exception as exc:

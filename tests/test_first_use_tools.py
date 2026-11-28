@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import contextlib
 import importlib
+import io
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -327,12 +328,82 @@ def test_a_picture_a_page_chose_installs_nothing_when_it_is_prepared(switched_on
     assert provision.download_refusal() == ""
 
 
+@pytest.fixture
+def missing(monkeypatch):
+    """PLUMBING ONLY: the picture, PDF and browser libraries are taken as missing, and the installer is recorded, never run:
+    ``(extra, whether it could install)`` for each time one was asked for. An install that could brings the picture library."""
+    here = importlib.import_module("PIL.Image")
+    asked = []
+
+    def supply(extra, wanted, python, run):
+        held = provision._held_back()
+        asked.append((extra, not held))
+        if held or extra != "vision":
+            raise provision.Unavailable(held or "plumbing only: nothing is installed here")
+        monkeypatch.setitem(sys.modules, "PIL.Image", here)
+
+    present = provision._present
+    gone = ("PIL", "PIL.Image", "pdfminer", "pypdfium2", "playwright.sync_api")
+    monkeypatch.setattr(provision, "_present", lambda name: name not in gone and present(name))
+    for name in ("PIL.Image", "playwright.sync_api"):
+        monkeypatch.setitem(sys.modules, name, None)
+    monkeypatch.setattr(provision, "_supply", supply)
+    return asked
+
+
+def picture() -> bytes:
+    image = importlib.import_module("PIL.Image")
+    made = io.BytesIO()
+    image.new("RGB", (32, 16), "white").save(made, format="PNG")
+    return made.getvalue()
+
+
+def test_a_screenshot_is_shown_on_a_device_that_had_no_picture_library(switched_on, request):
+    shot = picture()
+    asked = request.getfixturevalue("missing")
+    out = SimpleNamespace(steps=[])
+    _result, message, kept = answers.without_images("web_look", {"url": "u", "_images": [shot]}, out)
+    assert asked == [("vision", True)] and (kept, out.steps) == (1, [])
+    assert message["content"][1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_a_picture_library_that_cannot_be_installed_says_why(switched_on, request, monkeypatch):
+    shot = picture()
+    request.getfixturevalue("missing")
+
+    def failing(extra, wanted, python, run):
+        raise provision.Unavailable(provision._held_back() or "plumbing only: the install failed")
+
+    monkeypatch.setattr(provision, "_supply", failing)
+    out = SimpleNamespace(steps=[])
+    assert answers.without_images("web_look", {"url": "u", "_images": [shot]}, out)[1:] == (None, 0)
+    assert "none could be shown" in out.steps[0] and "the install failed" in out.steps[0]
+
+
+@pytest.mark.parametrize("tool,extra", [("web_look", "scrape"), ("web_read", "scrape"), ("datasheet_outline", "pdf")])
+def test_a_tool_asks_for_the_libraries_it_needs_and_may_install_them(switched_on, missing, monkeypatch, tool, extra):
+    url = "https://tessyn.example/"
+    origins = web.untrusted.Origins()
+    origins.typed(url)
+    monkeypatch.setattr(web.untrusted, "shared", lambda: origins)
+    monkeypatch.setattr(web, "check", lambda url: url)
+    saved = web.downloads_dir() / "a.pdf"
+    saved.parent.mkdir(parents=True, exist_ok=True)
+    saved.write_bytes(b"%PDF-1.4\n% plumbing only: never read\n")
+    if tool == "datasheet_outline":
+        calls, asking = tooling.tools(), {"path": str(saved)}
+    else:
+        calls, asking = web.tools(fetch=lambda url: "<html><body>thin</body></html>", vision=True), {"url": url, "rendered": True}
+    got = {schema["function"]["name"]: call for schema, call in calls}[tool](asking)
+    assert [one for one in missing if one[0] == extra] == [(extra, True)], got
+
+
 @pytest.mark.parametrize("tool,reads", [("datasheet_pins", ("pin_tables",)), ("datasheet_outline", ("outline_pages", "render"))])
-def test_reading_a_saved_datasheet_for_a_model_installs_nothing(switched_on, monkeypatch, tmp_path, tool, reads):
+def test_reading_a_saved_datasheet_for_a_model_may_get_its_readers_ready(switched_on, monkeypatch, tmp_path, tool, reads):
     held = []
 
     def reading(answer):
-        return lambda *a, **k: held.append(bool(provision.download_refusal())) or answer
+        return lambda *a, **k: held.append(provision.download_refusal()) or answer
 
     @dataclass
     class Page:
@@ -343,31 +414,42 @@ def test_reading_a_saved_datasheet_for_a_model_installs_nothing(switched_on, mon
         monkeypatch.setattr(tooling.datasheet, name, reading(answer))
     calls = {schema["function"]["name"]: call for schema, call in tooling.tools()}
     calls[tool]({"path": "a.pdf"})
-    assert held == [True] * len(reads)
+    assert held == [""] * len(reads)
 
 
-@pytest.mark.parametrize("tool,asked", [("web_read", {"rendered": True}), ("web_read", {}), ("web_look", {})])
-def test_a_tool_that_reads_or_looks_at_a_page_installs_and_downloads_nothing(switched_on, monkeypatch, tool, asked):
+def test_a_pdf_a_model_reads_may_get_its_reader_ready(switched_on, missing, monkeypatch, tmp_path):
+    url = "https://tessyn.example/a.pdf"
+    origins = web.untrusted.Origins()
+    origins.typed(url)
+    monkeypatch.setattr(web.untrusted, "shared", lambda: origins)
+    monkeypatch.setattr(web, "check", lambda url: url)
+    saved = tmp_path / "a.pdf"
+    saved.write_bytes(b"%PDF-1.4\n% plumbing only: never read\n")
+    monkeypatch.setattr(web, "download", lambda url, into, **how: SimpleNamespace(path=saved, sha256="0" * 64))
+    calls = {schema["function"]["name"]: call for schema, call in web.tools()}
+    got = calls["web_read"]({"url": url})
+    assert missing == [("pdf", True)], got
+
+
+@pytest.mark.parametrize("tool,asked,may", [("web_read", {"rendered": True}, True), ("web_read", {}, False), ("web_look", {}, True)])
+def test_a_tool_may_get_its_browser_unless_only_the_page_called_for_one(switched_on, monkeypatch, tool, asked, may):
     url = "https://tessyn.example/"
     origins = web.untrusted.Origins()
     origins.typed(url)
     monkeypatch.setattr(web.untrusted, "shared", lambda: origins)
     monkeypatch.setattr(web, "check", lambda url: url)
-    held = []
-
-    def fetch(url):
-        held.append(provision.download_refusal())
-        return "<html><body>thin</body></html>"
+    could = []
 
     @contextlib.contextmanager
     def browse():
-        held.append(provision.download_refusal())
+        could.append(not provision.download_refusal())
         raise browser.BrowserUnavailable("plumbing only: no page is opened")
         yield
 
-    calls = {schema["function"]["name"]: call for schema, call in web.tools(fetch=fetch, browse=browse, vision=True)}
+    calls = {schema["function"]["name"]: call for schema, call in
+             web.tools(fetch=lambda url: "<html><body>thin</body></html>", browse=browse, vision=True)}
     got = calls[tool]({"url": url, **asked})
-    assert held and all(held), "everything the tool did, it did with nothing to be installed or downloaded"
+    assert could == [may]
     if tool == "web_look":
         assert got["none"].startswith("no browser")
     else:
