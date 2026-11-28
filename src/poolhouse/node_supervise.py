@@ -106,7 +106,8 @@ def signature(state: Path) -> tuple[bytes, bytes]:
 
 
 def resolve(state: Path) -> tuple[Path, str]:
-    """The verified binary a start runs and its checksum: the pointer's when set, else the selected runtime's."""
+    """The verified binary a start runs and its checksum: the pointer's when set, else the selected runtime's, else (in a packaged
+    app with no runtime) the one the app carries."""
     chosen = pointer(state)
     if chosen:
         binary = Path(str(chosen.get("binary", "")))
@@ -115,6 +116,8 @@ def resolve(state: Path) -> tuple[Path, str]:
         return binary, str(chosen["sha256"])
     prefix = runtime.selection_prefix()
     if prefix is None:
+        if (carried := node_binary.bundled()) is not None:
+            return carried, node_binary.sha256(carried)
         raise node_binary.NodeBinaryError("no runtime is selected, so there is no node binary to start")
     binary = node_binary.verified(prefix)
     return binary, node_binary.record_of(prefix)["sha256"]

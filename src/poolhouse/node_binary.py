@@ -49,6 +49,18 @@ def location(prefix: Path) -> Path:
     return prefix / DIRECTORY / name()
 
 
+def bundled() -> Path | None:
+    """The node binary a packaged app carries inside itself, or None outside a packaged app or in one built without it.
+
+    It is part of the application image, so the image is what it is trusted by; no record sits beside it.
+    """
+    unpacked = getattr(sys, "_MEIPASS", "")
+    if not getattr(sys, "frozen", False) or not unpacked:
+        return None
+    held = location(Path(unpacked))
+    return held if held.is_file() else None
+
+
 def build(source: Path, *, cache: Path | None = None, timeout: float = BUILD_TIMEOUT) -> Path:
     """Build the release `poolhouse-node` of a source tree and return the binary.
 

@@ -126,6 +126,15 @@ def node(out: Path = DIST) -> Path:
     return into
 
 
+def carried_node() -> Path:
+    """Build the node the frozen app carries and put it where poolhouse.spec takes it from, under the name the daemon looks for."""
+    built = node()
+    into = ROOT / ".build-work" / "app-node" / ("poolhouse-node.exe" if sys.platform == "win32" else "poolhouse-node")
+    into.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(built, into)
+    return into
+
+
 def built_from(python: Path) -> Path:
     """Write the current commit marker into the build directory.
 
@@ -266,6 +275,7 @@ def main(argv: list[str] | None = None) -> int:
         house = wheelhouse(DIST / "wheels")
         print(f"{len(house)} extra wheels in {DIST / 'wheels'}")
     if a.bundle:
+        carried_node()
         frozen = daemon()
         if not a.no_window:
             window(frozen)

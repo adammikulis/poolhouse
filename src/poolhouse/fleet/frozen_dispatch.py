@@ -50,8 +50,9 @@ def _runnable(module):
     return code is not None and "__main__" in code.co_consts
 
 
-def main(argv=None):
-    """Dispatch owned module/script arguments or launch the device interface."""
+def main(argv=None, daemon_main=None):
+    """Dispatch owned module/script arguments or launch the device interface, whose daemon ``daemon_main`` starts: the packaged
+    launcher passes the daemon command, which holds the pool actions this layer may not import."""
     args = list(sys.argv[1:] if argv is None else argv)
     if args == ["--check-agent-runtime"]:
         return agent_dependency.report()
@@ -64,7 +65,7 @@ def main(argv=None):
         sys.stderr.write("Unsupported frozen Python invocation\n")
         return 2
     else:
-        return launch.main(args)
+        return launch.main(args, daemon_main=daemon_main)
     if not _owned(module):
         sys.stderr.write("Unsupported frozen module or script\n")
         return 2

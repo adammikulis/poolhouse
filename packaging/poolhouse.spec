@@ -1,6 +1,7 @@
 # Headless bundle: the daemon, and your browser for the interface.
 import importlib.util
 import runpy
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules, copy_metadata
@@ -59,8 +60,13 @@ project_data, project_modules = runpy.run_path(str(Path(SPECPATH) / "frozen.py")
 datas += project_data
 hidden += project_modules
 
+# The node the app runs while no runtime is selected (`poolhouse.node_binary.bundled`); packaging/build.py builds it.
+_node = Path("../.build-work/app-node") / ("poolhouse-node.exe" if sys.platform == "win32" else "poolhouse-node")
+if not _node.is_file():
+    raise SystemExit(f"{_node} is missing: build the bundle with packaging/build.py --bundle")
+
 a = Analysis(["launcher-headless.py"], datas=datas, hiddenimports=hidden,
-             binaries=collect_dynamic_libs("ladybug"),
+             binaries=[*collect_dynamic_libs("ladybug"), (str(_node), "node")],
              excludes=["tkinter", "test", "unittest", "pydoc_data", "webview",
                        "numpy", "torch", "torch_geometric", "pandas", "polars", "pyarrow"])
 pyz = PYZ(a.pure)

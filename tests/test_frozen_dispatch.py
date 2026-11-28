@@ -146,7 +146,7 @@ def test_library_without_a_command_is_refused(monkeypatch):
 def test_normal_interface_arguments_still_launch_the_daemon(monkeypatch):
     calls = []
     monkeypatch.setattr(frozen_dispatch.launch, "main",
-                        lambda args: calls.append(("poolhouse.fleet.launch", args)) or 0)
+                        lambda args, daemon_main=None: calls.append(("poolhouse.fleet.launch", args)) or 0)
     assert frozen_dispatch.main(["--no-browser", "--port", "9876"]) == 0
     assert calls == [("poolhouse.fleet.launch", ["--no-browser", "--port", "9876"])]
 

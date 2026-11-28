@@ -35,6 +35,9 @@ def home_dir() -> Path:
 STOP_WAIT = 60.0
 """How long `stop` waits for the pid to end before saying it is still going."""
 
+APP_SERVICES = frozenset({"poolhouse.node_launch", "poolhouse.serve.cli"})
+"""The services a packaged app runs from itself while no runtime is selected: its node's supervisor and the model broker."""
+
 __all__ = [
     "STOP_WAIT",
     "Detached",
@@ -192,10 +195,13 @@ def detach(module: str, argv: Sequence[str], *, log: Path, lines: Sequence[str] 
         raise ValueError('This detached task needs a Python compute interpreter')
     source = source_checkout() if same_interpreter else None
     chosen = None if same_interpreter else runtime.available()
-    python = sys.executable if same_interpreter else chosen.python if chosen is not None else runtime.python()
+    itself = chosen is None and getattr(sys, 'frozen', False) and module in APP_SERVICES
+    python = sys.executable if same_interpreter or itself else chosen.python if chosen is not None else runtime.python()
     options = ['-B', '-u', *([] if source else ['-I'])] if same_interpreter else ['-I'] if chosen is not None else []
     command = [str(python), *options, "-m", module, *rest]
     environment = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    if itself:   # an instance of its own, with its own unpacked files: it outlives the app that started it
+        environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     if chosen is not None or same_interpreter:
         environment = runtime.environment(environment)
     if same_interpreter:
