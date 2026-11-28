@@ -62,6 +62,7 @@ test_delegate_review.py
 test_delegate_record_boxed.py
 test_delegate_record_pinned.py
 test_delegate_grading.py
+test_delegate_acp.py
 test_lead_tools.py
 test_redteam_isolation_shell.py
 test_redteam_isolation_loopback.py
