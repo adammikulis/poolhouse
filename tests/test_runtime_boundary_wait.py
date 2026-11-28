@@ -17,7 +17,7 @@ from test_runtime_trust import commit, git
 from poolhouse import node_launch, runtime, runtime_cli, runtime_deploy, runtime_git
 from poolhouse.lock import Busy, held_by, only_one, take
 
-pytest_plugins = ["test_runtime_cutover"]
+pytest_plugins = ["cutover_kit"]
 
 
 class Holder:
