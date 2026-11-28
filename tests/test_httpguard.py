@@ -150,6 +150,16 @@ def test_a_public_address_beyond_this_machines_networks_is_allowed(interfaces, a
     assert httpguard.resolve("tessyn.example", 80, Limits(resolver=lambda host, port: [address])) == [address]
 
 
+@pytest.mark.parametrize("netmask", [None, "255.255.255.0", "255.0.0.0"])
+def test_an_ipv6_address_with_no_netmask_of_its_family_stands_for_its_64(monkeypatch, netmask):
+    """PLUMBING ONLY: the Windows listing, an IPv6 address with no netmask or with the IPv4 one listed before it."""
+    listed = {"Ethernet": [SimpleNamespace(family=socket.AF_INET6, address="2600:1700:abcd:12::5", netmask=netmask)]}
+    monkeypatch.setattr(psutil, "net_if_addrs", lambda: listed)
+    assert httpguard.on_this_network("2600:1700:abcd:12::9")
+    for beyond in ("2600:1700:abcd:13::9", "2600:17ff:1::1", "2606:4700::6810:7b60"):
+        assert not httpguard.on_this_network(beyond), beyond
+
+
 def test_every_address_this_computer_really_holds_is_refused():
     held = [one.address for listed in psutil.net_if_addrs().values() for one in listed
             if one.family in (socket.AF_INET, socket.AF_INET6)]
