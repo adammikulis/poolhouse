@@ -15,6 +15,7 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
+import treemetadata
 from testcommand import CONFINED_PLUGINS
 
 from poolhouse.activity.source_snapshot import actual_git, git_environment
@@ -114,7 +115,7 @@ def source_reads(repo: Path, environment: dict[str, str]) -> tuple[list[Path], s
             snapshot.close()
         storage.rmdir()
     files.extend((Path(__file__).resolve(), repo / "scripts/testkit/terminal_bank.py", repo / "scripts/testkit/kernel_assets.py",
-                  repo / "tests/test_test_kernel_isolation.py"))
+                  repo / "tests/test_test_kernel_isolation.py", *treemetadata.folder(repo).glob("*/*")))
     files = [path.resolve() for path in files if path.is_file() and path.resolve().is_relative_to(repo)]
     directories = {repo}
     slots = environment.get("DEV_TEST_SLOTS_DIR")
@@ -185,12 +186,13 @@ class ConfinedRun:
             root.mkdir(mode=0o700)
         self.prepare_canaries()
         repo = Path(__file__).resolve().parents[2]
+        metadata = treemetadata.folder(repo)  # written here, outside the confinement that only reads it
         self.environment = filtered_environment(environment)
         config_keys = {"GIT_CONFIG_NOSYSTEM", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"}
         self.environment.update({key: value for key, value in git_environment().items() if key in config_keys})
         self.environment.update(HOME=str(roots["home"]), POOLHOUSE_HOME=str(roots["state"]),
                                 XDG_CACHE_HOME=str(roots["cache"]), POOLHOUSE_CACHE=str(roots["cache"]), TMPDIR=str(roots["tmp"]),
-                                PYTHONPATH=os.pathsep.join((str(repo / "src"), str(repo / "scripts"))),
+                                PYTHONPATH=os.pathsep.join((str(repo / "src"), str(repo / "scripts"), str(metadata))),
                                 PYTHONNOUSERSITE="1", PYTHONDONTWRITEBYTECODE="1",
                                 PYTHON_KEYRING_BACKEND="keyring.backends.null.Keyring",
                                 DEV_TEST_CONFINEMENT_CANARY=str(self.canary), DEV_TEST_DENIED_ENDPOINT=self.denied_endpoint)

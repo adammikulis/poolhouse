@@ -55,6 +55,21 @@ os.environ["POOLHOUSE_RUNTIME_ENSURE"] = "off"
 sys.path.insert(0, str(REPO / "scripts"))
 
 
+def _the_trees_own_metadata() -> None:
+    """This tree's version and entry points, from its own pyproject.toml, for this process and the ones it starts; ahead of any copy
+    the interpreter holds."""
+    import treemetadata
+
+    folder = str(treemetadata.folder(REPO))
+    sys.path.insert(1, folder)
+    held = [part for part in os.environ.get("PYTHONPATH", "").split(os.pathsep) if part]
+    if folder not in held:
+        os.environ["PYTHONPATH"] = os.pathsep.join([*held, folder])
+
+
+_the_trees_own_metadata()
+
+
 def _no_desktop_notifications() -> None:
     """A test never raises a real desktop notification or dialog. Shims named like the
     desktop's tools sit first on PATH (so child processes inherit them): a shim records the

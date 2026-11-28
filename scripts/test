@@ -76,6 +76,7 @@ import testslots
 import testslots_policy
 import testslots_runner
 import testtime
+import treemetadata
 
 from poolhouse import sandbox
 from poolhouse.activity import reuse
@@ -210,7 +211,7 @@ def execute_run(command, environment, tier, record: OutputRecord):
     if not artifact_output:
         print("+", " ".join(command), flush=True)
     environment["PYTHONPATH"] = os.pathsep.join(
-        (str(ROOT / "src"), str(ROOT / "scripts"), environment.get("PYTHONPATH", "")))
+        (str(ROOT / "src"), str(ROOT / "scripts"), str(treemetadata.folder(ROOT)), environment.get("PYTHONPATH", "")))
     index = shown.index("-n")
     want = int(shown[index + 1])
     shown[index + 1] = "{workers}"
