@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import os
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,11 +15,12 @@ REBUILDABLE = ("dist/*", "build/*", "packaging/build/*", ".build-venv/*", ".buil
 """Ignored paths, relative to a checkout's root, that a build or a test run recreates; no other ignored file may be removed."""
 
 
-def run(root: Path | str, *args: str) -> str:
-    """Standard output of ``git -C root args``; a failure or a stall is a RuntimeError."""
+def run(root: Path | str, *args: str, encoding: str | None = None) -> str:
+    """Standard output of ``git -C root args``; a failure or a stall is a RuntimeError. A caller that reads file names gives the file
+    system's ``encoding``: git prints a name as the file system holds it, whatever the code page."""
     try:
-        done = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=False,
-                              timeout=20, env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
+        done = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=False, encoding=encoding,
+                              errors="surrogateescape" if encoding else None, timeout=20, env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"})
     except subprocess.TimeoutExpired as error:
         raise RuntimeError(f"git {args[0]} did not answer in 20 seconds") from error
     if done.returncode:
@@ -51,7 +53,7 @@ def hidden(root: Path) -> list[str]:
     In a sparse checkout, a skip-worktree entry whose file is absent is represented by the commit and is not listed.
     """
     sparse, names = _sparse(root), []
-    for entry in run(root, "ls-files", "-v", "-f", "-z").split("\0"):
+    for entry in run(root, "ls-files", "-v", "-f", "-z", encoding=sys.getfilesystemencoding()).split("\0"):
         tag, name = entry[:1], entry[2:]
         if tag.islower() or (tag == "S" and not (sparse and not os.path.lexists(Path(root) / name))):
             names.append(name)

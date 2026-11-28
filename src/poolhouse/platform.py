@@ -22,6 +22,7 @@ __all__ = [
     "is_apple_silicon",
     "is_windows",
     "launch",
+    "low_power",
     "name_process",
     "on_quit",
     "private_dir",
@@ -41,6 +42,18 @@ CREATE_NEW_PROCESS_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x000
 DETACHED_PROCESS = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
 CTRL_BREAK_EVENT = getattr(signal, "CTRL_BREAK_EVENT", 1)
 PR_SET_NAME = 15
+PMSET = "/usr/bin/pmset"
+"""The program of macOS that says how the power is set, by its own path."""
+
+
+def low_power() -> bool:
+    """Whether macOS Low Power Mode is on; False where the system cannot be asked. What it prints names processes, so it is read as bytes and
+    a line ends at a newline and nowhere else."""
+    try:
+        said = subprocess.run([PMSET, "-g"], capture_output=True, timeout=5, check=False).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return any(line.split()[:2] == [b"lowpowermode", b"1"] for line in said.split(b"\n"))
 
 
 def is_windows() -> bool:

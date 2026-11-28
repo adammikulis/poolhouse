@@ -40,6 +40,16 @@ def test_a_plain_checkout_hides_nothing_and_holds_everything(repo):
     assert (found.changed, found.ignored, found.hidden) == ([], [], []) and not found
 
 
+def test_a_hidden_name_outside_ascii_is_read_whatever_code_page_text_is_read_in(repo, monkeypatch):
+    name = "块 José"   # its first character is written with a byte the Windows code page has nothing for
+    (repo / name).write_text("x")
+    git(repo, "add", name)
+    git(repo, "commit", "-qm", "n", "--no-verify")
+    git(repo, "update-index", "--assume-unchanged", name)
+    monkeypatch.setattr(subprocess, "_text_encoding", lambda: "cp1252")   # how Windows reads a child's output with no encoding named
+    assert gitstate.hidden(repo) == [name]
+
+
 @pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
 def test_an_index_bit_that_hides_edits_names_the_path(repo, flag):
     git(repo, "update-index", flag, "f")

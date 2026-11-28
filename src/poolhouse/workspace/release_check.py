@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,8 @@ def _git(where: str, *args: str) -> str:
 
 def pull_request(cwd: str, number: str, *fields: str) -> dict[str, Any]:
     """What `gh pr view` says of the pull request ``number`` of the repository at ``cwd``; OSError or ValueError when it cannot say."""
+    if not re.fullmatch(r"[0-9]+", number):
+        raise ValueError("a pull request is named by its number")
     try:
         done = subprocess.run(["gh", "pr", "view", number, "--json", ",".join(fields)], cwd=cwd, capture_output=True, text=True,
                               timeout=TIMEOUT_S, check=False)
@@ -40,7 +43,10 @@ def pull_request(cwd: str, number: str, *fields: str) -> dict[str, Any]:
         raise OSError(f"gh did not answer in {TIMEOUT_S} s") from None
     if done.returncode:
         raise OSError((done.stderr.strip() or "gh could not read the pull request").splitlines()[0])
-    found = json.loads(done.stdout)
+    try:
+        found = json.loads(done.stdout)
+    except RecursionError:
+        raise ValueError("gh's answer is nested too deeply to read") from None
     if not isinstance(found, dict):
         raise ValueError("gh did not describe a pull request")
     return found
@@ -75,7 +81,8 @@ def _pull_request(where: str, number: str, commit: str, merger: str) -> str | No
     if head != commit:
         return f"the head of pull request {number} is {head[:7]}, not {commit[:7]}: a new commit needs a new `scripts/lead-review`"
     if into_development:
-        states = [check.get("state") for check in found.get("statusCheckRollup") or [] if isinstance(check, dict)
+        rollup = found.get("statusCheckRollup")
+        states = [check.get("state") for check in (rollup if isinstance(rollup, list) else []) if isinstance(check, dict)
                   and check.get("__typename") == "StatusContext" and check.get("context") == REVIEW_STATUS]
         if states != ["SUCCESS"]:
             return (f"{commit[:7]} has no passed `{REVIEW_STATUS}` status: the agent that spawned its author reviews it with "
