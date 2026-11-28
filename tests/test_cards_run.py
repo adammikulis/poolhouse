@@ -4,10 +4,13 @@ the runner's own run of a check is given here. No model is served or asked."""
 
 from __future__ import annotations
 
+import dataclasses
+import functools
 import hashlib
 import os
 import subprocess
 import sys
+import threading
 from itertools import pairwise
 from pathlib import Path
 
@@ -24,6 +27,8 @@ from poolhouse import (
     jobs,
 )
 from poolhouse.board import session as sessions
+from poolhouse.serve import broker_wire
+from poolhouse.serve.broker import Broker
 
 MODEL = f"{harnessing.PREFERRED_MODEL}.gguf"
 SERVER = {"model": MODEL, "context": 262_144, "parallel": 1}
@@ -58,7 +63,8 @@ class Computer:
             return 2
         given = dict(pairwise(words))
         name = f"run-{len(self.asked)}"
-        source = given["--project"]
+        source = given.get("--project") or str(Path.cwd())   # with no `--project`, a delegate works on the project of the folder it starts in
+        assert Path(source).resolve() != Path(__file__).resolve().parents[1], "the work below is committed: never in this repository"
         store.save(store.Delegate(name, given["--as"], self.board, given["--task"], source, given["--model"], source=source, card=given["--card"],
                                   memory="--memory" in words, commit=committed(Path(source))))
         store.set_status(name, "working")
@@ -142,6 +148,8 @@ def test_a_card_starts_on_a_branch_bound_to_the_releasing_lead_with_memory_and_o
     words = computer.asked[0]
     given = dict(pairwise(words))
     assert (given["--as"], given["--card"], given["--model"]) == ("lead-two", "junk-card", MODEL) and "--edit" in words and "--memory" in words
+    assert "--project" not in words and store.load("run-1").source == str(root.resolve()), "the default reach, from the project's own folder"
+    assert "--project" not in words and store.load("run-1").source == str(root.resolve()), "the default reach, from the project's own folder"
     assert "--in-place" not in words and "--no-review" not in words and "Your lead is lead-two" in given["--task"]
     assert cards_run.step(root, computer.host())[0] == "running" and len(computer.asked) == 1
     assert states(root)["junk-card"] == "running"
@@ -154,6 +162,8 @@ def test_a_card_starts_on_a_branch_bound_to_the_releasing_lead_with_memory_and_o
     ({"processing": None}, "answering a request"),
     ({"waiting": 1}, "answering a request"),
     ({"queue": [{"pid": 77, "label": "poolhouse-chat"}]}, "waited for by poolhouse-chat"),
+    ({"queue": [{"pid": 77, "label": "poolhouse-serve up Qwen3.8-27B.gguf"}]}, "waited for by poolhouse-serve up"),
+    ({"queue": [{"pid": 77, "label": "poolhouse-serve up Qwen3.8-27B.gguf"}]}, "waited for by poolhouse-serve up"),
     ({"claim_waiters": [{"pid": 78, "name": "gpu-training", "info": {"purpose": "a benchmark"}}]}, "a benchmark"),
     ({"requests": {"gpu": [{"pid": 77, "running": False}]}}, "waits for the gpu"),
     ({"taken_up": False}, "never starts another"),
@@ -186,6 +196,37 @@ def test_a_holder_that_only_keeps_the_server_up_is_no_use_and_the_model_has_to_s
     assert cards_run.step(root, host)[0] == "waiting", "the use in between starts the wait again"
     computer.now += 600
     assert cards_run.step(root, host)[0] == "launched"
+
+
+def test_a_runner_that_finds_no_broker_starts_one_as_other_callers_do_and_loads_no_model(root, monkeypatch):
+    """What follows `poolhouse runtime ensure` replacing the broker while a server stays up. The broker is the real one over this test's own state,
+    run in a thread in place of a process of its own, and it scans no process of this computer."""
+    release(root)
+    started: list[list[str]] = []
+    serving: list = []
+    threads: list[threading.Thread] = []
+
+    def detach(module: str, argv: list[str], *, log: Path, **_more) -> jobs.Detached:
+        started.append([module, *argv])
+        threads.append(threading.Thread(target=broker_wire.serve, kwargs={"say": lambda *_a, **_k: None, "ready": serving.append}, daemon=True))
+        threads[-1].start()
+        return jobs.Detached(pid=os.getpid(), log=log, command=(module, *argv), started="now")
+
+    monkeypatch.setattr(broker_wire, "Broker", functools.partial(Broker, scan=list))
+    monkeypatch.setattr(broker_wire.jobs, "detach", detach)
+    computer = Computer()
+    host = dataclasses.replace(computer.host(), status=cards_run.Host(computer.start).status)   # the broker as the runner itself asks it
+    try:
+        kind, text = cards_run.step(root, host)
+        assert kind == "launched", text
+        assert started == [["poolhouse.serve.cli", "broker"]]
+        found = broker_wire.status()
+        assert (found["servers"], found["queue"]) == ([], []), "asking for a broker loads nothing"
+    finally:
+        for server in serving:
+            server.shutdown()
+        for thread in threads:
+            thread.join(30)
 
 
 def test_the_runner_gives_the_model_up_to_someone_else_and_the_card_is_ready_again(root):
