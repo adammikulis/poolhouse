@@ -41,7 +41,7 @@ def create(ui, engine, saved, scope):
         try:
             group, active = studio_pool.scope_of(ui.pool.own(identity).pool), True
         except PermissionError:
-            group, active = studio_pool.current(ui.pool), False
+            group, active = studio_pool.own(ui.pool), False
         return {'pool': group, 'device': identity.fingerprint, 'scope': scope(ui, group), 'active': active}
 
     authority = StudioAuthority(authority_root(ui), current=current, owner=origin,

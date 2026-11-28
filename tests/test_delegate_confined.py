@@ -55,9 +55,14 @@ import json, os, socket, subprocess, sys, time
 CANNED = "[CANNED RESPONSE, NOT A MODEL]"
 args = sys.argv[1:]
 if args[0] == "serve":
-    held = socket.socket()
-    held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
+    preload = os.environ.get("BUN_INSPECT_PRELOAD")
+    if preload:   # the box binds no address: the server listens where the preload's first line puts OpenCode's own
+        held = socket.socket(socket.AF_UNIX)
+        held.bind(open(preload).readline().split('"')[1])
+    else:
+        held = socket.socket()
+        held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
     held.listen()
     while True:
         connection = held.accept()[0]
@@ -564,7 +569,10 @@ def test_the_model_sees_only_the_delegates_tools_and_opencode_is_bounded_by_its_
     assert rendering.files["session/bounded.py"] == delegate_confined.BOUNDED
     brief = agent["system"]
     assert "You have no shell" not in brief and "name every test you could not run" in brief
-    for limit in ("no network", "no localhost port", "no Poolhouse node", "no nested sandbox", "no real model", "at most 600s"):
+    # Owner-order: "No agent should be inhibited from doing their work that is given them." The brief says what the box allows and refuses.
+    told = ("GPU compute", "headless", "loopback", "any network beyond this computer", "no other program can listen", "sandbox-exec") \
+        if sys.platform == "darwin" else ("no network", "no localhost port", "no Poolhouse node", "no nested sandbox", "no real model")
+    for limit in (*told, "at most 600s"):
         assert limit in brief, limit
     assert "lead_ask(question)" in brief and "lead_note(text)" in brief and set(session_verbs.LEAD) == {"ask", "note"}
     reading = rendered(tmp_path, edit=False)

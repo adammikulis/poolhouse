@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import sandbox
-from poolhouse.isolation import Inputs, allowed, build, environment, proof
+from poolhouse.isolation import Inputs, allowed, build, environment, preflight, proof
 from poolhouse.isolation.environment import (
     ALWAYS,
     BY_HARNESS,
@@ -91,13 +91,16 @@ def test_the_confined_probe_sees_exactly_the_allow_list_whatever_the_launcher_ho
 
 
 def test_the_boxs_shell_runs_quietly_with_its_bounds_and_its_git_and_python_run(tmp_path, seatbelt):
-    """A real login shell in the real confinement, with the environment and the ``PATH`` a launch builds."""
+    """A real login shell in the real confinement, with the environment and the ``PATH`` a launch builds, after the preflight every launch runs
+    before the model starts."""
     with world(tmp_path) as w:
         env = environment(Inputs("claude", w.spec.home, path=search_path(w.spec), base_url=f"http://127.0.0.1:{w.port}", token="t",
                                  alias="CANNED-NOT-A-MODEL", context=8192))
         line = ('echo "$CLAUDE_CODE_DISABLE_BACKGROUND_TASKS $BASH_DEFAULT_TIMEOUT_MS $BASH_MAX_TIMEOUT_MS $BASH_MAX_OUTPUT_LENGTH"\n'
                 'git init -q probe && git -C probe status --short && echo git-ran\npython3 -c "print(\'python-ran\')"\n')
-        done = sandbox.run([env["SHELL"], "-c", "-l", line], build(w.spec, (), env).policy, cwd=w.spec.stage, diagnose="never")
+        profile = build(w.spec, (), env)
+        preflight.run(profile, False)
+        done = sandbox.run([env["SHELL"], "-c", "-l", line], profile.policy, cwd=w.spec.stage, diagnose="never")
     assert done.stdout.splitlines() == ["1 180000 600000 8192", "git-ran", "python-ran"] and not done.stderr, (done.stdout, done.stderr)
 
 

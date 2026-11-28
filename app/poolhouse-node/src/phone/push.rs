@@ -193,7 +193,8 @@ impl Web {
     pub fn start(state: &Path) -> Web {
         let (tx, rx) = std::sync::mpsc::channel::<(String, Vec<u8>)>();
         let hosts = state.join(HOSTS_FILE);
-        std::thread::spawn(move || {
+        // A node with no thread to post from drops what it is given, like any push that fails.
+        let _ = std::thread::Builder::new().name("phone-push".into()).spawn(move || {
             let roots = Arc::new(RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() });
             for (endpoint, body) in rx {
                 let allowed: Vec<String> = std::fs::read(&hosts).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();

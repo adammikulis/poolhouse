@@ -2,7 +2,7 @@ mod kit;
 
 use kit::*;
 use serde_json::{json, Value};
-use std::path::Path;
+use std::path::{Path, MAIN_SEPARATOR_STR};
 use tempfile::tempdir;
 
 fn make(n: &mut poolhouse_node::node::Node, token: &str, name: &str, extra: Value) -> Value {
@@ -28,13 +28,13 @@ fn a_session_makes_lists_resolves_and_removes_its_own_folders() {
     let mut n = node(dir.path());
     let (alice, at) = session(&mut n, "demo", "a");
     let path = ok(make(&mut n, &at, "work", json!({})))["path"].as_str().unwrap().to_string();
-    assert!(Path::new(&path).is_dir() && path.ends_with(&format!("scratch/demo/{alice}/work")));
+    assert!(Path::new(&path).is_dir() && path.ends_with(&["scratch", "demo", &alice, "work"].join(MAIN_SEPARATOR_STR)), "{path}");
     std::fs::write(Path::new(&path).join("a.txt"), b"12345").unwrap();
     let rows = ok(listed(&mut n, &at, ""))["folders"].clone();
     assert_eq!((rows[0]["name"].clone(), rows[0]["bytes"].clone(), rows[0]["owner"].clone(), rows[0]["over_limit"].clone(), rows[0]["expired"].clone()),
                (json!("work"), json!(5 + std::fs::metadata(Path::new(&path).join(".scratch.json")).unwrap().len()), json!(alice), json!(false), json!(false)));
     let inside = ok(req(&mut n, "scratch_path", "demo", &at, json!({"folder": "work", "relative": "sub/../a.txt"})))["path"].as_str().unwrap().to_string();
-    assert_eq!(inside, format!("{path}/a.txt"));
+    assert_eq!(inside, [path.as_str(), "a.txt"].join(MAIN_SEPARATOR_STR));
     assert_eq!(ok(req(&mut n, "scratch_rm", "demo", &at, json!({"folder": "work"})))["removed"], true);
     assert_eq!(ok(req(&mut n, "scratch_rm", "demo", &at, json!({"folder": "work"})))["removed"], false);
     assert!(!Path::new(&path).exists());

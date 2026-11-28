@@ -27,6 +27,7 @@ from delegate_kit import agent_names, started
 
 from poolhouse import (
     delegate_confined,
+    delegate_resume,
     delegate_run,
     delegate_store as store,
     harnessid,
@@ -113,13 +114,13 @@ def delegated(lead_node, release, served, monkeypatch, request):
     monkeypatch.setattr(lead_bridge, "POLL_S", 0.05)
     before = signal.getsignal(signal.SIGTERM)
 
-    def run(asked, *words):
+    def run(asked, *words, resumes=0):
         served.turns = turns(asked)
-        assert started("--task", "PLUMBING: call the tools", "--project", str(project), *words) == 0
+        assert started("--task", "PLUMBING: call the tools", "--project", str(project), *words, resumes=resumes) == 0
         [name] = agent_names(node, lead)
         node.session(lead).post(name, "status", "PLUMBING word from the lead")
         status = delegate_run.run(name)
-        return SimpleNamespace(status=status, row=store.result(name), log=store.log_file(name).read_text(errors="replace"), heard=heard)
+        return SimpleNamespace(name=name, status=status, row=store.result(name), log=store.log_file(name).read_text(errors="replace"), heard=heard)
 
     yield SimpleNamespace(project=project, run=run)
     signal.signal(signal.SIGTERM, before)
@@ -196,6 +197,97 @@ def test_the_writes_the_box_refuses_the_pinned_release_leave_the_delegate_partia
     assert [(each["path"], each["tool"], each["by"]) for each in ran.row["refused_writes"]] == [
         (".claude/settings.local.json", "write", "sandbox"), (".claude", "bash", "sandbox")], (ran.row, offered(served)[1])
     assert '2 writes refused by the sandbox: ".claude/settings.local.json", ".claude"' in ran.row["detail"], ran.row
+
+
+@pytest.mark.parametrize("words", [(), ("--edit",)], ids=["reading", "editing"])
+def test_a_delegate_broken_off_on_the_pinned_release_takes_its_conversation_up_in_the_next_box(delegated, served, monkeypatch, words):
+    """The server refuses one request after the first tool call (PLUMBING, not a model), so the harness ends with an error; the next attempt runs in a
+    box of its own, whose stage is another folder, and continues the same conversation there."""
+    heard, original = delegate_confined.Hooks.heard, delegate_resume.waited
+
+    def broken(self, event, payload, said):
+        if event == "post" and "tool_use_id" in payload and not served.refused_once:
+            served.refuse[canned.CHAT] = 400
+        heard(self, event, payload, said)
+
+    def mended(model, say):
+        served.refused_once, served.refuse = True, {}
+        served.turns = turns([("write", {"path": "made.py", "content": "x = 1\n"})] if words else [])
+        return original(model, say)
+
+    served.refused_once = False
+    monkeypatch.setattr(delegate_confined.Hooks, "heard", broken)
+    monkeypatch.setattr(delegate_resume, "waited", mended)
+    ran = delegated.run([("glob", {"pattern": "**/*"})], *words, resumes=1)
+    phases = store.graded(ran.name)["run"]["phases"]
+    assert [(each["attempt"], bool(each["interrupted"])) for each in phases] == [(0, True), (1, False)], (phases, ran.log[-4000:])
+    assert ran.status == 0 and ran.row["state"] == "done" and SAID in ran.row["text"], (ran.row, ran.log[-4000:])
+    assert "DirectoryAccessDenied" not in ran.log, ran.log[-4000:]
+    last = offered(served)[0][-1]["messages"]
+    assert [each["role"] for each in last].count("tool") == 1 + len(words), "the first attempt's tool call and its result are in the conversation taken up"
+    if words:
+        assert (delegated.project / "made.py").read_text() == "x = 1\n", "a file the continued conversation wrote by its relative path is published"
+    assert any("interrupted from outside the task" in str(each["content"]) for each in last), last[-3:]
+
+
+def test_a_delegate_broken_off_twice_on_the_pinned_release_keeps_one_conversation(delegated, served, monkeypatch):
+    """The second continuation takes up a conversation last held in the first one's box, whose folder is gone with that box (the refusals are
+    PLUMBING, not a model)."""
+    heard, original, mends = delegate_confined.Hooks.heard, delegate_resume.waited, []
+
+    def broken(self, event, payload, said):
+        if event == "post" and "tool_use_id" in payload and len(mends) < 2:
+            served.refuse[canned.CHAT] = 400
+        heard(self, event, payload, said)
+
+    def mended(model, say):
+        mends.append(served.refuse.clear())
+        served.turns = turns([("glob", {"pattern": "*"})] if len(mends) < 2 else [])
+        return original(model, say)
+
+    monkeypatch.setattr(delegate_confined.Hooks, "heard", broken)
+    monkeypatch.setattr(delegate_resume, "waited", mended)
+    ran = delegated.run([("glob", {"pattern": "**/*"})], "--edit", resumes=2)
+    phases = store.graded(ran.name)["run"]["phases"]
+    assert [(each["attempt"], bool(each["interrupted"])) for each in phases] == [(0, True), (1, True), (2, False)], (phases, ran.log[-4000:])
+    assert ran.status == 0 and ran.row["state"] == "done", (ran.row, ran.log[-4000:])
+    assert "Location not found" not in ran.log and "DirectoryAccessDenied" not in ran.log, ran.log[-4000:]
+    assert [each["role"] for each in offered(served)[0][-1]["messages"]].count("tool") == 2, "both earlier calls are in the one conversation"
+
+
+def test_the_pinned_release_gives_up_on_a_replys_head_only_where_the_config_names_a_time(delegated, served, monkeypatch):
+    """A request waits at the bridge for its turn with no head sent, and this release gives a head 300 s unless told otherwise. Here the config's
+    switch is read: set to half a second against a server that answers after two (PLUMBING, not a model), the run gives up."""
+    made, frames = opencode.config, served.frames
+
+    def hurried(setup):
+        held = json.loads(made(setup))
+        assert held["provider"][setup.provider]["options"]["headerTimeout"] is False, "a delegate's request waits as long as it takes"
+        held["provider"][setup.provider]["options"]["headerTimeout"] = 500
+        return json.dumps(held)
+
+    def late(body):
+        time.sleep(2)
+        return frames(body)
+
+    monkeypatch.setattr(opencode, "config", hurried)
+    monkeypatch.setattr(served, "frames", late)
+    ran = delegated.run([("glob", {"pattern": "*"})])
+    assert ran.status == 1 and "Timed out waiting for response headers" in ran.row["error"], (ran.row, ran.log[-4000:])
+
+
+ASKS_ITS_SERVER = """socket=$(sed -n '1s/^[^"]*"//; 1s/".*$//p' "$HOME/bin/poolhouse-server.js" 2>/dev/null)
+asked() { /usr/bin/curl -s -o /dev/null -w 'server=%{http_code}\\n' "$@" http://127.0.0.1:4096/api/info; }
+if [ -n "$socket" ]; then asked --unix-socket "$socket"; else asked; fi
+echo "preload=${BUN_INSPECT_PRELOAD-unset}\""""
+"""A shell of the box asks the run's own server where it is: on the box's socket where the launch gave one (macOS), else on the box's loopback."""
+
+
+def test_the_pinned_releases_server_answers_inside_its_box_and_its_shell_inherits_no_preload(delegated, served):
+    ran = delegated.run([("shell", {"command": ASKS_ITS_SERVER})], "--edit")
+    assert ran.status == 0 and SAID in ran.row["text"], (ran.row, ran.log[-4000:])
+    [result] = offered(served)[1]
+    assert "server=401" in result and "preload=unset" in result, (result, ran.log[-4000:])
 
 
 def test_a_plugin_the_pinned_release_cannot_load_is_named_in_the_delegates_log_and_the_run_fails(delegated, monkeypatch):

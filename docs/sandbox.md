@@ -13,12 +13,18 @@ A `Policy` names everything a process may touch. Anything not named is refused.
 | `read` | trees it may read (plus the system trees every process reads: linker, frameworks, zoneinfo) |
 | `write` | trees it may read and write |
 | `exec` | the programs it may start; the command itself is added |
-| `net` | `Net.deny()`, `Net.loopback()` (macOS only: Linux has no way to give the host's loopback without the host's network), or `Net.only(*ports)` (those ports of the host's loopback) |
+| `net` | `Net.deny()`, `Net.loopback()` (macOS only: Linux has no way to give the host's loopback without the host's network), or `Net.only(*ports)` (those ports of the host's loopback). On macOS no choice lets the process bind or listen on an address (below) |
+| `unix_namespaces` | macOS: one short private folder whose Unix sockets the process serves on and reaches; it makes sockets there and no other file |
 | `env` | the whole environment; nothing is inherited |
 | `limits` | wall clock (kills the process group), CPU seconds, file size, open files, output bytes, processes the run may add |
 | `gpu` | what Metal needs (below) and nothing else |
 | `signal_children` | macOS: the process may signal the processes it started, and no other (a Linux process has no other to signal) |
 | `deny_read`, `deny_write` | protected paths, frozen and (`deny_read`) hidden, whether or not they exist yet: Seatbelt denies the operations on them, bubblewrap binds them read-only (below) |
+
+**No bind on macOS.** Seatbelt names a host only as `localhost` or `*`, and `localhost` matches the wildcard and the machine's network address
+(verified on macOS 26: a program allowed to bind `localhost:N` listened on `0.0.0.0:N` and on the network address). So no profile allows a bind
+of an IP address, and none allows inbound traffic without refusing the bind that rule would carry. A confined process that serves does so on a
+Unix socket (`unix_namespaces`), or on a loopback socket its parent bound and handed to it (`Net.only(accept=...)`).
 
 Every path is validated before it reaches a profile: absolute, existing, no control character,
 no `..`, `.`, empty or trailing-slash segment, and no symlink on the way (`name the resolved
@@ -103,6 +109,12 @@ macOS (Seatbelt), checked by `tests/test_sandbox_seatbelt.py` against the real `
 - a refusal is read from the system log (each run's profile carries a unique tag), becomes an
   `Result.denials` entry, a `sandbox.denied` event and a `SandboxViolation` naming the operation
   and path.
+
+**The open box** (`Policy(open=True)`, macOS) is the one policy that allows by default: the coding box of the isolated launcher. It
+refuses named harms instead (`sandbox/seatbelt_open.py`): writes outside `write`, the `private` trees, other processes, a network
+beyond loopback and every IP bind, unnamed system services and devices. A write grant of a folder every program shares (`SHARED`, `/tmp`
+among them) reaches no unix socket under it. `sandbox.confined()` knows it by the service it refuses.
+What it allows and refuses, and why, is in [design-isolated-launcher.md](design-isolated-launcher.md) 5.2.
 
 Known limits:
 
@@ -242,9 +254,9 @@ linked by absolute path) and a working directory it can read. The base profile a
 | Call site | Policy | Layer behind it |
 |---|---|---|
 | `poolhouse.sandbox.tools.SandboxedBash`, the shell tool for an `Agent` | `bash`: read the project, write a scratch directory, no network, 120 s | the guard's tool-policy and taint rails (`bash` is an `exec` sink: text from outside cannot reach it) |
-| `McpTools.stdio(...)` | `mcp_server`: read the interpreter, project and `reads`, write a scratch directory, loopback only, `env` as the whole environment | the guard; the server is not started when no sandbox is available |
+| `McpTools.stdio(...)` | `mcp_server`: read the interpreter, project and `reads`, write a scratch directory, reach the loopback and listen on nothing, `env` as the whole environment | the guard; the server is not started when no sandbox is available |
 | `poolhouse.harness` (Claude Agent SDK) | Claude Code's sandbox for Bash: on, no per-command opt-out, `failIfUnavailable`, no network domains | the guard's `PreToolUse` hooks; not driven end to end in this change (see below) |
-| `LlamaServerBackend(sandboxed=True)` or `POOLHOUSE_SANDBOX_SERVE=1` | `model_server`: read the binary's directory and the files in the command line, loopback, GPU | opt-in; the Broker leases the server as before |
+| `LlamaServerBackend(sandboxed=True)` or `POOLHOUSE_SANDBOX_SERVE=1` | `model_server`: read the binary's directory and the files in the command line, no network, a Unix socket relayed to loopback, GPU | opt-in; the Broker leases the server as before |
 
 Not routed: `llama-server` and the Broker daemon by default (opt-in only), `checks.py`'s
 `shell=True` fix line (typed by the person and confirmed), `subprocess` calls in `serve`, `bench`,
@@ -302,9 +314,9 @@ exits 1 when one fails.
 `LlamaServerBackend(sandboxed=True)` or `POOLHOUSE_SANDBOX_SERVE=1` starts the model under
 the `model_server` policy: the GPU, the binary's install tree, the directories of the files
 on its command line, and the slot-save directory. The Windows WSL launcher enables this
-automatically. On Linux, the model has no network and listens on a private Unix socket in
-a writable temporary directory. Its trusted supervisor relays the socket through host
-loopback and exits with the model. On macOS, the policy grants loopback directly.
+automatically. The model has no network and listens on a private Unix socket in
+a short writable directory under `/tmp`. Its trusted supervisor relays the socket through host
+loopback and exits with the model.
 Downloads happen through the broker before the confined process starts. A failed start
 appends the sandbox's refusals to the `ServerFailed` message. GPU inference, MTP,
 multimodal projectors, and sharded models require live model validation.

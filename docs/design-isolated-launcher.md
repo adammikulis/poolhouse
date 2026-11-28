@@ -318,7 +318,7 @@ The environment is an allow-list built by the launcher; `os.environ` is never co
 | Claude Code | `CLAUDE_CONFIG_DIR` and `CLAUDE_CODE_TMPDIR` inside the agent home, `ANTHROPIC_BASE_URL` (the bridge), `ANTHROPIC_AUTH_TOKEN` (the bridge token), the model variables, the offline variables and the window variables of `claude.py`, the shell bounds (`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`, `BASH_DEFAULT_TIMEOUT_MS`, `BASH_MAX_TIMEOUT_MS`, and `BASH_MAX_OUTPUT_LENGTH` from the served window; docs/limits.md), `CLAUDE_CODE_EXTRA_BODY` and `CLAUDE_CODE_EFFORT_LEVEL` where the caller sets them |
 | Codex | `CODEX_HOME` (an existing directory), the provider key variable set to the bridge token |
 | Pi | `PI_CODING_AGENT_DIR`, `PI_OFFLINE`, `POOLHOUSE_NONINTERACTIVE` |
-| OpenCode | `OPENCODE_CONFIG` and the four `XDG_*` homes inside the agent home, and the `OPENCODE_DISABLE_*` switches of `environment.OPENCODE_OFFLINE` (update, model list, Claude Code import, file watcher, the project's own OpenCode configuration), and `OPENCODE_PASSWORD` (the bridge token, the password of the server OpenCode runs on the one loopback port `Rendering.listen` names) |
+| OpenCode | `OPENCODE_CONFIG` and the four `XDG_*` homes inside the agent home, and the `OPENCODE_DISABLE_*` switches of `environment.OPENCODE_OFFLINE` (update, model list, Claude Code import, file watcher, the project's own OpenCode configuration), and `OPENCODE_PASSWORD` (the bridge token, the password of the server OpenCode runs, on a Unix socket on macOS: `Rendering.serves`) |
 
 The table is closed. A variable it does not name does not exist for any harness, whatever the caller's environment, a project file
 or a grant holds: a toolchain grant contributes `PATH` entries and no variable, so a toolchain directory whose files name
@@ -343,10 +343,14 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
   refusal; probe P-codex) and the permission profile is enforced by the mount (I13, 8.1). The hook is the gate for what the
   boundary cannot express.
 - Claude Code's built-in sandbox is off in the launcher's settings (it is today); `claude` is never given `sandbox.enabled`.
-- A shell inside the confinement needs a real `git`: Apple's `/usr/bin/git` is a shim that asks `xcode-select` through a Mach
-  service the profile refuses. `PATH` puts the resolved git first; with only Apple's command-line developer tools installed, the profile reads and executes
-  `/Library/Developer/CommandLineTools/usr` (a system tree). `/usr/bin/python3` is a shim of the same kind and does not run; the
-  command-line tools' `usr/bin` precedes `/usr/bin` on `PATH`.
+- A shell inside the confinement has a `git` for every program: `PATH` puts the resolved git first, and Apple's `/usr/bin/git`,
+  `cc` and `python3`, which select the developer tools the machine has selected, run as outside a box. A shim keeps what it
+  found in the box's `TMPDIR`; its first look takes seconds and writes to its error output, so the preflight asks once before the
+  model starts (`isolation.preflight.WARM`). A shim run with an environment that names no `TMPDIR` says that it could not keep its
+  cache, and works.
+- **The runtime interpreter** (it runs the bridge client and the probe) of a macOS framework build, as python.org's installer,
+  Apple's and Homebrew's are, starts the app binary of its framework, so the profile runs that one file beside the interpreter's
+  own binary (`profile.interpreter_programs`).
 - **The stage's `.git` is read-only** (`profile.GIT_DIRECTORY`, a frozen name like the control names, with every ancestor): the
   launcher reads its index after the run, so the box cannot write, remove, rename, link or redirect it. `git status` and
   `git diff` work; a commit fails.
@@ -356,11 +360,17 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
 - **User and group lookups** (macOS): the profile allows one lookup service (`com.apple.system.opendirectoryd.libinfo`), so `getpwuid`
   and `getgrnam` answer as they do for any program of this account: names, ids and home folders, no password and no other directory
   service, keychain or name resolver.
-- **A window of loopback ports** (macOS, writable stage). VERIFIED on 25G70: Seatbelt's `localhost` matches the wildcard and the machine's
-  network address, so a rule that lets a box bind a port lets it listen to the network (OpenCode's own `Rendering.listen` port is such a rule:
-  an open item). The window therefore grants no bind. The launcher picks 128 ports of 41000 to 48999 that no socket holds, claims the block
+- **No box binds an address** (macOS). VERIFIED on 25G70: Seatbelt's `localhost` matches the wildcard and the machine's network address, and its
+  only other host is `*`, so a rule that lets a box bind a port lets it listen to the network. No profile holds such a rule, and an inbound rule,
+  which carries the bind with it, is followed by a refusal of the bind. The proof (P09) tries every port the profile names, on loopback and on
+  the wildcard. OpenCode's own server, which `run` talks to, listens on a Unix socket in a private folder of the launch (`Rendering.serves`,
+  `Spec.server`: sockets may be made there and no other file); a preload of both its processes (`opencode.through_socket`) puts the server on it
+  and sends requests for its URL there. A release that did not load it would be refused its bind, so the run would not start.
+- **A window of loopback ports** (macOS, writable stage), which grants no bind either. The launcher picks 128 ports of 41000 to 48999 that no socket holds, claims the block
   with a file lock, allows TCP to them and serving on them (`Net.accept`), refuses every bind of them, and serves a Unix socket on which it binds
   `127.0.0.1` or `::1` and passes the socket back (`isolation/ports.py`; `loopback_window.py`, the box's `sitecustomize.py`). UDP stays refused.
+  That socket and the session bridge answer only processes of the launch's own tree (`serving.admitted`, `confinement.Admission`): before the
+  harness runs, what the launcher itself runs, and from then on the harness's tree, each pid held to the start time the tree noted.
   What remains: a process outside that starts to listen on a port of a live window can be reached by that box over loopback.
 - **The project's environments** (`.venv`, `venv`, `node_modules`) are linked into the stage and granted read and exec by their
   real paths (`Spec.environments`), never write, and their programs are on `PATH`. The link is not a change of the session; a link
@@ -374,9 +384,9 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
   reached the parent fails and publishes nothing. That word comes from inside the box, so it shows a plugin that did not load and
   is no boundary: the profile and publication are. A process the box detaches can send such frames and so hold off the no-progress
   limit; `poolhouse-delegate stop` ends the run, which keeps what it had changed as a patch.
-- **A delegate's shell** runs in this profile with no further grant: no network but the model bridge's port (which the shell, like
-  the harness, holds the token of), the session bridge's socket and the one loopback port OpenCode's own server listens on, and no
-  nested sandbox. The plugin runs each command under a program that ends it at its timeout. Its hooks are judged by their text
+- **A delegate's shell** runs in this profile with no further grant: on macOS the open box of 5.2 (the shell, like the harness, holds
+  the model bridge's token), elsewhere no network but the model bridge's port, the session bridge's socket and the socket OpenCode's
+  own server listens on; and no nested sandbox. The plugin runs each command under a program that ends it at its timeout. Its hooks are judged by their text
   alone (`harnesshook.confined_pre`), so nothing a hook or a tool result holds is run outside the box.
 
 ### 3.5 Headless and interactive
@@ -664,21 +674,40 @@ enforces by watching, and the report says so, resource by resource for G11); no 
 
 | Id | Guarantee |
 |---|---|
-| G1 | Nothing is readable outside the stage, the agent home, the harness's install tree, the runtime interpreter that runs the bridge client, the system toolchain, the derived toolchain directories, the granted reads and the session's own directory of refused patches (read only, 4.2 item 2). |
-| G2 | Nothing is writable outside the stage and the agent home. |
+| G1 | Nothing private is readable: no home folder, other volume, other program's temporary files or settings of an installed service, beyond the stage, the agent home, the harness's install tree, the runtime interpreter that runs the bridge client, the installed programs and libraries, the granted reads and the session's own directory of refused patches (read only, 4.2 item 2). Linux reads nothing it was not granted. |
+| G2 | Nothing is writable outside the stage, the agent home and temporary files. |
 | G3 | A control name (`.claude`, `.codex`, `.pi`, `.mcp.json`, `.poolhouse-project.json`) cannot be created or changed in the stage; and independently of any platform, nothing in `.git`, no coding tool's settings and no link that leads out of the project reaches the checkout (4.4). |
-| G4 | The only network reachable is the model bridge, and the egress proxy for granted hosts. |
-| G5 | No unix, abstract or other socket is reachable except the session bridge. |
+| G4 | No network beyond this computer's loopback is reachable (Linux: only the model bridge and the egress proxy for granted hosts), no model server's port is, and no address is bound. |
+| G5 | No unix, abstract or other socket of another program is reachable, only those the session makes and its bridges. |
 | G6 | No process outside the session can be signalled or traced, or have its arguments, environment, memory, working directory or open files read. That a process exists (its name, pid, parent pid and user id) is an exposure on macOS (X1, 5.7) and is hidden by the pid namespace on Linux and Windows route A. |
 | G7 | The person's terminal and desktop cannot be driven (`TIOCSTI`, `/dev/tty`, Apple events, `open`, clipboard, UI automation). |
 | G8 | No credential store is reachable (keychain, credential manager, keyring, browser profiles, the harness's own login). |
-| G9 | No GPU, camera, microphone or input device. |
+| G9 | No camera, microphone, screen, clipboard or input device. GPU compute is allowed on macOS. |
 | G10 | The session's processes end with the session, and nothing is scheduled to run after it. |
 | G11 | Process count, memory, descriptors, CPU and disk are bounded. |
 | G12 | No new user namespace or nested sandbox can be entered to regain capabilities. |
-| G13 | No hardware or machine identifier is readable: serial number, hardware UUID, provisioning UDID, machine id, network hardware addresses. The proof reads the identifiers itself in the parent and searches everything the probe can obtain for them (P22). |
+| G13 | No hardware serial number or machine identifier is readable: serial number, hardware UUID, provisioning UDID, machine id, and on Linux the network hardware addresses (on macOS they are exposure X3). The proof reads the identifiers itself in the parent and searches everything the probe can obtain for them (P22). |
 
 ### 5.2 macOS
+
+**The coding box is open (2026-11-27).** The owner's order replaces the deny-by-default coding profile on macOS: "can't you just make
+the sandbox just like the rest of things so the agent can test whatever they need safely?", "including with gpu", "so if your sandbox
+stops things like gpu tests, browser tests, etc, it is not useful", "No agent should be inhibited from doing their work that is given
+them." A launch's `Policy` is `open` (`sandbox/seatbelt_open.py`): the profile allows by default and refuses named harms, each held by
+`tests/test_redteam_open_box.py`. The rest of this section describes the engine's deny-by-default profile, which every other user of the
+engine keeps (the model server, MCP servers, the Pi tool worker).
+
+| A command may | A command may not |
+|---|---|
+| compute on the GPU (the classes of `IOKIT_CLASSES`, `com.apple.MTLCompilerService`) | open a camera, microphone, input device or any other device class; reach the window server, clipboard or audio |
+| run a headless Chromium, which registers and looks up its own rendezvous names (`BROWSER_NAMES`) with its inner sandbox off | look up any system service not in `SERVICES`: launchd and LaunchServices, Apple events, the keychain and other credential services, the permission, preference-writing, download and name-resolving services; `job-creation`, `lsopen`, `appleevent-send` |
+| read and run the system's own trees, Homebrew, `/Applications`, the tools a version or package manager installed under the home folder (`toolchain.HOME_TOOLS`, linked at the same place in the agent home) | read, write, link, run or reach a socket in a private tree (`toolchain.private_trees`: `/Users`, other volumes, the account's temporary and cache folders, keychains, `/etc` credential files, Homebrew's and `/usr/local`'s `etc` and `var`, Poolhouse's state, and the shared `/tmp` and `/var/tmp`, which it cannot even list), unless a granted tree inside it names it; read a registry token kept among the tools |
+| write the stage (an editing session), the agent home and its own `TMPDIR` (a short folder of the launch's own in `/tmp`) | write anywhere else |
+| connect to this computer's loopback, over TCP and UDP, and serve on a socket of its window (`isolation.ports`) | reach a host beyond this machine, resolve a name, reach the model server's port (`Spec.withheld`), bind or listen on any IP address, reach a unix socket outside the writable trees that was not granted |
+| start programs, signal and inspect its own, make pseudo-terminals, list processes | signal, trace or inspect another process or read its arguments and environment; use another terminal |
+
+The account's temporary and cache folders are not the box's: the service that names them is refused, so a library takes the box's
+`TMPDIR`. A box is known as the engine's by the service it refuses (`confinement.BOX_MARKER`), since its default is to allow.
 
 **Mechanism.** Seatbelt through `/usr/bin/sandbox-exec -p <profile>`, generated by `sandbox/seatbelt.py` from a `Policy`. On this
 macOS (26.6, 25G70) `sandbox-exec(1)` says "DEPRECATED", the header `sandbox.h` says "deprecated and may be removed in a future
@@ -947,17 +976,19 @@ set is a deviation, so a new leak stops the launch), and each is an accepted ris
 
 | Id | Platform | What stays visible | What does not | Why it stays |
 |---|---|---|---|---|
-| X1 | macOS | the name, pid, parent pid and user id of every process the user can see: 591 of the user's own in one scan (F12) | the arguments, environment, working directory, open files and memory of any of them; signals and tracing (G6, D1, D2) | the profile allows the `kern.proc.pid.` sysctl prefix (`PROCESS_LIST`), which a process uses to ask about itself (`psutil`, the harness's tools); the profile is written before the process exists, so its pid cannot be named in it and the prefix serves every pid. When the engine shows a profile that closes it, P13 asserts an empty list, X1 is removed and G6 covers the list on macOS |
-| X2 | macOS | the machine class and the host name: the sysctls of `MACHINE_CLASS` in `sandbox/seatbelt.py` (`hw.machine`, `hw.memsize`, `machdep.cpu.*`, `kern.hostname`, `kern.osversion`, `kern.bootargs`); the host name can hold the person's name | the serial number, hardware UUID and provisioning UDID (G13) | the tools size themselves from them |
+| X1 | macOS | the name, pid, parent pid and user id of every process the user can see: 591 of the user's own in one scan (F12) | the arguments, environment, working directory, open files and memory of any of them; signals and tracing (G6) | a shell here lists processes, and the harness's tools and tests do (`psutil`) |
+| X2 | macOS | every value the kernel serves by name, the machine class, host name, load and boot time among them; the host name can hold the person's name | another process's arguments and environment; the serial number, hardware UUID and provisioning UDID (G13) | the tools size themselves from them |
+| X3 | macOS | the network interfaces, their addresses and hardware addresses | the serial number and UUID (G13) | `getifaddrs` gives them all or fails, and a test that finds this machine's address needs it |
+| X4 | macOS | a service of this computer that listens on loopback or on its own network address (Seatbelt's `localhost` matches both), but a withheld port; the names and metadata the system's own trees hold | a host beyond this machine (G4), a private tree (G1) | the owner's order: loopback is allowed |
 | X3 | Linux, WSL | the account and host files the profile binds read-only: `/etc/passwd`, `/etc/group`, `/etc/hosts`, `/etc/resolv.conf`, `/etc/localtime`, `/etc/ssl` | the machine id, DMI identifiers, host interfaces (G13), other processes (G6) | the toolchain reads them |
-| X4 | Windows route B | decided by the probes of 5.4 | | |
+| | Windows route B | decided by the probes of 5.4 | | |
 
-P23 pins the set. The parent lists every sysctl name the machine has and every candidate file of the platform; the probe tries each
-and reports which it could read. The readable set must lie inside the declared exposures and the controls of the proof (P20); a
-name outside it is a deviation naming the first such name, and the declared lists live in `sandbox/seatbelt.py` (`PROCESS_LIST`
-is X1, `MACHINE_CLASS` is X2, `EXPOSURES` holds both) and `sandbox/bubblewrap.py` (`ACCOUNT_AND_HOST_FILES` is X3) as the same constants
-that grant the reads: the profile's sysctl rule and the namespace's `/etc` binds are generated from them, so the declaration cannot drift
-from the grant (L1; `test_the_system_names_a_process_can_read_are_exactly_the_declared_exposures` is the macOS half of P23, the Linux half is L7's).
+P23 pins the set on Linux, and on the engine's deny-by-default macOS profile. The parent lists every sysctl name the machine has and
+every candidate file of the platform; the probe tries each and reports which it could read. The readable set must lie inside the
+declared exposures and the controls of the proof (P20); a name outside it is a deviation naming the first such name. The open box's
+exposures are `sandbox/seatbelt_open.py` `EXPOSURES`; the deny-by-default profile's are `sandbox/seatbelt.py` (`PROCESS_LIST`,
+`MACHINE_CLASS`), and Linux's `sandbox/bubblewrap.py` (`ACCOUNT_AND_HOST_FILES`), the same constants that grant the reads
+(`test_the_system_names_a_process_can_read_are_exactly_the_declared_exposures`; the Linux half is L7's).
 
 ## 6. The network
 
@@ -972,7 +1003,7 @@ The sandbox never gets the model server's port. It gets the **bridge**, a parent
 | Headers | forwarded: `Content-Type`, `Accept`, `Anthropic-Version`, `User-Agent`; added: the server's key. All others are dropped. The list is completed per harness by running it against the bridge (a header the harness needs shows as a failed real-model test); nothing is added on a guess. |
 | Authentication | `Authorization` or `x-api-key` must equal the session's bridge token (random, 32 bytes); the harness holds only that. The server's key (`serverkeys.for_url`) never leaves the parent. |
 | Body | JSON only, at most the served window times 4 bytes (a code point is at most 4 bytes and a token is at least one: 17). `model` must equal the leased alias (rewritten if empty, refused if different). `id_slot` and `lora` are removed. Streaming responses pass through unbuffered. |
-| Concurrency | requests in flight to the server at most the lease's slot count; beyond it the bridge answers 429 and never queues, since the server queues per slot. `GET /health` is answered by the bridge and is not counted. |
+| Concurrency | requests in flight to the server at most the lease's slot count; the others wait their turn at the bridge, in the order they came, each for as long as its client stays connected. A client that goes away leaves the line, or, once its request is with the server, has the connection to the server closed at once (also before the server has sent a head, while it reads a long prompt), so the server stops working for it and the slot is free. A stopped bridge ends every wait and every request in flight. `GET /health` is answered by the bridge and is not counted. Tests: `requests_that_find_every_slot_busy_wait_their_turn_and_are_served_in_the_order_they_came`, `a_client_that_leaves_while_the_server_reads_its_prompt_frees_its_slot_at_once_and_the_server_hears_it_left`, `a_request_whose_client_leaves_while_it_waits_never_reaches_the_server_and_the_next_has_its_turn`, `a_stopped_bridge_ends_every_wait_and_sends_the_server_nothing_more`. |
 | Records | method, route, status, bytes, duration. No body is kept. A refused route is counted and reported to the sentinel as a probe. |
 | Waiting | `serving.IDLE_SECONDS` (180 s) bounds the client's silence while it sends a head or a body (a 408 past it); it never bounds the server's answer. Once the request is read the bridge waits on the server without a limit of its own (a cold prompt is read by the model for minutes before its first byte, which is the model working and not the client idle), and ends only when the server or the client closes. A request the bridge cannot read through a fault of its own is answered 500 with a fixed sentence and its traceback goes to the launcher's stderr, never a bare reset: the harness reports a reset as `ECONNRESET` and retries ten times, which is how an unhashable `type` in a tool's schema (`_media` read it as a content part's type) looked on 2026-11-25 as a 191 s failed delegate with no request ever reaching the server. Tests: `a_tool_whose_schema_has_a_property_named_type_is_served_and_the_connection_is_never_dropped`, `an_upstream_that_is_silent_for_longer_than_the_idle_limit_is_waited_for_and_the_client_is_served`, `a_client_that_sends_nothing_is_cut_at_the_idle_limit_and_never_reaches_the_server`, `a_fault_in_reading_a_request_is_answered_500_and_never_ends_in_a_reset`. |
 | Upstream | `--on URL` must name loopback (a numeric `127.0.0.1` or `::1`, never a name); anything else is refused with the sentence of section 9. A model on another member is reached through that member's pool offer on this device's loopback, never by a remote URL in the profile. |
@@ -983,7 +1014,7 @@ names its model file, the account it runs under and its size) and is never forwa
 forwarded because it is unknown. A picture, sound, video or file named by anything but its own bytes (a URL that is not `data:`, a file id) is refused with a fixed sentence, so
 the one process that has the network never fetches an address the model named. **Not verified here:** the pinned llama-server's request parser was not read, so the lists come from
 the three message routes of the harnesses and not from the parser; whether the pinned build fetches a remote `image_url` is unconfirmed, and the refusal holds either way.
-A busy model waits at most `SLOT_WAIT_SECONDS` for a slot and then answers 429 with `Retry-After`, which the harnesses honour; it waits for a slot, never for a person.
+A request for a busy model waits for a slot, never for a person, and is never answered 429: OpenCode gives a step up after about ten of those, which one long request in the one slot (a background compaction) outlasts. Its config gives a reply's head no time limit (`opencode.config`, `headerTimeout`), since the release's own 300 s would end a wait the bridge keeps.
 
 ### 6.2 How the sandbox reaches it, per platform
 
@@ -1277,17 +1308,17 @@ and a marker variable in its own environment set before the probe starts.
 | P04 | create each control name in the stage root, in its case and Unicode variants | fail | G3 |
 | P05 | read the canary through a symlink made in the stage | fail | G1 |
 | P06 | hard-link the canary into the stage | fail | G1, G2 |
-| P07 | connect to the parent's loopback listener that is not the bridge | fail | G4 |
-| P08 | connect to the non-loopback listener; with none, to a documentation-range address | fail | G4 |
-| P09 | send UDP to the P07 port; bind a UDP and a TCP port | fail | G4 |
+| P07 | open box: connect to a documentation-range address and to each withheld loopback port; Linux: connect to the parent's loopback listener that is not the bridge | fail | G4 |
+| P08 | open box: send a datagram to a documentation-range address; Linux: connect to the non-loopback listener (with none, to such an address) | fail | G4 |
+| P09 | bind a UDP and a TCP port and listen, the named and withheld ports among them; Linux: also send UDP to the P07 port | fail | G4 |
 | P10 | connect to the canary Unix socket | fail | G5 |
 | P11 | signal and trace the launcher | fail | G6 |
 | P12 | read the launcher's arguments and environment and look for the marker | marker absent | G6 |
 | P13 | list processes; read the arguments, environment, working directory and open files of each one listed outside the session | Linux and Windows route A: none listed; macOS: only the fields of X1 are listed and every read of the rest fails | G6, X1 |
 | P14 | `TIOCSTI` on a terminal descriptor; open the controlling terminal | fail | G7 |
 | P15 | submit a scheduled job | fail | G10 |
-| P16 | open the GPU device | none | G9 |
-| P17 | read a credential store | fail | G8 |
+| P16 | macOS: look up the window server, clipboard, permission and audio services; Linux: open the GPU device | none | G9 |
+| P17 | read a credential store, and on macOS look up a credential service | fail | G8 |
 | P18 | start a nested sandbox or user namespace | fail | G12 |
 | P19 | read its own environment | exactly the allow-list; no marker | G8 |
 | P20 | write and read back a file in the stage and in the agent home; run `--version` of each granted toolchain; `GET /health` through the model bridge; `GET /props` through it; a request with another model | succeed, succeed, succeed, 200, 404, refused | controls |

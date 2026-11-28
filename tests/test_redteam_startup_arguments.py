@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from poolhouse.fleet import wsl, wsl_startup
+from poolhouse.fleet import windows_firewall, wsl, wsl_startup
 from poolhouse.serve import backend
 
 
@@ -34,14 +34,17 @@ def test_wsl_start_preserves_hostile_arguments_and_service_setup(monkeypatch):
     bridge_factory = Mock(return_value=local_ui)
     monkeypatch.setattr(wsl.wsl_ui, "LocalUIBridge", bridge_factory)
     monkeypatch.setattr(wsl, "command", lambda *args: ["wsl.exe", "--exec", *args])
-    run = Mock()
+    run = Mock(return_value=SimpleNamespace(stdout=windows_firewall.FIREWALL_RULE_HTTP))
     monkeypatch.setattr(wsl.subprocess, "run", run)
     monkeypatch.setattr(wsl, "launch", lambda argv, **kwargs: calls.append((argv, kwargs)) or child)
     monkeypatch.delenv("POOLHOUSE_HOME", raising=False)
     monkeypatch.delenv("POOLHOUSE_CACHE", raising=False)
     payload = "label; $(payload) & command"
     assert wsl.start(["--label", payload], executable="/usr/bin/python name") == 0
-    run.assert_not_called()
+    for asked in run.call_args_list:   # only the firewall questions of fixed text, none holding anything the caller chose
+        assert asked.args[0][:4] == [windows_firewall.POWERSHELL, "-NoProfile", "-NonInteractive", "-Command"] and len(asked.args[0]) == 5
+        assert "payload" not in asked.args[0][4] and "python name" not in asked.args[0][4] and not asked.kwargs.get("shell")
+    assert run.call_count == 2
     bridge_factory.assert_called_once_with(["wsl.exe", "--exec", "/usr/bin/python name", "-m",
                                             "poolhouse.fleet.wsl_ui", "8770"], 8770)
     local_ui.start.assert_called_once()

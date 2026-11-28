@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 import os
+import socket
+from pathlib import Path
 from types import SimpleNamespace
 
 import psutil
 import pytest
+import real_node_guard
 from conftest import changed_files, file_mtimes, truncated_logs
+
+from poolhouse.home import account_roots
 
 LOG = "llama-server-8080.log"
 
@@ -207,3 +212,17 @@ def test_workspace_hub_files_written_by_agent_commands_are_not_this_runs(tmp_pat
     (lifecycle / 'worktree-lifecycle.db').write_text('x')
     (lifecycle / 'secret.key').write_text('x')
     assert set(file_mtimes(tmp_path)) == {'workspace-remote/host/secret.key'}
+
+
+def test_no_socket_of_a_test_reaches_a_state_root_that_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(real_node_guard, "REFUSED", [os.path.realpath(tmp_path)])
+    for reach in ("connect", "connect_ex"):   # the refusal comes before the system is asked, so any socket shows it
+        with socket.socket() as client, pytest.raises(PermissionError, match="account's own Poolhouse"):
+            getattr(client, reach)(str(tmp_path / "node.sock"))
+
+
+def test_the_account_s_own_state_is_what_the_whole_run_refuses():
+    assert [os.path.realpath(account_roots()[0])] == real_node_guard.REFUSED
+    assert real_node_guard.inside(str(account_roots()[0] / "node" / "node.sock"))
+    assert not real_node_guard.inside(str(Path(os.environ["POOLHOUSE_HOME"]) / "node" / "node.sock"))
+    assert socket.socket.connect.__module__ != "_socket", "the refusal is installed on every socket of this process"

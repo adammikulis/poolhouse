@@ -8,23 +8,28 @@ from types import SimpleNamespace
 import pytest
 from browser_expect import expect
 from studio_commands import studio_command
-from test_fleet_ui import Serving
-from test_studio_canvas_browser import studio_browser  # noqa: F401
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: a real daemon reads this test's own node)
+    alone,
+    unfounded_node,
+)
+from test_studio_canvas_browser import (
+    studio_browser,  # noqa: F401
+    studio_daemon,
+)
 
 from poolhouse.studio.adapters import Adapters
 from poolhouse.studio.contracts import validate_graph
 from poolhouse.studio.decisions import assess, parse_record, route
 
+pytest_plugins = ('testfarm_kit',)  # the `node_binary` fixture
 pytestmark = pytest.mark.slow
 TITLES = ['Fraud screening', 'Prompt injection check', 'Retrieved-source check', 'Support triage', 'Document routing']
 
 
 @pytest.fixture
-def decision_page(tmp_path, request):
+def decision_page(tmp_path, request, alone):  # noqa: F811
     open_page = request.getfixturevalue('studio_browser')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     try:
         with open_page() as page:
             errors, submissions = [], []
@@ -233,6 +238,8 @@ def test_mixed_group_gate_skips_only_intended_target(synthetic_model, decision_p
     assert {node['id'] for node in definition['nodes']} == {'allow', 'assessment'}
     page.get_by_role('button', name='Run workflow', exact=True).click()
     expect(page.locator('#studio-runs')).to_contain_text('done', timeout=10000)
+    # the run list is drawn before the open run is read again
+    page.wait_for_function("() => document.querySelector('studio-view').activeRun?.state === 'done'")
     states = page.locator('studio-view').evaluate('editor => editor.activeRun.nodes')
     assert states[group_id + '/allow']['state'] == 'skipped'
     assert states[group_id + '/assessment']['state'] == 'done'

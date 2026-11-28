@@ -17,7 +17,7 @@ import time
 from collections.abc import Sequence
 from typing import Any, Protocol
 
-from poolhouse import delegate_store as store, harness
+from poolhouse import delegate_recorder, delegate_store as store, harness
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.workspace import nudge_fence
 
@@ -49,8 +49,8 @@ TOKEN is the verdict token the message gives you, as a JSON string. Reject with 
 only when you tried to prove it wrong and could not: an accept has an empty findings list and at least one check you made yourself.
 """
 SHELL = """\
-shell runs in a throwaway copy of the project with the change applied, in a sandbox with no network: run the tests you can, and say which you
-could not. What you write there is thrown away: you cannot change the project or the work.
+shell runs in a throwaway copy of the project with the change applied, in a sandbox that reaches no network beyond this computer: run the
+tests you can, and say which you could not. What you write there is thrown away: you cannot change the project or the work.
 """
 NO_SHELL = "You have no shell and no tool that changes a file: you cannot change the project or the work.\n"
 CHECK = """\
@@ -160,7 +160,8 @@ def _tokens(used: harness.Usage) -> dict[str, Any]:
 
 
 def noted(name: str, ask: Pass, ran: Ran, began: float) -> None:
-    """Keep the pass that has ended in the run's record, with its time and tokens and what broke it off from outside."""
+    """Keep the pass that has ended in the run's records, with its time and tokens and what broke it off from outside."""
+    delegate_recorder.of(name).ended(ask, ran, time.time() - began)
     store.keep(name, phase={"phase": ask.phase, "round": ask.round, "attempt": ask.attempt, "seconds": round(time.time() - began, 2),
                             **_tokens(ran.answer.spent), "tool_calls": ran.calls, "error": ran.answer.why if ran.answer.is_error else "",
                             "interrupted": ran.broke})

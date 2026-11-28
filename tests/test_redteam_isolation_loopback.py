@@ -7,9 +7,13 @@ address, and it reaches no listener outside its window.
 
 from __future__ import annotations
 
+import contextlib
+import http.client
+import json
 import os
 import shlex
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -18,8 +22,16 @@ from pathlib import Path
 
 import pytest
 
+import poolhouse
+from poolhouse import loopback_window
 from poolhouse.isolation import ports as windows
-from poolhouse.sandbox import Net, Policy, seatbelt as profiles
+from poolhouse.isolation.capability import lan_address
+from poolhouse.isolation.confinement import Admission
+from poolhouse.platform import start_process
+from poolhouse.sandbox import Net, Policy, policies, seatbelt as profiles
+from poolhouse.serve import free_port
+from poolhouse.serve.confined import confine
+from poolhouse.serve.process import kill_process_tree
 from tests.test_redteam_isolation_shell import box, shelled  # noqa: F401  (box is a fixture)
 
 pytest_plugins = ["tests.confined_kit", "tests.sandbox_kit"]
@@ -116,7 +128,10 @@ def test_a_program_of_the_box_serves_on_loopback_and_its_children_do_too(box):  
     assert windows.FIRST <= port <= windows.LAST, out
 
 
-def test_the_box_listens_on_no_other_address_and_reaches_no_listener_outside_its_window_even_one_started_later(box):  # noqa: F811
+def test_the_box_listens_on_no_other_address_and_reaches_this_machines_loopback_but_nothing_beyond_it(box):  # noqa: F811
+    """Owner-order: "can't you just make the sandbox just like the rest of things so the agent can test whatever they need safely?", "No agent
+    should be inhibited from doing their work that is given them." A loopback listener outside the window is reached, one started after the box
+    included; no bind and no host beyond this machine is."""
     (box.project / "attack.py").write_text(ATTACK)
     listeners: list[socket.socket] = []
     watching: list[threading.Thread] = []
@@ -144,7 +159,9 @@ def test_the_box_listens_on_no_other_address_and_reaches_no_listener_outside_its
 
     try:
         out, _, confinement = shelled(box, f"{shlex.quote(os.path.realpath(sys.executable))} attack.py\n", look=look)
-        assert "OPEN " not in out and out.count("shut ") == 18 and heard == [], (heard, out)
+        reached = [line for line in out.splitlines() if line.startswith("OPEN ")]
+        assert reached == [f"OPEN the {name} listener outside the window at {host}" for name in ("early", "late") for host in ("127.0.0.1", "::1")], out
+        assert out.count("shut ") == 14 and sorted(heard) == ["early", "early", "late", "late"], (heard, out)
         first, last = (int(out.split(f"{word} ", 1)[1].split()[0]) for word in ("first", "last"))
         assert (first, last) == (confinement.profile.policy.net.accept[0], confinement.profile.policy.net.accept[-1])
         assert all(int(each.getsockname()[1]) not in range(first, last + 1) for each in listeners)
@@ -161,6 +178,200 @@ def _hear(listener: socket.socket, name: str, heard: list[str]) -> None:
         pass
 
 
+BINDS = """
+import _socket, json
+named = json.load(open("named.json"))
+def tried(name, call):
+    s = None
+    try:
+        call()
+    except PermissionError:
+        print("shut", name)
+    except OSError as why:
+        print("OPEN", name, why.errno)   # the system took the bind up: the box did not refuse it
+    else:
+        print("OPEN", name)
+def bound(family, kind, host, port):
+    s = _socket.socket(family, kind)
+    try:
+        s.bind((host, port))
+        if kind == _socket.SOCK_STREAM:
+            s.listen(1)
+    finally:
+        s.close()
+def unbound():
+    s = _socket.socket()
+    try:
+        s.listen(1)
+    finally:
+        s.close()
+hosts = [(_socket.AF_INET, "127.0.0.1"), (_socket.AF_INET, "0.0.0.0"), (_socket.AF_INET6, "::1"), (_socket.AF_INET6, "::"),
+         *((_socket.AF_INET, each) for each in named["own"])]
+for port in [0, *named["ports"]]:
+    for family, host in hosts:
+        for kind in (_socket.SOCK_STREAM, _socket.SOCK_DGRAM):
+            tried("%s port %d kind %d" % (host, port, kind), lambda: bound(family, kind, host, port))
+tried("a listen with no bind", unbound)
+print("tried", len(hosts) * 2 * (1 + len(named["ports"])) + 1)
+"""
+
+LISTENS = """
+import _socket, json
+for port in json.load(open("named.json"))["ports"]:
+    s = _socket.socket()
+    try:
+        s.bind(("0.0.0.0", port))
+        s.listen(1)
+    except OSError:
+        s.close()
+        continue
+    open("listening-%d" % port, "w").close()
+    s.settimeout(10)
+    try:
+        taken, _ = s._accept()
+        _socket.close(taken)
+        print("REACHED", port)
+    except OSError:
+        print("unreached", port)
+    finally:
+        s.close()
+print("done")
+"""
+
+
+def _named(confinement, box, own: list[str]) -> Path:  # noqa: F811
+    """Every port this launch names, written into the stage for the program of the box: the harness server's, the model bridge's, those a harness
+    may listen on and the ends of the window."""
+    net = confinement.profile.policy.net
+    ports = sorted({*box.servers, *net.ports, *getattr(net, "listen", ()), *net.accept[:1], *net.accept[-1:]})
+    stage = Path(confinement.session.stage.physical)
+    (stage / "named.json").write_text(json.dumps({"ports": ports, "own": own}))
+    return stage
+
+
+def test_no_program_of_a_harness_box_binds_or_listens_on_any_address_not_even_on_the_ports_its_launch_names(box):  # noqa: F811
+    (box.project / "binds.py").write_text(BINDS)
+    own = [address] if (address := lan_address()) else []
+
+    def look(confinement) -> None:
+        _named(confinement, box, own)
+
+    out, _, _ = shelled(box, f"{shlex.quote(os.path.realpath(sys.executable))} binds.py\n", look=look, brief="PLUMBING")
+    assert box.servers, "the launch is the one OpenCode gets"
+    opened = [line for line in out.splitlines() if line.startswith("OPEN ")]
+    assert not opened and f"tried {out.count('shut ')}\n" in out, (opened, out)
+
+
+@pytest.mark.parametrize("source", ["loopback", pytest.param("network", marks=pytest.mark.lan_network)])
+def test_a_wildcard_listener_started_in_a_harness_box_is_never_reached(box, source):  # noqa: F811
+    """From this machine's own network address (a person runs that one, at the machine) and over loopback. Nothing is sent: a connection that is
+    taken is closed at once."""
+    address = lan_address() if source == "network" else "127.0.0.1"
+    assert address, "this computer has no address on a network, so nothing could reach the box from it"
+    (box.project / "listens.py").write_text(LISTENS)
+    reached: list[int] = []
+    ended = threading.Event()
+    watching: list[threading.Thread] = []
+
+    def connect(stage: Path) -> None:
+        while not ended.wait(0.02):
+            for flag in stage.glob("listening-*"):
+                port = int(flag.name.split("-")[1])
+                if port not in reached:
+                    with contextlib.suppress(OSError), socket.create_connection((address, port), 3):
+                        reached.append(port)
+
+    def look(confinement) -> None:
+        if not watching:
+            watching.append(threading.Thread(target=connect, args=(_named(confinement, box, []),), daemon=True))
+            watching[0].start()
+
+    try:
+        out, _, _ = shelled(box, f"{shlex.quote(os.path.realpath(sys.executable))} listens.py\n", look=look, brief="PLUMBING")
+    finally:
+        ended.set()
+    assert "done" in out and "REACHED" not in out and not reached, (reached, out)
+
+
+STAND_IN = """
+# NOT A MODEL and NOT A MODEL SERVER: it serves where it is told to, as llama-server does (a host ending `.sock` is a Unix socket), says whether it
+# could bind every address, and marks its one answer.
+import socket, sys
+host, port = sys.argv[sys.argv.index("--host") + 1], int(sys.argv[sys.argv.index("--port") + 1])
+try:
+    socket.socket().bind(("0.0.0.0", 0))
+    everywhere = "OPEN"
+except PermissionError:
+    everywhere = "shut"
+if host.endswith(".sock"):
+    server = socket.socket(socket.AF_UNIX)
+    server.bind(host)
+else:
+    server = socket.socket()
+    server.bind((host, port))
+server.listen(8)
+while True:
+    connection = server.accept()[0]
+    connection.recv(65536)
+    body = b"[CANNED RESPONSE, NOT A MODEL] wildcard=" + everywhere.encode()
+    connection.sendall(b"HTTP/1.1 200 OK\\r\\nConnection: close\\r\\nContent-Length: %d\\r\\n\\r\\n%s" % (len(body), body))
+    connection.close()
+"""
+
+
+def test_a_confined_model_server_is_reached_on_loopback_and_binds_no_address_itself(tmp_path):
+    program = tmp_path / "server-NOT-A-MODEL.py"
+    program.write_text(STAND_IN)
+    interpreter = os.path.realpath(sys.executable)
+    port = free_port()
+    runtime = [f"--runtime={tree}" for tree in policies.runtime_reads()]   # named on its command line, so the box reads what this stand-in runs on
+    held = confine([interpreter, str(program), "--host", "127.0.0.1", "--port", str(port), *runtime], {}, Path(interpreter))
+    source = str(Path(poolhouse.__file__).resolve().parents[1])   # the relay runs outside the box and imports this tree
+    process = start_process(held.argv, env={**held.env, "PYTHONPATH": source}, cwd=held.cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    said = b""
+    try:
+        deadline = time.monotonic() + 30
+        while not said and time.monotonic() < deadline and process.poll() is None:
+            with contextlib.suppress(OSError, http.client.HTTPException):
+                asked = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+                asked.request("GET", "/health")
+                said = asked.getresponse().read()
+                asked.close()
+            time.sleep(0.05)
+    finally:
+        kill_process_tree(process.pid)
+        output = process.communicate(timeout=10)[0]
+        held.backend.finish(held.tag)
+    assert said == b"[CANNED RESPONSE, NOT A MODEL] wildcard=shut", (said, output, held.argv)
+
+
+def test_a_socket_the_launcher_hands_over_takes_its_first_connection_every_time(tmp_path, monkeypatch):
+    """macOS breaks a socket now and then (about one in eight) when its sender closes it while it is still in flight."""
+    root = tempfile.mkdtemp(prefix="pp-", dir="/tmp")
+    bridge = windows.PortBridge(root, tmp_path / "locks", admit=Admission())
+    bridge.start()
+    monkeypatch.setenv(loopback_window.ENV, bridge.setting)
+    broken: list[str] = []
+    try:
+        for _ in range(200):
+            with socket.socket() as server:
+                loopback_window.bind(server, ("127.0.0.1", 0))
+                server.listen(5)
+                server.settimeout(5)
+                try:
+                    with socket.create_connection(("127.0.0.1", server.getsockname()[1]), 5) as client, server.accept()[0] as taken:
+                        client.sendall(b"ask")
+                        taken.settimeout(5)
+                        if taken.recv(3) != b"ask":
+                            broken.append("closed")
+                except OSError as why:
+                    broken.append(type(why).__name__)
+    finally:
+        bridge.stop()
+        Path(root).rmdir()
+    assert not broken, (len(broken), sorted(set(broken)))
+
+
 def test_a_window_holds_no_port_in_use_or_fixed_and_no_two_launches_share_one(tmp_path):
     with socket.socket() as held:
         held.bind(("127.0.0.1", 0))
@@ -170,13 +381,13 @@ def test_a_window_holds_no_port_in_use_or_fixed_and_no_two_launches_share_one(tm
     roots = [tempfile.mkdtemp(prefix="pp-", dir="/tmp") for _ in range(2)]
     every = range(windows.FIRST, windows.LAST + 1)
     left = range(windows.FIRST, windows.FIRST + 2 * windows.SIZE)
-    first, second = (windows.PortBridge(root, locks, avoid=set(every) - set(left)) for root in roots)
+    first, second = (windows.PortBridge(root, locks, avoid=set(every) - set(left), admit=Admission()) for root in roots)
     try:
         first.start()
         second.start()
         assert not set(first.ports) & set(second.ports) and set(first.ports) | set(second.ports) <= set(left)
         with pytest.raises(OSError, match="in use"):
-            windows.PortBridge(roots[0], locks, avoid=set(every) - set(left)).start()
+            windows.PortBridge(roots[0], locks, avoid=set(every) - set(left), admit=Admission()).start()
     finally:
         first.stop()
         second.stop()

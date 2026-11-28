@@ -27,6 +27,10 @@ PROFILER_SECONDS = 2.0
 """Inside the box ``system_profiler`` waits over five seconds for services it is refused and then prints nothing, longer than the whole proof is
 expected to take: it is given this long, and what it has printed by then is searched."""
 PLAN: dict = {}
+BEYOND = "192.0.2.1"
+"""An address of the documentation range: beyond this machine, and nobody's."""
+DEVICE_SERVICES = ("com.apple.windowserver.active", "com.apple.pasteboard.1", "com.apple.tccd", "com.apple.audio.audiohald")
+CREDENTIAL_SERVICES = ("com.apple.securityd.xpc", "com.apple.SecurityServer", "com.apple.secd", "com.apple.ctkd.token-client")
 
 
 def seen(call):
@@ -107,24 +111,50 @@ def p06():
 
 
 def p07():
-    return {"outcome": seen(lambda: connect("127.0.0.1", PLAN["loopback_port"]))[0]}
+    """A box that reaches its loopback (``open``) is refused a host beyond this machine and each loopback port it is withheld; any other box is
+    refused the parent's listener on loopback."""
+    if not PLAN["open"]:
+        return {"outcome": seen(lambda: connect("127.0.0.1", PLAN["loopback_port"]))[0]}
+    states = [refused(lambda host=host, port=port: connect(host, port)) for host, port in
+              ((BEYOND, 443), *(("127.0.0.1", port) for port in PLAN["withheld"]))]
+    return {"outcome": "allowed" if "allowed" in states else "denied", "states": states}
 
 
 def p08():
-    host, port = PLAN["lan"] or ["192.0.2.1", 9]
+    if PLAN["open"]:   # the address of this machine's own network card is its loopback to Seatbelt; a datagram beyond the machine is refused
+        def send():
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.sendto(b"x", (BEYOND, 9))
+
+        return {"outcome": refused(send)}
+    host, port = PLAN["lan"] or [BEYOND, 9]
     return {"outcome": seen(lambda: connect(host, port))[0]}
 
 
+def refused(call):
+    """``"denied"`` only when the sandbox refused ``call``: another error (a port already held) means the system took it up."""
+    state, why = seen(call)
+    return "denied" if state == "denied" and why in ("EPERM", "EACCES") else "allowed"
+
+
 def p09():
+    """No address is bound or listened on: not on loopback, and not on the wildcard, for no port the system picks and for none the profile
+    names; and in a box that is not ``open``, no datagram leaves for a port nobody granted."""
     def send():
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.sendto(b"x", ("127.0.0.1", PLAN["udp_port"]))
 
-    def bind(kind):
-        with socket.socket(socket.AF_INET, kind) as sock:
-            sock.bind(("127.0.0.1", 0))
+    def bind(kind, host, port):
+        with socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET, kind) as sock:
+            sock.bind((host, port))
 
-    states = [seen(send)[0], seen(lambda: bind(socket.SOCK_DGRAM))[0], seen(lambda: bind(socket.SOCK_STREAM))[0]]
+    def listen():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.listen(1)
+
+    states = [*([] if PLAN["open"] else [seen(send)[0]]), refused(listen),
+              *(refused(lambda kind=kind, host=host, port=port: bind(kind, host, port)) for port in (0, *PLAN["named_ports"])
+                for host in ("127.0.0.1", "0.0.0.0", "::") for kind in (socket.SOCK_DGRAM, socket.SOCK_STREAM))]  # noqa: S104 - must be refused
     return {"outcome": "allowed" if "allowed" in states else "denied", "states": states}
 
 
@@ -238,15 +268,21 @@ def p15():
     return {"outcome": "allowed" if any(tool(each) for each in attempts) else "denied"}
 
 
+def looked_up(names):
+    """Which of the system services ``names`` the process is given a way to (``bootstrap_look_up``)."""
+    library = libc()
+    library.bootstrap_look_up.argtypes = [ctypes.c_uint, ctypes.c_char_p, ctypes.POINTER(ctypes.c_uint)]
+    bootstrap = ctypes.c_uint.in_dll(library, "bootstrap_port")
+    return [name for name in names if library.bootstrap_look_up(bootstrap, name.encode(), ctypes.byref(ctypes.c_uint(0))) == 0]
+
+
 def p16():
+    """The services through which the screen, the keyboard, the clipboard, the camera, the microphone and the person's permissions are reached
+    on macOS; the GPU's device nodes on Linux."""
     if DARWIN:
-        try:
-            metal = ctypes.CDLL("/System/Library/Frameworks/Metal.framework/Metal")
-            metal.MTLCreateSystemDefaultDevice.restype = ctypes.c_void_p
-            return {"outcome": "allowed" if metal.MTLCreateSystemDefaultDevice() else "none"}
-        except OSError:
-            return {"outcome": "none"}
-    opened = [path for path in ("/dev/dxg", "/dev/nvidiactl", "/dev/dri/card0", "/dev/dri/renderD128")
+        reached = looked_up(DEVICE_SERVICES)
+        return {"outcome": "allowed" if reached else "none", "reached": reached}
+    opened =[path for path in ("/dev/dxg", "/dev/nvidiactl", "/dev/dri/card0", "/dev/dri/renderD128")
               if seen(lambda path=path: os.close(os.open(path, os.O_RDWR)))[0] == "allowed"]
     return {"outcome": "allowed" if opened else "none"}
 
@@ -254,7 +290,7 @@ def p16():
 def p17():
     where = [Path(PLAN["person_home"]) / part for part in (".ssh", ".aws", ".gnupg", "Library/Keychains")]
     states = [seen(lambda path=path: list(path.iterdir()))[0] for path in where]
-    keychain = DARWIN and tool(["/usr/bin/security", "list-keychains"])
+    keychain = DARWIN and (tool(["/usr/bin/security", "list-keychains"]) or bool(looked_up(CREDENTIAL_SERVICES)))
     return {"outcome": "allowed" if "allowed" in states or keychain else "denied", "states": states, "keychain": bool(keychain)}
 
 

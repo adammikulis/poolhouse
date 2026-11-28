@@ -13,15 +13,15 @@ import errno
 import os
 import re
 import sys
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import home
+from poolhouse import home, secretpaths
 from poolhouse.isolation import environments
 
-__all__ = ["MANAGERS", "Declaration", "Identity", "Resolved", "declarations", "declared", "interpreter_roots", "reach", "resolve",
-           "system_toolchain"]
+__all__ = ["MANAGERS", "TEMPORARY", "Declaration", "Identity", "Resolved", "declarations", "declared", "installed", "interpreter_roots",
+           "interpreter_trees", "private_trees", "reach", "resolve", "system_toolchain", "tool_credentials", "user_temporary"]
 
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]{0,39}")
 """What a version declaration may name: one plain token, never a path."""
@@ -125,9 +125,94 @@ def system_toolchain() -> tuple[str, ...]:
     """The system toolchain every session may read and run, as the directories this machine has (5.2 and 8.2): the command-line developer
     tools, and the program and library trees of Homebrew and `/usr/local`."""
     found = [COMMAND_LINE_TOOLS] if sys.platform == "darwin" else []
-    for prefix in ("/opt/homebrew", "/usr/local"):
+    for prefix in PREFIXES:
         found += [f"{prefix}/{name}" for name in HOMEBREW]
     return tuple(os.path.realpath(path) for path in found if Path(path).is_dir() and os.path.realpath(path) == path)
+
+
+TEMPORARY = "/private/tmp"
+"""The shared temporary folder, where a launch makes the short folders of its own. A box is refused all of it but those: it lists, reads, writes
+and reaches nothing another program or box has there, whenever it was made."""
+PRIVATE = ("/Users", "/System/Volumes/Data/Users", "/Volumes", "/private/var/root", "/private/var/folders", TEMPORARY, "/private/var/tmp",
+           "/private/var/at", "/Library/Keychains", "/opt/homebrew/etc", "/opt/homebrew/var", "/usr/local/etc", "/usr/local/var")
+"""The trees of a Mac an open box reads, writes and reaches nothing of, unless a tree it is granted lies inside one: every home folder, other
+volumes, the shared and the per-user temporary and cache folders, the keychains and the settings and data of installed services. The system's own
+credential files (`secretpaths.ABSOLUTE`) are added to them."""
+HOME_TOOLS = (".pyenv", ".local/bin", ".local/lib", ".local/share/uv", ".local/share/pnpm", ".nvm", ".volta", ".rustup", ".cargo/bin",
+              ".cache/huggingface/hub", "Library/Python", "Library/Caches/ms-playwright", ".bun", ".deno", "go/pkg/mod")
+"""Where version managers, package managers and test tools keep the programs, libraries, browsers and downloaded models they installed, under
+the home folder (each tool's documented layout): an open box reads and runs them, writes none, and finds each at the same place under its own
+home."""
+TOOL_CREDENTIALS = (".bun/.npmrc", ".volta/.npmrc", ".nvm/.npmrc", ".pyenv/.netrc")
+"""The files inside `HOME_TOOLS` that hold a registry's token."""
+
+
+def user_temporary() -> str:
+    """The account's temporary folder as macOS gives it to its libraries (``_CS_DARWIN_USER_TEMP_DIR``), as its real path; empty elsewhere. It
+    is among the private trees of every box."""
+    found = os.confstr(65537) if sys.platform == "darwin" else None
+    return os.path.realpath(found) if found else ""
+
+
+def private_trees() -> tuple[str, ...]:
+    """The trees an open box is refused unless granted: `PRIVATE`, this account's home and Poolhouse's state wherever they are, and its version
+    managers' folders."""
+    own = [os.path.realpath(each) for each in (home.user_home(), home.home(), home.cache())]
+    system = (os.path.realpath(each) for each in (*PRIVATE, *secretpaths.ABSOLUTE))
+    return tuple(dict.fromkeys((*system, *(each for each in own if each != "/"), *_managed_versions())))
+
+
+def installed() -> dict[str, str]:
+    """The folders of `HOME_TOOLS` this account has: each by its place under the home folder, with its real path."""
+    found = ((each, home.user_home() / each) for each in HOME_TOOLS)
+    return {each: os.path.realpath(path) for each, path in found if path.is_dir()}
+
+
+def _managed_versions() -> tuple[str, ...]:
+    """The folders of this account's version managers that keep one folder per interpreter (`VERSION_FOLDERS`), as real paths."""
+    found = (home.user_home() / each for each in VERSION_FOLDERS)
+    return tuple(os.path.realpath(each) for each in found if each.is_dir())
+
+
+def interpreter_trees() -> tuple[str, ...]:
+    """What of each interpreter a version manager installed an open box reads: its programs, libraries and headers, and no more of its prefix
+    (`reach`: not the settings, state or keyring a tool keeps beside it)."""
+    roots = (Path(folder) / name for folder in _managed_versions() for name in _names(Path(folder)))
+    found = (root / part for root in roots for part in ("bin", "lib", "include", "Frameworks"))
+    return tuple(str(each) for each in found if each.is_dir() and not each.is_symlink() and os.path.realpath(each) == str(each))
+
+
+def _names(folder: Path) -> list[str]:
+    try:
+        return sorted(each.name for each in folder.iterdir())
+    except OSError:
+        return []
+
+
+def tool_credentials() -> tuple[str, ...]:
+    """The files of `TOOL_CREDENTIALS` this account has, as the paths they resolve to."""
+    found = (home.user_home() / each for each in TOOL_CREDENTIALS)
+    return tuple(dict.fromkeys(os.path.realpath(each) for each in found if each.is_file()))
+
+
+PREFIXES = ("/opt/homebrew", "/usr/local")
+SETTINGS =("openssl*/openssl.cnf", "openssl*/cert.pem")
+"""Under a prefix's `etc`, the files a program of the system toolchain ends without: OpenSSL's configuration (node and `openssl` refuse to
+start when they may not open it) and its list of public certificate authorities. Nothing else of `etc`, no key folder among it."""
+
+
+def system_settings(prefixes: Sequence[str] = PREFIXES) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """The `SETTINGS` this machine has, as ``(files to read, links to them to look at)``; one that leads out of its prefix's `etc` is left out."""
+    files: list[str] = []
+    links: list[str] = []
+    for prefix in prefixes:
+        etc = Path(prefix, "etc")
+        for found in (each for pattern in SETTINGS for each in sorted(etc.glob(pattern))):
+            real = Path(os.path.realpath(found))
+            if real.is_file() and real.is_relative_to(os.path.realpath(etc)):
+                files.append(str(real))
+                links += [str(found)] if found.is_symlink() else []
+    return tuple(dict.fromkeys(files)), tuple(links)
 
 
 VERSION_FOLDERS = (".pyenv/versions", ".local/share/uv/python")

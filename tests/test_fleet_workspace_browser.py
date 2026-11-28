@@ -5,15 +5,19 @@ from __future__ import annotations
 import pytest
 from rail import reach
 from test_fleet_ui import Serving
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: a real daemon reads this test's own node)
+    alone,
+    unfounded_node,
+)
+from test_studio_canvas_browser import studio_daemon
 
+pytest_plugins = ('testfarm_kit',)  # the `node_binary` fixture
 pytestmark = pytest.mark.slow
 
 
-def test_dataset_upload_preview_and_specialist_help(tmp_path, monkeypatch, playwright):
+def test_dataset_upload_preview_and_specialist_help(alone, tmp_path, monkeypatch, playwright):  # noqa: F811
     pw = pytest.importorskip('playwright.sync_api')
-    served = Serving(tmp_path)
-    served.ui.root = tmp_path / "traind"
-    served.ui.settings.setup_done = True
+    served = studio_daemon(tmp_path)
     try:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page()
@@ -43,7 +47,9 @@ def test_dataset_upload_preview_and_specialist_help(tmp_path, monkeypatch, playw
         reach(page, 'gym')
         page.get_by_label('Controller', exact=True).select_option('ppo')
         page.get_by_label('PPO checkpoint path').fill('/tmp/policy.zip')
-        pw.expect(page.get_by_role('button', name='Apply controller', exact=True)).to_be_disabled()
+        apply = page.locator('gym-view button', has_text='Apply controller')
+        pw.expect(apply).to_be_disabled()
+        pw.expect(apply).to_be_hidden()   # without a session there is nothing to apply a controller to
         applied = page.evaluate("""async () => {
             const gym = document.querySelector('gym-view');
             const calls = [];
@@ -58,7 +64,8 @@ def test_dataset_upload_preview_and_specialist_help(tmp_path, monkeypatch, playw
             gym.session = null;
             return {before, calls};
         }""")
-        assert applied['before'] == 1
+        assert applied['before'] == 0   # an edited controller stays pending until the person applies it
+        assert len(applied['calls']) == 1
         assert applied['calls'][0]['payload']['decision_checkpoint'] == '/tmp/trained-pointer'
         assert not errors
         browser.close()

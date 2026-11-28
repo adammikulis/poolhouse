@@ -34,13 +34,18 @@ from poolhouse.http import Server
 pytest_plugins = ["tests.confined_kit"]
 
 SERVING = '''
-    held = socket.socket()
-    held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
+    preload = os.environ.get("BUN_INSPECT_PRELOAD")
+    if preload:   # the box binds no address: the server listens where the preload's first line puts OpenCode's own
+        held = socket.socket(socket.AF_UNIX)
+        held.bind(open(preload).readline().split('"')[1])
+    else:
+        held = socket.socket()
+        held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
     held.listen()
     asked = 0
     while True:
         connection = held.accept()[0]
-        connection.recv(65536)
+        print("PLUMBING asked " + connection.recv(65536).split(b" HTTP/")[0].decode(), file=sys.stderr, flush=True)
         asked += 1
         said = b"200 OK" if asked > starting else b"503 Service Unavailable"
         if asked > starting:
@@ -51,7 +56,8 @@ SERVING = '''
 """What a stand-in's `serve` does, as OpenCode 2.4.2 starts: it listens at once, answers 503 ``starting`` times and 200 from then on."""
 
 HARNESS = '''#!{python}
-# NOT A MODEL and NOT OPENCODE: it holds the port as `serve`; as `run` it writes one file and, only when `hooked`, calls the parent as the plugin does.
+# NOT A MODEL and NOT OPENCODE: as `serve` it listens where OpenCode's server would; as `run` it writes one file and, only when `hooked`, calls the
+# parent as the plugin does.
 import json, os, socket, subprocess, sys
 args = sys.argv[1:]
 if args[0] == "serve":
@@ -85,7 +91,8 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
 
     def run_opencode(confinement):
         seen["argv"], seen["env"] = list(confinement.argv), dict(confinement.env)
-        seen["net"] = confinement.profile.policy.net
+        seen["net"], seen["sockets"] = confinement.profile.policy.net, confinement.profile.policy.unix_namespaces
+        seen["through"] = Path(seen["argv"][7]).read_text()
         seen["config"] = json.loads(Path(seen["env"]["OPENCODE_CONFIG"]).read_text())
         [folder] = seen["config"]["plugins"]
         seen["folder"] = (Path(folder).relative_to(seen["env"]["HOME"]).as_posix(), sorted(each.name for each in Path(folder).iterdir()))
@@ -95,12 +102,20 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     said = []
     assert opencode.launch(["--sandbox", "--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append,
                            run_opencode=run_opencode) == 0, said
-    sh, flag, script, name, program, port, *rest = seen["argv"]
+    sh, flag, script, name, program, port, server, preload, session, body, *rest = seen["argv"]
     assert (sh, flag, name, program) == ("/bin/sh", "-c", "opencode", str(binary.resolve()))
+    assert session == "" and Path(json.loads(body)["directory"]).name.startswith("tool-"), "no conversation is moved to the stage"
     assert rest == ["--format", "json", "--model", "poolhouse/local-model", "fix it"]
     assert '"$1" serve --print-logs --log-level warn --hostname 127.0.0.1 --port "$2" >&2 &' in script
     assert 'run --server "http://127.0.0.1:$port"' in script and "--standalone" not in script
-    assert seen["net"].listen == (int(port),) and len(seen["net"].ports) == 1, "the model bridge and the server the launcher chose, no other port"
+    if sys.platform == "darwin":
+        # Owner-order: "No agent should be inhibited from doing their work that is given them." The box reaches this machine's loopback, and
+        # is refused the model server's own port
+        assert seen["net"].mode == "loopback" and 8080 in seen["net"].refused and int(port) not in seen["net"].refused, seen["net"]
+    else:
+        assert len(seen["net"].ports) == 1 and int(port) not in seen["net"].ports, "the model bridge's port and no other: the server's is only a name"
+    assert seen["sockets"] == (str(Path(server).parent),) and preload == str(Path(seen["env"]["HOME"]) / "bin" / "poolhouse-server.js")
+    assert seen["through"].startswith(f"const socket = {json.dumps(server)};\nconst port = {port};\n")
     assert seen["env"]["OPENCODE_PASSWORD"] == provider_key(seen), "the server answers only to the bridge token"
     assert seen["env"]["OPENCODE_DISABLE_AUTOUPDATE"] == "true" and seen["env"]["OPENCODE_DISABLE_MODELS_FETCH"] == "true"
     assert seen["env"]["OPENCODE_DISABLE_PROJECT_CONFIG"] == "true", "a project's own config replaces neither the permissions nor the plugin"
@@ -110,12 +125,13 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     assert not provider["options"]["baseURL"].startswith("http://127.0.0.1:8080"), "OpenCode reaches the bridge, never the server"
     assert provider["options"]["apiKey"] != "local" and len(provider["options"]["apiKey"]) >= 32, "the bridge's token, minted for the launch"
     assert seen["config"]["autoupdate"] is False and seen["config"]["share"] == "disabled"
+    assert provider["options"]["headerTimeout"] is False, "a request that waits for its turn, or a long prompt, is not given up"
     assert 'ctx.tool.hook("execute.before", before)' in seen["plugin"]
     assert "client.py" in seen["plugin"] and "poolhouse.harnesshook" not in seen["plugin"]
     assert seen["folder"] == ("bin/poolhouse-plugin", ["index.js"]), "OpenCode loads a configured plugin only from a folder, and the box holds bin whole"
 
 
-# NOT A MODEL and NOT OPENCODE: as `serve` it says a marked line on each of its outputs and holds the port; as `run` it tries to change the plugin.
+# NOT A MODEL and NOT OPENCODE: as `serve` it says a marked line on each of its outputs and listens; as `run` it tries to change the plugin.
 MEDDLER = '''#!{python}
 import json, os, socket, subprocess, sys
 args = sys.argv[1:]
@@ -151,8 +167,9 @@ print("ready" if os.path.exists(os.path.join(os.environ["HOME"], "tmp", "ready")
 '''
 
 
-def stood_in(monkeypatch, tmp_path, code):
-    """One launch of the marked program ``code`` in the harness's place, run to its end: its status, the launcher's lines and its two outputs."""
+def stood_in(monkeypatch, tmp_path, code, words=("fix it",)):
+    """One launch of the marked program ``code`` in the harness's place, given ``words`` as `run`'s own and run to its end: its status, the
+    launcher's lines and its two outputs."""
     binary = tmp_path / "opencode-NOT-OPENCODE"
     binary.write_text(code.format(python=os.path.realpath(sys.executable), serving=SERVING))
     binary.chmod(0o755)
@@ -168,7 +185,7 @@ def stood_in(monkeypatch, tmp_path, code):
     monkeypatch.setattr(opencode.harnessing, "window_of", lambda _: 49152)
     monkeypatch.setattr(opencode.harnessing, "opened", opened)
     out, err, said = io.BytesIO(), io.BytesIO(), []
-    status = opencode.launch(["--sandbox", "--on", "http://127.0.0.1:8080", "--project", str(project), "--", "fix it"], say=said.append,
+    status = opencode.launch(["--sandbox", "--on", "http://127.0.0.1:8080", "--project", str(project), "--", *words], say=said.append,
                              run_opencode=lambda confinement: confinement.run(None, out, err))
     return status, said, out.getvalue().decode(), err.getvalue().decode()
 
@@ -186,6 +203,22 @@ def test_the_server_is_heard_on_the_error_output_and_the_box_lets_a_run_neither_
 def test_run_starts_only_once_the_server_says_it_is_ready(monkeypatch, tmp_path):
     _status, said, out, err = stood_in(monkeypatch, tmp_path, EAGER)
     assert out == "ready\n", (said, out, err)
+
+
+@pytest.mark.usefixtures("confinable", "from_a_terminal")
+def test_a_conversation_taken_up_is_moved_by_a_request_that_reaches_the_runs_own_server(monkeypatch, tmp_path):
+    """In the box of a real launch, which binds no address on macOS: the move goes where the server listens, ahead of `run`."""
+    _status, said, out, err = stood_in(monkeypatch, tmp_path, EAGER, ("--session", "ses_1", "go on"))
+    assert "PLUMBING asked POST /api/session/ses_1/move" in err and "could not be moved" not in err, (said, out, err)
+
+
+@pytest.mark.parametrize("words,found", [
+    (("--session", "ses_21e9b8ea"), "ses_21e9b8ea"), (("-s", "ses-1", "go on"), "ses-1"), (("--session=ses_2",), "ses_2"), (("go on",), ""),
+    (("--session", "../../global"), ""), (("--session", "ses_1/move?x=1"), ""), (("--session", "ses 1"), ""), (("--session",), "")])
+def test_only_a_plain_id_of_a_conversation_taken_up_reaches_the_servers_path(words, found):
+    assert opencode.taken_up(words) == found
+    argv = opencode.argv_of("/bin/opencode", "m", words, "/stage")
+    assert argv[8:10] == (found, json.dumps({"directory": "/stage"})) and argv[-len(words):] == words
 
 
 def provider_key(seen):

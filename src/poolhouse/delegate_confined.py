@@ -19,6 +19,7 @@ import os
 import queue
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -31,6 +32,7 @@ from typing import Any
 from poolhouse import (
     claude,
     delegate_candidate,
+    delegate_recorder,
     delegate_refusals,
     delegate_resume,
     delegate_review,
@@ -110,12 +112,21 @@ a file. Two of them reach {lead}:
   result. Ask only what the files cannot tell you.
 {work}Finish with your result as plain text: what you {did}. {lead} reads it as data.
 """
+OPEN_LIMITS = """\
+shell runs in the same working copy, inside a sandbox that lets a command do what it does in a shell on this computer (GPU compute, headless
+browsers, the installed tools and libraries and connections to this computer's own loopback among it) and refuses these: writing anywhere but
+the copy, your home folder and your own temporary folder ($TMPDIR; the shared /tmp is refused, so name temporary files under $TMPDIR); reading
+keys, credentials and the person's own folders; any network beyond this computer; the model server's own port; listening on a port (a Python
+server on 127.0.0.1 is given one of the sandbox's, no other program can listen); opening apps; and starting a sandbox of its own
+(sandbox-exec)."""
+CLOSED_LIMITS = """\
+shell runs in the same working copy, inside a sandbox with these limits: no network; no localhost port of this computer reached by a test; no
+Poolhouse node; no nested sandbox; and no real model."""
 SHELL_WORK = """\
-shell runs in the same working copy, inside a sandbox with these limits: no network; no localhost port can be opened, and no localhost port of
-this computer reached by a test; no Poolhouse node; no nested sandbox; and no real model. The project's environments (its main checkout's
-where this copy has none) and the .git folder are read-only (git status, diff, log and show work, a commit fails). A command ends at its timeout ({default}s unless you give another as
-`timeout`, in milliseconds, at most {most}s) and never runs in the background. A test that needs what the sandbox lacks cannot run here: in your
-result, name every test you could not run and why.
+{limits} The project's environments (its main checkout's where this copy has none) and the .git folder are read-only (git status, diff, log and
+show work, a commit fails). A command ends at its timeout ({default}s unless you give another as `timeout`, in milliseconds, at most {most}s)
+and never runs in the background. A test that needs what the sandbox refuses cannot run here: in your result, name every test you could not run
+and why.
 When your turn ends your changes are applied to the project; only changes to .git, to a coding tool's settings, to credential files and
 links that lead out of the project are refused and kept aside for {lead}.
 """
@@ -221,16 +232,23 @@ class Hooks:
 
 
 class Stream:
-    """What OpenCode has said so far, one line of ``run --format json`` at a time. ``ran`` is given the part of each tool call that has ended."""
+    """What OpenCode has said so far, one line of ``run --format json`` at a time. ``ran`` is given the part of each tool call that has ended, and
+    ``record`` every event, to keep in the run's record."""
 
-    def __init__(self, ran: Callable[[Mapping[str, Any]], None] = lambda _part: None) -> None:
-        self.ran = ran
+    def __init__(self, ran: Callable[[Mapping[str, Any]], None] = lambda _part: None, record: delegate_recorder.Pass | None = None) -> None:
+        self.ran, self.record = ran, record
         self.texts: list[str] = []
         self.last: list[str] = []
         """The text of the newest step: the final answer, once a step ends the run."""
         self.tokens = dict.fromkeys(("input", "output", "reasoning", "read", "write"), 0)
         self.turns, self.finished, self.model_s = 0, 0, 0.0
         self.tool, self.reason, self.error, self.session = "", "", "", ""
+
+    def looked(self, with_model: bool, seconds: float) -> None:
+        """Take in one look at the model server: whether a request is with it, and the seconds since the last look."""
+        self.model_s += seconds if with_model else 0.0
+        if self.record is not None:
+            self.record.beat(with_model)
 
     def line(self, raw: bytes) -> bool:
         """Take one line in; whether it moved the turns, the last tool or the text."""
@@ -240,6 +258,8 @@ class Stream:
             return False
         if not isinstance(row, dict):
             return False
+        if self.record is not None:
+            self.record.row(row)
         kind = row.get("type")
         part = row.get("part") if isinstance(row.get("part"), dict) else {}
         self.session = str(row.get("sessionID") or self.session)
@@ -344,7 +364,7 @@ def follow(confinement: isolation.Confinement, process: subprocess.Popen[bytes],
             chunk, ready = b"", False
         now = time.monotonic()
         with_model = confinement.waiting_for_model()
-        stream.model_s += now - looked if with_model else 0.0
+        stream.looked(with_model, now - looked)
         looked = now
         if ready:
             if not chunk:
@@ -392,7 +412,8 @@ def leased(model: str, say: Callable[[str], None]) -> Iterator[tuple[str, Any, s
 def brief_of(rec: store.Delegate) -> str:
     """The system prompt of ``rec``: the same for every delegate of one lead that does the same kind of work."""
     shell = SHELL_WORK if rec.sandboxed else UNSANDBOXED_WORK
-    work = shell.format(lead=rec.lead, default=int(SHELL_DEFAULT_S), most=int(SHELL_MAX_S)) if rec.edit else READ_WORK
+    limits = OPEN_LIMITS if sys.platform == "darwin" else CLOSED_LIMITS
+    work = shell.format(lead=rec.lead, limits=limits, default=int(SHELL_DEFAULT_S), most=int(SHELL_MAX_S)) if rec.edit else READ_WORK
     project = "a working copy of the project" if rec.sandboxed else "the project folder itself"
     return REQUIRED_BRIEFING.format(owner=rec.lead) + BRIEF.format(
         lead=rec.lead, tools=", ".join(tools_of(rec.edit)), work=work, folder=project if rec.source else "an empty folder",
@@ -443,6 +464,7 @@ def converse(rec: store.Delegate, bridge: Any, mine: Any, say: Callable[[str], N
 def told(rec: store.Delegate, mine: Any, model: delegate_resume.Model) -> None:
     """Record the model a run has leased: on its session and in its record."""
     mine.record_model(model.alias, "poolhouse-agent", model.url)
+    delegate_recorder.of(rec.name).add("model", alias=model.alias, file=Path(model.found).name, window=model.window)
     store.keep(rec.name, run={"served": delegate_review.served(model.found, model.alias, model.serving)})
 
 
@@ -507,8 +529,8 @@ class _Boxed:
         args = arguments(rec, ask.tier)
         args.launch = isolation.decide_launch(isolation.Arguments(), project=args.project)   # a folder the lead named had its widening decided at `start`
         seen = delegate_refusals.Writes(args.project)
-        stream = Stream(seen.ran)
-        hooks = Hooks(answered=seen.asked)
+        stream = Stream(seen.ran, delegate_recorder.of(rec.name).of_pass(ask, lambda: bool(bridge and bridge.asking)))
+        hooks = Hooks(answered=stream.record.after(seen.asked))
 
         def progress() -> None:
             store.set_progress(rec.name, stream.turns, nudge_fence.clean(hooks.tool or stream.tool))
@@ -527,9 +549,12 @@ class _Boxed:
         how = harnessing.Harness("opencode", self.binary, served, say, lead=lambda _helper: reach, conversation="", observe=hooks.heard)
         run = harnessing.Session(helper, Path(args.project), ask.brief)
         with harnessing.confined(args, run, how, renderer(rec, self.binary, served, ask)) as box:
+            stream.record.boxed(box)
+
             def go(before: Callable[[], None] = lambda: None) -> delegate_review.Ran:
                 store.set_phase(rec.name, ask.phase, ask.round)
                 store.set_status(rec.name, "working", alias)
+                stream.record.started()
                 seen.within(box.profile.stage, box.profile.refuses_write, str(box.home))
                 status, why, read = 1, "", False
                 try:
@@ -656,7 +681,9 @@ class _Boxed:
         except (Denied, OSError, RuntimeError, ValueError) as error:
             why = f"{type(error).__name__}: {error}"
             self.say(why)
-            return delegate_review.Ran(harness.Answer("", harness.Usage(), is_error=True, why=why))
+            failed = delegate_review.Ran(harness.Answer("", harness.Usage(), is_error=True, why=why))
+            delegate_recorder.of(self.rec.name).ended(ask, failed, 0.0)
+            return failed
 
     def _came_to(self, answer: harness.Answer, outcome: delegate_review.Outcome | None) -> harness.Answer:
         """``answer`` with what every pass spent, what the publications came to and the writes that were refused."""

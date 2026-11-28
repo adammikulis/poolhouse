@@ -32,8 +32,9 @@ class Spec:
     frozen: tuple[str, ...] = ()
     """Paths inside the agent home the launcher wrote and the harness reads: its settings, its hooks and its client. The home is writable, so these
     are refused a write one by one, and the harness cannot rewrite the gate it runs under."""
-    listen: tuple[int, ...] = ()
-    """Loopback ports the harness binds and reaches for a server of its own (`Rendering.listen`); no other port is added to the model's."""
+    server: str = ""
+    """On macOS, the private folder of the Unix socket a harness's own server listens on (`Rendering.serves`): the session serves and reaches
+    sockets in it and makes no other file there. Empty where the harness runs no server, or the box has a loopback of its own (Linux)."""
     environments: tuple[str, ...] = ()
     """The real paths of the project's environment folders the stage links (`workspace.environment_links`): read, run and on ``PATH``, never
     written."""
@@ -42,6 +43,11 @@ class Spec:
     binds itself."""
     window_socket: str = ""
     """The Unix socket on which the launcher hands those ports over."""
+    temp: str = ""
+    """The session's own temporary folder, its ``TMPDIR``: on macOS a short one in the shared temporary folder, so the path of a socket made in
+    it fits; empty where the agent home holds the temporary files."""
+    withheld: tuple[int, ...] = ()
+    """Loopback ports of this machine's services that a box which reaches its loopback may still not reach: the model server's."""
 
     @property
     def read_only_stage(self) -> bool:

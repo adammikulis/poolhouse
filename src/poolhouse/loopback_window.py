@@ -53,6 +53,8 @@ def bind(sock: socket.socket, address: object, system=None) -> None:
         bridge.connect(found[1])
         bridge.sendall(json.dumps(asked).encode() + b"\n")
         said, handed, _, _ = socket.recv_fds(bridge, 128, 1)
+        if handed:
+            bridge.sendall(b"k")   # the launcher keeps its own descriptor until this one has arrived
     if not handed:
         number = json.loads(said or b"{}").get("errno", errno.EPERM)
         raise OSError(number, os.strerror(number))

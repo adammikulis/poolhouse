@@ -29,15 +29,15 @@ from pathlib import Path
 
 from poolhouse import activity, home, procscan
 from poolhouse.coding_workspace_state import CONTROL_PREFIXES
-from poolhouse.isolation import probe
+from poolhouse.isolation import probe, toolchain
 from poolhouse.isolation.capability import capability, drop_cache, lan_address
 from poolhouse.isolation.environment import allowed
 from poolhouse.isolation.profile import Profile
 from poolhouse.isolation.refusals import IsolationFailed
 from poolhouse.isolation.serving import IDLE_SECONDS
 from poolhouse.platform import start_process
-from poolhouse.sandbox import Limits, bubblewrap, confinement, run as run_sandboxed, seatbelt
-from poolhouse.sandbox.backend import Backend
+from poolhouse.sandbox import Limits, bubblewrap, confinement, run as run_sandboxed, seatbelt_open
+from poolhouse.sandbox.backend import Backend, Exposure
 from poolhouse.sandbox.io import IO
 from poolhouse.sandbox.run import HOOKS
 
@@ -179,7 +179,8 @@ def _accept(sock: socket.socket, name: str, canaries: Canaries) -> None:
 
 @contextlib.contextmanager
 def _canaries(lan: bool) -> Iterator[Canaries]:
-    root = os.path.realpath(tempfile.mkdtemp(prefix="pp-proof-", dir=tempfile.gettempdir()))
+    # in the account's own temporary folder, which every box is refused, wherever the launcher's `TMPDIR` points
+    root = os.path.realpath(tempfile.mkdtemp(prefix="pp-proof-", dir=toolchain.user_temporary() or tempfile.gettempdir()))
     secret, working = secrets.token_hex(16), str(Path(root) / "work")
     Path(working).mkdir()
     Path(root, "canary").write_text(secret)
@@ -224,14 +225,22 @@ def _variants() -> list[str]:
     return list(dict.fromkeys(v for name in CONTROL_PREFIXES for v in (name, name.upper(), name.swapcase(), name.title())))
 
 
+def _exposed() -> tuple[Exposure, ...]:
+    """The exposures declared for the boxes this computer builds."""
+    return (*seatbelt_open.EXPOSURES, *bubblewrap.EXPOSURES)
+
+
 def _plan(profile: Profile, services: Services, held: Canaries) -> dict[str, object]:
-    exposures = [*seatbelt.EXPOSURES, *bubblewrap.EXPOSURES]
+    exposures = _exposed()
     names = _said(["/usr/sbin/sysctl", "-aN"]).split() if sys.platform == "darwin" else []
     lan = held.lan.getsockname() if held.lan else None
     return {"digest": profile.digest, "canary": str(Path(held.directory) / "canary"), "canary_dir": held.directory,
             "person_home": str(home.user_home()), "stage": profile.stage, "home": profile.home, "control_variants": _variants(),
             "loopback_port": held.tcp.getsockname()[1], "udp_port": held.udp.getsockname()[1], "lan": list(lan) if lan else None,
             "unix_socket": held.unix.getsockname(), "model_port": services.model_port, "session_socket": services.session_socket,
+            "open": profile.policy.open, "withheld": list(profile.policy.net.refused),
+            "named_ports": sorted({services.model_port, *profile.policy.net.ports, *profile.policy.net.refused, *profile.policy.net.accept[:1],
+                                   *profile.policy.net.accept[-1:]}),
             "launcher": os.getpid(), "bystander": held.bystander.pid, "marker": held.marker, "terminal": held.terminal, "program": held.program,
             "readable_file": os.path.realpath(sys.executable),
             "stage_controls": [name for name in CONTROL_PREFIXES if os.path.lexists(Path(profile.stage) / name)],
@@ -243,7 +252,7 @@ def _plan(profile: Profile, services: Services, held: Canaries) -> dict[str, obj
 
 def _declared(record: Mapping[str, object]) -> list[str]:
     """What the probe could read that no exposure declares: system names outside the exact and prefix lists, and files outside the paths."""
-    exposures = [*seatbelt.EXPOSURES, *bubblewrap.EXPOSURES]
+    exposures = _exposed()
     exact = {name for each in exposures for name in each.sysctls}
     prefixes = tuple(prefix for each in exposures for prefix in each.sysctl_prefixes)
     paths = {path for each in exposures for path in each.paths}
@@ -259,10 +268,11 @@ def _healthy(record: Mapping[str, object], writable: bool) -> bool:
             and record.get("props") == 404 and (refused == "denied" or (isinstance(refused, int) and refused >= 400)))
 
 
-def _leaks(record: Mapping[str, object], held: Canaries) -> list[str]:
-    """The kinds of machine identifier found in what the probe obtained; the values never leave this function."""
+def _leaks(record: Mapping[str, object], held: Canaries, profile: Profile) -> list[str]:
+    """The kinds of machine identifier found in what the probe obtained; the values never leave this function. An open box lists the network
+    interfaces, their hardware addresses with them (exposure X3), as a program of this machine does."""
     text = str(record.get("data", "")).lower()
-    return sorted(kind for kind, value in held.identifiers.items() if value.lower() in text)
+    return sorted(kind for kind, value in held.identifiers.items() if value.lower() in text and not (profile.policy.open and kind.startswith("address-")))
 
 
 def _refusal(record: Mapping[str, object]) -> bool:
@@ -284,10 +294,11 @@ def _judge(name: str, record: Mapping[str, object], profile: Profile, held: Cana
     state = str(record.get("outcome", ""))
     if name in ("P01", "P05"):
         return state == "denied" and held.secret not in str(record.get("data", "")), state
-    if name == "P08" and held.lan is None:
+    if name == "P08" and held.lan is None and not profile.policy.open:
         return True, "not checked: this computer has no address on a network to listen on"
     if name in ("P07", "P08", "P09", "P10"):
-        return _heard(name, record, held)
+        return _heard(name, record, held)   # an open box's attempts reach none of the parent's listeners either
+
     if name == "P03":
         return state == "denied" and not (Path(held.directory) / "written").exists(), state
     if name == "P04":
@@ -308,7 +319,7 @@ def _judge(name: str, record: Mapping[str, object], profile: Profile, held: Cana
     if name == "P21":
         return state == "allowed" and _refusal(record), state
     if name == "P22":
-        leaked = _leaks(record, held)
+        leaked = _leaks(record, held, profile)
         return not leaked, "absent" if not leaked else "found: " + ", ".join(kind.split("-")[0] for kind in leaked)
     if name == "P23":
         outside = _declared(record)

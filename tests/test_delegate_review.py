@@ -41,9 +41,14 @@ import http.client, json, os, re, socket, subprocess, sys
 CANNED = "[CANNED RESPONSE, NOT A MODEL]"
 args = sys.argv[1:]
 if args[0] == "serve":
-    held = socket.socket()
-    held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
+    preload = os.environ.get("BUN_INSPECT_PRELOAD")
+    if preload:   # the box binds no address: the server listens where the preload's first line puts OpenCode's own
+        held = socket.socket(socket.AF_UNIX)
+        held.bind(open(preload).readline().split('"')[1])
+    else:
+        held = socket.socket()
+        held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        held.bind(("127.0.0.1", int(args[args.index("--port") + 1])))
     held.listen()
     while True:
         connection = held.accept()[0]
@@ -97,6 +102,11 @@ else:
     open(talk, "w").write(task)
 if taken_up and "mode:no-session" in task:
     sys.exit(2)   # as a release that cannot take a conversation up: it ends before any step
+if taken_up and "then-busy" in task and not os.path.exists(talk + ".busy"):
+    open(talk + ".busy", "w").close()
+    hook("post", {{"loaded": True}})
+    event("error", error={{"type": "provider.rate-limit", "message": "PLUMBING: the model is busy"}})
+    sys.exit(1)   # the conversation was taken up and the model refused its first request: no step ran
 hook("post", {{"loaded": True}})
 event("step_start", part={{}})
 token = re.search(r'verdict token for this review is "([0-9a-f]+)"', task)
@@ -267,7 +277,7 @@ def test_a_reviewer_is_not_instructed_by_an_instruction_file_the_work_wrote(chec
     assert "instructed=False" in run.rounds[0]["checks"][0]["result"], run.rounds
 
 
-@pytest.mark.parametrize("mode", ["break", "no-session"])
+@pytest.mark.parametrize("mode", ["break", "no-session", "break-then-busy"])
 def test_a_run_whose_model_server_goes_away_is_continued_with_its_files_and_conversation(checked, mode):
     checked.plan[:] = ["breaks", "up"]
     run = ran(checked, mode)
@@ -279,9 +289,12 @@ def test_a_run_whose_model_server_goes_away_is_continued_with_its_files_and_conv
     if mode == "break":
         assert run.passes == [("work", 0, 0), ("work", 0, 1), ("review", 1, 0)], run.row
         assert "taken-up=conversation-1 remembered=True told=True anew=False" in text, text
-    else:   # a harness that cannot take the conversation up starts a new one, told of the break
-        assert run.passes == [("work", 0, 0), ("work", 0, 1), ("work", 0, 2), ("review", 1, 0)], run.row
+        return
+    assert run.passes == [("work", 0, 0), ("work", 0, 1), ("work", 0, 2), ("review", 1, 0)], run.row
+    if mode == "no-session":   # a harness that cannot take the conversation up starts a new one, told of the break
         assert "taken-up= remembered=False told=True anew=True" in text, text
+    else:   # an attempt the model refused before its first step is no reason to give the conversation up
+        assert "taken-up=conversation-1 remembered=True told=True anew=False" in text, text
 
 
 @pytest.mark.parametrize("words", [["--review-rounds", "3"], ["--no-review"]], ids=["checked", "unchecked"])

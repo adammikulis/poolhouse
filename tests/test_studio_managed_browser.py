@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import pytest
 from browser_expect import expect
+from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 from test_studio_live_browser import live_page as _live_page, open_live
 

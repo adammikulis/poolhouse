@@ -4,7 +4,7 @@
 serves. A launch is the agent as the person has it: on the project folder itself, interactive or in print mode, with
 their own settings, MCP servers, programs and network, on macOS, Linux and Windows, in any folder. The launcher serves
 the model, points that one run at it and gives it a workspace session. `--sandbox` runs it instead on a copy of the
-project inside an operating-system sandbox with no network but the model. Codex is the default coding harness (a
+project inside an operating-system sandbox that reaches no network beyond this computer. Codex is the default coding harness (a
 lighter system prompt and tool list).
 
 ```
@@ -219,26 +219,40 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
   anything installed in that environment (an editable install there points at the person's own checkout, which is not readable).
 - **No environment.** A project that asks for one (`pyproject.toml`, `requirements.txt`, `package.json` and the like) and has none the box can
   use is told so in one sentence, in the delegate's brief and in its result.
-- **The preflight.** Before the harness starts, the launcher runs in the proved box `git status`, `diff`, `log` and `show`, and (for a stage
-  the session writes) asks the project's test runner to collect its smallest test file (`scripts/test`, pytest, a `package.json` test
-  program, `cargo metadata`). What fails is posted to the launching session at once and is in the delegate's brief and result; an edit run
-  that changed files and could not start the tests ends `partial`, with `untested:` first in its detail (`isolation.preflight`).
-- **History.** The stage holds the newest 200 commits of the project's `HEAD` and no blob a commit holds under a credential name. A session
-  that reads and runs nothing finds `status.txt`, `changes.diff` and `log.txt` in `.git/poolhouse-review` (`isolation.history`).
-- **Programs.** The system's, Homebrew's and `/usr/local`'s `bin` and Apple's command-line tools are on `PATH`. `/usr/bin/python3` does not
-  run (it is a shim that asks a service the profile refuses). git does not read the system configuration. A program file the session wrote
-  into the stage cannot be run (`sh script.sh` and `python file.py` can).
+- **The preflight.** Before the harness starts, the launcher runs in the proved box `git status`, `diff`, `log` and `show`, writes the tree
+  of a copy of the index as a tool's snapshot does, runs `git` with no environment and the system's `PATH` alone, and (for a stage the
+  session writes) asks the project's test runner to collect its
+  smallest test file (`scripts/test`, pytest, a `package.json` test program, `cargo metadata`). What fails is posted to the launching session
+  at once and is in the delegate's brief and result; an edit run that changed files and could not start the tests ends `partial`, with
+  `untested:` first in its detail (`isolation.preflight`).
+- **History.** The stage holds the newest 200 commits of the project's `HEAD` and no blob a commit holds under a credential name. Its trees
+  are read without those names (`git replace`), so status, diffs, the log, the index and `git write-tree` work and show neither the file nor a
+  change or deletion of it; the commits keep their own ids. A session that reads and runs nothing finds `status.txt`, `changes.diff` and
+  `log.txt` in `.git/poolhouse-review` (`isolation.history`).
+- **Programs.** What a shell here has: the system's, Homebrew's and `/usr/local`'s `bin` and the programs your package managers installed
+  are on `PATH`, and the version managers' interpreters, the installed browsers (Playwright) and downloaded models are read at the same
+  place under the box's home (`isolation.toolchain.HOME_TOOLS`; none is written, and a registry token among them is not read). Apple's
+  `/usr/bin/git`, `cc` and `python3` run the developer tools the machine has selected. Of Homebrew's and `/usr/local`'s `etc` the box
+  reads only OpenSSL's `openssl.cnf` and public `cert.pem` (`toolchain.system_settings`). git does not read the system configuration.
+- **GPU and browsers** (macOS). A command computes on the GPU (Metal, MLX) and runs a headless Chromium, with the browser's inner
+  sandbox off inside the box.
 - **git.** `.git` is read-only: `git status` and `git diff` work; `git add` and `git commit` fail.
 - **Time and output.** A command ends at its timeout (180 s unless it asks for another, at most 600 s) with everything it left running: the
   plugin runs each one under `delegate_confined.BOUNDED`, since OpenCode itself would move a command that overruns to the background. The model
   is given at most as many bytes of a tool's output as the served window has tokens (OpenCode's `tool_output`, docs/limits.md). The delegate's
   no-progress limit does not count the time a command is within its timeout.
-- **Loopback** (macOS, an editing delegate). Python serves and connects over TCP on `127.0.0.1` and `::1` within the box's own window of
-  ports: a bind of port 0 gets the next one. The box binds nothing itself; the launcher binds each socket and hands it over, so nothing the box
-  runs listens on another address. A program that is not Python, a Python started with `-I`, a Unix or UDP server and a fixed port outside
-  the window are refused.
-- **Not there.** No network, no other port of this computer to reach but the model bridge's, no Poolhouse node, no nested sandbox and no real
-  model. A test that needs one cannot run, and the brief tells the agent to name every test it could not run.
+- **Loopback** (macOS). A command connects to any service of this computer over loopback, except the model server's port. An editing
+  delegate's Python serves over TCP on `127.0.0.1` and `::1` within the box's own window of ports: a bind of port 0 gets the next one. The
+  box binds no IP address itself; the launcher binds each socket and hands it over, so nothing the box runs listens on another address. A
+  server of a program that is not Python, of a Python started with `-I`, over UDP or on a fixed port outside the window is refused; unix
+  sockets in the box's own folders work. The launcher hands a port only to a process of that launch's own tree (`serving.admitted`).
+- **Temporary files** (macOS). `TMPDIR` is a short folder of the launch's own in `/tmp`. The rest of `/tmp` and `/var/tmp` is not listed,
+  read, written or reached, so a program that names `/tmp` itself instead of `TMPDIR` is refused.
+- **Refused** (macOS; `sandbox/seatbelt_open.py`, held by `tests/test_redteam_open_box.py`). Writing outside the copy, the box's home and
+  its own temporary folder; reading the person's folders, other programs' temporary files, keys, the keychain and credential services; a network
+  beyond this computer; other processes' signals, memory, arguments and terminals; opening apps, scheduling jobs, Apple events, the
+  clipboard, screen, camera and microphone; a sandbox of its own (`sandbox-exec`). The brief tells the agent to name every test it could
+  not run.
 - **Processes.** A command signals the processes of its own box (grandchildren and ones that left their group among them) and no other, and
   every one of them ends with the session.
 
@@ -323,11 +337,12 @@ the same lease, window, permission profiles, workspace session and publication o
   login is run and nothing waits. OpenCode's own traffic (update check, the model list, LSP downloads, sharing, the Claude Code file import) is off.
   Its permissions never ask: the plugin and the mount decide.
 - **Its server.** `opencode run` has no mode without a server, and its own private one (`--standalone`) listens on a port the operating system picks,
-  which a box that names the ports it opens cannot allow (the Seatbelt log showed the bind of port 0 denied). So the confined process runs
-  `opencode serve --hostname 127.0.0.1 --port N` and, once `/api/info` answers 200 (it answers 503 while the server starts, and `run` asks only once),
-  `opencode run --server http://127.0.0.1:N`, with `N` chosen by the launcher and opened for the
-  box as `Net.only(bridge, listen=(N,))` (outbound, bind and inbound on that one loopback port and no other), and the server answers only to the bridge
-  token (`OPENCODE_PASSWORD`). The proof's loopback canaries stay denied.
+  which the box cannot grant (the Seatbelt log showed the bind of port 0 denied). So the confined process runs
+  `opencode serve --hostname 127.0.0.1 --port 4096` and, once `/api/info` answers 200 (it answers 503 while the server starts, and `run` asks only
+  once), `opencode run --server http://127.0.0.1:4096`, and the server answers only to the bridge token (`OPENCODE_PASSWORD`). On macOS no port is
+  bound, since a rule that lets a box bind one lets it listen to the network: both processes load a file of the agent home first
+  (`BUN_INSPECT_PRELOAD`, `opencode.through_socket`) that puts the server on a Unix socket of the box and sends requests for that URL there. A Linux
+  box binds the port on its own loopback. The proof's loopback canaries stay denied.
 - **The gate.** A plugin (OpenCode 2's shape, a default export with `id` and `setup`: its `execute.before` and `execute.after` tool hooks and its
   `context` session hook) runs the same client as Pi's extension (`poolhouse.harness_js`) and asks the parent's classifier over the session bridge
   before each tool call; a deny, or a hook that cannot be reached, throws, which OpenCode hands back to the model as the tool's error. 2.4.2 loads a
@@ -361,6 +376,7 @@ poolhouse-delegate start --task "list the python files here and say what each do
 poolhouse-delegate warm [--model ID] [--edit]
 poolhouse-delegate wait NAME
 poolhouse-delegate status [NAME]
+poolhouse-delegate follow NAME [--once]
 poolhouse-delegate result NAME
 poolhouse-delegate stop NAME
 poolhouse-delegate grade NAME correct|partly|wrong|unusable --critique TEXT [--check "RUN => SAW"] [--survived PERCENT] [--as AGENT]
@@ -379,8 +395,35 @@ session that started the delegate reviews the branch, grades it (`grade`, an ent
 rejected, fails or is stopped keeps its patch, and its worktree and branch are removed; so is a worktree after a commit. If the runner's process is
 gone, `stop NAME` removes what it left. `--in-place` changes the project folder itself instead; a project with no commit is also changed in place.
 
-`--wait` returns when the delegate ends (its result and exit status) or asks something (status 3); `wait NAME` does the same for one already
-started. Run either in the background and the harness that runs it is woken then; the board message reaches the lead either way.
+`--wait` returns when the delegate ends (its result and exit status), asks something (status 3) or has a new notice while it goes on
+(status 4, "What the lead is told"); `wait NAME` does the same for one already started. Run either in the background and the harness that runs it is
+woken then; the board message reaches the lead either way.
+
+### Watching a run
+
+**The record** (`poolhouse.delegate_record`). The launcher, outside the box, appends one JSON line to `events.jsonl` in the delegate's folder as
+each thing happens: the run and its model, every change of state, the preflight's findings, each attempt and restart and why it ended, each step,
+each tool call with its command or file and whether it was denied, each result with its exit status, time and the end of its output, the model's
+visible messages, each test run with its passed, failed and error counts (`poolhouse.delegate_testrun`: pytest and `scripts/test`, unittest, cargo,
+jest, vitest, `node --test`), each step's tokens, tokens a second of model time and share of the prompt reused, each notice and how the run ended.
+Nothing removes it: `stop`, the end of a run and the removal of the box leave it. What a box said is data: every text is stripped of terminal
+escapes and of control and invisible characters, has recognized credentials, the credentials of the runner's environment and the run's own tokens
+replaced, and is cut to a bound (a command 2000 characters, an output its last 60 lines and 4000 characters); past 16 MB the record leaves outputs
+and messages out, past 24 MB it adds only what says how the run went, and it ends at 32 MB (docs/limits.md).
+
+**`status`** prints one line per run, fenced as data: its state, what it is doing now and for how long (running a named command, the model
+generating or queued, waiting for the lead, the model or the next step, and how long ago the last event was), its turn and its last test run.
+**`follow NAME`** prints the whole record from the start, fenced as data, and goes on while the run does (`--once` prints what there is).
+**The page.** The web app's **Work > Delegates** view (`/ui/#delegates`) lists the runs and shows one run's timeline as it grows. Its routes
+(`/ui/delegates`, `/ui/delegates/NAME?after=N`) are read-only, behind the page's own sign-in, and answered to this computer alone.
+
+### What the lead is told
+
+Besides the question a delegate asks and the message that its run ended, `poolhouse.delegate_notices` sends the lead a message, subject
+`delegate notice: ...`, when: an attempt is broken off from outside, or a review fails (an error that ends the run is the last message); a restart
+begins; the preflight in the box fails; a test run in the box fails for what looks like setup (a command that cannot start, a runner that cannot
+collect, a module, a permission or a connection the box lacks), once for each such line; and nothing has happened for 10 minutes, again after 20, 40
+and so on. A run sends at most 30. Nothing waits for an answer to one.
 
 ### Self-check before delivery
 
@@ -514,7 +557,7 @@ and one list of entries in one shape: every self-check round (`kind` `self-check
   `asking` (waiting on the lead), `done`, `partial` (some changes applied, others refused, in conflict or not published), `unapplied`
   (it tried to change files and nothing was applied), `rejected` (the self-check never accepted it), `failed` or `stopped`. Only `done` makes
   `result` exit 0. `status` names the phase and round of a running delegate; `result` lists each pass with its time and tokens.
-- **Files.** `~/.poolhouse/delegates/NAME/` holds `record.json`, `status.json`, `result.json`, `grading.json`, `start/` and `log`.
+- **Files.** `~/.poolhouse/delegates/NAME/` holds `record.json`, `status.json`, `result.json`, `grading.json`, `events.jsonl`, `start/` and `log`.
 
 ## What is not covered
 

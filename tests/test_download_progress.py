@@ -30,17 +30,17 @@ def test_model_and_mtp_bytes_accumulate_and_each_phase_is_identified(tmp_path):
     class Store:
         def ensure(self, name, **options):
             if name == head.name:
-                options['on_progress'](2, 5)
+                options['transfer'].progress(2, 5)
                 phases.append(row.public())
-                options['on_progress'](5, 5)
+                options['transfer'].progress(5, 5)
                 return Model(name, head, 5, 0)
-            options['on_note']('Downloading model.gguf')
-            options['on_progress'](100, 100)
+            options['transfer'].note('Downloading model.gguf')
+            options['transfer'].progress(100, 100)
             phases.append(row.public())
             return Model(name, tmp_path / 'model.gguf', 100, 0)
 
     with patch('poolhouse.fleet.model_components.link'):
-        Downloads(Store())._run(row, None, True)
+        Downloads(Store())._run(row, True)
     assert phases[0]['phase'] == 'model'
     assert phases[0]['eta_s'] is None
     assert phases[1]['phase'] == 'mtp'
