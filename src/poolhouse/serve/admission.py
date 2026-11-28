@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import hub
-from poolhouse.serve import engines, kvcache
+from poolhouse.serve import kvcache
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.preflight import (
     RUNTIME_ALLOWANCE_BYTES,
@@ -93,11 +93,9 @@ def _size(ref: str | Path | None) -> int:
 
 
 def estimate_bytes(spec: ServerSpec) -> int:
-    """What serving ``spec`` will take: the engine's own estimate when it makes one, else
-    weights, draft and projector files, the KV cache read off the GGUF header, and a fixed
-    allowance for the runtime. Weights not on disk are unknown and count as 0."""
-    if spec.engine and (said := engines.named(spec.engine).estimate_bytes(spec)) is not None:
-        return said
+    """What serving ``spec`` will take: weights, draft and projector files, the KV cache
+    read off the GGUF header, and a fixed allowance for the runtime. Weights not on disk
+    are unknown and count as 0."""
     weights = _size(spec.model)
     if not weights:
         return 0

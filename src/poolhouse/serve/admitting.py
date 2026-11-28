@@ -24,7 +24,7 @@ from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.health import refuses_key, serving_params
 from poolhouse.node_health import Refused
 from poolhouse.ownership import recorded_servers
-from poolhouse.serve import admission, inuse, ledger, node_memory, unmanaged
+from poolhouse.serve import admission, engines, inuse, ledger, node_memory, unmanaged
 from poolhouse.serve.backend import Lease, ServerBackend, ServerInfo, ServerSpec
 from poolhouse.serve.events import Event, emit
 from poolhouse.serve.leases import merge_state, orphaned
@@ -69,7 +69,7 @@ class Admitting:
         told = self.say or logger.info
         began = time.monotonic()
         memory_until = began + admission.wait_s()
-        wanted = admission.estimate_bytes(spec)
+        wanted = engines.wanted_bytes(spec)
         need = -(-wanted // admission.MIB)
         ledger.never_fits(spec.model, need)
         asked: dict | None = None

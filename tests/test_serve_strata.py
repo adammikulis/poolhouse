@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import delegate_review, harnessing, ownership, serverkeys
-from poolhouse.serve import admission, cli as serve_cli, engines, lifecycle_cli, ops, python_runtime
+from poolhouse.serve import cli as serve_cli, engines, lifecycle_cli, ops, python_runtime
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.fitted import fitted
 from poolhouse.serve.manager import ServerManager
@@ -252,7 +252,7 @@ class TestEngine:
         spec = ServerSpec(model=files[0], engine="strata")
         answered, said = fitted(spec)
         assert answered.context in config.CONTEXTS and "Strata" in said
-        assert admission.estimate_bytes(spec) >= config.MAC_OVERHEAD
+        assert engines.wanted_bytes(spec) >= config.MAC_OVERHEAD
 
     def test_an_unknown_engine_is_refused_by_name(self):
         with pytest.raises(ServerFailed, match="no serving engine 'nope'"):
