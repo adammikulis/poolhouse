@@ -253,13 +253,14 @@ mod linger_tests {
     }
 }
 
-/// Connect: run the handshake and return the stream and the server's certificate.
-pub fn connect(config: Arc<ClientConfig>, mut tcp: TcpStream) -> Result<Secured<ClientConnection>> {
+/// Connect: run the handshake within `HANDSHAKE_FOR` and return the stream, still under that deadline, and the server's certificate.
+pub fn connect(config: Arc<ClientConfig>, tcp: TcpStream) -> Result<Secured<ClientConnection>> {
     let name = ServerName::try_from("poolhouse-node").map_err(|e| Error::Invalid(e.to_string()))?;
     let mut conn = ClientConnection::new(config, name).map_err(tls_error)?;
+    let mut tcp = Timed::within(tcp, HANDSHAKE_FOR);
     while conn.is_handshaking() {
         conn.complete_io(&mut tcp).map_err(io_tls)?;
     }
     let peer = conn.peer_certificates().and_then(|c| c.first()).map(|c| c.to_vec()).ok_or_else(|| Error::Denied("no certificate was shown".into()))?;
-    Ok(Secured { stream: StreamOwned::new(conn, Timed::open(tcp)), peer })
+    Ok(Secured { stream: StreamOwned::new(conn, tcp), peer })
 }

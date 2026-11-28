@@ -125,7 +125,8 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
     let friend = trusted(node, source);
     let flags = flags_of(found.flags, &ctx, friend);
     let device_fp = node.cert.fingerprint();
-    let device = node.members.get(&device_fp).map(|d| d.name.clone()).unwrap_or_default();
+    // the text a key signs is printable ASCII, and a device's name is whatever its person typed
+    let device = crate::membership::sentence_name(node.members.get(&device_fp).map_or("", |d| d.name.as_str()), &device_fp);
     let expires_ms = now + ttl;
     let draft = Draft {
         who: Who { name: &name, model: &model, harness: &harness, verified, parent: &parent, board, device: &device },

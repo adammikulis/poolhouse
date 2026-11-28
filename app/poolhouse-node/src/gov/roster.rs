@@ -102,7 +102,7 @@ pub fn verdict(id: &str, act: &Act, class: Option<Class>, chain: &Chain, weak_ok
 }
 
 fn clean(name: &str) -> String {
-    name.chars().filter(|c| !c.is_control()).take(40).collect()
+    crate::membership::shown_name(name, 40)
 }
 
 struct Candidate {

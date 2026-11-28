@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
@@ -36,6 +36,8 @@ use crate::tls::{self, Secured};
 use crate::wire::{read_frame_max, write_frame_max, MAX_PEER_FRAME};
 
 pub const IO_TIMEOUT: Duration = Duration::from_secs(30);
+/// The longest one request to a peer and its reply may take together: one that sends a byte every few seconds is cut off all the same.
+pub const CALL_FOR: Duration = Duration::from_secs(60);
 /// How long the connection of a device the pool does not list lasts: it says `hello` or joins and goes, and gets for all of it
 /// what one read of a member's gets.
 pub const STRANGER_FOR: Duration = IO_TIMEOUT;
@@ -315,13 +317,31 @@ pub fn serve_requests<S: Read + Write>(net: &Net, s: &mut S, der: &[u8], ip: IpA
     Ok(Ended::Closed)
 }
 
-/// What a connection is written to and read from.
-pub trait Link: Read + Write + Send {}
-impl<T: Read + Write + Send> Link for T {}
+/// What a connection is written to and read from, under a deadline while a request is out.
+pub trait Link: Read + Write + Send {
+    /// The reads and writes from now on are done within ``span`` together.
+    fn arm(&mut self, span: Duration);
+    /// End that deadline: each read may take ``read`` (any time at all when None) and each write `IO_TIMEOUT`.
+    fn rest(&mut self, read: Option<Duration>) -> std::io::Result<()>;
+}
+
+impl<C> Link for Secured<C> where C: Send, Secured<C>: Read + Write {
+    fn arm(&mut self, span: Duration) {
+        self.stream.sock.arm(span);
+    }
+
+    fn rest(&mut self, read: Option<Duration>) -> std::io::Result<()> {
+        self.stream.sock.rest(read, IO_TIMEOUT)
+    }
+}
 
 /// A connection to a peer, authenticated both ways.
 pub struct PeerClient {
     link: Box<dyn Link>,
+    /// How long a read may take while no request is out.
+    idle_read: Option<Duration>,
+    /// When every request on this connection is to be done, if a whole exchange has a deadline.
+    ends: Option<Instant>,
     pub fingerprint: String,
     pub board_fingerprint: String,
     pub der: Vec<u8>,
@@ -336,25 +356,33 @@ impl PeerClient {
     /// authenticate it (a join code).
     pub fn connect(me: &Identity, addr: SocketAddr, expect: Option<&str>) -> Result<PeerClient> {
         let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(5))?;
-        tcp.set_read_timeout(Some(IO_TIMEOUT))?;
-        tcp.set_write_timeout(Some(IO_TIMEOUT))?;
         tcp.set_nodelay(true)?;
         let secured = tls::connect(tls::client_config(me, expect)?, tcp)?;
+        PeerClient::over(secured, Some(IO_TIMEOUT), None, None)
+    }
+
+    /// A client of the finished handshake ``secured``, whose reads may take ``idle_read`` between requests.
+    fn over<C>(mut secured: Secured<C>, idle_read: Option<Duration>, closer: Option<TcpStream>, place: Option<Permit>) -> Result<PeerClient>
+    where C: Send + 'static, Secured<C>: Read + Write {
+        secured.rest(idle_read)?;
         let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer: None, _place: None })
+        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), idle_read, ends: None, closer, _place: place })
+    }
+
+    /// Every request from now on is done within ``span``, all of them together: past it each one fails, however steadily its bytes come.
+    pub fn done_within(&mut self, span: Duration) {
+        self.ends = Some(Instant::now() + span);
     }
 
     /// Like `connect`, for a connection that stays open for hours: no read timeout (the other end speaks when it has something) and TCP
     /// keepalives, so a path that died is noticed.
     pub fn connect_long(me: &Identity, addr: SocketAddr, expect: Option<&str>) -> Result<PeerClient> {
         let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(5))?;
-        tcp.set_write_timeout(Some(IO_TIMEOUT))?;
         tcp.set_nodelay(true)?;
         socket2::SockRef::from(&tcp).set_tcp_keepalive(&socket2::TcpKeepalive::new().with_time(Duration::from_secs(30)).with_interval(Duration::from_secs(10)))?;
         let closer = tcp.try_clone().ok();
         let secured = tls::connect(tls::client_config(me, expect)?, tcp)?;
-        let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer, _place: None })
+        PeerClient::over(secured, None, closer, None)
     }
 
     /// A second handle on the socket of a connection made with `connect_long`: `sys::hang_up` on it from another thread ends the
@@ -365,8 +393,7 @@ impl PeerClient {
 
     /// A connection a member opened to this device, to send that member requests over it; it keeps its ``place`` on the listener.
     pub fn accepted(secured: Secured<rustls::ServerConnection>, place: Permit) -> Result<PeerClient> {
-        let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer: None, _place: Some(place) })
+        PeerClient::over(secured, Some(IO_TIMEOUT), None, Some(place))
     }
 
     /// Answer the requests that come down this connection (the other end holds the channel), until it closes.
@@ -375,10 +402,15 @@ impl PeerClient {
         serve_requests(net, &mut self.link, &der, ip, false, None)
     }
 
-    /// Send one request; a refusal comes back as the matching error.
+    /// Send one request, which with its reply takes `CALL_FOR` at most (less when the exchange has less left, `done_within`); a refusal
+    /// comes back as the matching error.
     pub fn call(&mut self, request: &Value) -> Result<Value> {
-        write_frame_max(&mut self.link, request, MAX_PEER_FRAME)?;
-        let reply = read_frame_max(&mut self.link, MAX_PEER_FRAME)?.ok_or_else(|| Error::Denied("the peer closed the connection".into()))?;
+        let span = self.ends.map_or(CALL_FOR, |end| end.saturating_duration_since(Instant::now()).min(CALL_FOR));
+        self.link.arm(span);
+        let reply = write_frame_max(&mut self.link, request, MAX_PEER_FRAME).and_then(|()| read_frame_max(&mut self.link, MAX_PEER_FRAME));
+        let rested = self.link.rest(self.idle_read);
+        let reply = reply?.ok_or_else(|| Error::Denied("the peer closed the connection".into()))?;
+        rested?;
         if reply["ok"] == true {
             return Ok(reply["result"].clone());
         }
