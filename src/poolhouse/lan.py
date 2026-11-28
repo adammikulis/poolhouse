@@ -27,7 +27,7 @@ def under_test() -> bool:
 
 def on_real_home() -> bool:
     """Whether the state root is the account's own default one (not moved by POOLHOUSE_HOME or a redirected HOME)."""
-    return home.home().resolve() == home.account_roots()[0]
+    return home.named_home().resolve() == home.account_roots()[0]
 
 
 def on_the_persons_machine() -> bool:

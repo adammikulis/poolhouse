@@ -4,25 +4,35 @@
 root. Both read the environment when they are called, so a caller that moves a root sees
 the move without reloading a module. `machine_id()` is the identity this machine is kept
 under wherever its name would not tell two machines apart.
+
+The account's own roots (`account_roots`) are not for everyone. These functions hand them to
+the installed Poolhouse and to the repository's own entry points (`ENTRY_POINT`), and raise
+`RealRootRefused` for a test run, a process a test run started, and Poolhouse run from a
+source checkout, whichever way the path was spelled.
 """
 
 from __future__ import annotations
 
 import contextlib
 import contextvars
+import json
 import os
 import secrets
 import sys
+import sysconfig
+from functools import cache as memoized
 from importlib import import_module
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 from poolhouse.files import promote
 
 if os.name == "posix":
     import pwd
 
-__all__ = ["CACHE_ENV", "OVERRIDES", "ROOT_ENV", "account_roots", "cache", "device_id", "expand", "guarded", "home", "machine_id",
-           "moved", "real_roots", "state", "under_test", "user_home", "using_real_roots"]
+__all__ = ["CACHE_ENV", "ENTRY_POINT", "OVERRIDES", "ROOT_ENV", "RealRootRefused", "account_roots", "cache", "device_id", "expand",
+           "guarded", "home", "machine_asset", "machine_id", "moved", "named_cache", "named_home", "real_roots", "state", "under_test",
+           "user_home", "using_real_roots"]
 
 ROOT_ENV = "POOLHOUSE_HOME"
 """Moves the state root."""
@@ -45,6 +55,27 @@ OVERRIDES = {
 }
 """The variable that moves one name out of the state root, by that name."""
 
+TEST_PROCESS_ENV = "POOLHOUSE_TEST_PROCESS"
+"""Set by a test run so every process it starts knows it is part of one. It only takes the account's roots away; nothing it can hold
+grants them."""
+
+_PACKAGE = Path(__file__).resolve().parent
+_CHECKOUT = _PACKAGE.parents[1]
+"""The folder this copy of the code sits in: the checkout, when it is one."""
+ENTRY_POINT = "POOLHOUSE_ENTRY_POINT"
+"""The name a program of the repository assigns at its module level, to a sentence saying what it needs the account's own roots for, when
+it cannot do its work from a checkout without them (a hook, the test runner, the landing check). The grant is this declaration in code:
+it counts only while that file is the program the process was started as, so importing it grants nothing, and no variable or argument
+stands in for it."""
+ENTRY_POINT_FOLDERS = ("scripts", "src/poolhouse")
+"""Where a file that declares `ENTRY_POINT` must sit, in this copy of the code."""
+ASSETS = {"llama.cpp": 0, "tools": 0, "guard": 1}
+"""What a real-model test may read from the account's roots, by first name: 0 is under the state root, 1 under the cache root."""
+
+
+class RealRootRefused(RuntimeError):
+    """This process may not use the account's own Poolhouse state or cache; the message says why and what to do."""
+
 
 def user_home() -> Path:
     """The account's home directory."""
@@ -52,10 +83,15 @@ def user_home() -> Path:
 
 
 def account_roots() -> tuple[Path, Path]:
-    """Return the actual account's default state and cache roots."""
+    """The names of the account's default state and cache roots, for comparing against and protecting. Open nothing under them: a path
+    to use comes from `state`, `cache` or `guarded`."""
     account = Path(pwd.getpwuid(os.getuid()).pw_dir) if os.name == "posix" else user_home()
     account = account.resolve()
     return account / DEFAULT_NAME, account / ".cache" / CACHE_NAME
+
+
+_ACCOUNT_ROOTS = account_roots()
+"""The roots refused below, read once: a caller that replaces `account_roots` or ``HOME`` later moves nothing."""
 
 
 def expand(path: str | Path) -> Path:
@@ -69,6 +105,135 @@ def expand(path: str | Path) -> Path:
 def under_test() -> bool:
     """Whether this process is a test run: the one place a root may be redirected for what a person owns (`guarded`)."""
     return "pytest" in sys.modules or "_pytest" in sys.modules
+
+
+def _main_is_a_script() -> bool:
+    """Whether the program this process runs is one of this checkout's scripts (which may import pytest to read a selection)."""
+    file = getattr(sys.modules.get("__main__"), "__file__", None)
+    return bool(file) and Path(file).resolve().is_relative_to(_CHECKOUT / "scripts")
+
+
+def _mark_test_process() -> None:
+    os.environ[TEST_PROCESS_ENV] = "1"
+
+
+if under_test() and not _main_is_a_script():
+    _mark_test_process()
+
+
+def _is_entry_point() -> bool:
+    """Whether this process is a program that declared `ENTRY_POINT`. Never for a test run or a process one started, nor for a process with
+    no ``HOME``, whose environment was thrown away."""
+    main = sys.modules.get("__main__")
+    purpose, file = getattr(main, ENTRY_POINT, None), getattr(main, "__file__", None)
+    if not isinstance(purpose, str) or not purpose.strip() or not file:
+        return False
+    if TEST_PROCESS_ENV in os.environ or "PYTEST_CURRENT_TEST" in os.environ or (os.name == "posix" and not os.environ.get("HOME")):
+        return False
+    program = Path(file).resolve()
+    return any(program.is_relative_to(_CHECKOUT / folder) for folder in ENTRY_POINT_FOLDERS)
+
+
+def _same_or_inside(path: str, root: str) -> bool:
+    if sys.platform != "linux":  # the usual file systems of macOS and Windows ignore case
+        path, root = path.casefold(), root.casefold()
+    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+
+
+@memoized
+def _editable_root() -> Path | None:
+    """The source folder of an editable install of exactly this copy (a person's ``--dev`` install), or None."""
+    for found in import_module("importlib.metadata").distributions(name="poolhouse"):  # loaded when asked: every hook imports this
+        try:
+            said = json.loads(found.read_text("direct_url.json") or "{}")
+            if not said.get("dir_info", {}).get("editable"):
+                continue
+            named = unquote(urlsplit(said["url"]).path)
+            root = Path(named.lstrip("/") if os.name == "nt" else named).resolve()
+        except (OSError, ValueError, KeyError, AttributeError):
+            continue
+        if root / "src" / "poolhouse" == _PACKAGE:
+            return root
+    return None
+
+
+def _module_run() -> str:
+    """The module the interpreter was started with by ``-m``, else empty: known before that module's own code runs."""
+    words = list(getattr(sys, "orig_argv", ()))[1:]
+    at = 0
+    while at < len(words):
+        word = words[at]
+        if word.startswith("-m"):
+            return word[2:] or "".join(words[at + 1:at + 2])
+        if word in ("-", "-c") or not word.startswith("-"):
+            return ""
+        at += 2 if word in ("-W", "-X") else 1
+    return ""
+
+
+def _started_as_poolhouse() -> bool:
+    """Whether this process was started as Poolhouse itself, ``-m poolhouse...`` or one of its installed commands, and not as some other
+    script or ``-c`` program that imports it."""
+    main = sys.modules.get("__main__")
+    named = getattr(getattr(main, "__spec__", None), "name", "") or _module_run()
+    if named == "poolhouse" or named.startswith("poolhouse."):
+        return True
+    file = getattr(main, "__file__", None)
+    if not file:
+        return False
+    program = Path(file)
+    if program.name == "__main__.py":  # the Windows command wrapper: Scripts\\poolhouse-x.exe\\__main__.py
+        program = program.parent
+    folders = {os.path.realpath(Path(sys.executable).parent), os.path.realpath(sysconfig.get_path("scripts"))}
+    return program.name.startswith("poolhouse") and os.path.realpath(program.parent) in folders
+
+
+def _is_installed_copy() -> bool:
+    """Whether this is the installed Poolhouse: a packaged app, a copy under ``site-packages`` (which every runtime is), or an editable
+    install running as its own command. A checkout, an export or a worktree on ``PYTHONPATH`` is none of these."""
+    if getattr(sys, "frozen", False) or _PACKAGE.parent.name in ("site-packages", "dist-packages"):
+        return True
+    named = "" if sys.flags.ignore_environment else os.environ.get("PYTHONPATH", "")
+    if any(part and Path(part).resolve() == _PACKAGE.parent for part in named.split(os.pathsep)):
+        return False
+    return _started_as_poolhouse() and _editable_root() is not None
+
+
+def _root_refusal() -> str:
+    """Why this process may not use the account's own roots; empty when it may."""
+    if _is_entry_point():
+        return ""
+    if under_test():
+        _mark_test_process()
+    if under_test() or TEST_PROCESS_ENV in os.environ:
+        return "this is a test run, or a process one started"
+    if _is_installed_copy():
+        return ""
+    return "this is Poolhouse run from source, not the installed one"
+
+
+def _allowed_path(path: Path) -> Path:
+    """``path``, unless it lies in one of the account's own roots and this process may not use them."""
+    why = _root_refusal()
+    if not why:
+        return path
+    real = os.path.realpath(path)
+    for root in _ACCOUNT_ROOTS:
+        if _same_or_inside(real, os.path.realpath(root)):
+            raise RealRootRefused(f"{path} is the account's own Poolhouse folder and is refused: {why}. Name scratch folders with "
+                                  f"{ROOT_ENV} and {CACHE_ENV}.")
+    return path
+
+
+def machine_asset(*parts: str) -> Path:
+    """Something the account's Poolhouse downloaded or built, for a real-model test to read and run and never to write: only the names in
+    `ASSETS`, and only for a file of this checkout's ``tests``."""
+    caller = Path(sys._getframe(1).f_code.co_filename).resolve()
+    if not caller.is_relative_to(_CHECKOUT / "tests"):
+        raise RealRootRefused(f"{caller} is not a test of {_CHECKOUT}; only its real-model tests read the account's downloaded files")
+    if not parts or parts[0] not in ASSETS or any(part in ("", "..") or Path(part).is_absolute() for part in parts):
+        raise RealRootRefused(f"{'/'.join(parts)!r} is not a downloaded file a test may read; only {', '.join(ASSETS)} are")
+    return _ACCOUNT_ROOTS[ASSETS[parts[0]]].joinpath(*parts)
 
 
 _REAL: contextvars.ContextVar[bool] = contextvars.ContextVar("poolhouse_real_roots", default=False)
@@ -97,16 +262,31 @@ def guarded(*parts: str) -> Path:
     """A path under the root of what a person owns and an agent must not redirect: the authority registry, its audit log, the project policies
     and the node's state. Everything else asks `state`, which the environment may move. Within `using_real_roots` (the launch gate and what it
     reads) it is the account's own state root (the account's home from the password database, whatever ``HOME`` or ``POOLHOUSE_HOME`` say),
-    and the state root of the environment only in a test run, so a test keeps its own isolated state."""
+    and the state root of the environment only in a test run, so a test keeps its own isolated state.
+
+    The account's own root is refused here to a copy run from source without the grant; the test-process variable plays no part, so no
+    environment moves or blocks what the installed launch gate reads."""
     if _REAL.get() and not under_test():
-        return account_roots()[0].joinpath(*parts)
+        path = account_roots()[0].joinpath(*parts)
+        return path if _is_installed_copy() else _allowed_path(path)
     return state(*parts)
+
+
+def named_home() -> Path:
+    """The state root the environment names, unchecked: for comparing against and protecting. Open nothing under it; `home` is for that."""
+    named = os.environ.get(ROOT_ENV)
+    return expand(named) if named else user_home() / DEFAULT_NAME
+
+
+def named_cache() -> Path:
+    """The cache root the environment names, unchecked, as `named_home` is for the state root."""
+    named = os.environ.get(CACHE_ENV)
+    return expand(named) if named else user_home() / ".cache" / CACHE_NAME
 
 
 def home() -> Path:
     """The directory this machine keeps poolhouse's state in."""
-    named = os.environ.get(ROOT_ENV)
-    return expand(named) if named else user_home() / DEFAULT_NAME
+    return _allowed_path(named_home())
 
 
 def state(*parts: str) -> Path:
@@ -114,15 +294,13 @@ def state(*parts: str) -> Path:
     named = OVERRIDES.get(parts[0]) if parts else None
     moved = os.environ.get(named) if named else None
     if moved:
-        return expand(moved).joinpath(*parts[1:])
-    return home().joinpath(*parts)
+        return _allowed_path(expand(moved).joinpath(*parts[1:]))
+    return _allowed_path(named_home().joinpath(*parts))
 
 
 def cache(*parts: str) -> Path:
     """A path under this machine's poolhouse cache directory."""
-    named = os.environ.get(CACHE_ENV)
-    root = expand(named) if named else user_home() / ".cache" / CACHE_NAME
-    return root.joinpath(*parts)
+    return _allowed_path(named_cache().joinpath(*parts))
 
 
 def moved(*parts: str) -> Path:

@@ -152,10 +152,8 @@ def protected():
     return sys.modules[name]
 
 
-RELEASE_CHECK = (
-    "import sys; from poolhouse.workspace import release_check; "
-    "why = release_check.refusal('.', {'CLAUDECODE': '1'}, merge=tuple(sys.argv[1:])); sys.stdout.write(why); sys.exit(1 if why else 0)")
-"""What a child Python runs to ask `poolhouse.workspace.release_check` about the checkout it starts in, as an agent."""
+RELEASE_CHECK = ("-P", "-m", "poolhouse.workspace.release_check", "merge")
+"""How a child Python asks `poolhouse.workspace.release_check` about the checkout it starts in, as an agent."""
 REVIEWED_MERGE = re.compile(r"[ \t]*gh pr merge ([0-9]{1,9})((?: (?:--merge|--delete-branch|--match-head-commit [0-9a-f]{40}))+)[ \t]*\n?")
 """A whole command line that merges one pull request by number at one named head commit, the only form that can be a merge into
 the development branch: with nothing before or after it, no other repository, variable or folder can change what the check reads."""
@@ -177,12 +175,12 @@ def release_refusal(cwd: str, merge: tuple[str, ...] = ()) -> str:
     never waited on."""
     source = str(Path(__file__).resolve().parents[1])
     try:
-        done = subprocess.run([sys.executable, "-c", RELEASE_CHECK, *merge], cwd=cwd or None, capture_output=True, text=True,
+        done = subprocess.run([sys.executable, *RELEASE_CHECK, *merge], cwd=cwd or None, capture_output=True, text=True,
                               timeout=45, check=False, env={**os.environ, "PYTHONPATH": source})
     except (OSError, subprocess.TimeoutExpired):
         return "the release check could not run"
     if not done.returncode:
-        return ""
+        return done.stdout.strip()
     lines = done.stderr.strip().splitlines()
     return done.stdout.strip() or f"the release check could not run ({lines[-1] if lines else 'no reason given'})"
 

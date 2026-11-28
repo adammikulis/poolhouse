@@ -1123,7 +1123,7 @@ def _real_home(tmp_path_factory):
     a file under the real state root was written, created or removed."""
     from poolhouse import home
 
-    real = types.SimpleNamespace(state=home.home(), cache=home.cache())
+    real = types.SimpleNamespace(state=home.named_home(), cache=home.named_cache())   # names to watch: `home` refuses this run their use
     from state_attribution import Watch, attributing
 
     watch = Watch(real.state, lambda r: file_mtimes(r, attribute_external=False), lambda b, a: real_state_changes(real.state, b, a), attribute=attributing(real.state))

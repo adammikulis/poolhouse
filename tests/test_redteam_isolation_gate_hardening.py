@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import os
-import pwd
 import subprocess
 import sys
 import tempfile
@@ -34,9 +33,12 @@ except caller.AgentRefused as why:
     print("RESULT refused", str(why)[:160])
 """
 PATHS = """
-import json
+import json, os, pwd, types
+asked = pwd.getpwuid
+pwd.getpwuid = lambda uid: types.SimpleNamespace(pw_dir=os.environ["PATHS_ACCOUNT"], pw_name=asked(uid).pw_name)  # a scratch account
 from poolhouse import authority, home
 from poolhouse.isolation import ancestry, policy
+home._is_installed_copy = lambda: True  # stands for the installed launch gate: this source copy is refused the account's roots
 outside = [str(authority._file()), str(home.state("node"))]
 with home.using_real_roots():
     inside = [str(authority._file()), str(policy.path_of("project")), str(home.guarded("authority-audit.jsonl")), str(ancestry.node_state()),
@@ -124,10 +126,11 @@ def test_a_node_that_does_not_answer_refuses_the_launch_at_once_with_the_reason(
 
 
 def test_the_roots_of_the_gate_the_audit_the_policy_and_the_node_are_the_accounts_own_whatever_the_environment_names(tmp_path):
-    account = Path(pwd.getpwuid(os.getuid()).pw_dir).resolve() / ".poolhouse"
+    account = tmp_path.resolve() / "account" / ".poolhouse"
     redirect = tmp_path / "redirected"
     redirect.mkdir()
-    env = {"PATH": "/usr/bin:/bin", "PYTHONPATH": SOURCE, "POOLHOUSE_HOME": str(redirect), "HOME": str(tmp_path / "fake-home")}
+    env = {"PATH": "/usr/bin:/bin", "PYTHONPATH": SOURCE, "POOLHOUSE_HOME": str(redirect), "HOME": str(tmp_path / "fake-home"),
+           "PATHS_ACCOUNT": str(account.parent)}
     real = json.loads(said(descendant(PATHS, env), "PATHS"))
     assert real[0] == str(account / "authority.json") and real[2] == str(account / "authority-audit.jsonl") and real[3] == str(account / "node"), real
     assert Path(real[1]).parent == account / "isolation" / "projects" and real[4] == "False"

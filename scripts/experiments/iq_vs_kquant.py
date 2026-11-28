@@ -31,6 +31,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from poolhouse.bench.intervals import T95  # noqa: E402 - after the checkout's src is on the path
 
+POOLHOUSE_ENTRY_POINT = "measures real models leased on this computer"
 CONFIG = ROOT / "docs/experiments/iq-vs-kquant-metal.json"
 QUIET = r"llama-server|decide_cli train"
 

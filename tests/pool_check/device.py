@@ -280,7 +280,8 @@ class LocalDevice(Device):
 
     def env(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         base = {k: v for k, v in os.environ.items() if k not in AGENT_MARKERS}
-        return {**base, "PYTHONPATH": str(ROOT / "src"), "POOLHOUSE_HOME": str(self.root), "POOLHOUSE_NODE_LAN": "off", **(extra or {})}
+        return {**base, "PYTHONPATH": str(ROOT / "src"), "POOLHOUSE_HOME": str(self.root), "POOLHOUSE_CACHE": str(self.root / "cache"),
+                "POOLHOUSE_NODE_LAN": "off", **(extra or {})}
 
     def run(self, argv, env=None, timeout=120, check=True):
         done = subprocess.run(argv, env=self.env(env), cwd=ROOT, capture_output=True, text=True, timeout=timeout, check=False)
@@ -464,7 +465,8 @@ class WslHostedDevice(Device):
         return wsl_argv(self.distro, self.checkout, [*self.interpreter(), f"{self.checkout}/tests/pool_check/driver.py"], {"PYTHONPATH": f"{self.checkout}/src"})
 
     def run(self, argv, env=None, timeout=120, check=True):
-        return self.driven(argv, {"POOLHOUSE_HOME": self.home, "POOLHOUSE_NODE_LAN": "off", "PYTHONPATH": f"{self.checkout}/src", **(env or {})}, timeout, check)
+        return self.driven(argv, {"POOLHOUSE_HOME": self.home, "POOLHOUSE_CACHE": f"{self.home}/cache", "POOLHOUSE_NODE_LAN": "off",
+                                  "PYTHONPATH": f"{self.checkout}/src", **(env or {})}, timeout, check)
 
     def windows_host(self) -> str:
         """The address of Windows as WSL sees it: the default route's gateway (NAT mode)."""

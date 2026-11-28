@@ -37,10 +37,7 @@ refuse() {
 # Why the agent may not publish $1 to main, empty when it may: the commit has a standing independent land-review accept and the checkout is clean.
 release_refusal() {
     src="$here/../../src"
-    PYTHONPATH="$src${PYTHONPATH:+:$PYTHONPATH}" "${PYTHON:-python3}" -c '
-import sys
-from poolhouse.workspace import release_check
-sys.stdout.write(release_check.refusal(".", {"CLAUDECODE": "1"}, sys.argv[1]))' "$1" </dev/null 2>/dev/null ||
+    PYTHONPATH="$src${PYTHONPATH:+:$PYTHONPATH}" "${PYTHON:-python3}" -P -m poolhouse.workspace.release_check commit "$1" </dev/null 2>/dev/null ||
         echo "the release check could not run"
 }
 

@@ -25,6 +25,7 @@ from typing import Any
 import pytest
 from machine_guard import machine_servers
 
+from poolhouse import home
 from poolhouse.client import Client
 from poolhouse.guard import native
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port
@@ -116,10 +117,11 @@ def model_problem(use: Use, which: Pin, roots: list[Path]) -> str:
     return ""
 
 
-def server_problem(account: Path) -> tuple[Path | None, str]:
-    """The llama-server this machine runs models with, else why there is none and how to get one."""
+def server_problem(account: Path, managed: Path | None = None) -> tuple[Path | None, str]:
+    """The llama-server this machine runs models with, else why there is none and how to get one. ``managed`` is the build the account's
+    Poolhouse keeps (`home.machine_asset`); without it, the one under ``account``."""
     named = os.environ.get("POOLHOUSE_TEST_LLAMA_SERVER")
-    candidates = [Path(named)] if named else [account / ".poolhouse" / "llama.cpp" / "current" / "llama-server",
+    candidates = [Path(named)] if named else [managed or account / ".poolhouse" / "llama.cpp" / "current" / "llama-server",
                                               Path(shutil.which("llama-server") or "")]
     for path in candidates:
         if path.is_file():
@@ -181,6 +183,9 @@ class Served:
 class Real:
     """What the ``real`` fixture hands a test: finds a pinned model, takes the lease, yields the server."""
 
+    managed: Path | None = None
+    """The llama-server the account's Poolhouse keeps, when the harness was given it (`home.machine_asset`)."""
+
     def __init__(self, account: Path, request: Any, monkeypatch: Any, roots: list[Path] | None = None,
                  busy_wait: float = BUSY_WAIT_S) -> None:
         self.account, self.request, self.monkeypatch = account, request, monkeypatch
@@ -206,7 +211,7 @@ class Real:
 
     def binary(self) -> Path:
         """The llama-server binary; fails when this machine has none."""
-        found, problem = server_problem(self.account)
+        found, problem = server_problem(self.account, self.managed)
         stop(problem)
         return found  # type: ignore[return-value]
 
@@ -291,5 +296,7 @@ class Real:
 @pytest.fixture
 def real(_real_home, request, monkeypatch) -> Real:
     """The harness for one test; the machine's own account is read for the models, never written."""
-    return Real(_real_home.state.parent, request, monkeypatch)
+    harness = Real(_real_home.state.parent, request, monkeypatch)
+    harness.managed = home.machine_asset("llama.cpp", "current", "llama-server")
+    return harness
 

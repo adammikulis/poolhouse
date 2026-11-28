@@ -6,6 +6,9 @@ from __future__ import annotations
 import workspace_hook
 
 
+POOLHOUSE_ENTRY_POINT = "records the harness process in the person folder"
+
+
 def main() -> int:
     event = workspace_hook.event("UserPrompt")
     return 0 if event is None else workspace_hook.bind_harness(event, "UserPrompt")

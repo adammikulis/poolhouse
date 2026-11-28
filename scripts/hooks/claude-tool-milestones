@@ -19,6 +19,9 @@ import milestones
 import tool_count
 
 
+POOLHOUSE_ENTRY_POINT = "speaks to this computer's board as the harness session"
+
+
 def main() -> int:
     try:
         event = json.load(sys.stdin)

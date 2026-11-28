@@ -84,6 +84,7 @@ from poolhouse.activity.gate import Run, read_counts, record_run, tree_hash
 from poolhouse.board.tasks import Tasks
 from poolhouse.workspace import testboard, testruns
 
+POOLHOUSE_ENTRY_POINT = "records runs, test jobs and the reuse store of this computer"
 ROOT = Path(__file__).resolve().parent.parent
 BASE = development_branch(ROOT)
 DATAFILE = ".testmondata"

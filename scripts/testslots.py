@@ -22,6 +22,8 @@ import testslots_policy as policy
 
 from poolhouse.lock import release, take
 
+POOLHOUSE_ENTRY_POINT = "its queue check reads this computer's test jobs"
+
 HEAVY_MODULES = frozenset({
     "test_serve_real_llama", "test_sentinel_real_model", "test_sentinel_wiring_serve",
     "test_serve_broker",

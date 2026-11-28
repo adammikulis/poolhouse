@@ -21,6 +21,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+POOLHOUSE_ENTRY_POINT = "finds the selected runtime and keeps the signing key with this computer's credentials"
 ROOT = Path(__file__).resolve().parent.parent
 if not sys.flags.isolated:
     sys.path.insert(0, str(ROOT / "src"))

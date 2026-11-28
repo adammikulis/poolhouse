@@ -46,7 +46,7 @@ def refusal(*, under_test: bool | None = None, root: Path | None = None, module:
     if _under_test() if under_test is None else under_test:
         return "this is a test run, which never touches this computer's keystore, password dialogs or desktop"
     real = _resolved(root or home.account_roots()[0])
-    state = _resolved(home.home())
+    state = _resolved(home.named_home())
     if state != real:
         return f"the state directory is {state}, not your own {real}, so this is not the installed Poolhouse on this computer"
     installed = _resolved(real / "runtimes")

@@ -18,6 +18,7 @@ from pathlib import Path
 import hook_state
 import workspace_hook
 
+POOLHOUSE_ENTRY_POINT = "speaks to this computer's board as the harness session"
 EVERY_S = 600.0
 WAIT_S = 4.0
 """How long the event that starts a check waits for it."""

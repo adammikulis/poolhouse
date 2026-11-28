@@ -13,14 +13,16 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 from poolhouse import board, caller, devbranch
 from poolhouse.workspace import landing
 
-__all__ = ["REVIEW_STATUS", "pull_request", "refusal"]
+__all__ = ["REVIEW_STATUS", "answer", "pull_request", "refusal"]
 
+POOLHOUSE_ENTRY_POINT = "reads the reviews on this computer's board before an agent publishes to a protected branch"
 TIMEOUT_S = 15
 REVIEW_STATUS = "lead-review"
 """The commit status that records the review of a pull request's head, and the check the development branch requires."""
@@ -89,3 +91,20 @@ def refusal(cwd: str, environ: dict[str, str] | None = None, commit: str = "", m
     except (board.client.NodeError, OSError, ValueError, KeyError, TypeError) as exc:
         return f"no land-review for {head[:7]} could be read ({type(exc).__name__}); a reviewer's accept is what releases it"
     return f"{head[:7]}: {why}" if why else ""
+
+
+def answer(argv: list[str]) -> int:
+    """``python -m poolhouse.workspace.release_check commit SHA`` or ``merge [NUMBER SHA]``: what the guards and the pre-push hook run in
+    a process of their own, in the checkout they ask about. Prints why an agent may not, nothing when it may; 2 for any other call."""
+    if len(argv) == 2 and argv[0] == "commit":
+        sys.stdout.write(refusal(".", {"CLAUDECODE": "1"}, argv[1]))
+    elif argv[:1] == ["merge"]:
+        sys.stdout.write(refusal(".", {"CLAUDECODE": "1"}, merge=tuple(argv[1:])))
+    else:
+        sys.stderr.write("usage: release_check commit SHA | merge [NUMBER SHA]\n")
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(answer(sys.argv[1:]))

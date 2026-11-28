@@ -32,7 +32,7 @@ def never(real: str) -> str:
         return "credential location"
     if secretpaths.inside_home(path):
         return "home folder"
-    if _around(path, {home.home().resolve(), home.account_roots()[0].resolve()}):
+    if _around(path, {home.named_home().resolve(), home.account_roots()[0].resolve()}):
         return "state root"
     return ""
 
