@@ -37,7 +37,7 @@ pub fn inspect(pid: u32) -> Option<Proc> {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "android"))]
 pub fn inspect(pid: u32) -> Option<Proc> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     // the command name may hold spaces and parentheses; everything after the last `)` is fields
@@ -54,7 +54,7 @@ pub fn inspect(pid: u32) -> Option<Proc> {
     crate::sys::process_info(pid).map(|(start, _)| Proc { start, zombie: false, parent: 0, session: 0, tty: false, tdev: 0 })
 }
 
-#[cfg(all(unix, not(any(target_os = "macos", target_os = "linux"))))]
+#[cfg(all(unix, not(any(target_os = "macos", target_os = "linux", target_os = "android"))))]
 pub fn inspect(pid: u32) -> Option<Proc> {
     // SAFETY: signal 0 only checks that the process exists.
     let found = unsafe { libc::kill(pid as i32, 0) } == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);

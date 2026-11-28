@@ -26,8 +26,7 @@ how one agent's work is checked on hardware it did not write on. The packed tree
 commit is always the same bytes with the same digest: a result is taken only when it names that digest, and the
 printed lines, the ledger and the board line (`commit=<full id>`) name the commit. Every named file runs again,
 whatever the ledger holds. `quick` and `--split` work from the working tree and are refused with it. The commit id is
-the sender's statement; a device is trusted to have run what it was sent, as in every shard. [The phone
-worker](../app/phone-worker/README.md) is a device that takes such runs.
+the sender's statement; a device is trusted to have run what it was sent, as in every shard.
 
 Every remote run, of a commit or not, writes its whole result to a file and prints `result file: PATH` (the last
 100 are kept). A report of a run attaches that file or those lines: counts, digests and exit codes come from the
