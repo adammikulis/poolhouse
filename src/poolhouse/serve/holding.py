@@ -30,7 +30,7 @@ from poolhouse.files import read_json, write_json
 from poolhouse.lock import only_one
 from poolhouse.ownership import recorded_servers
 from poolhouse.platform import stop_pid
-from poolhouse.serve import admission, broker_wire, provenance
+from poolhouse.serve import broker_wire, engines, provenance
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.broker import Ask, BrokerError
 from poolhouse.serve.broker_wire import spec_to_json
@@ -172,14 +172,14 @@ def check_fits(spec: ServerSpec, *, budget: int | None = None, total: int | None
                ask: str = "") -> int:
     """The bytes ``spec`` will take; raises `Refusal` when it could not fit on this machine
     even with nothing else running, saying the longest context that does."""
-    wanted = admission.estimate_bytes(spec)
+    wanted = engines.wanted_bytes(spec)
     budget = hub.room() if budget is None else budget
     if not wanted or not budget or wanted <= budget:
         return wanted
     low, high, best = 0, int(spec.context) // 256, 0
     while low <= high:
         mid = (low + high) // 2
-        if admission.estimate_bytes(dataclasses.replace(spec, context=mid * 256)) <= budget:
+        if engines.wanted_bytes(dataclasses.replace(spec, context=mid * 256)) <= budget:
             best, low = mid * 256, mid + 1
         else:
             high = mid - 1

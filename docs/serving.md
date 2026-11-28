@@ -1030,11 +1030,7 @@ a GPU the owner has leased), and the same run with `--n-cpu-moe` for the baselin
 that exists, the uniform-use assumption in the estimates is a floor on what a hot cache could
 gain, not a measurement.
 
-#### Candidate engine: Strata (unverified)
+#### A second engine: Strata
 
-A third-party engine named Strata is said to run this model from 8 GB of VRAM. Nothing about
-it has been fetched, read or run. Under the replace-wrap-or-keep rule it is a candidate to
-evaluate, and before any decision someone reads its repository (licence, supported
-architectures, how it places experts and the n-gram table, its prompt-processing path), the
-author's own benchmark command and hardware, and whether it exposes a server API poolhouse's
-broker could lease.
+[docs/strata.md](strata.md) covers serving this model with `--engine strata`: what is installed, what it does not do, and
+`poolhouse-serve strata-proof`. llama.cpp stays the default until both are measured on the same device.

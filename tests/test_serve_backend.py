@@ -21,11 +21,10 @@ from poolhouse.serve.backend import (
     ServerSpec,
     UnknownFlag,
     flags_of,
-    parse_context,
-    trained_context,
     unknown_flags,
     values_of,
 )
+from poolhouse.serve.contextsize import parse_context, trained_context
 from poolhouse.serve.emitted import emitted_flags
 from poolhouse.testing.fakes import fake_binary
 

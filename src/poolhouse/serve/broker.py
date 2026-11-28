@@ -30,6 +30,7 @@ from poolhouse.client import is_healthy, reported_models, serving_params
 from poolhouse.ownership import recorded_servers
 from poolhouse.serve import (
     admission,
+    broker_room,
     canaries,
     grant,
     guarded,
@@ -54,7 +55,6 @@ from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free
 from poolhouse.serve.preflight import PreflightFailed
 from poolhouse.serve.process import every_server, kill_process_tree, pid_exists
 from poolhouse.serve.reclaim import busy_now
-from poolhouse.serve.weights import resident_of
 
 __all__ = ["Ask", "Broker", "BrokerError", "Grant", "Held", "Waiting"]
 
@@ -73,7 +73,7 @@ def _shape_of(settings: Mapping[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {"device": admission.device_of(settings)}
     if settings.get("asked"):
         out["asked"] = settings["asked"]
-    for key in ("context", "parallel", "cache_type_k", "cache_type_v", "spec_type", "mtp",
+    for key in ("engine", "context", "parallel", "cache_type_k", "cache_type_v", "spec_type", "mtp",
                 "embedding", "reranking", "draft", "chat_template_file", "spec_draft_max", "spec_p_min"):
         if key in settings and settings[key] is not None:
             out[key] = settings[key]
@@ -190,6 +190,8 @@ class Held:
         hold at least the context and slots asked for and run the cache type, MTP head and
         speculation kind asked for, on the device asked for. Sharing by model alone served a 256K request from a
         32K server. A server started with another head than asked is taken by any of its `admission.servings`."""
+        if other := admission.engine_difference(str(asked.get("engine") or ""), self.shape):
+            return f"port {self.port}: {other}"
         found = [self._short(have, asked) for have in admission.servings(self.shape)]
         return "" if "" in found else found[0]
 
@@ -587,7 +589,7 @@ class Broker(BrokerStops, BrokerHolds):
         return self._fit(ask, evict)
 
     def _fit(self, ask: Ask, evict: list[Held]) -> tuple[None, list[Held], str]:
-        need, room = ask.weight or resident_of(ask.models[0]), self.room()
+        need, room = broker_room.need(ask), self.room()
         if not need or room is None:
             return None, evict, ""
         records = recorded_servers(self.manager.state_file)
@@ -604,29 +606,12 @@ class Broker(BrokerStops, BrokerHolds):
             evict.append(spare.pop(0))
             freed += given_back(evict[-1])
         if need <= room + freed:
-            return None, evict + self._more_for(ask, spare, room + freed, given_back), ""
+            return None, evict + broker_room.more_for(ask, spare, room + freed, given_back), ""
         held = [h for h in self.servers.values() if h.holders or h.loading or h.spared_why()]
         if not held:
             return None, evict, ""
         return None, [], (f"{ask.models[0]} needs {need >> 20} MiB and {room >> 20} MiB of the budget is "
                           f"free; " + "; ".join(self._held_said(h) for h in held))
-
-    @staticmethod
-    def _more_for(ask: Ask, spare: list[Held], room: int, given_back: Callable[[Held], int]) -> list[Held]:
-        """The idle servers of ``spare`` to stop as well, oldest first, where the weights fit ``room`` but all that admission will ask for
-        the server (`admission.estimate_bytes`: its KV and prompt cache too) does not. None of them when stopping every one would not be
-        enough, or for settings that cannot be sized: the start says what is wrong."""
-        try:
-            takes = admission.estimate_bytes(ask.server_spec(ask.port))
-        except (OSError, TypeError, ValueError):
-            return []
-        more: list[Held] = []
-        for held in spare:
-            if takes <= room:
-                break
-            more.append(held)
-            room += given_back(held)
-        return more if takes <= room else []
 
     @staticmethod
     def _held_said(held: Held) -> str:
@@ -660,7 +645,7 @@ class Broker(BrokerStops, BrokerHolds):
         asked = ask.port if ask.port and port_is_free(ask.port) and not any(
             h.port == ask.port for h in self.servers.values()) else 0
         placeholder = Held(port=asked or free_port(), model=ask.models[0], purpose=ask.purpose,
-                           loading=True, weight=ask.weight or resident_of(ask.models[0]),
+                           loading=True, weight=broker_room.need(ask),
                            shape=_shape_of(ask.spec),
                            holders={waiting.lease: (ask.pid, ask.label)},
                            records={waiting.lease: dict(ask.record)})

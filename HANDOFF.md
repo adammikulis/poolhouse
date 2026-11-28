@@ -12,7 +12,7 @@ The local delegate takes no work until every row here is landed and installed, o
 |---|---|---|---|
 | 1 | A long delegate run keeps the server's prompt cache | Review, checks, merge, install, restart the model server, rerun a long delegate task as the live proof | #113 |
 | 2 | Current llama.cpp with the newest draft head serves Qwen3.8-Flash-Next by default | Start it through the broker from the branch, compare clean speed with the older fork, attack pass on the automatic head download, settle overlap with the Strata change | #120, branch `backup/bench-engines` |
-| 3 | Strata engine | Run its tests, attack pass, merge, install; measure on the Apple silicon computer, then on a Windows computer with a 24 GB card and 64 GB of memory. Publishers ISTA-DASLab and incoai are not admitted for agent downloads: the owner decides | #116 |
+| 3 | Strata engine | Attack pass, merge, install; no Strata server has ever been started. Run `poolhouse-serve strata-proof` on a free GPU on the Apple silicon computer, with MTP and with DFlash2, beside llama.cpp, then on a Windows computer with a 24 GB card and 64 GB of memory. ISTA-DASLab and the DFlash2 repository are admitted by that computer's allow file only; whether Poolhouse knows them everywhere is the owner's | #116, `docs/strata.md` |
 | 4 | Faster serving settings the measurements show, then the 27B quant comparisons | Scheduled jobs first need three failing tests settled and an attack pass | #107, `docs/examples/qwen3.8-27b-quants.queue` |
 | 5 | Delegate work resumes, one small testable task at a time | The two runtime selection tests that fail on development, the test-node build test that needs `cargo`, and `scripts/test quick --explain` running tests | `tests/test_runtime_selection.py`, `tests/test_testnode.py`, `scripts/test` |
 
@@ -86,6 +86,9 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | Session credential sandbox | Finish and prove it | `docs/agent-sandbox.md` |
 | Retired session registration | Finish the revival design | `docs/design-session-capabilities.md` |
 | Design reviews | Open notes on session capabilities, pool keys and signed ordering | `docs/notes/attack-*.md` |
+| Strata pictures | Off: its server reads a file path or an address a request names. Limit it to `data:` pictures, test that a path and an http address are refused, then enable | `src/poolhouse/serve/strata/backend.py` |
+| Strata sandbox and Windows install check | `POOLHOUSE_SANDBOX_SERVE` is refused for this engine, Windows runs it unconfined, and no CI job installs it | `src/poolhouse/serve/confined.py` |
+| Strata engine choice in the app and delegates | Both serve llama.cpp unless a Strata server is already up, which a session or delegate then takes; no start control in the app, no `poolhouse-delegate start --engine` | `src/poolhouse/fleet/serving.py` |
 | Model sharing between devices | No node design: add-device with a model, join-with-code sharing, accept, remove and `fetch` | `docs/pool.md` |
 | Test shards between two real devices | Not driven on real hardware, including the Windows inbound-rule prompt | `docs/test-farm.md` |
 | Isolated launcher and delegates | Linux and Windows confinement, harder delegate tasks, refusal reporting, egress wiring, the unwired `workspace.task_caps` module, live proof on the installed runtime, older test failures to re-run | `docs/design-isolated-launcher.md`, `docs/harnesses.md` |

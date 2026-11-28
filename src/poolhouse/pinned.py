@@ -22,7 +22,8 @@ __all__ = ["EXTRAS", "FILE", "Entry", "Unpinned", "entries", "select", "text"]
 FILE = Path(__file__).with_name("requirements.lock")
 EXTRAS = ("agents", "arrays", "asr", "claude", "coordinator", "decide", "decide-pointer", "ffmpeg", "github-app", "graph",
           "gym-traffic", "gym-warehouse", "heif", "hub", "llama-build", "memory", "mlx", "pdf", "pdf-agpl", "pdf-render",
-          "plot", "scrape", "spec", "store", "torch", "train", "train-lora", "train-mlx", "transformers", "vision", "web")
+          "plot", "scrape", "serve-strata", "spec", "store", "torch", "train", "train-lora", "train-mlx", "transformers", "vision",
+          "web")
 """The extras the lock covers, and so the only ones installed at first use."""
 _VIA = re.compile(r"^\s*#\s*(?:via\b)?\s*([A-Za-z0-9][A-Za-z0-9._-]*)?")
 

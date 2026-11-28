@@ -322,7 +322,7 @@ class TestProxy:
     @pytest.mark.parametrize("path", [
         "/infer/v1/../props", "/infer/v1/%2e%2e/slots", "/infer/admin", "/infer/", "/infer",
         "/infer//etc/passwd", "/infer/v1/x%20y", "/infer/slots/0?action=erase",
-        "/infer/props", "/infer/models",
+        "/infer/props", "/infer/models", "/infer/v1/load", "/infer/v1/unload/", "/infer/v1/vram?device=0",
     ])
     def test_a_path_that_is_not_the_model_servers_to_give_is_refused(self, wired, path):
         daemon, _, _ = wired

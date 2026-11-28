@@ -28,6 +28,7 @@ from poolhouse.ownership import lease_file, recorded_servers, same_process
 from poolhouse.serve import (
     admission,
     draftstart,
+    engines,
     exit_guard,
     guarded,
     inuse,
@@ -73,7 +74,6 @@ from poolhouse.serve.process import (
     pid_exists,
     self_or_ancestor,
 )
-from poolhouse.serve.python_engines import ENGINES
 from poolhouse.serve.slotdump import default_slot_save_path
 from poolhouse.serve.weights import resident_of, scaled_timeout, weight_of
 
@@ -178,11 +178,8 @@ class ServerManager(Admitting):
     def backend_for(self, spec: ServerSpec) -> ServerBackend:
         """The backend that serves ``spec``: the engine it names, tree decoding for MLX
         weights, anything else this manager's own."""
-        if spec.engine:
-            if spec.engine not in ENGINES:
-                raise ServerFailed(f"no serving engine {spec.engine!r}; there are "
-                                   f"{', '.join(sorted(ENGINES))}")
-            return ENGINES[spec.engine]
+        if engine := engines.named(spec.engine):
+            return engine.sandboxing(self.backend.sandboxed)
         if is_mlx(spec.model):
             return self.tree
         return llamacpp_provider.for_model(self.backend, spec.model, self._format_backends)
@@ -247,7 +244,8 @@ class ServerManager(Admitting):
         ``say`` (else ``self.say``, else the log) is told of each decision.
         """
         how = how or Starting()
-        roam, escalate, anyway = how.roam, how.escalate, how.anyway
+        roam, anyway = how.roam, how.anyway
+        escalate = how.escalate and self.backend_for(spec).escalates
         told = say or self.say or logger.info
         spec = self._permitted(spec, escalate)
         iq = self._quant_guard(spec, how)
@@ -353,6 +351,8 @@ class ServerManager(Admitting):
         """``spec`` as it will be started, or `ServerFailed` when the port was just given up
         on or a limit on this machine refuses the lease."""
         spec = reusing_installed(spec)
+        if spec.chat_template_file and self.backend_for(spec).renders_late_system:
+            spec = replace(spec, chat_template_file=None)
         if escalate:
             # llama.cpp's slot-save file carries the cache's stream count, and a restore
             # raises "n_stream mismatch" the moment that count differs from the file's --
@@ -385,6 +385,8 @@ class ServerManager(Admitting):
         A head the default picked is verified against sentinel's pin like the weights; one
         that fails is left out and the lease goes on without it.
         """
+        if self.backend_for(spec).drafts_itself:
+            return spec, mtp.Plan()
         try:
             binary = self.backend_for(spec).binary  # type: ignore[attr-defined]
         except (BinaryNotFound, OSError, AttributeError):

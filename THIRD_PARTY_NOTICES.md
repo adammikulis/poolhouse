@@ -20,7 +20,7 @@ here; run `pip-licenses` in the environment you build from before redistributing
 
 ## Code ported into this repository
 
-See `NOTICE` (qwen-spec, DFlash, mlx-lm, SGLang).
+See `NOTICE` (qwen-spec, DFlash, mlx-lm, SGLang, Strata).
 
 ## Programs run as separate processes
 
@@ -28,6 +28,12 @@ llama.cpp (`llama-server`, MIT), ffmpeg, and the models you download are separat
 licences; none is bundled in the wheel or in the release bundles. The bundles are built with PyInstaller
 (GPL-2.0 with the bootloader exception, which permits distributing the frozen application under any licence)
 and Tauri (MIT or Apache-2.0).
+
+The Strata engine and its server (MIT, https://github.com/Niko1221/Strata) are fetched at first use at a pinned
+commit and run as separate programs; none of it is bundled. On a Mac the engine is built there with Apple's
+metal-cpp headers (Apache-2.0). On Windows the `serve-strata` extra installs NVIDIA's CUDA libraries
+(`nvidia-cublas`, `nvidia-cuda-runtime`: NVIDIA's own proprietary terms) beside the release's prebuilt engine,
+and the DFlash2 drafter, when used, is a separate download under Apache-2.0.
 
 The `claude` extra, which every installed runtime and installer asks for, installs `claude-agent-sdk` (MIT). Its
 platform wheels bundle the Claude Code binary, which is Anthropic's software under Anthropic's terms, not under this
