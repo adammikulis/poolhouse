@@ -15,19 +15,15 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-if os.name == "posix":
-    import resource
-else:
-    resource = None
-
 from poolhouse.credentials.environment import child_environment
 from poolhouse.markup import clean
+from poolhouse.platform import end_child, start_process, terminate_process_group
 
 from .onboard.lan import in_tailnet
 
@@ -40,6 +36,7 @@ READ_ONLY: frozenset[tuple[str, ...]] = frozenset({("status", "--json")})
 MOST_OUTPUT = 1 << 20
 MOST_MEMBERS = 256
 MOST_ADDRESSES = 8
+CHUNK = 1 << 16
 LABEL = re.compile(r"[^\w.\- ]")
 DNS_NAME = re.compile(r"[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?)*")
 
@@ -106,7 +103,7 @@ def _member(row: Any) -> TailnetMember | None:
     if not addresses:
         return None
     return TailnetMember(name=_label(row.get("HostName")), dns_name=_dns(row.get("DNSName")),
-                       addresses=addresses, online=row.get("Online") is True)
+                         addresses=addresses, online=row.get("Online") is True)
 
 
 def parse(raw: bytes) -> Tailnet:
@@ -120,7 +117,8 @@ def parse(raw: bytes) -> Tailnet:
     state = _label(doc.get("BackendState"))[:32]
     me = doc.get("Self") if isinstance(doc.get("Self"), dict) else {}
     mine = _addresses(doc.get("TailscaleIPs")) or _addresses(me.get("TailscaleIPs"))
-    table = doc.get("Member") if isinstance(doc.get("Member"), dict) else {}
+    # "Peer" is the key Tailscale's own status document uses (ipnstate.Status) for the other devices.
+    table = doc.get("Peer") if isinstance(doc.get("Peer"), dict) else {}
     members = tuple(p for p in (_member(row) for row in list(table.values())[:MOST_MEMBERS]) if p)
     up = state == "Running" and bool(mine)
     return Tailnet(installed=True, up=up, state=state, name=_label(me.get("HostName")),
@@ -137,41 +135,58 @@ def find_cli(which: Callable[[str], str | None] = shutil.which,
     return app if Path(app).is_file() and os.access(app, os.X_OK) else None
 
 
-def _limit(size: int) -> Callable[[], None]:
-    if resource is None:
-        raise RuntimeError("process output resource limits require a POSIX platform")
-    def apply() -> None:
-        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-        resource.setrlimit(resource.RLIMIT_FSIZE, (size, size))
-    return apply
+def _collect(stream: Any, got: bytearray, most: int) -> None:
+    """Read ``stream`` into ``got`` until it ends or ``got`` holds more than ``most`` bytes."""
+    while len(got) <= most:
+        block = stream.read(CHUNK)
+        if not block:
+            return
+        got.extend(block)
+
+
+def _stop(child: Any) -> None:
+    """End the command and whatever it started, and collect it."""
+    try:
+        terminate_process_group(child, force=True)
+    except OSError:
+        logger.debug("tailscale had already ended")
+    end_child(child)
 
 
 def _run(cli: str, args: tuple[str, ...], *, timeout_s: float, most: int) -> bytes | None:
-    """Standard output of ``cli args``, or None on a failure, a timeout or output over ``most``."""
+    """Standard output of ``cli args``, or None on a failure, a timeout or output over ``most``.
+
+    The output is read through a pipe and never beyond ``most``, on every platform.
+    """
     if args not in READ_ONLY:
         raise ValueError(f"tailscale {' '.join(args)} is not a read-only command")
-    if resource is None:
-        logger.warning("tailscale status requires POSIX output resource limits; command was not run")
+    try:
+        child = start_process([cli, *args], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, env=child_environment(), bufsize=0)
+    except OSError as exc:
+        logger.warning("tailscale could not be run: %s", type(exc).__name__)
         return None
-    with tempfile.TemporaryFile() as out:
-        try:
-            done = subprocess.run(
-                [cli, *args], stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.DEVNULL,
-                env=child_environment(), timeout=timeout_s, check=False,
-                start_new_session=True, preexec_fn=_limit(most + 1))
-        except subprocess.TimeoutExpired:
-            logger.warning("tailscale status timed out after %.1f s", timeout_s)
-            return None
-        except OSError as exc:
-            logger.warning("tailscale could not be run: %s", type(exc).__name__)
-            return None
-        size = out.seek(0, os.SEEK_END)
-        if size > most:
-            logger.warning("tailscale status wrote more than %d bytes; ignored", most)
-            return None
-        out.seek(0)
-        data = out.read(most)
-    return data if done.returncode == 0 else None
+    got = bytearray()
+    reader = threading.Thread(target=_collect, args=(child.stdout, got, most), daemon=True, name="tailscale-status")
+    reader.start()
+    reader.join(timeout_s)
+    if reader.is_alive():
+        logger.warning("tailscale status timed out after %.1f s", timeout_s)
+        _stop(child)
+        return None
+    if len(got) > most:
+        logger.warning("tailscale status wrote more than %d bytes; ignored", most)
+        _stop(child)
+        child.stdout.close()
+        return None
+    child.stdout.close()
+    try:
+        code = child.wait(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        logger.warning("tailscale status did not end after its output")
+        _stop(child)
+        return None
+    return bytes(got) if code == 0 else None
 
 
 def detect(*, cli: str | None = None, timeout_s: float = 3.0, most: int = MOST_OUTPUT) -> Tailnet:

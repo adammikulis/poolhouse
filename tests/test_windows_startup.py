@@ -56,14 +56,23 @@ import poolhouse.setup
                                 unsandboxed=AllowUnsandboxed("test"))
             spawn.assert_not_called()
 
-    def test_tailnet_refuses_without_output_limits(self):
+    def test_tailnet_is_read_without_posix_resource_limits(self):
         tailnet = self.tailnet
-        with patch.object(tailnet, "resource", None), patch.object(
-                tailnet.subprocess, "run") as spawn:
-            result = tailnet.detect(cli="tailscale")
-            self.assertTrue(result.installed)
-            self.assertEqual(result.state, "unavailable")
-            spawn.assert_not_called()
+        with tempfile.TemporaryDirectory() as directory:
+            here = Path(directory)
+            (here / "out.json").write_text('{"BackendState": "Running", "TailscaleIPs": ["100.64.0.1"]}',
+                                           encoding="utf-8")
+            if os.name == "nt":
+                cli = here / "tailscale.cmd"
+                cli.write_text('@type "%~dp0out.json"\r\n', encoding="utf-8")
+            else:
+                cli = here / "tailscale"
+                cli.write_text('#!/bin/sh\ncat "$(dirname "$0")/out.json"\n', encoding="utf-8")
+                cli.chmod(0o700)
+            # a platform with no `resource` module, as native Windows is
+            with patch.object(tailnet, "resource", None, create=True):
+                result = tailnet.detect(cli=str(cli), timeout_s=20)
+        self.assertEqual((result.up, result.state, result.addresses), (True, "Running", ("100.64.0.1",)))
 
 
 if __name__ == "__main__":

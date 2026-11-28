@@ -24,10 +24,10 @@ def status(**more):
     doc = {"BackendState": "Running", "AuthURL": "https://login.tailscale.com/a/SECRETURL",
            "TailscaleIPs": [ME, "fd7a:115c:a1e0::1"],
            "Self": {"HostName": "laptop", "TailscaleIPs": [ME], "PrivateKey": "privkey:SECRET"},
-           "Member": {"nodekey:SECRET": {"HostName": "kitchen-pi",
-                                       "DNSName": "kitchen-pi.tail1.ts.net.",
-                                       "TailscaleIPs": [MEMBER, "fd7a:115c:a1e0::7"], "Online": True,
-                                       "Key": "SECRETKEY"},
+           "Peer": {"nodekey:SECRET": {"HostName": "kitchen-pi",
+                                     "DNSName": "kitchen-pi.tail1.ts.net.",
+                                     "TailscaleIPs": [MEMBER, "fd7a:115c:a1e0::7"], "Online": True,
+                                     "Key": "SECRETKEY"},
                     "nodekey:2": {"HostName": "attic", "DNSName": "attic.tail1.ts.net.",
                                   "TailscaleIPs": ["100.100.5.8"], "Online": False}}}
     doc.update(more)
@@ -104,8 +104,8 @@ def test_malformed_output_is_down(fake, raw):
 
 def test_a_public_address_is_dropped(fake):
     doc = status()
-    doc["Member"]["nodekey:SECRET"]["TailscaleIPs"] = ["8.8.8.8", MEMBER, "2606:4700::1111"]
-    doc["Member"]["nodekey:2"]["TailscaleIPs"] = ["1.1.1.1"]
+    doc["Peer"]["nodekey:SECRET"]["TailscaleIPs"] = ["8.8.8.8", MEMBER, "2606:4700::1111"]
+    doc["Peer"]["nodekey:2"]["TailscaleIPs"] = ["1.1.1.1"]
     fake.say(doc)
     net = tailnet.detect()
     assert [p.addresses for p in net.members] == [(MEMBER,)]
@@ -119,8 +119,8 @@ def test_a_public_self_address_means_down(fake):
 
 def test_hostile_names_are_neutralised(fake):
     doc = status()
-    doc["Member"]["nodekey:SECRET"]["HostName"] = "pi\x1b[31m\nrm -rf /;$(reboot)`id`‮"
-    doc["Member"]["nodekey:SECRET"]["DNSName"] = "a b;rm.ts.net."
+    doc["Peer"]["nodekey:SECRET"]["HostName"] = "pi\x1b[31m\nrm -rf /;$(reboot)`id`‮"
+    doc["Peer"]["nodekey:SECRET"]["DNSName"] = "a b;rm.ts.net."
     fake.say(doc)
     member = tailnet.detect().members[0]
     assert all(ch.isalnum() or ch in "._- " for ch in member.name)
@@ -141,9 +141,9 @@ def test_a_slow_client_times_out(fake):
 
 def test_many_members_and_addresses_are_bounded(fake):
     doc = status()
-    doc["Member"] = {f"k{i}": {"HostName": f"h{i}", "Online": True,
-                             "TailscaleIPs": [f"100.65.{i // 250}.{i % 250 + 1}"]
-                             + [f"100.66.0.{j}" for j in range(1, 12)]}
+    doc["Peer"] = {f"k{i}": {"HostName": f"h{i}", "Online": True,
+                           "TailscaleIPs": [f"100.65.{i // 250}.{i % 250 + 1}"]
+                           + [f"100.66.0.{j}" for j in range(1, 12)]}
                    for i in range(600)}
     fake.say(doc)
     net = tailnet.detect()
