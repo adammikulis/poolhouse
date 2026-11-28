@@ -24,7 +24,7 @@ def _needs_playwright():
 def test_data_library_upload_preview_and_fine_tune(tmp_path, alone):  # noqa: F811
     served = studio_daemon(tmp_path)
     try:
-        with browser(Window(profile=tmp_path / 'browser', headless=True)) as page:
+        with browser(Window(profile=tmp_path / 'browser', headless=True, own_pages=True)) as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/#data')
             page.get_by_role('button', name='+ Add dataset').click()
             page.get_by_label('Dataset name', exact=True).fill('sample')
@@ -57,7 +57,7 @@ def test_data_library_upload_preview_and_fine_tune(tmp_path, alone):  # noqa: F8
 def test_data_file_source_and_filter(tmp_path, alone):  # noqa: F811
     served = studio_daemon(tmp_path)
     try:
-        with browser(Window(profile=tmp_path / 'browser', headless=True)) as page:
+        with browser(Window(profile=tmp_path / 'browser', headless=True, own_pages=True)) as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/#data')
             page.get_by_role('button', name='+ Add dataset').click()
             page.get_by_role('button', name='Choose a file', exact=True).click()
@@ -103,7 +103,7 @@ def test_evaluate_selection_review_status_and_recorded_results(tmp_path, monkeyp
          'seconds_per_question': 1.5, 'questions': 8},
     ]})
     try:
-        with browser(Window(profile=tmp_path / 'browser', headless=True)) as page:
+        with browser(Window(profile=tmp_path / 'browser', headless=True, own_pages=True)) as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/#benchmarks')
             run = page.get_by_role('button', name='Start sweep', exact=True)
             expect(run).to_be_disabled()
@@ -139,7 +139,7 @@ def test_studio_surfaces_follow_theme_and_keep_text_contrast(tmp_path, monkeypat
         'members': [{'name': 'studio', 'is_self': True, 'models': ['sample-qwen.gguf']}],
     })
     try:
-        with browser(Window(profile=tmp_path / 'browser', headless=True)) as page:
+        with browser(Window(profile=tmp_path / 'browser', headless=True, own_pages=True)) as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/#data')
             expect(page.locator('data-view .data-file:not(.folder)')).to_have_count(1)
             page.evaluate('''theme => {

@@ -20,7 +20,7 @@ from poolhouse.platform import process_group_kwargs, stop_gently, stop_pid
 from poolhouse.studio_launch import FD_ENV, LaunchInterrupted
 
 from . import job_exit
-from .environment import Environment
+from .environment import Environment, provide
 from .job_records import Records, ownership, owns, process_started
 from .studio_worker_launch import LaunchProof
 
@@ -481,7 +481,7 @@ class JobRunner:
                        or program.name.startswith("poolhouse-")
                        or (self.environment is not None and program == self.environment.python))
             if self.environment is not None and managed:
-                self.environment.require_current_runtime()
+                provide(self.environment, ["core"], self.environment.require_current_runtime)
             with log.open("ab") as fh:
                 # Its own process group (a session on POSIX, CREATE_NEW_PROCESS_GROUP on
                 # Windows), so a stop reaches this job and nothing beside it.

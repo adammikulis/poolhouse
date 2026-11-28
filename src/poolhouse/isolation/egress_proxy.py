@@ -12,8 +12,6 @@ bytes sent to the host pass the session's budget for it; a download costs nothin
 
 from __future__ import annotations
 
-import base64
-import hmac
 import ipaddress
 import json
 import re
@@ -105,7 +103,7 @@ class EgressProxy:
         held = wiring or Wiring()
         self.resolve, self.dial, self.events, self.idle = held.resolve, held.dial, events, idle
         self.token = secrets.token_urlsafe(32)
-        self._expected = "Basic " + base64.b64encode(f"{USER}:{self.token}".encode()).decode()
+        self._expected = wire.basic(USER, self.token)
         self._tally = {name: Tally() for name in self.allowed}
         self._lock = threading.Lock()
         self._server = Server(socket.AF_INET, ("127.0.0.1", 0), self._connection, stopped=lambda: tell(self.events, "egress-proxy", "isolation.service_stopped"))
@@ -139,8 +137,8 @@ class EgressProxy:
         buffer = bytearray()
         try:
             head = wire.read_head(client, buffer, tunnel=True, within=self.idle)
-            if not self._presented(head):
-                wire.answer(client, 407, json.dumps({"error": MESSAGES["auth"]}).encode(), extra=(("Proxy-Authenticate", 'Basic realm="poolhouse"'),))
+            if not wire.presented(head, self._expected):
+                wire.answer(client, 407, json.dumps({"error": MESSAGES["auth"]}).encode(), extra=(wire.CHALLENGE,))
                 return
             host = self._target(head)
             upstream = self._open(host)
@@ -150,11 +148,6 @@ class EgressProxy:
         with upstream:
             if wire.send(client, b"HTTP/1.1 200 Connection established\r\n\r\n"):
                 self._tunnel(client, upstream, host, bytes(buffer))
-
-    def _presented(self, head: wire.Head) -> bool:
-        """Whether the request carries the session's own credential; a caller that does not is never told which part was wrong."""
-        given = head.one("proxy-authorization")
-        return given is not None and hmac.compare_digest(given.strip().encode(), self._expected.encode())
 
     def _refuse(self, host: str, status: int, why: str) -> wire.Refusal:
         """The refusal to answer with, counted against ``host`` when it is one this session may name, and told to the sentinel."""

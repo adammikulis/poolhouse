@@ -1,7 +1,7 @@
 {
- "surfaces": 892,
+ "surfaces": 898,
  "by_status": {
-  "covered": 563,
+  "covered": 569,
   "partial": 189,
   "uncovered": 51,
   "n/a": 89,
@@ -37,7 +37,7 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 63,
+   "covered": 66,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
@@ -58,7 +58,7 @@
    "unmapped": 0
   },
   "keystore": {
-   "covered": 3,
+   "covered": 5,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 102,
+   "covered": 103,
    "partial": 69,
    "uncovered": 0,
    "n/a": 3,
@@ -2330,21 +2330,6 @@
    "note": "The probe's own requests and programs run inside the real Seatbelt profile: each reaches only the parent's bridge and fixed system tools, every argv is a literal of the probe, and nineteen weakened profiles each let a named attempt through and stop the launch. The parent's one program is a fixed `ioreg`, `ifconfig` or `sysctl` with no input of the project's."
   },
   {
-   "id": "egress:net/browserguard.py:allowed",
-   "kind": "egress",
-   "source": "net/browserguard.py:allowed",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_net_no_bypass.py",
-    "tests/test_httpguard.py",
-    "tests/test_net_download.py",
-    "tests/test_net_untrusted.py"
-   ],
-   "note": ""
-  },
-  {
    "id": "egress:net/download.py:_bring",
    "kind": "egress",
    "source": "net/download.py:_bring",
@@ -2624,6 +2609,74 @@
     "tests/test_net_untrusted.py"
    ],
    "note": ""
+  },
+  {
+   "id": "egress:scrape/browserguard.py:Guard.__init__",
+   "kind": "egress",
+   "source": "scrape/browserguard.py:Guard.__init__",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_browser.py::test_the_proxy_connects_to_nothing_on_this_machine_however_it_is_named",
+    "tests/test_net_browser.py::test_the_proxy_dials_the_address_it_checked_and_sends_one_request_for_one_check",
+    "tests/test_net_browser.py::test_the_proxy_takes_no_request_it_would_have_to_guess_at",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_reaches_this_machine_by_no_redirect_form_or_socket",
+    "tests/test_net_browser.py::test_a_web_read_that_is_redirected_to_this_machine_returns_nothing_of_it",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_sends_no_datagram_with_or_without_the_removal"
+   ],
+   "note": "A model-chosen page's redirects, forms, both socket APIs, popups, frames, beacons, preconnects, WebRTC and names that answer with a local address are attacked against canned loopback services, through the proxy and through a real browser; the proxy connects only to an address it checked, sends one request per check and refuses chunked, origin-form and malformed targets."
+  },
+  {
+   "id": "egress:scrape/browserguard.py:Guard._exchange",
+   "kind": "egress",
+   "source": "scrape/browserguard.py:Guard._exchange",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_browser.py::test_the_proxy_connects_to_nothing_on_this_machine_however_it_is_named",
+    "tests/test_net_browser.py::test_the_proxy_dials_the_address_it_checked_and_sends_one_request_for_one_check",
+    "tests/test_net_browser.py::test_the_proxy_takes_no_request_it_would_have_to_guess_at",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_reaches_this_machine_by_no_redirect_form_or_socket",
+    "tests/test_net_browser.py::test_a_web_read_that_is_redirected_to_this_machine_returns_nothing_of_it",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_sends_no_datagram_with_or_without_the_removal"
+   ],
+   "note": "A model-chosen page's redirects, forms, both socket APIs, popups, frames, beacons, preconnects, WebRTC and names that answer with a local address are attacked against canned loopback services, through the proxy and through a real browser; the proxy connects only to an address it checked, sends one request per check and refuses chunked, origin-form and malformed targets."
+  },
+  {
+   "id": "egress:scrape/browserguard.py:Guard._open",
+   "kind": "egress",
+   "source": "scrape/browserguard.py:Guard._open",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_browser.py::test_the_proxy_connects_to_nothing_on_this_machine_however_it_is_named",
+    "tests/test_net_browser.py::test_the_proxy_dials_the_address_it_checked_and_sends_one_request_for_one_check",
+    "tests/test_net_browser.py::test_the_proxy_takes_no_request_it_would_have_to_guess_at",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_reaches_this_machine_by_no_redirect_form_or_socket",
+    "tests/test_net_browser.py::test_a_web_read_that_is_redirected_to_this_machine_returns_nothing_of_it",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_sends_no_datagram_with_or_without_the_removal"
+   ],
+   "note": "A model-chosen page's redirects, forms, both socket APIs, popups, frames, beacons, preconnects, WebRTC and names that answer with a local address are attacked against canned loopback services, through the proxy and through a real browser; the proxy connects only to an address it checked, sends one request per check and refuses chunked, origin-form and malformed targets."
+  },
+  {
+   "id": "egress:scrape/browserguard.py:allowed",
+   "kind": "egress",
+   "source": "scrape/browserguard.py:allowed",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_net_browser.py::test_the_proxy_connects_to_nothing_on_this_machine_however_it_is_named",
+    "tests/test_net_browser.py::test_the_proxy_dials_the_address_it_checked_and_sends_one_request_for_one_check",
+    "tests/test_net_browser.py::test_the_proxy_takes_no_request_it_would_have_to_guess_at",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_reaches_this_machine_by_no_redirect_form_or_socket",
+    "tests/test_net_browser.py::test_a_web_read_that_is_redirected_to_this_machine_returns_nothing_of_it",
+    "tests/test_net_browser.py::test_a_real_guarded_browser_sends_no_datagram_with_or_without_the_removal"
+   ],
+   "note": "A model-chosen page's redirects, forms, both socket APIs, popups, frames, beacons, preconnects, WebRTC and names that answer with a local address are attacked against canned loopback services, through the proxy and through a real browser; the proxy connects only to an address it checked, sends one request per check and refuses chunked, origin-form and malformed targets."
   },
   {
    "id": "egress:serve/broker_wire.py:_connect",
@@ -4484,6 +4537,42 @@
    "id": "keystore:keystore.py:<module>",
    "kind": "keystore",
    "source": "keystore.py:<module>",
+   "trust": "the process environment and the files on disk",
+   "attacker": "a failure path leaks, downgrades or overwrites a secret",
+   "status": "covered",
+   "tests": [
+    "tests/test_keystore.py",
+    "tests/test_keystore_gate.py",
+    "tests/test_redteam_keystore.py",
+    "tests/test_memory_vault.py::test_no_keystore_fails_closed_without_writing_a_key",
+    "tests/test_memory_vault.py::test_the_key_is_never_written_beside_the_data",
+    "tests/test_credentials.py",
+    "tests/test_no_real_keychain.py"
+   ],
+   "note": "refusal, rate ceiling, background process, other-purpose key, label collision, master in no file or log"
+  },
+  {
+   "id": "keystore:keystore.py:Keystore._ring",
+   "kind": "keystore",
+   "source": "keystore.py:Keystore._ring",
+   "trust": "the process environment and the files on disk",
+   "attacker": "a failure path leaks, downgrades or overwrites a secret",
+   "status": "covered",
+   "tests": [
+    "tests/test_keystore.py",
+    "tests/test_keystore_gate.py",
+    "tests/test_redteam_keystore.py",
+    "tests/test_memory_vault.py::test_no_keystore_fails_closed_without_writing_a_key",
+    "tests/test_memory_vault.py::test_the_key_is_never_written_beside_the_data",
+    "tests/test_credentials.py",
+    "tests/test_no_real_keychain.py"
+   ],
+   "note": "refusal, rate ceiling, background process, other-purpose key, label collision, master in no file or log"
+  },
+  {
+   "id": "keystore:keystore.py:fetch_libraries",
+   "kind": "keystore",
+   "source": "keystore.py:fetch_libraries",
    "trust": "the process environment and the files on disk",
    "attacker": "a failure path leaks, downgrades or overwrites a secret",
    "status": "covered",
@@ -11891,6 +11980,22 @@
    "note": "worker configuration remains one JSON argument; actual HTTPS transport uses only child credentials and a verified CA; transport cleanup retains the owned leader until complete group verification and kills TERM-resistant helpers"
   },
   {
+   "id": "spawn:provision.py:_install",
+   "kind": "spawn",
+   "source": "provision.py:_install",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_provision.py::test_the_installer_takes_no_destination_or_module_path_from_the_environment",
+    "tests/test_provision.py::test_a_system_python_is_never_installed_into",
+    "tests/test_provision.py::test_an_extra_follows_the_extras_it_names_keeps_its_markers_and_never_names_poolhouse",
+    "tests/test_provision.py::test_what_the_lock_does_not_hold_is_not_installed",
+    "tests/test_provision.py::test_a_locked_install_is_held_to_its_digests_by_uv_and_by_pip"
+   ],
+   "note": "The only process started is the environment's own interpreter running ensurepip with a fixed argument list. What is installed is what the project declares for an extra, at the releases and digests of the project's lock, never a name from input and never poolhouse from an index; a system interpreter is refused, and variables that move the destination or the module path are removed."
+  },
+  {
    "id": "spawn:redact/added.py:_renamed_from",
    "kind": "spawn",
    "source": "redact/added.py:_renamed_from",
@@ -12323,9 +12428,9 @@
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
-   "id": "spawn:serve/python_runtime.py:command",
+   "id": "spawn:serve/python_runtime.py:command.ready",
    "kind": "spawn",
-   "source": "serve/python_runtime.py:command",
+   "source": "serve/python_runtime.py:command.ready",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "covered",

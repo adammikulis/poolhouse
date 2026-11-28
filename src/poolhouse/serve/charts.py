@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import importlib
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
+from poolhouse import provision
 from poolhouse.hub import pretty_name
 from poolhouse.serve.fit import Fit
 from poolhouse.units import human_bytes
@@ -36,25 +38,19 @@ COMMON_VRAM_GB: tuple[int, ...] = (6, 8, 12, 16, 24, 32, 48, 64, 96, 128)
 
 
 def _pyplot():
-    """matplotlib, or a refusal that says how to get it.
+    """matplotlib, installed the first time a chart is drawn, or a RuntimeError saying why it could not be.
 
-    Optional the way every other heavy dependency here is optional -- `torch_ops`,
-    `vision.payloads` both raise with the install line rather than failing on
-    an ImportError somebody has to interpret. Note that `python -m poolhouse.bench show --plot` is
-    *not* the precedent it looks like: that one writes hand-built SVG with no library at
-    all, on purpose, because it has to open on a machine with no packages. A PNG cannot be
-    written that way, which is why this one has a dependency and that one does not.
+    Note that `python -m poolhouse.bench show --plot` is *not* the precedent it looks like: that one
+    writes hand-built SVG with no library at all, on purpose, because it has to open on a machine with
+    no packages. A PNG cannot be written that way, which is why this one has a dependency.
     """
 
     try:
-        import matplotlib
-
+        matplotlib = provision.module("matplotlib", "plot")
         matplotlib.use("Agg")           # a file, never a window: nothing here is interactive
-        import matplotlib.pyplot as plt
-    except ImportError as exc:  # pragma: no cover - the install line is the whole message
-        raise RuntimeError(
-            "drawing the fit chart needs matplotlib: pip install 'poolhouse[plot]'") from exc
-    return plt
+        return importlib.import_module("matplotlib.pyplot")
+    except ImportError as exc:
+        raise RuntimeError(f"drawing the fit chart needs matplotlib: {exc}") from exc
 
 
 def label_of(fit: Fit) -> str:

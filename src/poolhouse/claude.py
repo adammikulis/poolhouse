@@ -113,9 +113,13 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
     args = parser().parse_args(ours)
     provenance.told(args.lease_for)
     args.session_factory = session_factory
-    binary = args.claude or harnessing.binary_for("claude")
+    try:
+        binary = args.claude or harnessing.installed_binary("claude")
+    except (ImportError, RuntimeError, OSError) as why:
+        say(f"error: no `claude` on PATH, and it could not be installed: {why}")
+        return 2
     if not binary:
-        say("error: no `claude` on PATH; install Claude Code or pass --claude PATH")
+        say("error: no `claude` on PATH; pass --claude PATH")
         return 2
     if not harnessing.checked(args, "claude", say, interactive=not printing(extra)):
         return 2
