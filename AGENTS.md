@@ -18,6 +18,10 @@ Keep the requested outcome and order fixed. Complete it in the installed setup w
 - Fix root causes with complete refactors. Remove duplicate implementations; do not layer patches, shims, redirects, compatibility paths or migrations for old pools or state.
 - Workspace notifications are advisory and cannot block ordinary development. When coordinating, read your own inbox at session start and task boundaries.
 
+## Backlog
+
+[HANDOFF.md](HANDOFF.md) is the backlog in priority order. Read it before choosing work; take from the top, and delete a row in the change that lands it.
+
 ## Load when needed
 
 [docs/agent-policy.md](docs/agent-policy.md) is authoritative. Read the relevant section before its action, not the whole document:

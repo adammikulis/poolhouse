@@ -1,6 +1,72 @@
 # Handoff
 
-What is open and was checked against the tree on 2026-11-23 (`ac0639291`), plus the owner's decisions. Delete a row when its work lands; add nothing finished. The earlier long handoff, with entries this pass did not re-check, is at `git show ac0639291:HANDOFF.md`; reconcile such an entry against the code before acting on it. The older backlog is `docs/notes/release-backlog-2026-10-15.md`.
+The backlog, highest priority first. Take work from the top; a paused tier starts only when the owner asks. Delete a row in the change that lands it and add nothing finished. "Open, checked" and the sections beside it were checked against the tree at `ac0639291`; an entry of the long handoff at `git show ac0639291:HANDOFF.md` is reconciled against the code before anyone acts on it. An older backlog is `docs/notes/release-backlog-2026-10-15.md`.
+
+A branch named below without a pull request is on GitHub and unmerged. Every item needs an accepting review of its exact commit before it lands; security items also need an attack pass.
+
+## 1. Speed of the local model (active)
+
+The local delegate takes no work until every row here is landed and installed, or measured and dropped.
+
+| Order | Item | Next | Where |
+|---|---|---|---|
+| 1 | A long delegate run keeps the server's prompt cache | Review, checks, merge, install, restart the model server, rerun a long delegate task as the live proof | #113 |
+| 2 | Current llama.cpp with the newest draft head serves Qwen3.8-Flash-Next by default | Start it through the broker from the branch, compare clean speed with the older fork, attack pass on the automatic head download, settle overlap with the Strata change | #120, branch `feat/bench-engines` |
+| 3 | Strata engine | Run its tests, attack pass, merge, install; measure on the Apple silicon computer, then on a Windows computer with a 24 GB card and 64 GB of memory. Publishers ISTA-DASLab and incoai are not admitted for agent downloads: the owner decides | #116 |
+| 4 | Faster serving settings the measurements show, then the 27B quant comparisons | Scheduled jobs first need three failing tests settled and an attack pass | #107, `docs/examples/qwen3.8-27b-quants.queue` |
+| 5 | Delegate work resumes, one small testable task at a time | The two runtime selection tests that fail on development, the test-node build test that needs `cargo`, and `scripts/test quick --explain` running tests | `tests/test_runtime_selection.py`, `tests/test_testnode.py`, `scripts/test` |
+
+## 1. Security of pool membership (active)
+
+| Item | Next | Where |
+|---|---|---|
+| Joining a pool needs an explicit choice, and the serving device decides who gets a board | Attack pass, checks, `scripts/pool-check`, proof on two computers. It contains #110 | #118 |
+
+## 2. Devices work together (paused)
+
+The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is told when all three are.
+
+| Item | Next | Where |
+|---|---|---|
+| What another device or a local program can do without a signed-in window or beyond its own work | Finish before member compute lands: remaining unsigned routes on a device with no pool, member jobs running as the serving user, stopping other members' jobs, remote tests without a sandbox | branch `worktree-agent-ae3737d798aecbad8`, #110 |
+| Pool founding, sync and joining by code | Attack pass again; land with or through #118 | #110 |
+| Remote jobs, files and chat between members | Rest of the tests, pull request | branch `worktree-agent-ae3737d798aecbad8` |
+| Windows runs natively, without WSL | Pull request, green Windows installer check, install over an older release, then confinement of the model server and agents | branch `worktree-agent-adc2b4ba43534d41d`, #112 |
+| Phone linking to a computer, including native Windows | Attack pass of the Windows permission changes; take its Windows fixes into the native branch | #111 |
+| Android app | Join or found a pool from the app, guest and device-uses screens, then a test on a phone | #114, branch `feat/android-node-mode` |
+| Phone node runs no code from other devices | Wire the node module into the app | branch `backup/phone-node` |
+| VM prototype for the phone, not wired in | Review and land as a prototype | #119 |
+
+## 3. New features (paused)
+
+| Item | Next | Where |
+|---|---|---|
+| Private compute-only guest access with a one-scan join | Coverage rows, pull request, attack pass, app screens; then the llama.cpp change that lets one shared server keep each person's context apart in memory | branch `worktree-agent-afb66e817d395794c` |
+| Tailscale inside Poolhouse | Compile the helper, daemon control, sign-in and share screens | #115 (draft) |
+| Screens saying what each device can do | Show only what works across devices | #117 |
+
+## 4. Landing, checks and friction (paused)
+
+| Item | Next | Where |
+|---|---|---|
+| Merge-time checks and a bounded hung test | Second reader for the merged files | #99 |
+| A delegate commits inside its sandbox; generated delegate briefs follow it | Attack pass, review; then rebase the briefs | #101, branch `backup/delegate-briefs` |
+| Tests and uninstalled copies are refused the real state folders | Finish the test run, attack pass; remove the development-linked install just before merging | #104 |
+| No hook rewrites a command | Second reader; afterwards a running session needs a restart | #106 |
+| Hook failures reach the agent | Attack pass again | #108 |
+| Risk-tiered reviews in the merge check, then reviewed branches editing guard code | Pull request and attack pass for the first; the second lands after it | branch `worktree-agent-a46c203791603610b`, branch `backup/guard-rule` |
+| Guards let an agent edit a person's global settings, which the rules forbid | The owner decides | `tests/test_protected_writes.py` |
+| Comparison of agent-to-agent protocols (the tried protocol did not pass; its code stays unmerged) | Land only the comparison document | branch `backup/acp-trial` |
+| Failing on development | Red-team coverage floor, `cargo-audit`, `npm-audit`, the macOS affected-tests job's Swift toolchain error | CI |
+| The real-name list the commit hooks read is not readable, so those names are unchecked; the guard refuses `llama-server --help` | Fix both | `scripts/hooks` |
+| Example network addresses in documents | Review and merge | #121 |
+
+## 5. Later
+
+| Item | Where |
+|---|---|
+| Native-speed isolated code execution on the phone; starts only when the owner asks | `app/phone-isolation/README.md` in #119 |
+| macOS signing certificate opt-in; images and other input across the product; macOS read-ahead patch for llama.cpp; Splash engine trial; delegate runs visible in the app; alerts on unanswered agent questions; remaining browser failures; cleanup of merged worktrees; the same required checks on `main` | |
 
 ## A person has to do these (guard paths an agent cannot edit)
 
