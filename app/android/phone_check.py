@@ -206,11 +206,16 @@ def pick(nodes: list[Node], words: str) -> Node | None:
     return max(exact, key=lambda n: n.top) if exact else next((n for n in nodes if words in n.words), None)
 
 
+def printed(line: str) -> None:
+    """A line of the report, shown as it happens even where the output is piped."""
+    print(line, flush=True)
+
+
 class Check:
     def __init__(self, phone: Phone, apk: Path, out: Path, patience: float = 900, pause: Callable[[float], None] = time.sleep,
-                 clock: Callable[[], float] = time.monotonic, say: Callable[[str], None] = print):
+                 clock: Callable[[], float] = time.monotonic, say: Callable[[str], None] | None = None):
         self.phone, self.apk, self.out, self.patience = phone, apk, out, patience
-        self.pause, self.clock, self.say = pause, clock, say
+        self.pause, self.clock, self.say = pause, clock, say or printed
         self.pids: set[str] = set()
         self.away: float | None = None
         self.told = False
