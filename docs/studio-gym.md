@@ -17,7 +17,7 @@ binary. The app reports which dependencies are installed in the selected environ
 For a source checkout:
 
 ```sh
-python -m pip install -e '.[gym]'
+python -m pip install '.[gym]'
 python -m pip install 'metadrive-simulator @ git+https://github.com/metadriverse/metadrive.git@85e5dadc6c7436d324348f6e3d8f8e680c06b4db'
 python -m poolhouse.gym catalogue
 ```

@@ -6,7 +6,7 @@ open no socket when imported. The package runs on Python 3.12 to 3.14; the app's
 
 ```
 pip install "poolhouse @ git+https://github.com/adammikulis/poolhouse"
-pip install -e /path/to/poolhouse               # a local checkout
+pip install /path/to/poolhouse                  # a local checkout, installed as a copy
 ```
 
 The base install adds `packaging` and `psutil`, which finds and stops the server's process

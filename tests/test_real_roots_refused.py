@@ -172,7 +172,7 @@ def test_only_a_declared_program_of_the_checkout_run_as_itself_gets_the_accounts
     assert refused(account.run(clean, undeclared))
 
 
-def test_an_editable_install_runs_as_its_own_command_and_not_as_a_script_or_from_pythonpath(account):
+def test_a_development_linked_install_is_refused_like_a_checkout_however_it_is_started(account):
     checkout = account.base / "checkout"
     source = copied(checkout / "src")
     (source / "poolhouse" / "probe_here.py").write_text(PROBE)
@@ -182,10 +182,12 @@ def test_an_editable_install_runs_as_its_own_command_and_not_as_a_script_or_from
     (found / "direct_url.json").write_text(json.dumps({"dir_info": {"editable": True}, "url": checkout.as_uri()}))
     with (account.hook / "sitecustomize.py").open("a") as stand_in:
         stand_in.write(f"sys.path[:0] = [{str(source)!r}, {str(found.parent)!r}]\n")
-    assert resolved(account.run(account.env(), "-m", "poolhouse.probe_here"))
+    as_a_module = account.run(account.env(), "-m", "poolhouse.probe_here")
+    assert refused(as_a_module), as_a_module
     probe = account.script(account.base / "probe.py", PROBE)
-    assert refused(account.run(account.env(), probe)), "a script that imports an editable install is not Poolhouse"
-    assert refused(account.run(account.env(source), "-m", "poolhouse.probe_here")), "PYTHONPATH names the checkout"
+    assert refused(account.run(account.env(), probe))
+    assert resolved(account.run(account.env(POOLHOUSE_HOME=str(account.base / "s"), POOLHOUSE_CACHE=str(account.base / "c")),
+                                "-m", "poolhouse.probe_here")), "scratch folders still work"
 
 
 @pytest.mark.parametrize("variable", ["POOLHOUSE_HOME", "POOLHOUSE_CACHE"])

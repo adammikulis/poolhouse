@@ -1,6 +1,7 @@
 """What the checkouts and the working state are in. It runs nothing from a repository, installs nothing and changes nothing.
 
 `look_checkouts()` reads the repositories (hooks, working tree, branch, worktrees), the bench store and the managed llama.cpp builds. Each is a `Finding`.
+The command also reports a development-linked install of Poolhouse in any Python of this machine (`poolhouse.devinstall`).
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from poolhouse import hook_diagnostics, hookcheck, node_pool, optional
+from poolhouse import devinstall, hook_diagnostics, hookcheck, node_pool, optional
 from poolhouse.checks import Finding, show
 from poolhouse.command import Group, flag
 from poolhouse.home import state
@@ -357,7 +358,7 @@ def _findings(args) -> int:
         return hook_diagnostics.inspect(args)
     say("poolhouse: the repositories and the working state\n")
     pool = node_pool.status()
-    findings = node_pool.build_findings(pool) + node_pool.reach_findings(pool) + look_checkouts(
+    findings = node_pool.build_findings(pool) + node_pool.reach_findings(pool) + devinstall.findings() + look_checkouts(
         repositories(args.repo) if args.repo else None,
         bench_home=Path(args.bench_home).expanduser() if args.bench_home else None)
     show(findings)
@@ -368,7 +369,8 @@ COMMAND = Group(
     "poolhouse-doctor",
     "Check what poolhouse-setup does not: the checkouts (hooks, working tree, branch, "
     "worktrees), the bench store (empty runs, a dead lock, a log "
-    "with no run) and the managed llama.cpp. Shows the fix for what has one and runs none; never pushes.",
+    "with no run), the managed llama.cpp and any development-linked install of Poolhouse in a Python. Shows the fix for what has one "
+    "and runs none; never pushes.",
     options=[flag("action", nargs="?", choices=("hooks",), help="inspect local hook failures"),
              flag("id", nargs="?", help="hook diagnostic ID; omitted lists recent failures"),
              flag("--repo", action="append", metavar="PATH",

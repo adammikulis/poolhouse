@@ -25,7 +25,7 @@ $env:POOLHOUSE_MODE="system";   irm https://raw.githubusercontent.com/adammikuli
 |---|---|---|---|
 | **the app** (default) | the release zip for this machine, and a window | nothing, until you click: the first-run screen shows the models that fit, gemma-4-E2B suggested (2.6G, ~1.5s a question) beside E4B (4.4G, ~3s) and Flash-Next (104G, ~27s), the ones too big for the room greyed out | the newest published release, replacing the whole install — daemon, CLI and window — then restarting |
 | `--headless` | a venv under `~/.poolhouse` (Windows: `%LOCALAPPDATA%\poolhouse`), console scripts on PATH, no window | `--models auto`: the best measured model this machine has room for, unless `POOLHOUSE_MODELS=none` | releases, the same way — or `main`, if you installed from `main` |
-| `--dev` | a git checkout with `pip install -e .` | the same as headless | follows `main`: pulls, reinstalls if the packaging moved, restarts |
+| `--dev` | a git checkout of `0.3dev`, installed as a copy into the same venv, and a runtime built from its commit | the same as headless | follows `0.3dev`: pulls a signed commit, builds it, restarts |
 | `--system` | `--headless`, plus a service that starts at boot with nobody logged in. Needs `sudo` / an administrator | the same as headless | the same as headless |
 
 **Per user or per machine.** The first three need no administrator and the daemon runs
@@ -145,9 +145,12 @@ netsh advfirewall firewall add rule name="Poolhouse" dir=in action=allow profile
 
 `poolhouse-setup` prints that line as a finding until the rule exists. The first time on a
 new Windows machine, in this order, each of which should say what follows it:
-`pip install -e .` (an editable install, so `poolhouse-traind` is on PATH);
+the installer in `dev` mode (the PowerShell line above; it installs a copy into
+`%LOCALAPPDATA%\poolhouse\venv` and says how to put its `Scripts` folder, with
+`poolhouse-traind`, on PATH). Do not install a checkout in editable mode: that copy is refused your
+own `~\.poolhouse`.
 `poolhouse-setup` (the firewall finding, `!` until the rule is added, then `ok`);
-`poolhouse-doctor` (the checkout and hooks);
+`poolhouse-doctor` (the checkouts `POOLHOUSE_CHECKOUTS` names, and their hooks);
 `poolhouse-serve build --from release` ("current -> ...\builds\bNNNN" after "verifying");
 `poolhouse-traind --persist` ("installed to start at login", then a `traind.log` under
 `~\.poolhouse` that begins `poolhouse traind on http://0.0.0.0:8770`);

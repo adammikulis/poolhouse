@@ -96,9 +96,12 @@ gate.
 
 ### The runtime and the latest build
 
-- The development Python (plain `python3`, tests, scripts) may be an editable install of the primary checkout, so it
-  follows what is merged; pip rewrites the `poolhouse*` launchers when it installs, so restore them from a backup or
-  with `poolhouse runtime ensure`. Live runtimes use an immutable built wheel or pinned runtime tree with matching
+- The development Python (plain `python3`, tests, scripts) holds no Poolhouse: tests and repository scripts import the
+  `src/` of the tree they sit in, and a command run by hand names it (`PYTHONPATH=src`). Never install Poolhouse into it
+  in development-linked (editable) mode: every program of that Python would read one checkout's code, the copy is
+  refused the account's own folders, and `poolhouse-doctor` reports it with the command that removes it. Installing a
+  copy rewrites the `poolhouse*` commands, so restore them with `poolhouse runtime ensure`.
+  Live runtimes use an immutable built wheel or pinned runtime tree with matching
   distribution metadata. Never point a running worker at a changing checkout. Replace only owned processes at a
   coordinated safe boundary, preserving their identity and setup; do not interrupt another process's active work.
 - **Every agent runs the latest build, automatically.** On every device the newest merged development build is
@@ -108,7 +111,7 @@ gate.
   it reports a stale build as a defect and runs `poolhouse runtime ensure` itself. A device on an older build than
   the pool is out of the pool's protocol (signing labels and wire operations change between builds), so a stale
   device is brought up to date before anything else, and a brief or a doc never says "update first" as a step for
-  the owner. The owner's pyenv install, launchers and running node are replaced at the coordinated safe boundary
+  the owner. The owner's launchers and running node are replaced at the coordinated safe boundary
   above, never mid-run (docs/install.md, "Following the source checkout").
 
 ### Landing in detail

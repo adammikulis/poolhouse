@@ -15,15 +15,11 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
-import json
 import os
 import secrets
 import sys
-import sysconfig
-from functools import cache as memoized
 from importlib import import_module
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
 
 from poolhouse.files import promote
 
@@ -140,63 +136,10 @@ def _same_or_inside(path: str, root: str) -> bool:
     return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
 
 
-@memoized
-def _editable_root() -> Path | None:
-    """The source folder of an editable install of exactly this copy (a person's ``--dev`` install), or None."""
-    for found in import_module("importlib.metadata").distributions(name="poolhouse"):  # loaded when asked: every hook imports this
-        try:
-            said = json.loads(found.read_text("direct_url.json") or "{}")
-            if not said.get("dir_info", {}).get("editable"):
-                continue
-            named = unquote(urlsplit(said["url"]).path)
-            root = Path(named.lstrip("/") if os.name == "nt" else named).resolve()
-        except (OSError, ValueError, KeyError, AttributeError):
-            continue
-        if root / "src" / "poolhouse" == _PACKAGE:
-            return root
-    return None
-
-
-def _module_run() -> str:
-    """The module the interpreter was started with by ``-m``, else empty: known before that module's own code runs."""
-    words = list(getattr(sys, "orig_argv", ()))[1:]
-    at = 0
-    while at < len(words):
-        word = words[at]
-        if word.startswith("-m"):
-            return word[2:] or "".join(words[at + 1:at + 2])
-        if word in ("-", "-c") or not word.startswith("-"):
-            return ""
-        at += 2 if word in ("-W", "-X") else 1
-    return ""
-
-
-def _started_as_poolhouse() -> bool:
-    """Whether this process was started as Poolhouse itself, ``-m poolhouse...`` or one of its installed commands, and not as some other
-    script or ``-c`` program that imports it."""
-    main = sys.modules.get("__main__")
-    named = getattr(getattr(main, "__spec__", None), "name", "") or _module_run()
-    if named == "poolhouse" or named.startswith("poolhouse."):
-        return True
-    file = getattr(main, "__file__", None)
-    if not file:
-        return False
-    program = Path(file)
-    if program.name == "__main__.py":  # the Windows command wrapper: Scripts\\poolhouse-x.exe\\__main__.py
-        program = program.parent
-    folders = {os.path.realpath(Path(sys.executable).parent), os.path.realpath(sysconfig.get_path("scripts"))}
-    return program.name.startswith("poolhouse") and os.path.realpath(program.parent) in folders
-
-
 def _is_installed_copy() -> bool:
-    """Whether this is the installed Poolhouse: a packaged app, a copy under ``site-packages`` (which every runtime is), or an editable
-    install running as its own command. A checkout, an export or a worktree on ``PYTHONPATH`` is none of these."""
-    if getattr(sys, "frozen", False) or _PACKAGE.parent.name in ("site-packages", "dist-packages"):
-        return True
-    named = "" if sys.flags.ignore_environment else os.environ.get("PYTHONPATH", "")
-    if any(part and Path(part).resolve() == _PACKAGE.parent for part in named.split(os.pathsep)):
-        return False
-    return _started_as_poolhouse() and _editable_root() is not None
+    """Whether this is the installed Poolhouse: a packaged app, or a copy under ``site-packages`` (which every runtime is). A checkout, an
+    export, a worktree and a development-linked (editable) install, which runs a checkout's own files, are none of these."""
+    return bool(getattr(sys, "frozen", False)) or _PACKAGE.parent.name in ("site-packages", "dist-packages")
 
 
 def _root_refusal() -> str:

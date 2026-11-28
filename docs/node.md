@@ -1120,7 +1120,7 @@ measured with `responsibility_get_pid_responsible_for_pid`), and Local Network p
   attribute and Gatekeeper does not assess them; they are not notarised, so the Application Firewall does not allow them
   automatically as signed software and asks once. *The certificate missing:* the loud refusal above.
 - **What is not covered.** A runtime from a Python macOS cannot copy (its libraries sit outside the bundle's reach) is refused loudly.
-  A `--dev` checkout installed with `pip install -e` is not a runtime and keeps its interpreter's name. Windows names a program by
+  A copy of Poolhouse in an ordinary virtual environment, outside a runtime, keeps its interpreter's name. Windows names a program by
   its file, so the Windows rules are by port.
 
 ## Shipping and keeping it up
