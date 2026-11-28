@@ -4,6 +4,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+import types
 import zipfile
 from pathlib import Path
 
@@ -121,6 +122,7 @@ def daemon_requirement(builder, monkeypatch, tmp_path):
     monkeypatch.setattr(builder, 'ROOT', root)
     monkeypatch.setattr(builder, 'built_from', lambda python: None)
     builder.DIST.joinpath('bundle').mkdir(parents=True)
+    builder.DIST.joinpath('metal_smi-1.1.0-py3-none-any.whl').write_bytes(b'owned fixture')
     made = builder.DIST / 'bundle' / ('poolhouse-headless.exe' if sys.platform == 'win32' else 'poolhouse-headless')
     made.write_bytes(b'fixture frozen output')
     calls = []
@@ -138,6 +140,24 @@ def test_daemon_installs_declared_telemetry_before_freezing(daemon_requirement):
     from packaging.requirements import Requirement
 
     assert Requirement(daemon_requirement).extras == {'agents', 'hub', 'fleet-onboard', 'coordinator', 'telemetry'}
+
+
+def test_a_mac_bundle_without_the_telemetry_wheel_still_freezes_and_says_so(builder, monkeypatch, tmp_path, capsys):
+    from packaging.requirements import Requirement
+
+    root = tmp_path / 'build root'
+    (root / '.build-venv').mkdir(parents=True)
+    monkeypatch.setattr(builder, 'ROOT', root)
+    monkeypatch.setattr(builder, 'sys', types.SimpleNamespace(platform='darwin', executable=sys.executable))
+    monkeypatch.setattr(builder, 'built_from', lambda python: None)
+    builder.DIST.joinpath('bundle').mkdir(parents=True)
+    builder.DIST.joinpath('bundle', 'poolhouse-headless').write_bytes(b'fixture frozen output')
+    calls = []
+    monkeypatch.setattr(builder, 'run', lambda argv, **kwargs: calls.append(argv))
+    builder.daemon()
+    asked, = [argv[-1] for argv in calls if argv[-1].startswith('poolhouse[')]
+    assert Requirement(asked).extras == {'agents', 'hub', 'fleet-onboard', 'coordinator'}
+    assert '--metal-smi-source' in capsys.readouterr().out
 
 
 def test_telemetry_dependency_retains_platform_marker():

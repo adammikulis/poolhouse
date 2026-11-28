@@ -89,8 +89,10 @@ resolution searches both `dist/` and `dist/wheels/`; rebuilding Poolhouse preser
 and dependency wheels. A source option is explicit, with no machine-specific path or
 unpublished remote reference embedded in Poolhouse's dependency metadata.
 
-Until `metal-smi>=1.1.0` is published on the public package index, a generic macOS
-`pip install 'poolhouse[all]'` cannot resolve telemetry from that index alone. Use the
+Until `metal-smi>=1.1.0` is published on the public package index, a macOS
+`python packaging/build.py --bundle` with no such wheel in `dist/` builds an app that reads no
+GPU telemetry and says so, and a generic macOS `pip install 'poolhouse[all]'` cannot resolve
+telemetry from that index alone. Use the
 validated local wheel or a bundle containing it, for example
 `python -m pip install --find-links dist '.[telemetry]'` from the source checkout. This
 build option creates local install artifacts; it does not publish or commit either project.

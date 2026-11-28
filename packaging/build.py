@@ -145,6 +145,17 @@ def built_from(python: Path) -> Path:
     return where
 
 
+def frozen_extras() -> list[str]:
+    """The extras the frozen daemon carries. No package index holds metal-smi, so a macOS bundle reads GPU telemetry only
+    when its wheel is in dist/ (``--metal-smi-source``), and a build without it says so."""
+    extras = ["agents", "hub", "fleet-onboard", "coordinator"]
+    if sys.platform == "darwin" and not any(DIST.glob("metal_smi-*.whl")):
+        print("this bundle reads no GPU telemetry: metal-smi is on no package index; build with "
+              "--metal-smi-source PATH to include it", flush=True)
+        return extras
+    return [*extras, "telemetry"]
+
+
 def daemon() -> Path:
     """Freeze the daemon with PyInstaller. Returns the binary it wrote."""
     env = ROOT / ".build-venv"
@@ -154,8 +165,7 @@ def daemon() -> Path:
     run([str(pip), "install", "-q", "--upgrade", *EXTERNAL])
     run([str(pip), "install", "-q", "--no-index", "--find-links", str(DIST),
          "--force-reinstall", "--no-deps", "poolhouse"])
-    run([str(pip), "install", "-q", "--find-links", str(DIST),
-         "poolhouse[agents,hub,fleet-onboard,coordinator,telemetry]"])
+    run([str(pip), "install", "-q", "--find-links", str(DIST), f"poolhouse[{','.join(frozen_extras())}]"])
 
     built_from(env / ("Scripts" if sys.platform == "win32" else "bin") / ("python.exe" if sys.platform == "win32" else "python"))
     tool = env / ("Scripts" if sys.platform == "win32" else "bin") / "pyinstaller"
