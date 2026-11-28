@@ -43,6 +43,7 @@ class Computer:
         self.requests: dict[str, list[dict]] = {}
         self.claim_waiters: list[dict] = []
         self.measured, self.taken_up, self.no_sandbox, self.gone, self.fails = None, True, "", "", ""
+        self.stopped = 0   # what `poolhouse-delegate stop` answers: 1 while the run is still ending
         self.below: set[int] = set()
         self.rechecked: list[tuple[str, str]] = []
         self.only_existing: list[bool] = []
@@ -51,8 +52,10 @@ class Computer:
     def start(self, words: list[str]) -> int:
         self.asked.append(words)
         self.only_existing.append(sessions._ONLY_EXISTING.is_set())
-        if words[0] != "start" or self.refuses:
-            return 2 if self.refuses else 0
+        if words[0] != "start":
+            return self.stopped
+        if self.refuses:
+            return 2
         given = dict(pairwise(words))
         name = f"run-{len(self.asked)}"
         source = given["--project"]
@@ -196,6 +199,20 @@ def test_the_runner_gives_the_model_up_to_someone_else_and_the_card_is_ready_aga
     kind, text = cards_run.step(root, host)
     assert kind == "waiting" and "the app's chat" in text and computer.asked[-1] == ["stop", "run-1"]
     assert states(root)["junk-card"] == "ready"
+
+
+@pytest.mark.parametrize(("came", "kind", "state"), [("stopped", "waiting", "ready"), ("done", "settled", "review")])
+def test_a_delegate_still_ending_when_stopped_keeps_its_card_until_it_has_ended(root, came, kind, state):
+    release(root)
+    computer = Computer()
+    cards_run.step(root, computer.host())
+    computer.holders, computer.stopped = [{"pid": 77, "label": "the app's chat"}], 1
+    first, text = cards_run.step(root, computer.host())
+    assert first == "running" and "still ending" in text and states(root)["junk-card"] == "running", text
+    ended("run-1", came, changes={} if came == "stopped" else None)
+    computer.holders, computer.stopped = [], 0
+    assert cards_run.step(root, computer.host())[0] == kind and states(root)["junk-card"] == state
+    assert [words[0] for words in computer.asked] == (["start", "stop", "stop"] if came == "stopped" else ["start", "stop"])
 
 
 @pytest.mark.parametrize(("change", "said"), [

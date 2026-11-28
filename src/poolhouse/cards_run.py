@@ -348,23 +348,35 @@ def _record(root: Path, ident: str, **fields: Any) -> None:
     cards_ledger.edit(root, change)
 
 
+def _given_up(root: Path, host: Host, each: Standing, why: str) -> tuple[str, str]:
+    """Stop the delegate of card ``each`` since ``why``. A run still ending when `stop` gives up on it keeps its card, and the next look asks
+    again; the card is ready once the run has ended."""
+    name = str(each.entry.get("delegate"))
+    if host.start(["stop", name]) == 1:
+        _record(root, each.card.id, yielding=why)
+        return "running", f"{each.card.id}: {name} is still ending, asked to stop since {why}"
+    _record(root, each.card.id, state="", why=f"it gave the model up: {why}", delegate="", yielding="")
+    host.quiet_since = None
+    return "waiting", f"{each.card.id}: stopped {name}, since {why}; the card is ready again"
+
+
 def _watched(root: Path, host: Host, each: Standing) -> tuple[str, str]:
     """One look at the running card ``each``: give the model up to someone else, or record what its ended run came to."""
     name = str(each.entry.get("delegate"))
-    if delegate_record.state_of(name)[0] in delegate_record.LIVE:
-        if why := _intruder(host, name):
-            host.start(["stop", name])
-            _record(root, each.card.id, state="", why=f"it gave the model up: {why}", delegate="")
-            host.quiet_since = None
-            return "waiting", f"{each.card.id}: stopped {name}, since {why}; the card is ready again"
+    state, asked = delegate_record.state_of(name)[0], str(each.entry.get("yielding") or "")
+    if state in delegate_record.LIVE:
+        if why := asked or _intruder(host, name):
+            return _given_up(root, host, each, why)
         return "running", f"{each.card.id}: running as {name}"
+    if asked and state != "done":   # a run that finished before the stop took effect is settled like any other
+        return _given_up(root, host, each, asked)
     now = card_digest(root, each.card)
     if now != each.entry.get("card"):
         came: dict[str, Any] = {"state": "returned", "why": "its card changed while it ran",
                                 "branch": str((store.result(name).get("tree") or {}).get("branch") or "")}
     else:
         came = outcome(root, host, each.card, name)
-    _record(root, each.card.id, **came, card=now)
+    _record(root, each.card.id, **came, card=now, yielding="")
     said = f"; why:\n{_data(came['why'])}" if came["why"] else f", branch {came['branch']}"
     return "settled", f"{each.card.id}: {came['state']}{said}"
 
