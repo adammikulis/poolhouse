@@ -6,7 +6,7 @@ import subprocess
 import sys
 from importlib.util import find_spec
 
-from poolhouse import maintenance, provision
+from poolhouse import maintenance, provision, safelaunch
 from poolhouse.gym.transport import interpreter, python_environment
 from poolhouse.gym.worlds import schema
 
@@ -69,8 +69,9 @@ def probe(python):
     environment = python_environment()
     environment.pop("POOLHOUSE_GYM_PYTHON", None)
     environment.pop("POOLHOUSE_GYM_PYTHONS", None)
-    result = subprocess.run([python, "-m", "poolhouse.gym.cli", "catalogue"],
-                            capture_output=True, text=True, env=environment, timeout=10)
+    with safelaunch.empty_directory() as nowhere:
+        result = subprocess.run([safelaunch.absolute(python), "-P", "-m", "poolhouse.gym.cli", "catalogue"],
+                                capture_output=True, text=True, env=environment, timeout=10, cwd=nowhere)
     if result.returncode:
         raise RuntimeError(f"Gym environment did not answer: {result.stderr.strip()}")
     return json.loads(result.stdout)

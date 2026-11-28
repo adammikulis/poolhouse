@@ -185,7 +185,7 @@ def test_the_installer_takes_no_destination_or_module_path_from_the_environment(
                         lambda python, args, *, timeout, env=None, locked: ran.append(((*args, locked.name), env)))
     provision._install(tmp_path / "python", tmp_path / "locked")
     (bootstrap, first), (install, second) = ran
-    assert bootstrap == [str(tmp_path / "python"), "-m", "ensurepip"] and install == ("install", "locked")
+    assert bootstrap == [str(tmp_path / "python"), "-I", "-m", "ensurepip"] and install == ("install", "locked")
     for environment in (first, second):
         assert not {"PIP_TARGET", "PIP_PREFIX", "PIP_USER", "PYTHONPATH", "PYTHONHOME"} & set(environment)
 

@@ -17,7 +17,7 @@ import stat
 import tempfile
 from pathlib import Path
 
-from poolhouse import files, home, net
+from poolhouse import files, home, net, provision
 from poolhouse.fleet import updates
 from poolhouse.http import ServerError
 from poolhouse.lock import only_one
@@ -113,6 +113,8 @@ def ensure() -> str:
     """The pinned binary, fetched first when it is not kept. `InstallFailed` names why a fetch did not complete."""
     if binary := kept():
         return binary
+    if refused := provision.download_refusal():
+        raise InstallFailed(f"OpenCode was not downloaded: {refused}")
     root().mkdir(parents=True, exist_ok=True)
     with only_one(root() / "fetch.lock", wait=True, timeout=WAIT_S, note="fetching OpenCode"):
         if binary := kept():
@@ -143,7 +145,7 @@ def keep(url: str, want: str, member: str, target: Path, *, sha256: str) -> None
     say(f"fetching {want}")
     with tempfile.TemporaryDirectory(prefix="poolhouse-tool-") as scratch:
         try:
-            archive = updates.download(asset, scratch, allow_unscanned=True)   # pinned bytes: no scanner here is no refusal
+            archive = updates.download(asset, scratch, pinned=True)
             staging = Path(scratch) / "unpacked"
             unpack(archive, staging)
         except (updates.UpdateError, Unsafe) as why:

@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from poolhouse import net
+from poolhouse import net, provision
 from poolhouse.hub.probe import machine_memory
 from poolhouse.lock import only_one
 from poolhouse.safenames import Unsafe, unpack
@@ -132,6 +132,8 @@ def _ensure_server(root: Path | str, *, on_progress: Any = None, sources: str | 
     if policy not in ("internet", "both"):
         raise LlamaError("The model server is not installed. Choose Internet only or Both "
                          "to download it, or install a local server with LAN only selected.")
+    if refused := provision.download_refusal():
+        raise LlamaError(f"The model server was not downloaded: {refused}")
 
     release = verified_release()
     asset = asset_for_this_machine(release)
@@ -196,8 +198,7 @@ def _download(asset: dict[str, Any], into: str, report: Any) -> Path:
 
     if report:
         report(f"Downloading {asset['name']} ({int(asset.get('size') or 0) / (1 << 20):.1f} MB)")
-    # only the pinned release comes through here, so having no virus scanner is no refusal; one that flags it still refuses
-    return download(asset, into, on_progress=net.Hooks(progress=progress, phase=phase), allow_unscanned=True)
+    return download(asset, into, on_progress=net.Hooks(progress=progress, phase=phase), pinned=True)   # only the pinned release
 
 
 def _unpack(archive: Path, into: Path) -> None:

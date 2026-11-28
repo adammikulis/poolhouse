@@ -9,7 +9,7 @@ import tempfile
 import threading
 from pathlib import Path
 
-from poolhouse import provision
+from poolhouse import provision, safelaunch
 from poolhouse.speech.protocols import (
     DEFAULT_SAMPLE_RATE,
     ProviderError,
@@ -27,7 +27,7 @@ class AudioConversionError(ProviderError):
 def ffmpeg_program() -> str:
     """The ``ffmpeg`` on PATH, else the one the ``ffmpeg`` extra carries, installed the first time audio needs it.
     Raises `AudioConversionError` when none can be had."""
-    if found := shutil.which("ffmpeg"):
+    if found := safelaunch.which("ffmpeg"):
         return found
     try:
         return provision.module("imageio_ffmpeg", "ffmpeg").get_ffmpeg_exe()
@@ -117,7 +117,14 @@ class FasterWhisperASR(_LoadedOnce):
     def _load(self):
         WhisperModel = provision.module("faster_whisper", "asr").WhisperModel
         pinned = {"revision": REVISIONS[self.model]} if self.model in REVISIONS else {}
-        return WhisperModel(self.model, device=self.device, compute_type=self.compute_type, **pinned)
+        refused = provision.download_refusal()
+        try:
+            return WhisperModel(self.model, device=self.device, compute_type=self.compute_type, **pinned,
+                                **({"local_files_only": True} if refused else {}))
+        except (OSError, ValueError, RuntimeError) as exc:
+            if not refused:
+                raise
+            raise ProviderError(f"{self.model} could not be loaded from this device alone, and {refused}: {exc}") from exc
 
     def transcribe(self, audio, *, language: str | None = None) -> Transcript:
         model = self._require()
@@ -215,6 +222,18 @@ class WhisperCppASR:
         )
 
 
+def _kept_only(model: str) -> str:
+    """``model`` as it may be loaded now: itself where downloads are allowed or it is a directory here, else the copy this
+    device holds. Raises `ProviderError` when nothing may be fetched and none is held."""
+    refused = provision.download_refusal()
+    if not refused or Path(model).is_dir():
+        return model
+    try:
+        return provision.module("huggingface_hub", "hub").snapshot_download(model, local_files_only=True)
+    except (ImportError, OSError, ValueError) as exc:
+        raise ProviderError(f"{model} is not on this device and was not downloaded: {refused}") from exc
+
+
 class TransformersWhisperASR(_LoadedOnce):
     """Whisper through ``transformers``. The widest model selection, the heaviest install."""
 
@@ -260,7 +279,7 @@ class TransformersWhisperASR(_LoadedOnce):
         device = self._pick_device(torch)
         return pipeline(
             "automatic-speech-recognition",
-            model=self.model,
+            model=_kept_only(self.model),
             device=device,
             torch_dtype=self._resolve_dtype(torch),
         )

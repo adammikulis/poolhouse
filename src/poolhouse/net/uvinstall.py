@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import shutil
 import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from poolhouse import safelaunch
 from poolhouse.home import user_home
 from poolhouse.net import packages
 
@@ -16,8 +16,8 @@ KEPT = {"PIP_CONFIG_FILE", "PIP_DISABLE_PIP_VERSION_CHECK"}
 
 
 def program(path: str | None = None) -> str | None:
-    """The uv executable on the search path or in the pyenv shims, or None."""
-    return shutil.which("uv", path=path) or shutil.which("uv", path=str(user_home() / ".pyenv" / "shims"))
+    """The uv executable on the search path or in the pyenv shims, never one in the current directory, or None."""
+    return safelaunch.which("uv", path) or safelaunch.which("uv", str(user_home() / ".pyenv" / "shims"))
 
 
 def link_mode() -> str:
@@ -47,5 +47,7 @@ def install(python: Path, spec: str | Sequence[str] | Path, *, timeout: float, e
             if url := one.partition(" @ ")[2]:
                 packages._admit(url, packages.policy.default())
     clean = {name: value for name, value in environment.items() if not name.startswith(("UV_", "PIP_"))}
-    return subprocess.run([tool, "pip", "install", "--no-config", *(["--offline"] if offline else []), "--link-mode", link_mode(),
-                           "--python", str(python), *specs], capture_output=True, text=True, timeout=timeout, env=clean)
+    with safelaunch.empty_directory() as nowhere:
+        return subprocess.run([tool, "pip", "install", "--no-config", *(["--offline"] if offline else []), "--link-mode",
+                               link_mode(), "--python", safelaunch.absolute(python), *specs],
+                              capture_output=True, text=True, timeout=timeout, env=clean, cwd=nowhere)

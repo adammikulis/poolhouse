@@ -23,7 +23,7 @@ from typing import Any
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
-from poolhouse import home, maintenance, net, pinned, provision
+from poolhouse import home, maintenance, net, pinned, provision, safelaunch
 from poolhouse.files import promote
 from poolhouse.http import ServerError
 from poolhouse.httpguard import Refused
@@ -156,7 +156,7 @@ class Environment:
 
     @property
     def path(self) -> Path:
-        return Path(self.root).expanduser() / "env"
+        return Path(self.root).expanduser().absolute() / "env"
 
     @property
     def python(self) -> Path:
@@ -175,21 +175,22 @@ class Environment:
         if not getattr(sys, "frozen", False) and self.python_version == current:
             return Path(sys.executable)
         name = f"python{self.python_version}"
-        candidates = [shutil.which(name)]
-        pyenv = shutil.which("pyenv")
+        candidates = [safelaunch.which(name)]
+        pyenv = safelaunch.which("pyenv")
         if pyenv:
-            with contextlib.suppress(OSError, subprocess.SubprocessError):
+            with contextlib.suppress(OSError, subprocess.SubprocessError), safelaunch.empty_directory() as nowhere:
                 installed = subprocess.run([pyenv, "whence", "--path", name],
-                                           capture_output=True, text=True, timeout=10)
+                                           capture_output=True, text=True, timeout=10, cwd=nowhere)
                 if installed.returncode == 0:
                     candidates.extend(installed.stdout.splitlines())
         for found in candidates:
             if not found:
                 continue
             try:
-                checked = subprocess.run(
-                    [found, "-c", "import json,sys;print(json.dumps([sys.executable,sys.version_info[:2]]))"],
-                    capture_output=True, text=True, timeout=10)
+                with safelaunch.empty_directory() as nowhere:
+                    checked = subprocess.run(
+                        [found, "-I", "-c", "import json,sys;print(json.dumps([sys.executable,sys.version_info[:2]]))"],
+                        capture_output=True, text=True, timeout=10, cwd=nowhere)
                 if checked.returncode:
                     continue
                 executable, version = json.loads(checked.stdout)
@@ -202,7 +203,7 @@ class Environment:
     # -- fetching one --------------------------------------------------
     def standalone_python(self) -> Path | None:
         """A Python this app downloaded for itself, if it has one."""
-        base = Path(self.root).expanduser() / "python"
+        base = Path(self.root).expanduser().absolute() / "python"
         found = base / ("python.exe" if sys.platform == "win32" else "bin/python3")
         return found if found.exists() else None
 
@@ -218,6 +219,8 @@ class Environment:
         found = self.standalone_python()
         if found:
             return found
+        if refused := provision.download_refusal():
+            raise OSError(f"Python {self.python_version} was not downloaded: {refused}")
         if on_progress:
             on_progress("Downloading Python")
 
@@ -243,7 +246,7 @@ class Environment:
             archive = Path(tmp) / "python.tar.gz"
             try:
                 net.download(asset["browser_download_url"], archive, net.Want(
-                    sha256=digest, require_digest=True, size=int(asset.get("size") or 0), allow_unscanned=True,
+                    sha256=digest, require_digest=True, size=int(asset.get("size") or 0), pinned=True,
                     nested=True,   # a Python carries pip's own wheel
                     max_bytes=2 << 30, purpose="python download"), pipeline=net.default())
             except (net.Blocked, net.Truncated, ServerError, Refused) as exc:
@@ -278,8 +281,9 @@ class Environment:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if on_progress:
             on_progress("Creating the environment")
-        made = subprocess.run([str(base), "-m", "venv", str(self.path)],
-                              capture_output=True, text=True)
+        with safelaunch.empty_directory() as nowhere:
+            made = subprocess.run([safelaunch.absolute(base), "-I", "-m", "venv", str(self.path)],
+                                  capture_output=True, text=True, cwd=nowhere)
         if made.returncode != 0:
             raise OSError(
                 f"could not build the environment: {_last_error(made.stderr)}")
@@ -470,6 +474,8 @@ class Environment:
         """Install ``library`` from the project's hashed lock alone: what it and the app's own wheel declare, each release
         held to its digest, then that wheel without resolving anything. Raises OSError or ValueError for a library the lock
         cannot hold at digests."""
+        if refused := provision.download_refusal():
+            raise OSError(f"{library.title} was not installed: {refused}")
         if library.index or library.bootstrap_packages:
             raise OSError(f"{library.title} needs packages the project's lock cannot hold at digests, so it is not "
                           "installed unless somebody asks for it in Libraries")

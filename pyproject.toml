@@ -101,7 +101,7 @@ decide-pointer = ["poolhouse[decide]", "torch>=2.14", "transformers>=5.17", "pef
 # tests/test_graph_engine_contract.py is what a bump is measured against
 store = ["ladybug>=0.20.4,<0.21"]
 # a browser that remembers who you are; needs `playwright install chromium` too
-scrape = ["playwright>=1.40"]
+scrape = ["playwright>=1.48"]
 # searching the web beside the graph: ddgs is keyless and rate-limited, SearXNG is not
 web = ["ddgs>=9", "trafilatura>=2"]
 # poolhouse-models fetch and hub.located read and fill the Hub cache through this

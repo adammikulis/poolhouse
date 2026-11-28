@@ -151,8 +151,11 @@ class TestFetchingPython:
     def _release(self, monkeypatch, tmp_path, assets):
         import json
 
+        from poolhouse import provision
         from poolhouse.fleet import environment as mod
         from tests.net_site import Site
+
+        monkeypatch.delenv(provision.SWITCH, raising=False)
 
         env = Environment(tmp_path)
         listed = [{**a, "name": f"cpython-{mod.PYTHON}.1{env._asset_name()}.tar.gz"} for a in assets]
@@ -329,7 +332,7 @@ def test_unavailable_pyenv_shim_is_not_an_environment_builder(tmp_path, monkeypa
 
     from poolhouse.fleet import environment
     version = '3.12' if sys.version_info[:2] != (3, 12) else '3.13'
-    monkeypatch.setattr(environment.shutil, 'which', lambda _name: '/tmp/shims/python')
+    monkeypatch.setattr(environment.safelaunch, 'which', lambda _name: '/tmp/shims/python')
     monkeypatch.setattr(environment.subprocess, 'run', lambda *args, **kwargs:
                         subprocess.CompletedProcess(args[0], 127, '', 'pyenv: command not found'))
     assert Environment(tmp_path, python_version=version).host_python() is None
@@ -341,7 +344,7 @@ def test_python_builder_uses_verified_executable_not_shim(tmp_path, monkeypatch)
 
     from poolhouse.fleet import environment
     version = '3.12' if sys.version_info[:2] != (3, 12) else '3.13'
-    monkeypatch.setattr(environment.shutil, 'which', lambda _name: '/tmp/shims/python')
+    monkeypatch.setattr(environment.safelaunch, 'which', lambda _name: '/tmp/shims/python')
     monkeypatch.setattr(environment.subprocess, 'run', lambda *args, **kwargs:
                         subprocess.CompletedProcess(args[0], 0,
                             json.dumps(['/tmp/real/python', [int(v) for v in version.split('.')]]), ''))
@@ -355,7 +358,7 @@ def test_installed_pyenv_python_is_reused_when_current_shim_cannot_run(tmp_path,
     from poolhouse.fleet import environment
 
     version = '3.12' if sys.version_info[:2] != (3, 12) else '3.13'
-    monkeypatch.setattr(environment.shutil, 'which', lambda name:
+    monkeypatch.setattr(environment.safelaunch, 'which', lambda name:
                         '/tmp/pyenv' if name == 'pyenv' else '/tmp/shims/python')
 
     def run(argv, **_kwargs):

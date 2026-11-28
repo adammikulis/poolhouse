@@ -1,7 +1,7 @@
 {
- "surfaces": 894,
+ "surfaces": 895,
  "by_status": {
-  "covered": 565,
+  "covered": 566,
   "partial": 189,
   "uncovered": 51,
   "n/a": 89,
@@ -58,7 +58,7 @@
    "unmapped": 0
   },
   "keystore": {
-   "covered": 4,
+   "covered": 5,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -4502,6 +4502,24 @@
    "id": "keystore:keystore.py:Keystore._ring",
    "kind": "keystore",
    "source": "keystore.py:Keystore._ring",
+   "trust": "the process environment and the files on disk",
+   "attacker": "a failure path leaks, downgrades or overwrites a secret",
+   "status": "covered",
+   "tests": [
+    "tests/test_keystore.py",
+    "tests/test_keystore_gate.py",
+    "tests/test_redteam_keystore.py",
+    "tests/test_memory_vault.py::test_no_keystore_fails_closed_without_writing_a_key",
+    "tests/test_memory_vault.py::test_the_key_is_never_written_beside_the_data",
+    "tests/test_credentials.py",
+    "tests/test_no_real_keychain.py"
+   ],
+   "note": "refusal, rate ceiling, background process, other-purpose key, label collision, master in no file or log"
+  },
+  {
+   "id": "keystore:keystore.py:fetch_libraries",
+   "kind": "keystore",
+   "source": "keystore.py:fetch_libraries",
    "trust": "the process environment and the files on disk",
    "attacker": "a failure path leaks, downgrades or overwrites a secret",
    "status": "covered",

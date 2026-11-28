@@ -93,7 +93,8 @@ class Want:
     size: int = 0
     require_digest: bool = False
     allow_unscanned: bool = False
-    nested: bool = False   # an archive holding archives is accepted, only with a pinned ``sha256``
+    pinned: bool = False   # ``sha256`` is one this project records: kept where there is no scanner, unless a saved policy refuses
+    nested: bool = False   # an archive holding archives is accepted, only with a ``pinned`` ``sha256``
     max_bytes: int = MOST_BYTES
     min_rate: float = httpguard.DOWNLOAD.min_rate
     rate_window_s: float = httpguard.DOWNLOAD.rate_window_s
@@ -428,13 +429,14 @@ def _finish(pipe: Pipeline, staged: Path, final: Path, want: Want,
     if want.verify is not None and (problem := want.verify(staged, headers)):
         raise refuse(note, problem)
     verdict = sniff.sniff(staged, want.kind or sniff.expected_kind(name), content_type=served,
-                          nested=want.nested and bool(want.sha256))
+                          nested=want.nested and want.pinned and bool(want.sha256))
     if not verdict.ok:
         raise refuse(note, "; ".join(verdict.problems))
     if arrival.phase:
         arrival.phase("scanning")
     summary = pipe.scan_policy.scan(staged, verdict.kind, pipe.scanners)
-    keep, why = pipe.scan_policy.decide(verdict.kind, summary, allow_unscanned=want.allow_unscanned)
+    keep, why = pipe.scan_policy.decide(verdict.kind, summary, allow_unscanned=want.allow_unscanned,
+                                        pinned=want.pinned and bool(want.sha256))
     if not keep:
         hit = any(r.outcome == Outcome.INFECTED for r in summary.results)
         raise refuse(note, why, ScanHit if hit else Blocked)

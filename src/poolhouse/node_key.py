@@ -156,6 +156,7 @@ def _born(state: Path, ks: keystore.Keystore) -> Released | None:
     be asked the one question that makes it), else under the passphrase when one is given, else nothing (the node makes a key file
     and says it is weak)."""
     ready = ks.status()
+    keystore.fetch_libraries()
     if ks.available() and (ready["provisioned"] or ready["interactive"]):
         seed = os.urandom(32)
         try:
@@ -176,6 +177,7 @@ def _lifted(state: Path, ks: keystore.Keystore) -> Released | None:
     person at a screen would be asked the one question): the device keeps its identity and the file becomes a note, so a pool never waits for
     a person to run a command to have a key that counts. None when the keystore is not ready or would not take it: the node reads the file."""
     ready = ks.status()
+    keystore.fetch_libraries()
     if not (ks.available() and (ready["provisioned"] or ready["interactive"])):
         return None
     try:
@@ -230,6 +232,7 @@ def migrate(state: Path, *, ks: keystore.Keystore | None = None) -> dict[str, An
     except ValueError:
         raise KeyUnavailable(f"{plain} does not hold a device key") from None
     ks = ks or keystore.default()
+    keystore.fetch_libraries()
     try:
         if ks.available():
             if (state / WRAPPED).exists() and not _leftover_is(state, ks, seed):

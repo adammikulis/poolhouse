@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import hashlib
 import html
 import importlib.machinery
@@ -39,10 +40,11 @@ from poolhouse import (
     runtime,
 )
 
-try:   # PyJWT, installed the first time this command runs without it; the imports below need it
-    provision.ensure("github-app", "jwt")
+try:   # PyJWT, installed the first time this command runs without it, except by `check`, which only looks
+    with provision.nothing_installed() if sys.argv[1:2] == ["check"] else contextlib.nullcontext():
+        provision.ensure("github-app", "jwt")
 except ImportError as why:
-    sys.exit(f"agent-identity: PyJWT is needed and could not be installed: {why}")
+    sys.exit(f"agent-identity: PyJWT is needed and is not here: {why}")
 
 from poolhouse.command import Group, flag
 from poolhouse.fleet import runtime_wheel, updates

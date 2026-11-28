@@ -856,9 +856,12 @@ no shape this repository has decided to live with. Budgets and red-team debt onl
   installers it has (`poolhouse.provision` for a declared extra, `serve.build_recover` for llama.cpp,
   `opencode_install.keep` for a pinned release asset, `fleet.environment.provide` for the job environment). It goes
   into Poolhouse's state or the project's environment (never a system Python or the account's own settings), says what
-  it is doing, is done by one process while the others wait, works offline once cached, and never happens at upgrade
-  time. `POOLHOUSE_INSTALL_AT_NEED=off` and a LAN-only download source stop it. What only the account holder can add is
-  reported with why. `scripts/gates/install_instructions.py` (metric `install-instructions`) counts installer commands
+  it is doing, is done by one process while the others go on with what is already here, works offline once cached, and
+  never happens at upgrade time. `POOLHOUSE_INSTALL_AT_NEED=off` and a LAN-only download source stop every download
+  that starts by itself. A status check, and anything an outside page sets off, installs nothing
+  (`provision.nothing_installed`). An interpreter or installer is started isolated from an empty directory
+  (`poolhouse.safelaunch`), never from where the caller stands. What only the account holder can add is reported with
+  why. `scripts/gates/install_instructions.py` (metric `install-instructions`) counts installer commands
   written out in messages under `src/poolhouse`; it only falls.
 - **What is fetched and then run is pinned.** Nothing is installed at need without a version and a digest this
   repository records, and a mismatch fails the install: Python libraries from `src/poolhouse/requirements.lock`
@@ -866,7 +869,8 @@ no shape this repository has decided to live with. Budgets and red-team debt onl
   converter from `patches/llama.cpp/verified.json`, release assets from the tables beside their installers. Chromium is
   the revision the locked Playwright release names and the Silero voice detector one commit, with no digest held here. What cannot be pinned (no prebuilt wheel,
   a source address, another package index) is not installed unless somebody asks for it by name. A pinned download is
-  kept on a device with no virus scanner; one a scanner flags is refused.
+  kept on a device with no virus scanner unless somebody set the archive policy to refuse; one a scanner flags, or one
+  a scanner failed on, is judged by the policy as any other file is.
 - A write is never held back for code quality. Claude Code's edit guard (`scripts/hooks/claude-edit-guard`) tells the
   agent beside the edit when it adds a function whose body already exists elsewhere, a raw HTTP call, a docstring over
   twelve lines or a signature over eight parameters, or takes a file over its line limit or makes an already-over file

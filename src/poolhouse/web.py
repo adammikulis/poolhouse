@@ -310,7 +310,9 @@ def read(url: str, *, limit: int = 6000, fetch: Callable[[str], str] | None = No
             plain_error = exc
     if rendered or len(text) < THIN:
         try:
-            html = _rendered(url, browse)
+            # a page that came back thin chose this, not the caller: it uses the browser that is here and fetches none
+            with contextlib.nullcontext() if rendered else provision.nothing_installed():
+                html = _rendered(url, browse)
         except Exception as exc:
             if plain_error is not None:
                 raise plain_error from exc

@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from packaging.requirements import InvalidRequirement, Requirement
 
+from poolhouse import safelaunch
 from poolhouse.httpguard import Refused
 from poolhouse.net import git, policy
 
@@ -20,8 +21,10 @@ OPTIONS = {"-i": "index-url", "--index-url": "index-url",
 
 
 def _pip(python, args, environment, timeout):
-    return subprocess.run([str(python), "-m", "pip", *args], capture_output=True,
-                          text=True, timeout=timeout, env=environment)
+    """Pip in ``python``, isolated and started from an empty directory: nothing beside the caller is imported or read."""
+    with safelaunch.empty_directory() as nowhere:
+        return subprocess.run([safelaunch.absolute(python), "-I", "-m", "pip", *args], capture_output=True,
+                              text=True, timeout=timeout, env=environment, cwd=nowhere)
 
 
 def _config(python, command, environment, timeout):

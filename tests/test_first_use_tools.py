@@ -3,6 +3,7 @@ here is plumbing only: a canned server, a marked file in place of a release, a r
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import subprocess
 import sys
@@ -11,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import codex_install, harnessing, opencode_install, provision
+from poolhouse import codex_install, harnessing, opencode_install, provision, web
 from poolhouse.decide import router
 from poolhouse.fleet import environment as environments, updates
 from poolhouse.gguf import tools
@@ -182,6 +183,45 @@ def test_codex_switched_off_is_not_fetched_and_pi_is_not_one_poolhouse_installs(
     assert harnessing.installed_binary("pi") == "" and not harnessing.installable("pi")
 
 
+class Opened:
+    """A browser context with one page already open: plumbing only."""
+
+    def __init__(self):
+        self.pages, self.guards = [SimpleNamespace(name="earlier", close=lambda: self.pages.pop(0))], []
+        self.route = self.route_web_socket = lambda *a: self.guards.append(len(self.pages))
+        self.add_init_script = lambda script: self.guards.append(len(self.pages))
+        self.set_default_timeout = lambda ms: None
+        self.close = lambda: None
+
+    def new_page(self):
+        self.pages.append(SimpleNamespace(name="after", close=lambda: None))
+        return self.pages[-1]
+
+
+@pytest.mark.parametrize("guarded,name", [(True, "after"), (False, "earlier")])
+def test_a_guarded_window_never_uses_a_page_open_before_the_guard(monkeypatch, tmp_path, guarded, name):
+    context = Opened()
+    monkeypatch.setattr(browser, "_context", lambda *a: context)
+    with browser._paged(None, browser.Window(profile=tmp_path, guarded=guarded)) as page:
+        assert page.name == name and [one.name for one in context.pages] == [name]
+    assert context.guards == ([1, 1, 1] if guarded else []), "the route, the sockets and the removal come before the page"
+
+
+@pytest.mark.parametrize("rendered", [False, True])
+def test_only_a_rendering_that_was_asked_for_may_install_or_download(switched_on, monkeypatch, rendered):
+    monkeypatch.setattr(web, "check", lambda url: url)
+    may = []
+
+    @contextlib.contextmanager
+    def browse():
+        may.append(not provision.download_refusal())
+        raise browser.BrowserUnavailable("plumbing only: no page is opened")
+        yield
+
+    web.read("https://tessyn.example/", fetch=lambda url: "<html><body>thin</body></html>", browse=browse, rendered=rendered)
+    assert may == [rendered]
+
+
 def test_a_pinned_digest_is_what_the_download_is_held_to(monkeypatch, tmp_path):
     release = {"assets": [{"name": "a.tar.gz", "digest": "sha256:" + "0" * 64}]}
     monkeypatch.setattr(opencode_install.net, "default", lambda: SimpleNamespace(json=lambda url, ask: release))
@@ -231,26 +271,33 @@ class Chromium:
         return "context"
 
 
-def test_a_missing_browser_is_answered_with_the_bundled_one(monkeypatch, tmp_path):
+@pytest.mark.parametrize("guarded,own", [(False, False), (True, False), (True, True), (False, True)])
+def test_a_missing_browser_is_answered_with_the_bundled_one_sandboxed_either_way(monkeypatch, tmp_path, guarded, own):
     chromium = Chromium()
     monkeypatch.setattr(browser, "bundled_chromium", lambda: "/kept/chromium")
-    window = browser.Window(profile=tmp_path)
+    window = browser.Window(profile=tmp_path, guarded=guarded, **({"own_pages": True} if own else {}))
     assert browser._context(SimpleNamespace(chromium=chromium), tmp_path, window) == "context"
     assert chromium.asked[1]["executable_path"] == "/kept/chromium"
+    for options in chromium.asked:
+        assert options["chromium_sandbox"] is (guarded or not own), "only a window for the project's own pages goes without"
+        assert options.get("service_workers") == ("block" if guarded else None)
 
 
 def test_the_bundled_browser_is_downloaded_once_into_the_state_root(switched_on, monkeypatch, tmp_path):
     executable = tmp_path / "chromium"
     ran = []
 
-    for name in ("PLAYWRIGHT_DOWNLOAD_HOST", "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST", "NODE_TLS_REJECT_UNAUTHORIZED"):
+    for name in ("PLAYWRIGHT_DOWNLOAD_HOST", "PLAYWRIGHT_CHROMIUM_DOWNLOAD_HOST", "NODE_TLS_REJECT_UNAUTHORIZED",
+                 "npm_config_playwright_download_host", "npm_package_config_playwright_chromium_download_host",
+                 "NPM_CONFIG_PLAYWRIGHT_DOWNLOAD_HOST"):
         monkeypatch.setenv(name, "elsewhere")
 
     def run(argv, **kw):
-        ran.append(argv[1:3])
+        assert argv[1] == "-P" and Path(kw["cwd"]).name.startswith("poolhouse-launch-")
+        ran.append(argv[2:4])
         assert "elsewhere" not in kw["env"].values(), "the browser comes from Playwright's own source, checked"
         assert kw["env"]["PLAYWRIGHT_BROWSERS_PATH"].endswith("browsers")
-        if argv[1:3] == ["-m", "playwright"]:
+        if argv[2:4] == ["-m", "playwright"]:
             executable.write_text(MARKED)
         return subprocess.CompletedProcess(argv, 0, stdout=str(executable))
 

@@ -113,7 +113,7 @@ def test_only_the_pinned_llama_cpp_download_is_kept_where_there_is_no_virus_scan
     asked = []
 
     def download(asset, into, **how):
-        asked.append(how.get("allow_unscanned"))
+        asked.append(how.get("pinned"))
         raise BuildFailed("plumbing only")
 
     monkeypatch.setattr(build_release.gh_updates, "download", download)
@@ -177,6 +177,11 @@ Requires-Dist: pillow; extra == 'unasked'
 """
 
 
+@pytest.fixture
+def allowed(monkeypatch):
+    monkeypatch.delenv(provision.SWITCH, raising=False)
+
+
 class Installs(environments.Environment):
     """A job environment whose pip is recorded, with a plumbing-only app wheel: nothing is installed."""
 
@@ -194,7 +199,7 @@ class Installs(environments.Environment):
         return made
 
 
-def test_job_libraries_installed_at_need_are_what_the_app_wheel_declares_from_the_lock(tmp_path):
+def test_job_libraries_installed_at_need_are_what_the_app_wheel_declares_from_the_lock(allowed, tmp_path):
     environment = Installs(tmp_path)
     core = next(one for one in environments.CATALOG if one.name == "core")
     assert environment.locked_install(core).returncode == 0
@@ -204,7 +209,7 @@ def test_job_libraries_installed_at_need_are_what_the_app_wheel_declares_from_th
     assert second == ["install", "--no-deps", "poolhouse"] and nothing is None
 
 
-def test_a_job_library_the_app_wheel_asks_for_outside_the_lock_is_not_installed(tmp_path):
+def test_a_job_library_the_app_wheel_asks_for_outside_the_lock_is_not_installed(allowed, tmp_path):
     environment = Installs(tmp_path)
     environment.declared = METADATA.replace("numpy>=1.24", "numpy<1")
     core = next(one for one in environments.CATALOG if one.name == "core")
@@ -215,16 +220,17 @@ def test_a_job_library_the_app_wheel_asks_for_outside_the_lock_is_not_installed(
 
 @pytest.mark.parametrize("library", [environments.Library("x", "X", "x", ("numpy",), index="https://example.invalid/simple"),
                                      environments.Library("y", "Y", "y", ("canned @ https://example.invalid/y.tar.gz",))])
-def test_a_library_the_lock_cannot_hold_is_not_installed_at_need(tmp_path, library):
+def test_a_library_the_lock_cannot_hold_is_not_installed_at_need(allowed, tmp_path, library):
     environment = Installs(tmp_path)
     with pytest.raises((OSError, ValueError), match="not installed"):
         environment.locked_install(library)
     assert not hasattr(environment, "asked")
 
 
-def test_the_voice_detector_is_fetched_and_run_at_one_commit(monkeypatch):
+def test_the_voice_detector_is_fetched_and_run_at_one_commit(allowed, monkeypatch, tmp_path):
     asked = []
-    hub = SimpleNamespace(load=lambda repo, name, **how: asked.append(repo) or (object(), None))   # plumbing only: loads nothing
+    hub = SimpleNamespace(load=lambda repo, name, **how: asked.append(repo) or (object(), None),   # plumbing only: loads nothing
+                          get_dir=lambda: str(tmp_path))
     monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(hub=hub))
     vad.SileroVAD().start()
     assert asked == ["snakers4/silero-vad:63d4a2a7bfce8cd9bb39ed8fa0afcb5236d73e01"]

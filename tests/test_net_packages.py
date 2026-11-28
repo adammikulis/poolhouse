@@ -27,7 +27,7 @@ def test_unapproved_or_plaintext_index_never_runs_install(monkeypatch, tmp_path,
     calls = capture(monkeypatch, tmp_path)
     with pytest.raises(Refused):
         packages.run("python", ["install", "--index-url", source, "tensor"], timeout=5, env={})
-    assert len(calls) == 1 and calls[0][0][3:] == ["config", "list"]
+    assert len(calls) == 1 and calls[0][0][4:] == ["config", "list"]
 
 
 @pytest.mark.parametrize("source", ["tensor @ git+https://evil.example/repo", "git+ssh://user@packages.example/repo", "git+file:///tmp/repo"])
@@ -44,7 +44,7 @@ def test_trusted_index_find_links_extras_and_git_environment_are_preserved(monke
     packages.run("python", ["install", "poolhouse[train] @ " + wheel.as_uri(), "tensor @ git+https://packages.example/repo"],
                  timeout=7, env={"GIT_SSH_COMMAND": "unsafe", "SDKROOT": "/sdk"})
     argv, options = calls[-1]
-    assert argv == ["python", "-m", "pip", "install", "--index-url", "https://packages.example/simple",
+    assert argv == ["python", "-I", "-m", "pip", "install", "--index-url", "https://packages.example/simple",
                     "--find-links", "/bundle", "poolhouse[train] @ " + wheel.as_uri(), "tensor @ git+https://packages.example/repo"]
     assert options["timeout"] == 7
     env = options["env"]

@@ -42,7 +42,7 @@ def test_fleet_card_displays_authoritative_lan_address(tmp_path, monkeypatch, ad
         served.ui.report = lambda: {"gpu": "test accelerator", "ram_gb": 32}
         assert initial(served)[0] == 200
         served.ui.setup_finished()
-        with browser(Window(tmp_path / "browser", channel="chromium", headless=True)) as page:
+        with browser(Window(tmp_path / "browser", channel="chromium", headless=True, own_pages=True)) as page:
             page.goto(f"http://127.0.0.1:{served.port}/ui/?display_url=https://untrusted.invalid/#pool")
             card = page.locator("pool-view .member.self .url")
             card.wait_for(state="visible")

@@ -5,7 +5,9 @@ from __future__ import annotations
 import array
 import math
 import threading
+from pathlib import Path
 
+from poolhouse import provision
 from poolhouse.speech.protocols import (
     DEFAULT_SAMPLE_RATE,
     ProviderError,
@@ -124,6 +126,9 @@ class SileroVAD:
             if self._model is None:
                 import torch
 
+                kept = Path(torch.hub.get_dir()) / f"snakers4_silero-vad_{SILERO_COMMIT}"
+                if not kept.is_dir() and (refused := provision.download_refusal()):
+                    raise ProviderError(f"silero VAD is not on this device and was not downloaded: {refused}")
                 try:
                     model, _utils = torch.hub.load(
                         f"snakers4/silero-vad:{SILERO_COMMIT}", "silero_vad", trust_repo=True

@@ -161,13 +161,12 @@ def build_from_release(args) -> tuple[Path, str]:
             say(f"downloading {match} from {tag}")
             with tempfile.TemporaryDirectory(prefix="poolhouse-llama-release-") as tmp:
                 tmp_path = Path(tmp)
-                # the pinned bytes are kept where no virus scanner exists; one that flags them still refuses
-                archive = gh_updates.download(assets[match], tmp_path, allow_unscanned=not newest)
+                archive = gh_updates.download(assets[match], tmp_path, pinned=not newest)
                 extra = None
                 companion = _cudart_companion(match, assets)
                 if companion is not None:
                     say(f"downloading {companion['name']} (CUDA runtime)")
-                    extra = gh_updates.download(companion, tmp_path, allow_unscanned=not newest)
+                    extra = gh_updates.download(companion, tmp_path, pinned=not newest)
                 say("installing")
                 binary = _release_install(dest, archive, extra=extra)
 

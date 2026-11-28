@@ -25,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, provision
+from poolhouse import home, provision, safelaunch
 from poolhouse.lock import only_one
 from poolhouse.log import warn
 from poolhouse.net import browserguard
@@ -51,6 +51,9 @@ class Window:
     position: tuple[int, int] | None = None
     guarded: bool = False
     """Only public addresses may be requested and nothing is downloaded: for pages a model chose."""
+    own_pages: bool = False
+    """Nothing but the project's own pages is opened, so Chromium may run without its sandbox, which cannot start inside
+    another one. A guarded window keeps its sandbox whatever this says."""
 
     def args(self) -> list[str]:
         """The Chromium flags this window wants."""
@@ -72,8 +75,10 @@ def placed() -> tuple[int, int] | None:
 
 
 MISSING = ("Executable doesn't exist", "is not found at")
-REDIRECT = re.compile(r"PLAYWRIGHT_(?:\w+_)?DOWNLOAD_HOST|NODE_TLS_REJECT_UNAUTHORIZED")
-"""Environment settings that would fetch the browser from somewhere else, or without checking who answers."""
+REDIRECT = re.compile(r"(?:npm_(?:package_)?config_)?playwright_(?:\w+_)?download_host|node_tls_reject_unauthorized",
+                      re.IGNORECASE)
+"""Environment settings that would fetch the browser from somewhere else, or without checking who answers, under each
+name Playwright reads them by."""
 """What Playwright says when the browser asked for is not on this computer."""
 EXECUTABLE = ("from playwright.sync_api import sync_playwright\n"
               "with sync_playwright() as p:\n print(p.chromium.executable_path)")
@@ -89,8 +94,13 @@ def bundled_chromium(run: Any = subprocess.run) -> str:
     environment = {name: value for name, value in os.environ.items() if not REDIRECT.fullmatch(name)}
     environment["PLAYWRIGHT_BROWSERS_PATH"] = str(kept)
 
+    def playwright(*words: str, **how: Any) -> Any:
+        """This interpreter on ``words``, started from an empty directory it takes nothing from."""
+        with safelaunch.empty_directory() as nowhere:
+            return run([safelaunch.absolute(sys.executable), "-P", *words], env=environment, cwd=nowhere, **how)
+
     def executable() -> str:
-        said = run([sys.executable, "-c", EXECUTABLE], capture_output=True, text=True, timeout=60, env=environment)
+        said = playwright("-c", EXECUTABLE, capture_output=True, text=True, timeout=60)
         found = said.stdout.strip() if said.returncode == 0 else ""
         return found if found and Path(found).is_file() else ""
 
@@ -104,8 +114,8 @@ def bundled_chromium(run: Any = subprocess.run) -> str:
             if found := executable():
                 return found
             warn("a browser is needed for the first time: downloading Playwright's Chromium once")
-            done = run([sys.executable, "-m", "playwright", "install", "chromium"], timeout=FETCH_S, env=environment,
-                       stdout=2)   # its progress goes to standard error, so a program reading this one's output is not fed it
+            # its progress goes to standard error, so a program reading this one's output is not fed it
+            done = playwright("-m", "playwright", "install", "chromium", timeout=FETCH_S, stdout=2)
             if done.returncode:
                 raise BrowserUnavailable(f"Playwright's installer exited {done.returncode}; its output is above")
         if found := executable():
@@ -126,7 +136,9 @@ def _launch_errors() -> tuple[type[BaseException], ...]:
 def _context(play: Any, profile: Path, window: Window) -> Any:
     """The persistent context of ``window``: the browser it names, else the bundled Chromium where that one is not here."""
     options = {"headless": window.headless, "args": window.args(), "accept_downloads": not window.guarded,
-               "viewport": {"width": window.width, "height": window.height}}
+               "viewport": {"width": window.width, "height": window.height},
+               "chromium_sandbox": window.guarded or not window.own_pages,
+               **({"service_workers": "block"} if window.guarded else {})}   # a service worker's requests pass no route
     try:
         return play.chromium.launch_persistent_context(str(profile), channel=window.channel, **options)
     except _launch_errors() as exc:
@@ -144,7 +156,11 @@ def _paged(play: Any, window: Window) -> Iterator[Any]:
     if window.guarded:
         browserguard.install(context)
     context.set_default_timeout(window.timeout_ms)
-    page = context.pages[0] if context.pages else context.new_page()
+    # a guarded window never uses a page that was open before the guard was installed: that one's document lacks it
+    older = list(context.pages) if window.guarded else []
+    page = context.new_page() if older or not context.pages else context.pages[0]
+    for one in older:
+        one.close()
     try:
         yield page
     finally:

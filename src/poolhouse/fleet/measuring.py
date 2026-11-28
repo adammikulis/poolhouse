@@ -28,7 +28,7 @@ from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, maintenance, optional
+from poolhouse import home, maintenance, optional, safelaunch
 from poolhouse.home import machine_id
 from poolhouse.hub import room as machine_room
 from poolhouse.lock import held_by, pid_alive
@@ -286,9 +286,10 @@ def _measures(environment: Environment) -> bool:
     if not environment.exists:
         return False
     try:
-        done = subprocess.run([str(environment.python), "-B", "-c",
-                               "import poolhouse.bench.member_runs, ladybug"],
-                              capture_output=True, timeout=120)
+        with safelaunch.empty_directory() as nowhere:
+            done = subprocess.run([str(environment.python), "-B", "-I", "-c",
+                                   "import poolhouse.bench.member_runs, ladybug"],
+                                  capture_output=True, timeout=120, cwd=nowhere)
     except (OSError, subprocess.SubprocessError):
         return False
     return done.returncode == 0
@@ -301,7 +302,7 @@ def detach_bench(line: Sequence[str], home: Path, python: Path) -> tuple[int, Pa
     log under ``home/logs`` and writes the pid into ``home/measuring.json``, which is where
     this reads it back; ``--no-queue`` makes a race for the lock a failed job rather than a
     run queued behind another, since the lock was checked before this was called."""
-    done = subprocess.run([str(python), "-B", "-m", "poolhouse.bench", *line,
+    done = subprocess.run([str(python), "-B", "-P", "-m", "poolhouse.bench", *line,
                            "--no-queue", "--detach"],
                           capture_output=True, text=True, timeout=120,
                           env={**os.environ, "POOLHOUSE_BENCH_HOME": str(home)})
@@ -505,9 +506,10 @@ class BenchHost:
         if not store.exists():
             return out
         asked = {"store": str(store), "since": since, "full": full, "anyway": anyway}
-        done = subprocess.run([str(bench_python(self.runner.environment)), "-m",
-                               "poolhouse.bench.member_runs"], input=json.dumps(asked),
-                              capture_output=True, text=True, timeout=300)
+        with safelaunch.empty_directory() as nowhere:
+            done = subprocess.run([str(bench_python(self.runner.environment)), "-P", "-m",
+                                   "poolhouse.bench.member_runs"], input=json.dumps(asked),
+                                  capture_output=True, text=True, timeout=300, cwd=nowhere)
         if done.returncode != 0:
             raise DaemonError(f"reading {store} failed: {done.stderr.strip()[-400:]}")
         return {**out, **json.loads(done.stdout)}

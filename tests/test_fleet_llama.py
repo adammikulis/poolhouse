@@ -10,6 +10,7 @@ import zipfile
 
 import pytest
 
+from poolhouse import provision
 from poolhouse.fleet import llama
 from poolhouse.http import Server
 
@@ -144,6 +145,10 @@ class TestUnpacking:
 
 
 class TestFetching:
+    @pytest.fixture(autouse=True)
+    def downloads_allowed(self, monkeypatch):
+        monkeypatch.delenv(provision.SWITCH, raising=False)
+
     @pytest.fixture
     def releases(self, tmp_path):
         """A stand-in for the pinned release: its record, and one real zip holding a server served on this machine."""

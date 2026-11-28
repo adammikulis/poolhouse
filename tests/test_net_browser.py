@@ -1,5 +1,9 @@
 """A browser a model drives cannot be pointed at this machine or its network."""
 
+import contextlib
+import socket
+import threading
+
 import pytest
 
 from poolhouse.httpguard import Limits
@@ -25,6 +29,58 @@ def test_inline_content_reaches_nowhere_and_is_allowed(url):
 
 def test_a_public_address_is_allowed():
     assert browserguard.allowed("http://8.8.8.8/") is True
+
+
+AROUND = """<html><body><p>hello</p><script>
+const url = (tag) => 'ws://127.0.0.1:PORT/' + tag;
+const worker = (tag) => URL.createObjectURL(new Blob(["new WebSocket('" + url(tag) + "')"], {type: 'text/javascript'}));
+const tries = [
+  () => new WebSocket(url('page')),
+  () => new Worker(worker('worker')),
+  () => new SharedWorker(worker('shared-worker')),
+  () => { const f = document.createElement('iframe'); document.body.appendChild(f);
+          new f.contentWindow.WebSocket(url('frame')); new f.contentWindow.Worker(worker('frame-worker')); },
+  () => { const w = window.open(''); new w.Worker(worker('popup-worker')); },
+  () => navigator.serviceWorker.register('/sw.js'),
+];
+for (const one of tries) { try { one(); } catch (e) {} }
+</script></body></html>"""
+
+
+@pytest.mark.slow
+def test_a_real_browser_connects_no_socket_and_runs_nothing_that_sends_around_the_guard():
+    sync = pytest.importorskip("playwright.sync_api")
+    reached = []
+    listener = socket.create_server(("127.0.0.1", 0))
+
+    def listen():
+        with contextlib.suppress(OSError):
+            while True:
+                connection, _ = listener.accept()
+                reached.append(connection.recv(200).split(b"\r\n")[0])
+                connection.close()
+
+    threading.Thread(target=listen, daemon=True).start()
+    try:
+        with Site() as site:
+            page_text = AROUND.replace("PORT", str(listener.getsockname()[1]))
+            site.add("/page", page_text.encode(), headers={"Content-Type": "text/html"})
+            worker = site.add("/sw.js", b"// plumbing only", headers={"Content-Type": "text/javascript"})
+            with sync.sync_playwright() as play:
+                try:
+                    browser = play.chromium.launch(headless=True)
+                except sync.Error as exc:
+                    pytest.skip(f"no browser: {exc}")
+                context = browser.new_context(accept_downloads=False, service_workers="block")   # as `scrape.browser` makes one
+                refused = browserguard.install(context, LOCAL)
+                page = context.new_page()
+                page.goto(f"{site.base}/page", wait_until="load")
+                page.wait_for_timeout(1500)
+                browser.close()
+    finally:
+        listener.close()
+    assert reached == [] and worker.seen == []
+    assert any(url.endswith("/page") for url in refused)
 
 
 @pytest.mark.slow

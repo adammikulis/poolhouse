@@ -22,7 +22,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -244,18 +244,20 @@ class Keystore:
         return "" if self._noticed or self._path("noticed.json").exists() else NOTICE
 
     def available(self) -> bool:
-        """Whether this machine has a usable keystore backend (no item is touched)."""
+        """Whether this machine has a usable keystore backend (no item is touched and nothing is installed)."""
         try:
-            self._ring()
+            with provision.nothing_installed():
+                self._ring()
         except KeystoreUnavailable:
             return False
         return True
 
     def backend(self) -> str:
         """The keyring backend this machine would use, by module and class, or why there is none
-        (backends are chosen by import and priority; no item is read or made)."""
+        (backends are chosen by import and priority; no item is read or made and nothing is installed)."""
         try:
-            ring = self._ring().get_keyring()
+            with provision.nothing_installed():
+                ring = self._ring().get_keyring()
         except KeystoreUnavailable as exc:
             return f"none: {exc}"
         return f"{type(ring).__module__}.{type(ring).__name__}"
@@ -486,6 +488,13 @@ def _parse(held: Any) -> bytes | None:
     except ValueError:
         return None
     return key if len(key) == 32 else None
+
+
+def fetch_libraries() -> None:
+    """Install the keystore's libraries when they are missing, for a caller about to keep a key. A check never calls
+    this; where they cannot be had `Keystore.available` then says there is no keystore."""
+    with suppress(ImportError):
+        provision.ensure("memory", "keyring", "cryptography")
 
 
 def aead(key: bytes) -> Any:

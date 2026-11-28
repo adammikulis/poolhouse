@@ -24,13 +24,16 @@ from poolhouse import (
     coding,
     coding_policy,
     delegate_confined,
+    files,
     harnessing,
+    home,
     isolation,
     opencode,
     opencode_install,
+    provision,
 )
 from poolhouse.http import Server
-from poolhouse.net.scan import Outcome, ScanResult
+from poolhouse.net.scan import Outcome, ScanPolicy, ScanResult
 
 pytest_plugins = ["tests.confined_kit"]
 
@@ -345,6 +348,7 @@ def test_opencode_names_are_in_the_closed_records():
 @pytest.fixture
 def releases(monkeypatch, tmp_path):
     """A local release feed that serves the two pinned releases (real zips with a marked file in each), whose digests stand in for the pins."""
+    monkeypatch.delenv(provision.SWITCH, raising=False)
     monkeypatch.setattr(opencode_install, "asset_name", lambda: "opencode-test-arm64.zip")
     monkeypatch.setattr(opencode_install, "ripgrep_asset_name", lambda: "ripgrep-test-arm64.zip")
     bodies = {}
@@ -438,27 +442,41 @@ def test_a_download_that_does_not_match_the_pinned_digest_installs_nothing_whate
     assert opencode_install.kept() == ""
 
 
-@pytest.mark.parametrize("flagged", [False, True])
-def test_a_pinned_download_is_kept_where_there_is_no_virus_scanner_and_refused_when_one_flags_it(releases, loopback_net, flagged):
-    loopback_net.scanners = [Flagging()] if flagged else []
-    if not flagged:
+@pytest.mark.parametrize("scanner,saved,refused", [
+    (None, "", ""), (Outcome.INFECTED, "", "infected"), (Outcome.ERROR, "", "error"),
+    (None, "refuse", "not kept unscanned"), (None, "warn", "")])
+def test_a_pinned_download_is_kept_only_where_no_scanner_exists_and_no_saved_policy_refuses_it(releases, loopback_net, scanner,
+                                                                                              saved, refused):
+    loopback_net.scanners = [Answering(scanner)] if scanner else []
+    if saved:
+        files.write_json(home.state("net", "scan-policy.json"), {"schema_version": 1, "archive": saved})
+        loopback_net.scan_policy = ScanPolicy.load()
+    if not refused:
         assert opencode_install.ensure() == opencode_install.kept() != ""
         return
-    with pytest.raises(opencode_install.InstallFailed, match="infected"):
+    with pytest.raises(opencode_install.InstallFailed, match=refused):
         opencode_install.ensure()
     assert opencode_install.kept() == ""
 
 
-class Flagging:
-    """A virus scanner that flags every file: plumbing only, nothing is scanned."""
+def test_only_the_categories_somebody_set_are_saved_as_the_policy():
+    ScanPolicy(model="allow", chosen=("model",)).save()
+    assert ScanPolicy.load().chosen == ("model",) and ScanPolicy.load().archive == "refuse"
+
+
+class Answering:
+    """A virus scanner that gives one answer for every file: plumbing only, nothing is scanned."""
 
     name = "plumbing-scanner"
+
+    def __init__(self, outcome):
+        self.outcome = outcome
 
     def available(self):
         return True
 
     def scan(self, path):
-        return ScanResult(self.name, Outcome.INFECTED, "PLUMBING signature", "PLUMBING signature")
+        return ScanResult(self.name, self.outcome, "PLUMBING answer", "PLUMBING answer")
 
 
 @pytest.mark.usefixtures("loopback_net")

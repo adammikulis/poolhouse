@@ -7,9 +7,9 @@ alone first, so what was installed once installs again offline, then from the pa
 requirements are the ones the project declares, never a name taken from input, and only the releases the
 project's hashed lock lists are installed (`poolhouse.pinned`): a file that does not match its digest
 fails the install, and what the lock does not hold is not installed. What is already installed is left
-as it is unless something new needs another version of it. One process installs at a time and the
-others wait for it. A system Python is never written to, and nothing is installed when Poolhouse is
-upgraded: only when something needs it.
+as it is unless something new needs another version of it. One process installs at a time; what is
+here and not being written is used meanwhile. A system Python is never written to, and nothing is
+installed when Poolhouse is upgraded: only when something needs it.
 """
 
 from __future__ import annotations
@@ -25,21 +25,26 @@ import time
 import tomllib
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from importlib.metadata import PackageNotFoundError, requires, version
+from functools import partial
+from importlib.metadata import PackageNotFoundError, packages_distributions, requires, version
 from pathlib import Path
 from types import ModuleType
 
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
-from poolhouse import lazy, lock
+from poolhouse import lazy, lock, safelaunch
 from poolhouse.log import warn
+from poolhouse.scopedflag import ScopedFlag
 
-__all__ = ["SWITCH", "Unavailable", "download_refusal", "ensure", "module", "refusal", "requirements", "target"]
+__all__ = ["SWITCH", "Unavailable", "download_refusal", "ensure", "module", "nothing_installed", "refusal", "requirements",
+           "target"]
 
 SWITCH = "POOLHOUSE_INSTALL_AT_NEED"
 """``off`` stops every first-use install and download; nothing turns one on that is not otherwise allowed."""
 LOCK = ".poolhouse-install.lock"
+WRITING = ".writing"
+"""Beside the lock, the distributions the install holding it is writing."""
 WAIT_S = 1800.0
 INSTALL_S = 1800.0
 BEAT_S = 15.0
@@ -50,16 +55,28 @@ ROUNDS = 5
 Installer = Callable[[Path, Path], subprocess.CompletedProcess]
 """``(interpreter, requirements file) -> result``: what installs locked releases."""
 
+_LOOKING = ScopedFlag("poolhouse.provision.looking")
+nothing_installed = _LOOKING.held
+"""``with nothing_installed():`` inside, nothing is installed or downloaded and what is missing is reported as missing:
+for a status check, and for what the product tries on its own that nobody asked for."""
+
 
 class Unavailable(ModuleNotFoundError):
     """A module missing here that could not be installed; the message says why and ``name`` names it."""
 
 
-def download_refusal() -> str:
-    """Why nothing may be fetched from the internet at first use, or an empty string when it may."""
+def _held_back() -> str:
+    """Why nothing may be installed at all right now: the switch, or a caller that only looks."""
     if os.environ.get(SWITCH, "").strip().lower() == "off":
         return f"installing at first use is switched off ({SWITCH}=off)"
-    saved = lazy.load("poolhouse.fleet.runtime_paths", "default_root")() / "settings.json"
+    return "this check installs and downloads nothing" if _LOOKING.is_set() else ""
+
+
+def download_refusal() -> str:
+    """Why nothing may be fetched from the internet at first use, or an empty string when it may."""
+    if refused := _held_back():
+        return refused
+    saved = lazy.load("poolhouse.fleet.runtime_paths", "settings_root")() / "settings.json"
     if saved.is_file() and lazy.load("poolhouse.fleet.settings", "Settings").load(saved).download_sources == "lan":
         return "this device's download source is LAN only (Settings, Downloads), so nothing is fetched from the internet"
     return ""
@@ -67,8 +84,8 @@ def download_refusal() -> str:
 
 def refusal() -> str:
     """Why a missing extra could not be installed here, known without trying; empty when it would be tried."""
-    if os.environ.get(SWITCH, "").strip().lower() == "off":
-        return f"installing at first use is switched off ({SWITCH}=off)"
+    if refused := _held_back():
+        return refused
     try:
         target()
     except Unavailable as exc:
@@ -198,21 +215,40 @@ def _install(python: Path, locked: Path) -> subprocess.CompletedProcess:
     if cached is not None:
         return uv(python, locked, timeout=INSTALL_S, environment=environment)
     if not _present("pip"):
-        subprocess.run([str(python), "-m", "ensurepip"], capture_output=True, timeout=INSTALL_S, check=False,
-                       env=environment)
+        with safelaunch.empty_directory() as nowhere:
+            subprocess.run([safelaunch.absolute(python), "-I", "-m", "ensurepip"], capture_output=True, timeout=INSTALL_S,
+                           check=False, env=environment, cwd=nowhere)
     return lazy.load("poolhouse.net.packages", "run")(python, ["install"], timeout=INSTALL_S, env=environment, locked=locked)
+
+
+def _being_written(held: Path, modules: tuple[str, ...]) -> bool:
+    """Whether the install holding the lock ``held`` is writing a distribution one of ``modules`` comes from; one whose
+    distribution cannot be named is taken to be."""
+    if all(sys.modules.get(name) is not None for name in modules) or not (held.is_file() and lock.held_by(held)):
+        return False
+    try:
+        writing = set(held.with_name(held.name + WRITING).read_text(encoding="utf-8").split())
+    except OSError:
+        return False   # whoever holds it has written nothing yet
+    owners = packages_distributions() if writing else {}
+    return any(not (names := owners.get(module.partition(".")[0])) or writing & set(map(canonicalize_name, names))
+               for module in modules if writing)
 
 
 def _supply(extra: str, wanted: tuple[str, ...], python: Path | None,
             run: Installer | None) -> None:
-    if os.environ.get(SWITCH, "").strip().lower() == "off":
-        raise Unavailable(f"the {extra!r} libraries ({', '.join(wanted)}) are not here, and installing at first "
-                          f"use is switched off ({SWITCH}=off)")
+    if refused := _held_back():
+        raise Unavailable(f"the {extra!r} libraries ({', '.join(wanted)}) are not ready here, and {refused}")
     held = _lock(python)
+    writing = held.with_name(held.name + WRITING)
     python = python or target()
     try:
         with lock.only_one(held, wait=True, timeout=WAIT_S, announce=warn, note=f"installing the {extra} libraries"):
-            _install_missing(extra, wanted, python, run or _install)
+            writing.unlink(missing_ok=True)   # what a process that died left behind
+            try:
+                _install_missing(extra, wanted, python, partial(_noted, writing, run or _install))
+            finally:
+                writing.unlink(missing_ok=True)
     except (OSError, subprocess.SubprocessError, ValueError, RuntimeError) as exc:
         raise Unavailable(f"the {extra!r} libraries could not be installed: {exc}") from exc
 
@@ -244,6 +280,14 @@ def _install_missing(extra: str, wanted: tuple[str, ...], python: Path,
     warn(f"installed the {extra} libraries")
 
 
+def _noted(writing: Path, run: Installer, python: Path, locked: Path) -> subprocess.CompletedProcess:
+    """``run``, with the distributions ``locked`` lists recorded in ``writing`` first, so that a process needing another
+    library does not wait for this install."""
+    names = (line.partition("==")[0] for line in locked.read_text(encoding="utf-8").splitlines() if line[:1].isalnum())
+    writing.write_text("\n".join(map(canonicalize_name, names)), encoding="utf-8")
+    return run(python, locked)
+
+
 def _put(extra: str, python: Path, needed: list, run: Installer) -> None:
     """Install the locked releases ``needed``, at their digests."""
     with tempfile.TemporaryDirectory(prefix="poolhouse-locked-") as scratch:
@@ -263,8 +307,7 @@ def ensure(extra: str, *modules: str, python: Path | None = None,
 
     ``python`` and ``run`` replace the interpreter written to and the installer. Raises `Unavailable`.
     """
-    held = _lock(python)
-    if all(map(_present, modules)) and not (held.is_file() and lock.held_by(held)):
+    if all(map(_present, modules)) and not _being_written(_lock(python), modules):
         return
     try:
         _supply(extra, modules, python, run)

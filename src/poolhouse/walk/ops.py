@@ -122,7 +122,7 @@ def _first_line(exc: BaseException) -> str:
 def _window(what: Walk) -> Window:
     """The browser this walk opens: bundled Chromium, on a profile of its own."""
     return Window(profile=home.cache("walk"), width=what.width, height=what.height,
-                  headless=what.headless, channel="chromium",
+                  headless=what.headless, channel="chromium", own_pages=True,
                   timeout_ms=int(what.timeout_s * 1000))
 
 
