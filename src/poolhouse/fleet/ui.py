@@ -517,8 +517,7 @@ def _same(a: str, b: str) -> bool:
 
 
 def _names_itself(host_header: str) -> bool:
-    """Whether a Host header reaches this computer without a name anybody else can point at it: an address, or ``localhost``. A web page
-    that points a name of its own at loopback (``rebound.local``, a single label) sends that name."""
+    """Whether a Host header reaches this computer without a name anybody else can point at it: an address, or ``localhost``."""
     try:
         host = urllib.parse.urlsplit("//" + (host_header or "")).hostname or ""
     except ValueError:
