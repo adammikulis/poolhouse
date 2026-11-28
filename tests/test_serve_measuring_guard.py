@@ -11,19 +11,23 @@ import time
 import pytest
 
 from poolhouse.serve import Measuring, ServerInfo, ServerManager, ServerSpec, free_port
+from poolhouse.serve.backend import ServerBackend
 from poolhouse.testing.registry import record_server
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
 
 
-class _Backend:
+class _Backend(ServerBackend):
     """Records what it was asked to start; never starts anything."""
 
     name = "fake"
 
     def __init__(self) -> None:
         self.started: list[int] = []
+
+    def command(self, spec):
+        return []
 
     def start(self, spec, *, lease, timeout=300.0, **starting):
         self.started.append(spec.port)
