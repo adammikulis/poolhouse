@@ -10,6 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from poolhouse import hub, sentinel
+from poolhouse.serve import drafthead
 from poolhouse.serve.backend import ServerSpec, flags_of, help_of
 from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.preflight import read_gguf_header
@@ -194,7 +195,8 @@ def plan(spec: ServerSpec, *, binary: str | Path | None, escalate: bool = False,
     ahead = sorted((h for h in hub.heads_for(model, binary=binary)
                     if h.spec_type == KIND and not h.build
                     and (str(model), h.path, str(binary)) not in _FAILED),
-                   key=lambda h: ("q8_0" not in h.name.lower(), h.bytes, h.name))
+                   key=lambda h: (bool(drafthead.outdated(h.path)), "q8_0" not in h.name.lower(),
+                                  h.bytes, h.name))
     refused: list[str] = []
     for one in ahead:
         path = Path(one.path)

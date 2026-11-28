@@ -278,7 +278,8 @@ def adopted(found: str, want: Want, patched: Path | None, say: Callable[[str], N
             why = f"serves {held} slot(s) and {want.slots} were asked for"
         elif patched is not None and not _same_file(entry.get("chat_template_file"), patched):
             why = "renders the model's own chat template, which refuses a system message after the first"
-        elif want.draft.lower() not in ("auto", "none") and Path(want.draft).name != Path(str(entry.get("draft") or "-")).name:
+        elif want.draft.lower() not in ("auto", "none") and Path(want.draft).name not in {
+                Path(str(one.get("draft") or "-")).name for one in admission.servings(entry)}:
             why = f"does not run the draft head {want.draft} that was named"
         else:
             cache = said_cache(str(entry.get("cache_type_k") or ""), str(entry.get("cache_type_v") or ""))
