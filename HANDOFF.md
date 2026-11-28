@@ -16,13 +16,13 @@ The local delegate takes no work until every row here is landed and installed, o
 | 4 | Faster serving settings the measurements show, then the 27B quant comparisons | Scheduled jobs first need three failing tests settled and an attack pass | #107, `docs/examples/qwen3.8-27b-quants.queue` |
 | 5 | Delegate work resumes, one small testable task at a time | The two runtime selection tests that fail on development, the test-node build test that needs `cargo`, and `scripts/test quick --explain` running tests | `tests/test_runtime_selection.py`, `tests/test_testnode.py`, `scripts/test` |
 
-## 1. Security of pool membership (active)
+## 2. Security of pool membership (active)
 
 | Item | Next | Where |
 |---|---|---|
 | Joining a pool needs an explicit choice, and the serving device decides who gets a board | Attack pass, checks, `scripts/pool-check`, proof on two computers. It contains #110 | #118 |
 
-## 2. Devices work together (paused)
+## 3. Devices work together (paused)
 
 The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is told when all three are.
 
@@ -37,7 +37,7 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | Phone node runs no code from other devices | Wire the node module into the app | branch `backup/phone-node` |
 | VM prototype for the phone, not wired in | Review and land as a prototype | #119 |
 
-## 3. New features (paused)
+## 4. New features (paused)
 
 | Item | Next | Where |
 |---|---|---|
@@ -45,7 +45,7 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | Tailscale inside Poolhouse | Compile the helper, daemon control, sign-in and share screens | #115 (draft) |
 | Screens saying what each device can do | Show only what works across devices | #117 |
 
-## 4. Landing, checks and friction (paused)
+## 5. Landing, checks and friction (paused)
 
 | Item | Next | Where |
 |---|---|---|
@@ -61,7 +61,7 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | The real-name list the commit hooks read is not readable, so those names are unchecked; the guard refuses `llama-server --help` | Fix both | `scripts/hooks` |
 | Example network addresses in documents | Review and merge | #121 |
 
-## 5. Later
+## 6. Later
 
 | Item | Where |
 |---|---|
