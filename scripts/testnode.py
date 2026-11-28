@@ -25,6 +25,7 @@ from typing import NamedTuple
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import testartifacts
+import testsecrets
 
 from poolhouse import home, node_binary, worktreerules
 from poolhouse.files import writing
@@ -70,8 +71,9 @@ def tool(name: str) -> str:
 
 
 def account_environment() -> dict[str, str]:
-    """This environment with HOME the account's, where rustup keeps its toolchains (a test run moves HOME)."""
-    return {**os.environ, "HOME": str(account())}
+    """This environment without its credentials (a build's output is printed when it fails) and with HOME the account's, where
+    rustup keeps its toolchains (a test run moves HOME)."""
+    return {**testsecrets.build_environment(os.environ), "HOME": str(account())}
 
 
 def version(name: str, executable: str, arguments: list[str]) -> str:
