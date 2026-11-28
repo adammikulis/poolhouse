@@ -2,7 +2,7 @@
 
 Direct a Poolhouse computer from a phone: talk to Claude sessions, their subagents, local delegates and other agents as
 conversations; see every device of the pool; follow and cancel work; start delegates and serve models. The app speaks only the
-phone API of [docs/phone-api.md](../../docs/phone-api.md) to the computer it is linked to.
+phone API to the computer it is linked to; that API's contract, `docs/phone-api.md`, comes with the computer's side of it.
 
 ## Without a computer
 
