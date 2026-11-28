@@ -54,8 +54,9 @@ def _row(ident: str, kind: str, **fields: Any) -> dict[str, Any]:
 def _under(folder: str, projects: list[str]) -> bool:
     if not folder:
         return False
-    real = os.path.realpath(folder)
-    return any(real == each or real.startswith(each.rstrip(os.sep) + os.sep) for each in projects)
+    real = os.path.normcase(os.path.realpath(folder))
+    held = [os.path.normcase(each) for each in projects]
+    return any(real == each or real.startswith(each.rstrip(os.sep) + os.sep) for each in held)
 
 
 class Sessions:

@@ -21,10 +21,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TextIO
 
-from poolhouse import delegate_record
+from poolhouse import delegate_record, lazy
 from poolhouse.phone_mailbox import SESSION, Message, Store
 
-__all__ = ["EVENTS", "HEADING", "LISTEN_ENV", "LISTEN_S", "QUESTION_S", "Host", "run", "spoken", "target_of"]
+__all__ = ["EVENTS", "HEADING", "LISTEN_ENV", "LISTEN_S", "QUESTION_S", "Host", "run", "spoken", "starters", "target_of"]
 
 HEADING = "Message from the person, sent from their linked phone"
 LISTEN_S = 7 * 24 * 3600
@@ -115,13 +115,30 @@ def session_start(store: Store, event: Mapping[str, Any], out: TextIO) -> int:
     return 0
 
 
+def starters() -> Callable[[], bool]:
+    """A check that the processes which started this one still run. The harness is the parent, or the parent's parent where a launcher
+    stands between them and outlives it (a Windows virtual environment's ``python.exe``)."""
+    psutil = lazy.load("psutil")
+    held = psutil.Process().parents()[:2]
+
+    def runs(process: Any) -> bool:
+        try:
+            return process.is_running() and process.status() != psutil.STATUS_ZOMBIE
+        except psutil.AccessDenied:
+            return True
+        except psutil.Error:
+            return False
+
+    return lambda: all(runs(each) for each in held)
+
+
 @dataclass(frozen=True)
 class Host:
-    """The machine a waiting hook runs on: its clock, its parent process and its environment."""
+    """The machine a waiting hook runs on: its clock, the processes that started it and its environment."""
 
     sleep: Callable[[float], None] = time.sleep
     clock: Callable[[], float] = time.time
-    parent: Callable[[], int] = os.getppid
+    started_by: Callable[[], Callable[[], bool]] = starters
     env: Mapping[str, str] = field(default_factory=lambda: os.environ)
 
 
@@ -133,11 +150,11 @@ def listen(store: Store, event: Mapping[str, Any], err: TextIO, host: Host | Non
     session = _main_of(event)
     if not session or (host.env.get("CLAUDE_CODE_ENTRYPOINT", "").startswith("sdk") and not host.env.get(LISTEN_ENV)):
         return 0
-    mine, owner, until = secrets.token_hex(8), host.parent(), host.clock() + LISTEN_S
+    mine, started, until = secrets.token_hex(8), host.started_by(), host.clock() + LISTEN_S
     store.report(session, connected=True, listener={"pid": os.getpid(), "id": mine}, **_reported(event))
     while host.clock() < until:
         held = store.session(session)
-        if held.get("listener", {}).get("id") != mine or held.get("state") == "ended" or host.parent() != owner:
+        if held.get("listener", {}).get("id") != mine or held.get("state") == "ended" or not started():
             return 0
         if said := _taken(store, session):
             err.write(said + "\n")

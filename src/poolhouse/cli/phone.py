@@ -8,6 +8,7 @@ runs is refused at once."""
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import sys
 from pathlib import Path
@@ -66,12 +67,22 @@ def terminal_qr(text: str) -> str:
                      for i in range(0, len(padded), 2))
 
 
+def _shown(text: str) -> str:
+    """``text`` as this console can print it: a Windows pipe takes only its own code page."""
+    encoding = sys.stdout.encoding or "utf-8"
+    return text.encode(encoding, "replace").decode(encoding)
+
+
 @COMMANDS.command("link", help="show a code that links one phone, for ten minutes")
 def link(args: argparse.Namespace) -> int:
     _persons("link a phone")
     made = _Daemon().call("POST", "/ui/phones/offer", {})
-    say(terminal_qr(made["link"]))
-    say("Scan this in the Poolhouse app, or type in it:")
+    drawn = terminal_qr(made["link"])
+    if _shown(drawn) == drawn:
+        say(drawn)
+        say("Scan this in the Poolhouse app, or type in it:")
+    else:
+        say("The app's Phones screen shows the code to scan; or type in the Poolhouse app:")
     say(f"  address  {' or '.join(made['endpoints'])}")
     say(f"  code     {made['code']}")
     say("The code links one phone and lasts ten minutes.")
@@ -83,11 +94,11 @@ def listed(args: argparse.Namespace) -> int:
     held = _Daemon().call("GET", "/ui/phones")
     for phone in held["phones"]:
         pool = "in the pool" if phone["pool_use"] else "not in the pool"
-        say(f"{phone['id']}  {phone['name']}  {'online' if phone['online'] else 'offline'}  {pool}  key {phone['words']}")
+        say(_shown(f"{phone['id']}  {phone['name']}  {'online' if phone['online'] else 'offline'}  {pool}  key {phone['words']}"))
     if not held["phones"]:
         say("no phone is linked; `poolhouse phone link` shows a code")
     for project in held["projects"]:
-        say(f"project {project['path']}  {'connected' if project['connected'] else 'off'}")
+        say(_shown(f"project {project['path']}  {'connected' if project['connected'] else 'off'}"))
     return 0
 
 
@@ -130,7 +141,11 @@ def disconnect(args: argparse.Namespace) -> int:
 @COMMANDS.command("hook", help="run one hook of a project connected to linked phones; the harness calls it",
                   options=[flag("event", choices=sorted(phone_hook.EVENTS))])
 def hook(args: argparse.Namespace) -> int:
-    """Status 2 wakes the session with what is on standard error; any failure is reported and lets the session go on."""
+    """Status 2 wakes the session with what is on standard error; any failure is reported and lets the session go on. The harness
+    speaks UTF-8 on every system, whatever the console's code page is."""
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     try:
         event = json.loads(sys.stdin.read() or "{}")
         return phone_hook.run(args.event, event if isinstance(event, dict) else {}, Store(), sys.stdout, sys.stderr)

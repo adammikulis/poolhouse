@@ -14,7 +14,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Iterator
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 from poolhouse import agent_hooks, home
@@ -22,21 +22,30 @@ from poolhouse.log import warn
 from poolhouse.phone_mailbox import Phone, Refused, Signed, Store
 
 from .. import tls
-from ..onboard.lan import in_tailnet
+from ..onboard.lan import primary_ip
 from . import qr
 from .api import Api, project_id
 from .link import Linking, link_uri
 from .model import PREFIX, PhoneModels
-from .server import PORT, Gatekeeper, Listener, local_addresses
+from .server import PORT, Gatekeeper, Listener, local_addresses, ordered
 from .sessions import Sessions
 from .stream import Streams
 
-__all__ = ["PORT", "PREFIX", "PhoneService"]
+__all__ = ["PORT", "PREFIX", "PhoneService", "project_folder"]
 
 ONLINE_S = 90.0
 """A phone that sent a request this recently is online."""
 WATCH_S = 5.0
 RECENT_S = 7 * 24 * 3600
+
+
+def project_folder(folder: str, flavour: type[PurePath] = PurePath) -> str:
+    """The project of a session's folder: a linked worktree (``.claude/worktrees/NAME``) counts as the project that holds it."""
+    parts = flavour(folder).parts
+    for at in range(1, len(parts) - 1):
+        if parts[at:at + 2] == (".claude", "worktrees"):
+            return str(flavour(*parts[:at]))
+    return folder
 
 
 class PhoneService:
@@ -60,6 +69,7 @@ class PhoneService:
         self._identity: tls.Identity | None = None
         self._closed = threading.Event()
         self._watching: threading.Thread | None = None
+        self._refreshed = False
         self._agents: tuple[float, list[dict[str, Any]]] = (float("-inf"), [])
 
     def _board_agents(self) -> list[dict[str, Any]]:
@@ -90,6 +100,9 @@ class PhoneService:
     def sync(self) -> None:
         """Listen while a code is open or a phone is linked, on the addresses this computer has now; else not at all."""
         with self._lock:
+            if not self._refreshed and not self._closed.is_set():
+                self._refreshed = True
+                self.refresh()
             needed = not self._closed.is_set() and (bool(self.store.phones())
                                                     or (self._linking is not None and self._linking.open() is not None))
             if not needed:
@@ -128,8 +141,7 @@ class PhoneService:
         """Where a phone finds this computer: home network first, then Tailscale."""
         held = self.listening
         found = [a for a in held["addresses"] if not a.startswith("127.") and a != "::1"] or held["addresses"]
-        ordered = sorted(found, key=lambda a: (in_tailnet(a), ":" in a, a))
-        return [f"[{a}]:{held['port']}" if ":" in a else f"{a}:{held['port']}" for a in ordered][:4]
+        return [f"[{a}]:{held['port']}" if ":" in a else f"{a}:{held['port']}" for a in ordered(found, primary_ip())][:4]
 
     def _hello(self) -> dict[str, Any]:
         return {"service": "poolhouse-phone", "api": 1, "computer": self.ui.name, "now_ms": int(time.time() * 1000),
@@ -197,13 +209,23 @@ class PhoneService:
         self.store.audit("computer", "connect" if on else "disconnect", folder)
         return folder
 
+    def refresh(self) -> None:
+        """Bring the hooks of the connected projects to this installation, whose interpreter moves with an update or a moved app."""
+        connected = [folder for folder, on in self.store.projects().items() if on and Path(folder).is_dir()]
+        command = agent_hooks.phone_command() if connected else []
+        for folder in connected:
+            try:
+                agent_hooks.phone(Path(folder), run=command)
+            except (OSError, ValueError) as why:
+                warn(f"phones: the hooks of {folder} were not renewed: {why}")
+
     def known_projects(self) -> list[str]:
         """The project folders recent Claude Code sessions ran in: a linked worktree counts as its project, a temporary folder as none."""
-        temporary = os.path.realpath(tempfile.gettempdir())
+        temporary = (os.path.normcase(os.path.realpath(tempfile.gettempdir()) + os.sep), os.path.normcase("/private/tmp/"))
         found = []
         for entry in self.sessions.recent(time.time() - RECENT_S):
-            folder = os.path.realpath(entry.split("/.claude/worktrees/")[0]) if entry else ""
-            if (folder and folder not in found and Path(folder).is_dir() and not folder.startswith((temporary + os.sep, "/private/tmp/"))):
+            folder = os.path.realpath(project_folder(entry)) if entry else ""
+            if folder and folder not in found and Path(folder).is_dir() and not os.path.normcase(folder).startswith(temporary):
                 found.append(folder)
         return found
 

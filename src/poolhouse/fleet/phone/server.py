@@ -8,6 +8,7 @@ from __future__ import annotations
 import contextlib
 import ipaddress
 import json
+import os
 import socket
 import ssl
 import threading
@@ -26,7 +27,7 @@ from ..onboard.lan import in_tailnet
 from .errors import ApiError
 from .link import Linking, TooMany
 
-__all__ = ["PORT", "Gatekeeper", "Listener", "Window", "local_addresses", "reachable"]
+__all__ = ["PORT", "Gatekeeper", "Listener", "Window", "local_addresses", "ordered", "reachable"]
 
 PORT = 7450
 MOST_BODY = 64 * 1024
@@ -55,12 +56,17 @@ def reachable(address: str, *, caller: bool = False) -> bool:
     return ip.is_loopback or in_tailnet(str(ip)) or any(ip in network for network in networks if network.version == ip.version)
 
 
+def ordered(addresses: list[str], primary: str) -> list[str]:
+    """``addresses`` in the order a phone should try them: ``primary`` (the one this computer reaches its network by, ahead of the
+    adapters of virtual machines), other home-network ones, Tailscale, loopback."""
+    return sorted(addresses, key=lambda a: (a != primary, ipaddress.ip_address(a).is_loopback, in_tailnet(a), ":" in a, a))
+
+
 def local_addresses() -> list[str]:
     """This computer's loopback, home-network and Tailscale addresses, home network first."""
     found = [info.address.split("%")[0] for each in psutil.net_if_addrs().values() for info in each
              if info.family in (socket.AF_INET, socket.AF_INET6)]
-    kept = sorted({a for a in found if reachable(a)}, key=lambda a: (ipaddress.ip_address(a).is_loopback, in_tailnet(a), ":" in a, a))
-    return kept or ["127.0.0.1"]
+    return ordered(list({a for a in found if reachable(a)}), "") or ["127.0.0.1"]
 
 
 class Window:
@@ -196,6 +202,14 @@ class _Handler(Limited, ReplyHandler):
 
 class _Server(LimitedServer):
     """One address of the listener: connections from outside the home network are closed unread, and one address holds only so many."""
+
+    allow_reuse_address = os.name != "nt"
+
+    def server_bind(self) -> None:
+        """On Windows hold the port alone: reuse there lets any other process bind the same port and take its connections."""
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
     def __init__(self, address: tuple[str, int], context: Callable[[], ssl.SSLContext], listener: Listener) -> None:
         self.address_family = socket.AF_INET6 if ":" in address[0] else socket.AF_INET

@@ -53,8 +53,8 @@ def test_a_listener_gives_way_to_a_newer_one_and_ends_with_its_harness(store):
         store.report(MAIN, listener={"pid": 1, "id": "newer"})
 
     assert _listen(store, sleep=replaced)[0] == 0
-    parents = iter([100, 1])
-    assert _listen(store, parent=lambda: next(parents))[0] == 0
+    there = iter([True, False])
+    assert _listen(store, started_by=lambda: lambda: next(there))[0] == 0
 
     def closed(_seconds):
         store.report(MAIN, state="ended")

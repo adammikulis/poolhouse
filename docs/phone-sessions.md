@@ -8,9 +8,13 @@ meets. The wire contract is [phone-api.md](phone-api.md).
 A connected project has hooks in its own `.claude/settings.local.json` (`poolhouse phone connect --project DIR`, the Phones
 screen, and every recently used project when a phone is linked). No global setting is written.
 
+Each hook runs the installation's own Python by its full path with the arguments apart (`command` and `args`), so no shell
+and no `PATH` is involved, on macOS and on Windows alike; the daemon renews that path in connected projects when it starts.
+The hooks read and write UTF-8, and a waiting one ends when the process that started it, or the one before that, is gone.
+
 | Hook | What it does |
 |---|---|
-| `SessionStart`, `Stop` with `asyncRewake` (`poolhouse phone hook listen`) | waits in the background; when a message arrives it ends with status 2, which wakes an idle session with the message |
+| `SessionStart`, `Stop` with `asyncRewake` (`... -m poolhouse.cli.phone hook listen`) | waits in the background; when a message arrives it ends with status 2, which wakes an idle session with the message |
 | `PostToolUse` | hands a message to a session that is working, with its next model request |
 | `SubagentStart` | tells a subagent what a message from the phone is |
 | `SubagentStop` | a running subagent takes its messages here, when its turn ends, and goes on with them |
@@ -73,13 +77,17 @@ keys as the phone, in headless sessions kept open over `--input-format stream-js
 
 Not proven live: the interactive terminal interface (waking it, and leaving it with a listener running), answering
 `AskUserQuestion` (the tool is not offered to a headless session), a real phone and the Android app, an installed daemon, the
-macOS firewall or local-network prompt, Tailscale, Windows.
+macOS firewall or local-network prompt, Tailscale.
+
+The Windows CI job runs the phone tests on Windows: linking and signed requests over the listener, the written hooks as
+real processes, and the Phones routes. Only a real Windows computer can show the firewall prompt, a phone reaching it over
+Wi-Fi, a Claude Code session on Windows running the hooks and waking, and the desktop app's window.
 
 ## What an attacker meets
 
 | Surface | Reach | Stops it |
 |---|---|---|
-| The listener, port 7450 | loopback, home network and Tailscale addresses only; public peers are closed unread; open only while a code is open or a phone linked | TLS 1.3 with a pinned certificate; connection and per-address caps |
+| The listener, port 7450 | loopback, home network and Tailscale addresses only; connections from public addresses are closed unread; open only while a code is open or a phone linked | TLS 1.3 with a pinned certificate; connection and per-address caps |
 | `GET /hello` | anyone who reaches the port | says the computer's name, its time and whether a code is open; 60 a minute an address |
 | `POST /link` | the same | a 49-bit single-use code for 10 minutes, a proof bound to the certificate seen (a machine in between cannot relay it, and searching the recorded proof costs 200000 hash rounds a guess), 10 failures an address |
 | Every other request | a linked phone's key only | signature over certificate, method, path and body; 120 s window; nonce once; revoked at once |

@@ -91,6 +91,12 @@ def _windows() -> bool:
     from ctypes import wintypes
 
     kernel, advapi = ctypes.WinDLL("kernel32", use_last_error=True), ctypes.WinDLL("advapi32", use_last_error=True)
+    # Declared in full: a handle passed as a C int is cut to 32 bits, the calls fail and every process would count as confined.
+    kernel.GetCurrentProcess.restype, kernel.GetCurrentProcess.argtypes = wintypes.HANDLE, []
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.IsProcessInJob.argtypes = [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+    advapi.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+    advapi.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
     me = kernel.GetCurrentProcess()
     token, in_container, size, in_job = wintypes.HANDLE(), wintypes.DWORD(), wintypes.DWORD(), wintypes.BOOL()
     if not advapi.OpenProcessToken(me, TOKEN_QUERY, ctypes.byref(token)):
