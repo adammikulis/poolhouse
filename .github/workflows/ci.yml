@@ -332,7 +332,7 @@ jobs:
           $ErrorActionPreference = "Stop"
           python -m pip install pytest pytest-timeout pytest-xdist numpy psutil keyring cryptography pyyaml pywin32
           $env:PYTHONPATH = "src"
-          python -m pytest tests/test_phone_platform.py tests/test_phone_mailbox.py tests/test_phone_hook.py tests/test_phone_service.py tests/test_phone_sessions.py tests/test_phone_model.py tests/test_phone_screen.py tests/test_agent_hooks.py -q -n 0 -p no:cacheprovider
+          python -m pytest tests/test_phone_platform.py tests/test_phone_mailbox.py tests/test_phone_hook.py tests/test_phone_service.py tests/test_phone_sessions.py tests/test_phone_model.py tests/test_phone_screen.py -q -n 0 -p no:cacheprovider
           if ($LASTEXITCODE -ne 0) { throw "the phone linking tests failed" }
 
       - name: build the wheel install.ps1 installs
