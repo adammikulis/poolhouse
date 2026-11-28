@@ -1,7 +1,7 @@
 {
- "surfaces": 898,
+ "surfaces": 899,
  "by_status": {
-  "covered": 569,
+  "covered": 570,
   "partial": 189,
   "uncovered": 51,
   "n/a": 89,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 103,
+   "covered": 104,
    "partial": 69,
    "uncovered": 0,
    "n/a": 3,
@@ -11421,6 +11421,18 @@
     "tests/test_redteam_trees.py::test_a_stalled_git_is_an_error_not_a_hang"
    ],
    "note": "a worktree path is the value of git -C, never an option or a shell word; a hostile directory name is one argument, a missing one is a refusal and a stalled git is an error, not a hang"
+  },
+  {
+   "id": "spawn:guardgit.py:_git",
+   "kind": "spawn",
+   "source": "guardgit.py:_git",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_guard_branches.py::test_a_hostile_revision_is_one_argument_and_starts_nothing_else"
+   ],
+   "note": "git is run with argv only; a revision named by the command under judgement reaches rev-parse after --end-of-options and for-each-ref inside a refs/remotes pattern, every other argument is a commit id, a constant or a listed guard path"
   },
   {
    "id": "spawn:gym/catalog.py:probe",

@@ -3,35 +3,39 @@ code, the authority registry) or touch at all (the person folder and the session
 reach them. Every refusal is automatic and immediate: it says why and what to do instead, and nothing waits for anyone.
 The person folder, the session tokens and the authority registry are protected everywhere; a caller that passes ``owns``
 (whether a path lies in Poolhouse's own repository) limits every other rule to that repository.
-Standard library only: the hook scripts load it by file through `worktreerules`."""
+Which paths those are is `guardpaths`; what a git command brings into a checkout that runs the guards is `guardgit`. Standard library
+only: the hook scripts load it by file through `worktreerules`."""
 
 from __future__ import annotations
 
 import fnmatch
+import importlib.util
 import itertools
 import os
 import re
 import shlex
+import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
 __all__ = ["TooComplex", "command_texts", "guarded", "holds_secret", "other_agent", "refusal", "secret", "too_deep",
            "tool_refusal", "without_heredocs"]
 
-GUARD_PATHS = (
-    r"src/poolhouse/workspace/harness_ancestry\.py",
-    r"scripts/hooks/(claude-harness-bind|harness-ancestry)",
-    r"scripts/(release-key|github-protection-apply|github-protection|dev-branch-rule|agent-identity)", r"src/poolhouse/credentials/.*",
-    r"\.git/(refs/remotes/.*|packed-refs)",
-    r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
-    r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
-GUARDS = re.compile(r"(^|/)(" + "|".join(GUARD_PATHS) + ")$", re.I)
-REGISTRY = re.compile(r"(^|/)" + GUARD_PATHS[-1] + "$", re.I)
-SECRETS = re.compile(r"(^|/)\.poolhouse/(person|node/client|node/person)(/|$)", re.I)
-HELD = tuple(tuple(path.split("/")) for path in (
-    "src/poolhouse/workspace/harness_ancestry.py", "scripts/hooks/harness-ancestry",
-    "scripts/hooks/claude-harness-bind", "scripts/release-key", "src/poolhouse/credentials/__init__.py",
-    ".git/hooks/pre-push", ".git/config", ".config/git/config", ".gitconfig"))
+
+def _beside(name: str):
+    """The module ``name`` of the folder this file is in, loaded by file as the hook scripts load this one."""
+    key = f"_poolhouse_{name}"
+    if key not in sys.modules:
+        spec = importlib.util.spec_from_file_location(key, Path(__file__).with_name(f"{name}.py"))
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[key] = module
+        spec.loader.exec_module(module)
+    return sys.modules[key]
+
+
+guardpaths, guardgit = _beside("guardpaths"), _beside("guardgit")
+HELD, secret, file_guarded, guarded = guardpaths.HELD, guardpaths.secret, guardpaths.file_guarded, guardpaths.guarded
+holds_state, above_state, holds_secret = guardpaths.holds_state, guardpaths.above_state, guardpaths.holds_secret
 KEPT = re.compile(r"\.poolhouse/(person|node/client|node/person|authority)", re.I)
 MENTION = re.compile(r"\.git/hooks|" + KEPT.pattern, re.I)
 """What code run from a shell may not name: git's hooks, the owner's keys, the session tokens and the authority registry. Code that only names
@@ -107,50 +111,10 @@ PATH_KEY = re.compile(r"(path|paths|file|files|dir|dirs|directory|directories|fo
 COMMAND_KEY = re.compile(r"(command|commands|cmd|cmds|script|scripts|argv|commandline|cmdline)$|^(run|exec|execute|shell|bash|zsh|sh)$")
 """Keys of a tool input, with every character but a letter taken out and lower case, that hold a path or a command."""
 TOO_COMPLEX = "is too long or too nested for the rules to read in bounded work: split it into smaller steps"
-REFUSED = ("refused to an agent: the guards, the hook settings, git's hooks and config and the authority registry decide what an "
-           "agent may run, so an agent never changes them; leave them as they are and say in the report what should change")
+REFUSED = ("refused to an agent: the guards that run here, the hook settings, git's hooks and config and the authority registry decide "
+           "what an agent may run, so leave them as they are. Tracked guard code is changed in a linked worktree of your own, on a branch "
+           "that is neither main nor the development branch, and runs after its pull request is reviewed and merged")
 NOT_READ = "refused to an agent: the person folder holds the owner's keys and the session tokens; read a file of the project instead"
-
-
-def _roots(environ: Mapping[str, str]) -> list[str]:
-    """The case-folded active state root, as a list of at most one."""
-    named = environ.get("POOLHOUSE_HOME")
-    return [os.path.normpath(named).casefold()] if named else []
-
-
-def secret(path: str, environ: Mapping[str, str] | None = None) -> bool:
-    """Whether ``path`` lies in the person folder or the session tokens."""
-    if SECRETS.search(path):
-        return True
-    places, low = ("/person", "/node/client", "/node/person"), path.casefold()
-    return any(low == root + p or low.startswith(root + p + "/") for root in _roots(environ or os.environ) for p in places)
-
-
-def _holds_a_guard(path: str) -> bool:
-    """Whether ``path`` is a folder that holds one of the guard files, as the repository root or as `scripts/hooks`."""
-    folder = path.rstrip("/")
-    low = folder.casefold()
-    for held in HELD:
-        for i in range(len(held)):
-            head = "/".join(held[:i])
-            inside = not head or low == head or low.endswith("/" + head)
-            if inside and os.path.lexists(f"{folder}/{'/'.join(held[i:])}"):
-                return True
-    return False
-
-
-def file_guarded(path: str, environ: Mapping[str, str] | None = None, owns: Callable[[str], bool] | None = None) -> bool:
-    """Whether ``path`` is itself protected: the authority registry, or (where ``owns`` reaches) a guard, a hook setting,
-    git's hooks or config."""
-    if REGISTRY.search(path) or any(path.casefold() in (f"{root}/authority.json", f"{root}/authority-audit.jsonl")
-                                    for root in _roots(environ or os.environ)):
-        return True
-    return bool(GUARDS.search(path)) and (owns is None or owns(path))
-
-
-def guarded(path: str, environ: Mapping[str, str] | None = None, owns: Callable[[str], bool] | None = None) -> bool:
-    """Whether a write to ``path`` (a file, or a folder holding one) is refused to an agent: the guards, settings, git's hooks."""
-    return file_guarded(path, environ, owns) or (_holds_a_guard(path) and (owns is None or owns(path)))
 
 
 def _flatten(command: str) -> str:
@@ -284,8 +248,18 @@ def _script_text(path: Path) -> str:
 class Shell:
     """What the command line being read knows: the working folder, the variables set so far and what it may do."""
 
-    def __init__(self, here: Path, environ: Mapping[str, str], released: Callable[[str], str], owns: Callable[[str], bool] | None) -> None:
+    def __init__(self, here: Path, environ: Mapping[str, str], released: Callable[[str], str], owns: Callable[[str], bool] | None,
+                 branches: bool = False) -> None:
         self.here, self.environ, self.released, self.owns, self.variables = here, environ, released, owns, dict[str, str]()
+        self.branches, self.work_tree = branches, ""
+
+    def protects(self, path: str) -> bool:
+        """Whether the file ``path`` is closed to this command."""
+        return file_guarded(path, self.environ, self.owns, self.branches)
+
+    def holds(self, path: str) -> bool:
+        """Whether ``path``, a file or a folder holding a guard, is closed to this command."""
+        return guarded(path, self.environ, self.owns, self.branches)
 
     def repository(self, moved: str = "") -> bool:
         """Whether the repository's rules apply to a command run in the working folder (or in ``moved`` from it)."""
@@ -332,8 +306,7 @@ class Shell:
 
     def guarded(self, words: list[str], deep: bool = False) -> str:
         """The first of ``words`` that names a guard (with ``deep``, also a folder holding one)."""
-        test = guarded if deep else file_guarded
-        return self.hits(words, lambda p: test(p, self.environ, self.owns))
+        return self.hits(words, self.holds if deep else self.protects)
 
     def landing(self, sources: list[str], dest: str) -> list[str]:
         """The files a copy of ``sources`` to ``dest`` writes: ``dest`` itself, or a file of each name inside a folder."""
@@ -345,7 +318,7 @@ class Shell:
     def lands_on(self, sources: list[str], dests: list[str]) -> str:
         """The first guard file that a copy or move of ``sources`` to ``dests`` writes, else an empty string."""
         written = [p for dest in dests for p in self.landing(sources, dest)]
-        return next((p for p in written if file_guarded(p, self.environ, self.owns)), "")
+        return next((p for p in written if self.protects(p)), "")
 
 
 def _transfer(args: list[str]) -> tuple[list[str], list[str]]:
@@ -360,8 +333,12 @@ def _copy_hit(verb: str, args: list[str], shell: Shell) -> str:
     """The first file a cp, install, ln, mv or dd writes that is a guard, else an empty string."""
     if verb == "dd":
         written = [p for a in args if a.startswith("of=") for p in shell.paths(a[3:])]
-        return next((p for p in written if file_guarded(p, shell.environ, shell.owns)), "")
-    return shell.lands_on(*_transfer(args))
+        return next((p for p in written if shell.protects(p)), "")
+    sources, dests = _transfer(args)
+    short = "s" if verb == "ln" else "l"
+    flagged = any(a in ("--symbolic", "--link") or re.fullmatch(rf"-[a-zA-Z]*{short}[a-zA-Z]*", a) for a in args)
+    hard = flagged if verb == "cp" else verb == "ln" and not flagged
+    return (shell.guarded(sources, deep=True) if hard else "") or shell.lands_on(sources, dests)
 
 
 def _move_hit(args: list[str], shell: Shell) -> str:
@@ -659,11 +636,12 @@ class Reader:
         """Why one command may not run: a redirection into a guard, a secret named, or a verb that writes one."""
         shell = self.shell
         words, written, read = _split_redirects(words)
-        if blocked := shell.hits(written, lambda p: guarded(p, shell.environ, shell.owns) or secret(p, shell.environ)):
+        if blocked := shell.hits(written, lambda p: shell.holds(p) or secret(p, shell.environ)):
             return f"a redirection would write {blocked}: {REFUSED}."
         if blocked := shell.hits(read, lambda p: secret(p, shell.environ)):
             return f"a redirection would read {blocked}, in the person folder or a session token: {NOT_READ}."
         rest, assigned = _first_words(words)
+        shell.work_tree = assigned.get("GIT_WORK_TREE", shell.variables.get("GIT_WORK_TREE", ""))
         if not rest:
             shell.variables.update(assigned)
             return ""
@@ -708,10 +686,16 @@ class Reader:
             return self.command(inner, depth + 1) or _code(verb, args, bodies, shell)
         if verb == "eval" and depth < DEPTH:
             return self.command(" ".join(args), depth + 1)
+        if verb == "export":
+            shell.variables.update(dict(a.split("=", 1) for a in args if a.startswith("GIT_WORK_TREE=")))
         if verb == "gh":
+            if shell.branches and args[:2] == ["pr", "checkout"] and (why := guardgit.pull_request_checkout(guardpaths, shell.here)):
+                return why
             return _gh(args, shell) if shell.repository() else ""
         if verb == "git":
-            return (_git_config(args) if shell.repository(_git_sub(args)[2]) else "") or _git_paths(args, shell)
+            why = (_git_config(args) if shell.repository(_git_sub(args)[2]) else "") or _git_paths(args, shell)
+            brings = shell.branches and not why
+            return guardgit.incoming(guardpaths, args, shell.here, shell.home, shell.work_tree) if brings else why
         if verb in FETCHERS or verb in ("http", "https", "xh"):
             return _fetch(rest, shell)
         script = _script_text(shell.here / rest[0]) if "/" in rest[0] and not shell.guarded(rest[:1]) else ""
@@ -721,10 +705,16 @@ class Reader:
 
 def refusal(command: str, cwd: str, released: Callable[[str], str], environ: Mapping[str, str] | None = None,
             owns: Callable[[str], bool] | None = None) -> str:
-    """Why the shell ``command``, run from ``cwd``, may not run; an empty string when it may. A command past the bounds of
-    `MOST_COMMAND`, `MOST_EXPANSIONS` and `DEPTH` is refused, not read in part. ``owns`` limits the repository's rules."""
+    """Why the shell ``command``, run from ``cwd``, may not run; an empty string when it may. ``owns`` limits the repository's rules."""
+    return judged(command, Shell(Path(cwd or Path.cwd()), environ or os.environ, released, owns))
+
+
+def judged(command: str, shell: Shell) -> str:
+    """Why ``shell`` may not run ``command``; an empty string when it may. A command past the bounds of `MOST_COMMAND`,
+    `MOST_EXPANSIONS` and `DEPTH` is refused, not read in part. A shell with ``branches`` has the guard code of a worktree that runs
+    none open (`guardpaths.editable`), and its git puts no unlanded guard code where it runs (`guardgit.incoming`)."""
     try:
-        return Reader(Shell(Path(cwd or Path.cwd()), environ or os.environ, released, owns)).command(command)
+        return Reader(shell).command(command)
     except (TooComplex, RecursionError) as error:
         return f"the command {TOO_COMPLEX} ({error})."
 
@@ -823,31 +813,6 @@ def _raw(text: str, here: Path, environ: Mapping[str, str]) -> Path:
 
 def _place(text: str, here: Path, environ: Mapping[str, str]) -> str:
     return os.path.normpath(_raw(text, here, environ))
-
-
-def _state_places(found: Mapping[str, str]) -> tuple[str, list[str]]:
-    """The case-folded home folder and the state folders (the active root, and the one under the home folder)."""
-    home = os.path.normpath(found["HOME"]).casefold() if found.get("HOME") else ""
-    return home, [*_roots(found), *([f"{home}/.poolhouse"] if home else [])]
-
-
-def holds_state(path: str, environ: Mapping[str, str] | None = None) -> bool:
-    """Whether ``path`` is the state folder that holds the person folder, or the folder of the session tokens' node."""
-    folder = path.rstrip("/").casefold()
-    _, roots = _state_places(environ or os.environ)
-    return any(root == folder or f"{root}/node" == folder for root in roots)
-
-
-def above_state(path: str, environ: Mapping[str, str] | None = None) -> bool:
-    """Whether ``path`` is the home folder, a folder above it, or a state folder: a tree the person folder sits in."""
-    folder = path.rstrip("/").casefold()
-    home, roots = _state_places(environ or os.environ)
-    return any(own == folder or own.startswith(folder + "/") for own in [home, *roots] if own)
-
-
-def holds_secret(path: str, environ: Mapping[str, str] | None = None) -> bool:
-    """Whether ``path`` is the person folder, a folder it sits in directly, or an ancestor of the home folder."""
-    return holds_state(path, environ) or above_state(path, environ)
 
 
 def _places(text: str, here: Path, environ: Mapping[str, str]) -> list[str]:

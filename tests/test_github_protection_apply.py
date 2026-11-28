@@ -253,7 +253,7 @@ def test_a_run_of_your_own_with_no_terminal_and_no_marker_asks_nothing_and_just_
     assert [r["event"] for r in caller.audit_rows()] == ["ran"]
 
 
-NAMING_IT = (ROOT / "src" / "poolhouse" / "protectedwrites.py",)
+NAMING_IT = (ROOT / "src" / "poolhouse" / "guardpaths.py",)
 """The list of guarded paths names the script; it matches the name and starts nothing."""
 
 

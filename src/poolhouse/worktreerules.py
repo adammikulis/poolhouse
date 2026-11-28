@@ -177,7 +177,7 @@ def release_refusal(cwd: str, merge: tuple[str, ...] = ()) -> str:
     never waited on."""
     source = str(Path(__file__).resolve().parents[1])
     try:
-        done = subprocess.run([sys.executable, "-c", RELEASE_CHECK, *merge], cwd=cwd or None, capture_output=True, text=True,
+        done = subprocess.run([sys.executable, "-P", "-c", RELEASE_CHECK, *merge], cwd=cwd or None, capture_output=True, text=True,
                               timeout=45, check=False, env={**os.environ, "PYTHONPATH": source})
     except (OSError, subprocess.TimeoutExpired):
         return "the release check could not run"
@@ -188,17 +188,21 @@ def release_refusal(cwd: str, merge: tuple[str, ...] = ()) -> str:
 
 
 def hard_edit_refusal(paths: Iterable[str], cwd: str, owns: Callable[[str], bool] | None = None) -> str:
-    """Why a write to any of `paths` is refused whatever POOLHOUSE_GUARD says: a guard, a hook setting, the hooks and
-    settings of the version control, the person folder or the authority registry. `owns` limits the repository's rules
-    (`project_rules`)."""
+    """Why a write to any of `paths` is refused whatever POOLHOUSE_GUARD says: a guard that runs, a hook setting, the hooks and
+    settings of the version control, the person folder or the authority registry. Guard code of a worktree that runs none is open
+    (`guardpaths.editable`). `owns` limits the repository's rules (`project_rules`)."""
     base = Path(cwd or Path.cwd())
     rules = protected()
     for raw in filter(None, paths):
         target = base / _unquote(raw)
         place = os.path.normpath(str(target))
-        if rules.guarded(place, owns=owns) or rules.guarded(os.path.realpath(place), owns=owns) or rules.secret(place):
-            return (f"{target} is one of the guards, hook settings, the person folder or the authority registry: refused to an "
-                    "agent, since they decide what an agent may run; leave it as it is and say in the report what should change.")
+        # the kernel follows a link before it takes a `..`: the name as written is judged beside the collapsed one
+        places = dict.fromkeys((place, os.path.realpath(place), os.path.realpath(target)))
+        if any(rules.guarded(one, owns=owns, branches=True) or rules.secret(one) for one in places):
+            return (f"{target} is a guard that runs, a hook setting, the person folder or the authority registry: refused to an "
+                    "agent, since they decide what an agent may run. Tracked guard code is changed in a linked worktree of your own, "
+                    "on a branch that is neither main nor the development branch, and runs after an independent review merges it; "
+                    "anything else stays as it is.")
     return ""
 
 
@@ -355,7 +359,10 @@ def _worktree_target(segment: str) -> str | None:
 def hard_bash_refusal(command: str, cwd: str, owns: Callable[[str], bool] | None = None) -> str:
     """Why `command` may not run whatever POOLHOUSE_GUARD says: it writes a guard or the authority registry, touches the
     person folder or the session tokens, or changes what protects the repository."""
-    return protected().refusal(command, cwd or str(Path.cwd()), lambda here: release_refusal(here, reviewed_merge(command)), owns=owns)
+    rules = protected()
+    shell = rules.Shell(Path(cwd or Path.cwd()), os.environ, lambda here: release_refusal(here, reviewed_merge(command)), owns,
+                        branches=True)
+    return rules.judged(command, shell)
 
 
 def bash_refusal(command: str, cwd: str, owns: Callable[[str], bool] | None = None) -> str:

@@ -70,9 +70,10 @@ and local-model sessions the launchers start (add a `[[hooks.PreToolUse]]` entry
 Codex config the launchers did not write), and `scripts/hooks/primary-only` refuses a commit by an
 agent in the primary checkout or on the development branch. Tests: `tests/test_worktree_rules.py`.
 
-The paths an agent never writes, and the shell forms that write them, are in `src/poolhouse/protectedwrites.py`,
-which `worktreerules` loads for both guards and for the local-model harness. The guards, `.claude/settings*.json`,
-`.claude/agents`, `commands`, `skills` and `hooks`, git's hooks and config, the person record's code and the
+The paths an agent does not write are in `src/poolhouse/guardpaths.py` and the shell forms that write them in
+`src/poolhouse/protectedwrites.py`, which `worktreerules` loads for both guards and for the local-model harness. Tracked
+guard code is open in a worktree that runs no guard (docs/agent-policy.md, section 1, "Guard code on a branch"). The
+guards that run, git's hooks and config, the person record's code and the
 authority registry are refused to the file tools and to a shell redirection, `tee`, `cp`, `mv`, `ln`, `rm`,
 `sed -i`, `dd`, `find -delete`, `-fprint` or `-exec` of anything but a plain reader, `git checkout` and `restore` of
 such a path, `bash -c`, `eval`, command substitution, a heredoc or a script file handed to an interpreter, with
@@ -83,7 +84,8 @@ and the other settings that decide what git runs, `gh pr merge` without the pers
 `curl` writing to rulesets, secrets, releases or settings are refused. `scripts/hooks/claude-tool-guard` applies
 the same paths to `Read`, `Glob`, `Grep` and MCP tools, refuses the owner's own browser, and lets only the main
 session stop a task. Keystore, system approval and release
-authorization remain person-only. Tests: `tests/test_protected_writes.py`, `tests/test_protected_tools.py`.
+authorization remain person-only. Tests: `tests/test_protected_writes.py`, `tests/test_protected_tools.py`,
+`tests/test_guard_branches.py`.
 
 What `no-real-names` takes for a name, and what stands a name-shaped pair down, is data:
 `contracts/name-shapes.json` holds the place prefixes and suffixes (a gazetteer's

@@ -1256,6 +1256,12 @@ tests = ["tests/test_worktree_rules.py::test_a_hostile_path_is_one_argv_item_and
 note = "git is run with argv only; the paths come from a tool call and are one argument each"
 
 [[group]]
+match = ["spawn:guardgit.py:*"]
+status = "covered"
+tests = ["tests/test_guard_branches.py::test_a_hostile_revision_is_one_argument_and_starts_nothing_else"]
+note = "git is run with argv only; a revision named by the command under judgement reaches rev-parse after --end-of-options and for-each-ref inside a refs/remotes pattern, every other argument is a commit id, a constant or a listed guard path"
+
+[[group]]
 match = ["spawn:activity/gate.py:tree_hash", "spawn:activity/gate.py:_seed_index"]
 status = "n/a"
 note = "fixed git argv over the checkout scripts/test is run in, in a throwaway index; no model, member or file name reaches it"

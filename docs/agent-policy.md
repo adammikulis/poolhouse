@@ -44,6 +44,32 @@ primary checkout is on; `main` is never it); promotion to `main`, tags, releases
   land-review accept on that exact commit and a clean checkout) and is refused at once with its reason otherwise, the same answer the Bash guard gives. An agent is a process under the marker variable `CLAUDECODE` (docs/claude-code.md, "Hooks and settings") or a harness
   process; a terminal is neither.
 
+### Guard code on a branch
+
+The guards that run are closed to every agent. Tracked guard code is changed on a branch, like any other code
+(`poolhouse.guardpaths`, `poolhouse.guardgit`; `tests/test_guard_branches.py`).
+
+- **Open.** An agent's file tools and shell write `src/poolhouse/credentials/`, `src/poolhouse/workspace/harness_ancestry.py`,
+  `scripts/hooks/claude-harness-bind`, `scripts/hooks/harness-ancestry`, `scripts/release-key`, `scripts/github-protection`,
+  `scripts/github-protection-apply`, `scripts/dev-branch-rule` and `scripts/agent-identity` in a linked worktree (beside the
+  primary checkout, or one the harness makes) on a branch other than `main`, `master`, a development branch (`X.Ydev`,
+  `POOLHOUSE_DEV_BRANCH`) and the primary checkout's.
+- **Closed.** The same files in the primary checkout, in the checkout the running guard is loaded from, in the harness's
+  project folder (`CLAUDE_PROJECT_DIR`), in a detached worktree, in an installed build (`site-packages`), under another name
+  of a file that runs (a symbolic or hard link, a path stepping out of the worktree), in a folder that only claims to be a
+  worktree, and to a caller that does not ask for branch code (an unattended delegate, an MCP tool). Git's hooks, config and
+  remote refs, the authority registry, the person folder, the session tokens and the user's git configuration are closed
+  everywhere.
+- **Git.** In a checkout whose files run as the guards, a merge, pull, switch, checkout, restore, reset, rebase,
+  cherry-pick, revert, patch, bisection, index write or `gh pr checkout` that would change guard code to content that neither
+  `main` nor the development branch of `origin` holds is refused, also with `POOLHOUSE_GUARD=off`. Landed guard code is
+  brought in from `origin`'s development branch.
+- **Review.** A change reaches a guard that runs only through a reviewed pull request (section 4, "Landing").
+  `guardpaths.reviewed` says which paths of a pull request are guard code. A guard test keeps its assertions
+  (`scripts/hooks/weakened-assertions`).
+- **Limits.** The guards read the text of a command (docs/claude-code.md, "Hooks and settings"): a program an agent writes
+  and runs is past them. A session started with a worktree as its project folder runs that worktree's hooks.
+
 ### Tests never reach the real machine
 
 - No test reads, writes or prompts for an item in the real OS keystore (macOS Keychain), a password dialog or `security`:
