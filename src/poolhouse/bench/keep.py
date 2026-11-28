@@ -8,7 +8,9 @@ too, because the scorer, the parser and the runner all need the same two numbers
 
 from __future__ import annotations
 
+import contextlib
 import json
+import os
 import socket
 import subprocess
 import sys
@@ -21,9 +23,10 @@ from typing import Any
 # The package is the namespace the tests patch -- `bench.home_dir`,
 # `bench.runs` -- so anything patchable is looked up there at call time, never bound here
 # at import.
-from poolhouse import activity, bench
+from poolhouse import activity, bench, jsonl
 from poolhouse.bench import system
 from poolhouse.home import machine_id, state
+from poolhouse.paths import BENCH_RECEIPT_ENV
 
 
 def home_dir() -> Path:
@@ -69,8 +72,13 @@ def _commit(root: Path | None = None) -> str:
     global _commit_here
     if root is None and _commit_here is not None:
         return _commit_here
-    from poolhouse.paths import repo_root
+    from poolhouse.paths import SNAPSHOT_COMMIT, repo_root
 
+    # a copy of the package that is no checkout says what it was taken from; no folder above it is asked
+    stamp = Path(__file__).resolve().parent.parent / SNAPSHOT_COMMIT
+    if root is None and stamp.is_file():
+        _commit_here = stamp.read_text(encoding="utf-8").strip()
+        return _commit_here
     where = root if root is not None else repo_root(Path(__file__).parent)
     out = ""
     if where is not None:
@@ -287,7 +295,21 @@ def save(store: str | Path, rows: Sequence[Any], *, server: dict[str, Any] | Non
         differs = sorted(k for k in set(back) | set(record) if back.get(k) != record.get(k))
         raise RunNotKept(f"{key} came back from {store} changed: {', '.join(differs)} differ")
     _logged(key, store, record)
+    _receipt(record)
     return key
+
+
+def _receipt(record: Mapping[str, Any]) -> None:
+    """Say in the file `BENCH_RECEIPT_ENV` names, when it is set, what this kept run holds: its label, its rows and how many
+    were measured with nothing else in the way and without an error. A receipt that cannot be written proves nothing, so the
+    run it speaks of is acted on by nobody."""
+    if not (named := os.environ.get(BENCH_RECEIPT_ENV)):
+        return
+    rows = record["rows"]
+    usable = sum(1 for row in rows if not (row.get("contended") or row.get("errors") or row.get("error")))
+    with contextlib.suppress(OSError):
+        jsonl.append(Path(named), [{"label": record["label"], "kind": record.get("kind", ""), "rows": len(rows),
+                                    "usable": usable}])
 
 
 def _logged(key: str, store: str | Path, record: Mapping[str, Any]) -> None:

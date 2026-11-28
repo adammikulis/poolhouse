@@ -347,7 +347,7 @@ SCRIPTS = tomllib.loads((REPO / "pyproject.toml").read_text())["project"]["scrip
 def test_routed_commands_run_through_the_front_door_and_have_no_console_script():
     routed = declarations.ROUTED
     assert {"test", "test-devices", "open", "help", "device", "device-setup", "features", "credentials",
-            "local-network", "runtime"} == set(routed)
+            "local-network", "runtime", "schedule"} == set(routed)
     words = cli.commands()
     for word, target in routed.items():
         assert f"poolhouse-{word}" not in SCRIPTS, f"{word} is routed and installed twice"

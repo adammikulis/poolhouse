@@ -353,7 +353,7 @@ class Broker(BrokerStops, BrokerHolds):
         deadline = time.monotonic() + (600 if timeout is None else timeout)
         reservation = MODEL_START + uuid.uuid4().hex
         with self._cond:
-            while (held := self.claims.get("gpu-training")) and self._claim_alive(held):
+            while held := self.gpu_blocker(pid):
                 left = deadline - time.monotonic()
                 if left <= 0:
                     raise BrokerError(f"GPU held by pid {held['pid']}: model start timed out")
@@ -548,14 +548,14 @@ class Broker(BrokerStops, BrokerHolds):
             self._cond.wait(min(left, POLL_S))
 
     def _first_for_purpose(self, waiting: Waiting) -> bool:
-        ahead = next(w for w in self.queue if w.ask.purpose == waiting.ask.purpose)
-        return ahead is waiting
+        ahead = next((w for w in self.queue if w.ask.purpose == waiting.ask.purpose
+                      and not self.reserved_out(w.ask.pid)), None)
+        return ahead is waiting or self.reserved_out(waiting.ask.pid) is not None
 
     def _decide(self, ask: Ask) -> tuple[Held | None, list[Held], str]:
         """``(server to share, servers to stop first, why it must wait)``."""
-        training = self.claims.get("gpu-training")
-        if training and self.alive(training["pid"]):
-            return None, [], f"GPU held by pid {training['pid']} ({training['info'].get('purpose', '')})"
+        if blocker := self.gpu_blocker(ask.pid):
+            return None, [], f"GPU held by pid {blocker['pid']} ({blocker['info'].get('purpose', '')})"
         exact = ask.purpose.startswith("serve:")
         mine = [h for h in self.servers.values() if not h.unmanaged
                 and (h.purpose == ask.purpose

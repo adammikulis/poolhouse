@@ -31,6 +31,7 @@ from .page_security import PAGE_HEADERS
 from .pool_routes import PoolRoutes
 from .room_routes import RoomRoutes
 from .runtime_repair_routes import RuntimeRepairRoutes
+from .schedule_routes import ScheduleRoutes
 from .serving_routes import route as serving_route
 from .session import SignInHeld, parse_cookie
 from .setup_jobs import jobs, libraries, provenance, server
@@ -598,7 +599,7 @@ class JobRoutes:
 
 
 class Router(InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
-             BoardRoutes, DelegateRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
+             BoardRoutes, DelegateRoutes, ScheduleRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
              KnowledgeRoutes, *experimental_routes.load(), NativePickRoutes, StudioRoutes, WorkspaceRoutes, LaunchRoutes, ExtensionRoutes, Base):
     """Every screen's routes, in the order a request meets them."""
 

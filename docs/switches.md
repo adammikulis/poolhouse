@@ -15,7 +15,7 @@ Classes
 - **C, plain config**: a path, a name, a limit, an address; no safety consequence.
 - **D, opt-in speed-up**: faster when set and off by default. The decision column says why it stays off or why it was turned on.
 
-Counts: A 33, B 34, C 120, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
+Counts: A 34, B 34, C 120, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
 
 ## A: opt-in safety
 
@@ -27,6 +27,7 @@ Counts: A 33, B 34, C 120, D 6 (a variable name counts once, a row naming no var
 | `POOLHOUSE_NONINTERACTIVE` | `poolhouse.keystore`, `person`, hooks | the real OS keystore may ask a person | conftest, `runtime_deploy`, workers | **structural**: the machine's own keystore is reachable only by the installed software on the real home (`poolhouse.real_machine`); the former no-real-keystore variable was removed and nothing can turn the real keystore on elsewhere |
 | `POOLHOUSE_HOME`, `POOLHOUSE_CACHE` | `poolhouse.home` | the real `~/.poolhouse` and `~/.cache/poolhouse` | `_no_machine_state` and `_real_home` (autouse, session) | structural under pytest: the redirect is autouse and the run fails if a file under the real root changed. A rig outside pytest (`tests/pool_check`) sets both itself |
 | `POOLHOUSE_BENCH_CEILING`, `POOLHOUSE_BENCH_HOME`, `POOLHOUSE_BENCH_TRACE`, `POOLHOUSE_FIT_FILE`, `POOLHOUSE_INGEST_HOME`, `POOLHOUSE_JOBS_HOME`, `POOLHOUSE_KOKORO_MODEL`, `POOLHOUSE_KOKORO_VOICES`, `POOLHOUSE_LIMITS_FILE`, `POOLHOUSE_LLAMA_BUILD`, `POOLHOUSE_PIPER_VOICE`, `POOLHOUSE_PROFILES_FILE`, `POOLHOUSE_SEARCH`, `POOLHOUSE_TRAIN_CEILING`, `POOLHOUSE_TRAIN_HOME`, `POOLHOUSE_WEB_PROFILE`, `POOLHOUSE_WHISPER_CPP_MODEL`, `POOLHOUSE_CHECKOUTS`, `POOLHOUSE_RATES` | `poolhouse.home.OVERRIDES` and one reader each | the machine's own file (measurements, limits, a voice, a search engine) | a shell | structural under pytest: `_no_machine_state` deletes them for every test |
+| `POOLHOUSE_BENCH_RECEIPT` | `poolhouse.bench.keep` | a kept run writes no receipt | a scheduled job, for each bench step (`poolhouse.schedule.execute`) | a job's process keeps no such variable from a shell, and removes a step's receipt before the step |
 | `POOLHOUSE_AUTHORITY_FLOOR` | `poolhouse.authority` | gates follow the `dev` preset: delegated | conftest at import | structural under pytest (set at import, inherited by children); a rig must set it |
 | `POOLHOUSE_GUARD_JUDGE` | `poolhouse.guard.native` | the guard may start its judge model | conftest at import | structural under pytest (`setdefault` at import) |
 | `POOLHOUSE_STORE_MEMORY` | `poolhouse.graph.cypher` | the store sizes its buffer pool as a share of the machine's memory | `_no_machine_state` (512 MiB) | structural under pytest |

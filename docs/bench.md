@@ -333,6 +333,9 @@ summary line is one form, so the log can be read by eye or by `grep`:
 === 21:41:07 step 4/9: sweep --serve hf:unsloth/Some-Model-GGUF -- skipped (0s): its smoke (step 3) failed
 ```
 
+The same file runs later, once the device is free, as a [scheduled job](scheduled-jobs.md):
+`poolhouse schedule add FILE --at "2026-11-28 23:07" --window 2h`.
+
 `docs/examples/flash-next-restart.queue` is the seventh of those nine scripts, as a file.
 
 `history` answers "how much GPU time did that day cost, and how much of it kept nothing"

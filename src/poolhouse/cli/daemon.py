@@ -6,11 +6,12 @@ from poolhouse import runtime
 from poolhouse.api import pool
 from poolhouse.board import model_uploads
 from poolhouse.fleet import daemon
+from poolhouse.schedule import spawn
 
 
 def main(argv: list[str] | None = None) -> int:
     runtime.forward("poolhouse.cli.daemon", list(sys.argv[1:] if argv is None else argv))
-    return daemon.run(argv, pool_actions=pool, announcer=model_uploads.board_notice)
+    return daemon.run(argv, pool_actions=pool, announcer=model_uploads.board_notice, scheduler=spawn.keep)
 
 
 if __name__ == "__main__":

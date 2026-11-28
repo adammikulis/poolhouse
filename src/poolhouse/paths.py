@@ -13,6 +13,13 @@ from pathlib import Path
 import poolhouse
 from poolhouse.home import expand
 
+SNAPSHOT_COMMIT = "snapshot-commit"
+"""The file of a copy of the package that is no checkout (a scheduled job's), naming the commit it was taken from: what
+`poolhouse.bench` stamps on the results measured with the copy."""
+BENCH_RECEIPT_ENV = "POOLHOUSE_BENCH_RECEIPT"
+"""When set, a file that gets one line for each run the bench keeps: its label, its rows and how many of them are usable. A
+scheduled job reads it before it acts on what a step measured."""
+
 
 def repo_root(path: str | Path) -> Path | None:
     """The git working tree `path` sits in -- the nearest ancestor holding `.git` -- or None.
