@@ -2,7 +2,7 @@
 """A PreToolUse hook on Bash and Monitor that refuses shell commands that harm other agents' work, the broker or the repository.
 
 Claude Code runs this before every Bash and Monitor call. Exit 2 blocks the command and hands the
-message back.
+message back. A command the guard fails on, or cannot judge in time, is blocked the same way (`rules_loader.closed`).
 Set POOLHOUSE_GUARD=off to disable the soft rules for a session; the hard rules (pushes of main, tags,
 force and deletions, minting identities, the person folder) stay in force. Every refusal is decided here, at once, and says why
 and what to do instead: nothing waits for a person.
@@ -16,6 +16,8 @@ A project that wants its own wiring writes a thin `sh` wrapper that execs this f
 stdin passed through, and exits 0 with a note when this copy is missing -- a missing guard
 must not block every Bash call.
 """
+
+from __future__ import annotations
 
 import json
 import re
@@ -255,12 +257,14 @@ def judge(event: dict, switched: bool, rules) -> str:
     if why:
         return (f"blocked: {why}\n\n(poolhouse scripts/hooks/claude-bash-guard. Set "
                 f"POOLHOUSE_GUARD=off switches off the soft rules only.)")
-    command = MESSAGE.sub(r"\1 ''", without_search_patterns(without_heredocs(raw)))
+    # the patterns meet every way the command reads, so a way that passes over less only adds a refusal
+    texts = [without_heredocs(raw), *(rules.protected().other_texts(raw, rules.protected().blanked) if rules else ())]
+    commands = [MESSAGE.sub(r"\1 ''", without_search_patterns(text)) for text in texts]
     for pattern, instead in REFUSE:
         if switched and pattern not in HARD:
             continue
-        if re.search(pattern, command, re.M):
-            if pattern is PUSH_MAIN and not re.search(PUSH_FLAGS, command):
+        if any(re.search(pattern, command, re.M) for command in commands):
+            if pattern is PUSH_MAIN and not any(re.search(PUSH_FLAGS, command) for command in commands):
                 missing = rules.release_refusal(event.get("cwd") or "") if rules else "the release rules could not be loaded"
                 if not missing:
                     continue
@@ -272,15 +276,13 @@ def judge(event: dict, switched: bool, rules) -> str:
     return ""
 
 
-def main() -> int:
+def decide() -> int:
     switched = rules_loader.guard_off()
     try:
-        event = json.load(sys.stdin)
+        event = rules_loader.event()
     except RecursionError:
         print(rules_loader.NESTED, file=sys.stderr)
         return 2
-    except Exception:
-        return 0
     if event.get("tool_name") not in SHELL_TOOLS:
         return 0
     rules = rules_loader.load()
@@ -301,6 +303,10 @@ def main() -> int:
     if stamped:
         print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": stamped}}))
     return 0
+
+
+def main() -> int:
+    return rules_loader.closed(decide, "claude-bash-guard")
 
 
 if __name__ == "__main__":

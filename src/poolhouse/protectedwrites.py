@@ -8,15 +8,24 @@ Standard library only: the hook scripts load it by file through `worktreerules`.
 from __future__ import annotations
 
 import fnmatch
+import functools
+import importlib.util
 import itertools
 import os
 import re
 import shlex
+import sys
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
-__all__ = ["TooComplex", "command_texts", "guarded", "holds_secret", "other_agent", "refusal", "secret", "too_deep",
-           "tool_refusal", "without_heredocs"]
+__all__ = ["TooComplex", "blanked", "command_texts", "guarded", "holds_secret", "other_agent", "other_texts", "refusal", "secret",
+           "too_deep", "tool_refusal", "without_heredocs"]
+
+_spec = importlib.util.spec_from_file_location("_poolhouse_protectedshell", Path(__file__).with_name("protectedshell.py"))
+_shell = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = _shell  # its dataclasses look themselves up there while the file runs
+_spec.loader.exec_module(_shell)
+blanked = _shell.blanked
 
 GUARD_PATHS = (
     r"src/poolhouse/workspace/harness_ancestry\.py",
@@ -52,7 +61,6 @@ IN_PLACE = frozenset({"sed", "awk", "gawk", "perl"})
 COPIERS = frozenset({"cp", "install", "ln", "rsync", "cpio", "dd"})
 DEEP_WITH_R = frozenset({"rm", "chmod", "chown", "chattr", "setfacl", "xattr", "shred"})
 MODE = re.compile(r"[0-7]{3,4}|[ugoa]*[-+=][rwxXstugo]*(,[ugoa]*[-+=][rwxXstugo]*)*")
-FIND_EXEC = frozenset({"-exec", "-execdir", "-ok", "-okdir"})
 FIND_FILES = frozenset({"-fprint", "-fprint0", "-fprintf", "-fls"})
 WALKERS = frozenset({"rg", "ag", "ack", "tar", "zip", "7z", "7za", "ditto", "cpio", "rsync"})
 """Commands that read every file under the folders they are given."""
@@ -73,10 +81,6 @@ GIT_PATHS = frozenset({"rm", "mv", "update-index", "clean"})
 """The git commands that remove or redirect a guard. `checkout` and `restore` put a committed copy back, in a worktree whose hooks are not the
 ones that run; the primary checkout refuses them by its own rule (`worktreerules`)."""
 GIT_TAKES = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})
-WRITES_TO_A_FILE = re.compile(r"^(&?>>?|>\||&>>?)$")
-READS_A_FILE = re.compile(r"^(\d*<>?)$")
-REDIRECTS = re.compile(r"[<>]&?|<<-?|<<<|>&")
-SPLIT = frozenset({";", "&&", "||", "|", "&", "|&", ";;", "(", ")"})
 MUTATING = frozenset({"PUT", "POST", "PATCH", "DELETE"})
 API_VALUES = frozenset({"-X", "--method", "-H", "--header", "-f", "-F", "--field", "--raw-field", "--input", "-q", "--jq",
                         "-t", "--template", "--hostname", "--cache", "-p", "--preview"})
@@ -107,6 +111,9 @@ PATH_KEY = re.compile(r"(path|paths|file|files|dir|dirs|directory|directories|fo
 COMMAND_KEY = re.compile(r"(command|commands|cmd|cmds|script|scripts|argv|commandline|cmdline)$|^(run|exec|execute|shell|bash|zsh|sh)$")
 """Keys of a tool input, with every character but a letter taken out and lower case, that hold a path or a command."""
 TOO_COMPLEX = "is too long or too nested for the rules to read in bounded work: split it into smaller steps"
+UNJUDGEABLE = (ArithmeticError, AttributeError, LookupError, OSError, RecursionError, TypeError, ValueError)
+"""What text the rules cannot take raises in them (a NUL or half a character in a name, a command that is no text): it is refused.
+Anything else ends the hook, which refuses the call too (`scripts/hooks/rules_loader.closed`)."""
 REFUSED = ("refused to an agent: the guards, the hook settings, git's hooks and config and the authority registry decide what an "
            "agent may run, so an agent never changes them; leave them as they are and say in the report what should change")
 NOT_READ = "refused to an agent: the person folder holds the owner's keys and the session tokens; read a file of the project instead"
@@ -151,110 +158,6 @@ def file_guarded(path: str, environ: Mapping[str, str] | None = None, owns: Call
 def guarded(path: str, environ: Mapping[str, str] | None = None, owns: Callable[[str], bool] | None = None) -> bool:
     """Whether a write to ``path`` (a file, or a folder holding one) is refused to an agent: the guards, settings, git's hooks."""
     return file_guarded(path, environ, owns) or (_holds_a_guard(path) and (owns is None or owns(path)))
-
-
-def _flatten(command: str) -> str:
-    """The command with each newline outside quotes turned into a `;`."""
-    out: list[str] = []
-    quote = ""
-    for char in command:
-        if char == "\n" and not quote:
-            char = ";"
-        elif quote and char == quote:
-            quote = ""
-        elif not quote and char in "'\"":
-            quote = char
-        out.append(char)
-    return "".join(out)
-
-
-def _subshell(text: str, start: int) -> int:
-    depth = 0
-    for i in range(start, len(text)):
-        depth += {"(": 1, ")": -1}.get(text[i], 0)
-        if depth == 0:
-            return i
-    return len(text) - 1
-
-
-def _substitutions(text: str) -> tuple[str, list[str]]:
-    """``text`` with each `$(...)`, `<(...)`, `>(...)` and backtick body replaced by a word, and the bodies."""
-    bodies: list[str] = []
-    while found := re.search(r"[$<>]\(", text):
-        end = _subshell(text, found.end() - 1)
-        bodies.append(text[found.end():end])
-        text = text[:found.start()] + "SUB" + text[end + 1:]
-    ticks = text.split("`")
-    if len(ticks) > 2:
-        bodies += ticks[1::2]
-        text = "SUB".join(ticks[0::2])
-    return text, bodies
-
-
-def _heredocs(command: str) -> tuple[str, list[str]]:
-    """``command`` without heredoc bodies, and the bodies."""
-    kept: list[str] = []
-    bodies: list[str] = []
-    lines = command.split("\n")
-    i = 0
-    while i < len(lines):
-        kept.append(lines[i])
-        opened = re.search(r"<<-?\s*['\"]?([A-Za-z_]\w*)['\"]?", lines[i])
-        if opened:
-            body: list[str] = []
-            i += 1
-            while i < len(lines) and lines[i].strip() != opened.group(1):
-                body.append(lines[i])
-                i += 1
-            bodies.append("\n".join(body))
-        i += 1
-    return "\n".join(kept), bodies
-
-
-def _words(text: str) -> list[str]:
-    lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
-    lexer.whitespace_split = True
-    try:
-        return list(lexer)
-    except ValueError:
-        return text.split()
-
-
-def _commands(words: list[str]) -> list[list[str]]:
-    """``words`` split into commands; a `;` that ends a `find -exec` clause and the parentheses that group its tests stay in it."""
-    out: list[list[str]] = [[]]
-    for i, word in enumerate(words):
-        ends_exec = word == ";" and FIND_EXEC.intersection(out[-1]) and words[i + 1:i + 2] and words[i + 1].startswith("-")
-        groups = word in ("(", ")") and any(w.rsplit("/", 1)[-1] == "find" for w in out[-1])
-        if ends_exec or groups:
-            out[-1].append(word)
-        elif word in SPLIT:
-            out.append([])
-        else:
-            out[-1].append(word)
-    return [one for one in out if one]
-
-
-def _split_redirects(words: list[str]) -> tuple[list[str], list[str], list[str]]:
-    """``words`` without redirections, the files written by `>`, `>>`, `>|` and `&>`, and the files read by `<`."""
-    kept: list[str] = []
-    written: list[str] = []
-    read: list[str] = []
-    i = 0
-    while i < len(words):
-        follows = i + 1 < len(words)
-        if follows and WRITES_TO_A_FILE.match(words[i]):
-            written.append(words[i + 1])
-            i += 2
-        elif follows and READS_A_FILE.match(words[i]):
-            read.append(words[i + 1])
-            i += 2
-        elif follows and REDIRECTS.fullmatch(words[i]):
-            i += 2
-        else:
-            kept.append(words[i])
-            i += 1
-    return kept, written, read
 
 
 class TooComplex(ValueError):
@@ -320,7 +223,10 @@ class Shell:
         """The existing paths a glob ``pattern`` matches with their links resolved, and the guard files it would match if
         they existed."""
         anchor = Path(pattern).anchor
-        found = [str(p) for p in Path(anchor).glob(pattern[len(anchor):])] if anchor else []
+        try:
+            found = [str(p) for p in Path(anchor).glob(pattern[len(anchor):])] if anchor else []
+        except (ValueError, OSError):  # a pattern the matcher cannot take (`a**b`) names no existing file
+            found = []
         roots = [self.here, *self.here.parents]
         guards = [os.path.normpath(root / "/".join(held)) for root in roots for held in HELD]
         folded = pattern.casefold()
@@ -379,7 +285,7 @@ def _walks(verb: str, args: list[str], fed: bool = False) -> bool:
         return _recursive(args)
     if verb in ("cp", "scp"):
         return _recursive(args) or any(re.fullmatch(r"-[a-zA-Z]*a[a-zA-Z]*", a) for a in args)
-    return verb == "find" and (fed or bool(FIND_EXEC.intersection(args)))
+    return verb == "find" and (fed or bool(_shell.FIND_EXEC.intersection(args)))
 
 
 def _folders(verb: str, args: list[str], shell: Shell) -> list[str]:
@@ -422,7 +328,7 @@ def _find_hit(args: list[str], shell: Shell) -> str:
     """The guard a `find` writes with `-fprint`, or the folder it may reach a guard in when it deletes or runs a command that
     is not a plain reader; name patterns limit it only when no `-o`, `-or`, `!` or `-not` joins or negates the tests."""
     written = shell.guarded([args[i + 1] for i, a in enumerate(args[:-1]) if a in FIND_FILES])
-    verbs = [args[i + 1] for i, a in enumerate(args[:-1]) if a in FIND_EXEC]
+    verbs = [args[i + 1] for i, a in enumerate(args[:-1]) if a in _shell.FIND_EXEC]
     if written or ("-delete" not in args and all(v in READ_ONLY for v in verbs)):
         return written
     patterns = [args[i + 1] for i, a in enumerate(args[:-1]) if a in ("-name", "-iname", "-path", "-ipath", "-wholename")]
@@ -637,14 +543,14 @@ class Reader:
     def command(self, text: str, depth: int = 0, fed: bool = False) -> str:
         """Why ``text``, a command line, may not run; an empty string when it may. ``fed``: the names it prints go to another
         command (it is the body of a substitution)."""
-        text, bodies = _heredocs(text)
+        text, bodies = _shell.heredocs(text)
         if len(text) > MOST_COMMAND:
             raise TooComplex(f"a command of {len(text)} characters")
-        flat, subs = _substitutions(_flatten(text))
+        flat, subs = _shell.substitutions(_shell.flatten(text))
         for inner in subs:
             if depth < DEPTH and (why := self.command(inner, depth + 1, fed=True)):
                 return why
-        commands = _commands(_words(flat))
+        commands = _shell.commands(_shell.words(flat))
         before = self.fed
         self.fed = fed or any(word.rsplit("/", 1)[-1] == "xargs" for one in commands for word in one)
         try:
@@ -657,8 +563,11 @@ class Reader:
 
     def simple(self, words: list[str], bodies: list[str], depth: int) -> str:
         """Why one command may not run: a redirection into a guard, a secret named, or a verb that writes one."""
+        return self.judge(*_shell.split_redirects(words), bodies, depth)
+
+    def judge(self, words: list[str], written: list[str], read: list[str], bodies: list[str], depth: int) -> str:
+        """Why the command ``words``, whose redirections write ``written`` and read ``read``, may not run."""
         shell = self.shell
-        words, written, read = _split_redirects(words)
         if blocked := shell.hits(written, lambda p: guarded(p, shell.environ, shell.owns) or secret(p, shell.environ)):
             return f"a redirection would write {blocked}: {REFUSED}."
         if blocked := shell.hits(read, lambda p: secret(p, shell.environ)):
@@ -669,8 +578,7 @@ class Reader:
             return ""
         if shell.repository() and any(GIT_ENV.match(name) for name in assigned):
             return "GIT_CONFIG_* changes where hooks run: refused to an agent, since the hooks are the last checks."
-        mentioned = shell.hits([a for a in rest if "=" not in a or "/" in a], lambda p: secret(p, shell.environ))
-        if mentioned and not self._message(rest, mentioned):
+        if mentioned := self.mentioned(rest):
             return f"{mentioned} is in the person folder or is a session token: {NOT_READ}."
         if reached := self._reaches(rest[0].rsplit("/", 1)[-1], rest[1:]):
             return (f"{reached} holds the person folder and the session tokens, and `{rest[0].rsplit('/', 1)[-1]}` would read what is "
@@ -692,9 +600,11 @@ class Reader:
         finally:
             shell.here = here
 
-    @staticmethod
-    def _message(rest: list[str], word: str) -> bool:
-        return any(a in ("-m", "--message") and rest[i + 1:i + 2] == [word] for i, a in enumerate(rest))
+    def mentioned(self, rest: list[str]) -> str:
+        """The first word of the command that names the person folder or a session token, other than the text after `-m`."""
+        found = self.shell.hits([a for a in rest if "=" not in a or "/" in a], lambda p: secret(p, self.shell.environ))
+        message = any(a in ("-m", "--message") and rest[i + 1:i + 2] == [found] for i, a in enumerate(rest))
+        return "" if message else found
 
     def verb(self, verb: str, rest: list[str], bodies: list[str], depth: int) -> str:
         """Why the command ``rest`` (its first word is ``verb``'s path) may not run."""
@@ -719,37 +629,115 @@ class Reader:
             f"the script {rest[0]} names {m.group(0)}: {REFUSED}." if (m := (MENTION if shell.repository() else KEPT).search(script)) else "")
 
 
+class ShellReader(Reader):
+    """The same rules over the command as the shell reads it (`protectedshell.readings`), asked after `Reader` allows it, so
+    they only add refusals: a protected path in a here-string or in a substitution held for later is read, and only the text of a
+    git message is not a path."""
+
+    def command(self, text: str, depth: int = 0, fed: bool = False) -> str:
+        for read in _shell.readings(text):
+            if len(read.kept) > MOST_COMMAND:
+                raise TooComplex(f"a command of {len(read.kept)} characters")
+            piped = fed or any(word.rsplit("/", 1)[-1] == "xargs" for one in read.commands for word in one.words)
+            before = self.fed
+            try:
+                for one in read.commands:
+                    self.fed = piped or one.fed
+                    try:
+                        if why := self.one(one, read.bodies, depth):
+                            return why
+                    except TooComplex:
+                        if not one.loose:  # a stretch read with its quotes ignored is no word the shell expands
+                            raise
+            finally:
+                self.fed = before
+        return ""
+
+    def one(self, one, bodies: list[str], depth: int) -> str:
+        """Why one command (`protectedshell.Command`) may not run."""
+        shell = self.shell
+        for word in one.strings:  # the shell expands no glob or brace in a here-string
+            if any(secret(place, shell.environ) for place in _places(shell.home(word), shell.here, shell.environ)):
+                return f"a here-string names {word}, in the person folder or a session token: {NOT_READ}."
+        for word in (*one.words, *one.strings):
+            for inner in _shell.held(word) if depth < DEPTH else ():
+                if why := self.one(inner, [], depth + 1):
+                    return why
+        return self.judge(one.words, one.written, one.read, bodies, depth)
+
+    def verb(self, verb: str, rest: list[str], bodies: list[str], depth: int) -> str:
+        return super().verb(_shell.interpreter(verb), rest, bodies, depth)
+
+    def mentioned(self, rest: list[str]) -> str:
+        records = rest[0].rsplit("/", 1)[-1] == "git" and _git_sub(rest[1:])[0] in ("commit", "tag", "merge", "notes")
+        opened = [a for i, a in enumerate(rest) if not (records and rest[i - 1] in ("-m", "--message"))]
+        return self.shell.hits([a for a in opened if "=" not in a or "/" in a], lambda p: secret(p, self.shell.environ))
+
+
 def refusal(command: str, cwd: str, released: Callable[[str], str], environ: Mapping[str, str] | None = None,
             owns: Callable[[str], bool] | None = None) -> str:
     """Why the shell ``command``, run from ``cwd``, may not run; an empty string when it may. A command past the bounds of
-    `MOST_COMMAND`, `MOST_EXPANSIONS` and `DEPTH` is refused, not read in part. ``owns`` limits the repository's rules."""
+    `MOST_COMMAND`, `MOST_EXPANSIONS` and `DEPTH` is refused, not read in part, and so is one the rules fail on. ``owns``
+    limits the repository's rules."""
+    asked = functools.lru_cache(maxsize=None)(released)  # the release check runs once for a folder, however often a merge is read
     try:
-        return Reader(Shell(Path(cwd or Path.cwd()), environ or os.environ, released, owns)).command(command)
+        for reader in (Reader, ShellReader):
+            if why := reader(Shell(Path(cwd or Path.cwd()), environ or os.environ, asked, owns)).command(command):
+                return why
+        return ""
     except (TooComplex, RecursionError) as error:
         return f"the command {TOO_COMPLEX} ({error})."
+    except UNJUDGEABLE as error:
+        return f"the command could not be judged ({type(error).__name__}: {error}), so it does not run."
 
 
 def without_heredocs(command: str) -> str:
     """``command`` without its heredoc bodies, which are data being written or code handed to an interpreter."""
-    return _heredocs(command)[0]
+    return _shell.heredocs(command)[0]
+
+
+def other_texts(command: str, spell: Callable[[str], str] | None = None) -> list[str]:
+    """The other ways ``command`` reads, for a rule that reads the text of `without_heredocs` (`protectedshell.other_texts`)."""
+    return _shell.other_texts(command, without_heredocs(command), spell)
 
 
 def other_agent(command: str, own: str) -> str:
     """Why a subagent named ``own`` may not run ``command``: it names another session by `--agent`, a token file, a token or
     `POOLHOUSE_WORKSPACE_AGENT`; an empty string when it does not."""
-    flat, subs = _substitutions(_flatten(_heredocs(command)[0]))
+    try:
+        return _named_by_the_line(command, own) or _named_as_the_shell_reads(command, own, 0)
+    except UNJUDGEABLE as error:
+        return f"you are {own}: the command could not be judged ({type(error).__name__}), so it does not run."
+
+
+def _named_by_the_line(command: str, own: str) -> str:
+    flat, subs = _shell.substitutions(_shell.flatten(_shell.heredocs(command)[0]))
     for inner in subs:
-        if why := other_agent(inner, own):
+        if why := _named_by_the_line(inner, own):
             return why
-    for words in _commands(_words(flat)):
-        if why := _sets_a_session(words, own):
+    for words in _shell.commands(_shell.words(flat)):
+        if why := _names_in(words, own):
             return why
-        for i, word in enumerate(words):
-            if why := _names_another(word, words[i + 1:i + 2], own):
-                return why
-        if (inner := _shell_code(words[1:])) and (why := other_agent(inner, own)):
+        if (inner := _shell_code(words[1:])) and (why := _named_by_the_line(inner, own)):
             return why
     return ""
+
+
+def _named_as_the_shell_reads(command: str, own: str, depth: int) -> str:
+    for read in _shell.readings(command):
+        for one in read.commands:
+            if why := _names_in(one.words, own):
+                return why
+            if depth < DEPTH and (inner := _shell_code(one.words[1:])) and (why := _named_as_the_shell_reads(inner, own, depth + 1)):
+                return why
+    return ""
+
+
+def _names_in(words: list[str], own: str) -> str:
+    """Why the words of one command act as another session than ``own``."""
+    if why := _sets_a_session(words, own):
+        return why
+    return next(filter(None, (_names_another(word, words[i + 1:i + 2], own) for i, word in enumerate(words))), "")
 
 
 def _sets_a_session(words: list[str], own: str) -> str:

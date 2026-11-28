@@ -53,20 +53,17 @@ def command_refusal(event: dict, given: dict, rules) -> str:
     return ""
 
 
-def main() -> int:
+def decide() -> int:
     try:
-        event = json.load(sys.stdin)
+        event = rules_loader.event()
     except RecursionError:
         print(rules_loader.NESTED, file=sys.stderr)
         return 2
-    except Exception:
+    except json.JSONDecodeError:  # no call: a harness sends JSON, and nothing an agent writes into a call makes it otherwise
         return 0
-    try:
-        given = event.get("tool_input") if isinstance(event, dict) else None
-        name = str(event.get("tool_name") or "") if isinstance(given, dict) else ""
-        rules = rules_loader.load() if name and name not in HELD_ELSEWHERE else None
-    except Exception:
-        return 0
+    given = event.get("tool_input") if isinstance(event, dict) else None
+    name = str(event.get("tool_name") or "") if isinstance(given, dict) else ""
+    rules = rules_loader.load() if name and name not in HELD_ELSEWHERE else None
     if rules is None:
         return 0
     why = rules.protected().tool_refusal(name, given, cwd=str(event.get("cwd") or ""), subagent=bool(event.get("agent_id")))
@@ -77,6 +74,10 @@ def main() -> int:
         print(refused, file=sys.stderr)
         return 2
     return 0
+
+
+def main() -> int:
+    return rules_loader.closed(decide, "claude-tool-guard")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, replace
 from pathlib import PurePath
@@ -95,6 +96,7 @@ CREDENTIAL_COMMANDS: dict[str, tuple[tuple[str, ...], ...]] = {
 }
 SUBSTITUTION = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
 DEPTH = 3
+UNREADABLE = "cannot be read by the blocks"
 
 
 def refusal(name: str, args: Mapping[str, Any], ground: Ground) -> str:
@@ -181,16 +183,24 @@ def _secret(text: str, here: str | None, ground: Ground) -> bool:
 
 
 def _line(line: str, ground: Ground, here: str | None, depth: int) -> Iterator[Effect]:
-    """The effects of the shell line ``line``, run from ``here`` (None once a `cd` cannot be told)."""
+    """The effects of the shell line ``line``, run from ``here`` (None once a `cd` cannot be told). The line as given is also read
+    the other ways a shell may take it (`protectedwrites.other_texts`), which only add what refuses it."""
     if depth > DEPTH:
         yield Effect("nests commands too deeply for the blocks to read")
         return
-    text = protectedwrites.without_heredocs(line)
+    yield from _text(protectedwrites.without_heredocs(line), ground, here, depth)
+    if depth == 0:
+        for other in protectedwrites.other_texts(line, shlex.quote):
+            yield from (each for each in _text(other, ground, here, depth) if each.why and not each.why.startswith(UNREADABLE))
+
+
+def _text(text: str, ground: Ground, here: str | None, depth: int) -> Iterator[Effect]:
+    """The effects of one reading of a shell line, its heredoc bodies out."""
     for found in SUBSTITUTION.finditer(text):
         yield from _line(found.group(1) or found.group(2) or "", ground, here, depth + 1)
     found_segments, problems = shellscan.segments(SUBSTITUTION.sub(" $SUBSTITUTED ", text))
     if text.strip() and not found_segments:
-        yield Effect(f"cannot be read by the blocks: {problems[0].reason if problems else 'no command in it'}")
+        yield Effect(f"{UNREADABLE}: {problems[0].reason if problems else 'no command in it'}")
     for segment in found_segments:
         for operator, target in segment.redirects:
             reads = "<" in operator and ">" not in operator

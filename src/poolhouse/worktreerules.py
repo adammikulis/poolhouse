@@ -365,7 +365,13 @@ def bash_refusal(command: str, cwd: str, owns: Callable[[str], bool] | None = No
     here = Path(cwd or Path.cwd())
     if why := hard_bash_refusal(command, str(here), owns):
         return why
-    for segment in _segments(protected().without_heredocs(command)):
+    texts = (protected().without_heredocs(command), *protected().other_texts(command))
+    return next(filter(None, (_checkout_refusal(text, here) for text in texts)), "")
+
+
+def _checkout_refusal(command: str, here: Path) -> str:
+    """Why one reading of a command, its heredoc bodies out, may not change a checkout from ``here``."""
+    for segment in _segments(command):
         moved = _cd(segment, here)
         if moved is not None:
             here = moved
