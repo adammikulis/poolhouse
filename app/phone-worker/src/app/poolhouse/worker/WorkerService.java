@@ -44,6 +44,7 @@ public class WorkerService extends Service {
             preferences().edit().putBoolean("enabled", false).apply();
             halt();
         }
+        getContentResolver().notifyChange(StatusProvider.uri(this), null);
         if (action != null && other(intent)) {
             return START_NOT_STICKY;
         }
@@ -80,7 +81,10 @@ public class WorkerService extends Service {
             }
             stayAwake();
             Context app = getApplicationContext();
-            worker = new Worker(new Guest(app), words -> app.getSystemService(NotificationManager.class).notify(1, notification(words)));
+            worker = new Worker(new Guest(app), words -> {
+                app.getSystemService(NotificationManager.class).notify(1, notification(words));
+                app.getContentResolver().notifyChange(StatusProvider.uri(app), null);
+            });
             worker.start();
         }
     }

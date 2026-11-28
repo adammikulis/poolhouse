@@ -8,6 +8,8 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import io
+import subprocess
+import sys
 import tarfile
 from pathlib import Path
 from typing import Any
@@ -23,6 +25,7 @@ ANDROID = "{http://schemas.android.com/apk/res/android}"
 def build():
     spec = importlib.util.spec_from_file_location("phone_worker_build", ROOT / "app" / "phone-worker" / "build.py")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # the import system's own recipe: a dataclass looks its module up while it is made
     spec.loader.exec_module(module)
     return module
 
@@ -45,7 +48,10 @@ def test_only_an_app_signed_with_the_same_key_reaches_a_release_and_the_shell_on
     for found in (release, debug):
         (declared,) = found.findall("permission")
         assert declared.get(ANDROID + "protectionLevel") == "signature"
-        for part in ("receiver", "provider", "activity"):
+        (state,) = found.iter("provider")
+        assert state.get(ANDROID + "authorities") == f"{found.get('package')}.state"
+        assert state.get(ANDROID + "permission") == f"{found.get('package')}.CONTROL", "the state is for the app that holds the switch"
+        for part in ("receiver", "activity"):
             assert not list(found.iter(part)), "nothing else is a way in"
     assert release.find("application").get(ANDROID + "debuggable") == "false"
     assert "DebugWorkerService.java" not in [p.name for p in build.sources(True)]
@@ -83,6 +89,63 @@ def test_a_program_goes_in_only_from_the_pinned_package(build):
         build.package_files(changed, pinned, {"bin/proot": "bin/proot"})
     for path, digest, _ in build.PACKAGES:
         assert path.endswith("_aarch64.deb") and len(digest) == 64
+
+
+def committed(root: Path, text: str) -> str:
+    """Commit ``text`` as the one source file of the checkout at ``root``; the commit's id."""
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@localhost", "-C", str(root)]
+    (root / "src").mkdir(parents=True, exist_ok=True)
+    (root / "app").mkdir(exist_ok=True)
+    (root / "src" / "one.py").write_text(text, encoding="utf-8")
+    (root / "app" / "Cargo.toml").write_text("[workspace]\n", encoding="utf-8")
+    if not (root / ".git").is_dir():
+        subprocess.run([*git, "init", "-q"], check=True, capture_output=True)
+    subprocess.run([*git, "add", "--all"], check=True, capture_output=True)
+    subprocess.run([*git, "commit", "-q", "-m", text], check=True, capture_output=True)
+    return subprocess.run([*git, "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def test_the_apk_carries_the_commit_it_is_built_from(build, tmp_path):
+    commit = committed(tmp_path, "one = 1\n")
+    (tmp_path / "src" / "one.py").write_text("uncommitted = True\n", encoding="utf-8")
+    carried = build.tree_assets(tmp_path, "HEAD")
+    assert carried["guest/commit"] == f"{commit}\n".encode()
+    with tarfile.open(fileobj=io.BytesIO(carried["guest/tree.tgz"]), mode="r:gz") as archive:
+        assert archive.extractfile("src/one.py").read() == b"one = 1\n"
+
+
+def test_the_guest_makes_its_own_working_copy_and_node_with_no_computer_and_again_only_for_new_source(build, tmp_path):
+    source, work, assets, tools = (tmp_path / name for name in ("source", "work", "assets", "tools"))
+    for folder in (work, assets, tools):
+        folder.mkdir()
+    # Plumbing only: a stand-in `cargo` that records the build it was asked for and writes the file cargo would.
+    (tools / "cargo").write_text('#!/bin/sh\necho "$@" >> "$WORK/builds"\nmkdir -p "$CARGO_TARGET_DIR/release"\n'
+                                 'cp ../src/one.py "$CARGO_TARGET_DIR/release/poolhouse-node"\nchmod 755 "$CARGO_TARGET_DIR/release/poolhouse-node"\n',
+                                 encoding="utf-8")
+    (tools / "cargo").chmod(0o755)
+
+    def prepare() -> None:
+        env = {"PATH": f"{tools}:/usr/bin:/bin", "WORK": str(work), "ASSETS": str(assets), "HOME": str(tmp_path)}
+        subprocess.run(["/bin/sh", str(ROOT / "app" / "phone-worker" / "guest" / "prepare.sh")], env=env, check=True, capture_output=True)
+
+    def carry(text: str) -> str:
+        commit = committed(source, text)
+        for name, data in build.tree_assets(source, "HEAD").items():
+            (assets / name.removeprefix("guest/")).write_bytes(data)
+        return commit
+
+    first = carry("one = 1\n")
+    prepare()
+    assert (work / "repo" / "src" / "one.py").read_text() == "one = 1\n" and (work / "poolhouse-node").read_text() == "one = 1\n"
+    said = subprocess.run(["git", "-C", str(work / "repo"), "log", "--format=%s"], check=True, capture_output=True, text=True).stdout
+    assert said.strip() == first, "the phone's own working copy names the commit it holds"
+    prepare()
+    assert len((work / "builds").read_text().splitlines()) == 1, "the same source is built once"
+    carry("one = 2\n")
+    prepare()
+    assert (work / "poolhouse-node").read_text() == "one = 2\n"
+    builds = (work / "builds").read_text().splitlines()
+    assert len(builds) == 2 and all(line == "build --locked --release -j 3 -p poolhouse-node" for line in builds)
 
 
 def test_the_guest_scripts_the_app_starts_are_the_ones_the_build_packs(build):

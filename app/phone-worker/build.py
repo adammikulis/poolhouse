@@ -1,11 +1,12 @@
 """Build the phone worker APK with the SDK's own tools (no Gradle, no downloaded plugin).
 
-    python app/phone-worker/build.py --out DIR [--release --keystore FILE --alias NAME]
+    python app/phone-worker/build.py --out DIR [--release] [--keystore FILE --alias NAME] [--commit SHA]
 
-The debug build is `app.poolhouse.worker.nodetest`, signed with a key made once in ``DIR``; it alone carries the
-service a computer with `adb` access may start. ``DIR`` is outside the checkout. proot and its two libraries are
-fetched once from the Termux package archive, each pinned by SHA-256 (GPL-2.0, LGPL-3.0 and BSD-3-Clause programs
-the APK carries and runs as separate processes).
+The debug build is `app.poolhouse.worker.nodetest`, signed with the key named or one made once in ``DIR``; it
+alone carries the service a computer with `adb` access may start. ``DIR`` is outside the checkout. The APK carries
+the source of one commit, from which the phone makes its working copy and builds its node, so no computer is
+needed once it is installed. proot and its two libraries are fetched once from the Termux package archive, each
+pinned by SHA-256 (GPL-2.0, LGPL-3.0 and BSD-3-Clause programs the APK carries and runs as separate processes).
 """
 
 from __future__ import annotations
@@ -20,9 +21,11 @@ import sys
 import tarfile
 import urllib.request
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]
 PACKAGE = "app.poolhouse.worker"
 DEBUG_SUFFIX = ".nodetest"
 ARCHIVE = "https://packages.termux.dev/apt/termux-main/pool/main/"
@@ -35,7 +38,7 @@ PACKAGES = (
     ("liba/libandroid-shmem/libandroid-shmem_0.7_aarch64.deb", "0da3a24d558b93c92bcf8d611e0826a99ff96e396b148e6cdf33b47c47c57ff6",
      {"lib/libandroid-shmem.so": "lib/libandroid-shmem.so"}),
 )
-GUEST = ("env.sh", "node.py", "node.sh", "setup.sh")
+GUEST = ("env.sh", "node.py", "node.sh", "prepare.sh", "setup.sh")
 DEBUG_SERVICE = ('<service android:name="app.poolhouse.worker.DebugWorkerService" android:exported="true"\n'
                  '            android:permission="android.permission.DUMP" />')
 
@@ -88,10 +91,25 @@ def package_files(data: bytes, digest: str, wanted: dict[str, str]) -> dict[str,
     return found
 
 
-def assets(cache: Path) -> dict[str, bytes]:
-    """Everything the app unpacks: proot, its loader and libraries, and the guest's scripts."""
+def tree_assets(root: Path, commit: str) -> dict[str, bytes]:
+    """The source the phone builds from: the commit ``commit`` of the checkout at ``root`` as a test shard packs it,
+    and its full id."""
+    sys.path.insert(0, str(ROOT / "src"))
+    from poolhouse.fleet import shard_tree
+
+    try:
+        full = shard_tree.commit_id(root, commit)
+        data, _ = shard_tree.pack(shard_tree.Commit(root, full))
+    except shard_tree.TreeError as exc:
+        raise BuildError(str(exc)) from None
+    return {"guest/tree.tgz": data, "guest/commit": f"{full}\n".encode()}
+
+
+def assets(cache: Path, commit: str) -> dict[str, bytes]:
+    """Everything the app unpacks: proot, its loader and libraries, the guest's scripts and the source."""
     cache.mkdir(parents=True, exist_ok=True)
     found = {f"guest/{name}": (HERE / "guest" / name).read_bytes() for name in GUEST}
+    found.update(tree_assets(ROOT, commit))
     for path, digest, wanted in PACKAGES:
         held = cache / Path(path).name
         if not held.is_file():
@@ -115,14 +133,41 @@ def run(*command: object) -> None:
     subprocess.run([str(word) for word in command], check=True)
 
 
-def build(out: Path, sdk: Path, release: bool, keystore: Path | None, alias: str) -> Path:
-    """The signed APK, built under ``out``."""
-    build_tools, platform = tools(sdk)
-    work = out / ("release" if release else "debug")
+@dataclass(frozen=True)
+class Wanted:
+    """One build: where, with which SDK, release or debug, signed with which key, carrying which commit."""
+
+    out: Path
+    sdk: Path
+    release: bool = False
+    keystore: Path | None = None
+    alias: str = ""
+    commit: str = "HEAD"
+
+
+def signing(wanted: Wanted) -> list[object]:
+    """The `apksigner` words that name the key: the one asked for (its password read from the environment), or a
+    debug key made once in the output folder. A release is never signed with a made key."""
+    if wanted.keystore is not None and wanted.alias:
+        return ["--ks", wanted.keystore, "--ks-key-alias", wanted.alias, "--ks-pass", "env:ANDROID_SIGNING_PASSWORD"]
+    if wanted.release or wanted.keystore is not None or wanted.alias:
+        raise BuildError("name both --keystore and --alias (the password is read from ANDROID_SIGNING_PASSWORD)")
+    made = wanted.out / "debug.keystore"
+    if not made.is_file():
+        run("keytool", "-genkeypair", "-keystore", made, "-storepass", "nodetest", "-keypass", "nodetest", "-alias", "nodetest",
+            "-keyalg", "RSA", "-keysize", "2048", "-validity", "30", "-dname", "CN=nodetest")
+    return ["--ks", made, "--ks-key-alias", "nodetest", "--ks-pass", "pass:nodetest"]
+
+
+def build(wanted: Wanted) -> Path:
+    """The signed APK, built under ``wanted.out``."""
+    build_tools, platform = tools(wanted.sdk)
+    release = wanted.release
+    work = wanted.out / ("release" if release else "debug")
     shutil.rmtree(work, ignore_errors=True)
     (work / "classes").mkdir(parents=True)
     (work / "AndroidManifest.xml").write_text(manifest(release), encoding="utf-8")
-    for name, data in assets(out / "packages").items():
+    for name, data in assets(wanted.out / "packages", wanted.commit).items():
         (work / "assets" / name).parent.mkdir(parents=True, exist_ok=True)
         (work / "assets" / name).write_bytes(data)
     unsigned = work / "unsigned.apk"
@@ -133,16 +178,7 @@ def build(out: Path, sdk: Path, release: bool, keystore: Path | None, alias: str
         apk.write(work / "classes.dex", "classes.dex")
     aligned, signed = work / "aligned.apk", work / "poolhouse-worker.apk"
     run(build_tools / "zipalign", "-f", "4", unsigned, aligned)
-    if release:
-        if keystore is None or not alias:
-            raise BuildError("a release build needs --keystore and --alias (the password is read from ANDROID_SIGNING_PASSWORD)")
-        secret = ["--ks-pass", "env:ANDROID_SIGNING_PASSWORD"]
-    else:
-        keystore, alias, secret = out / "debug.keystore", "nodetest", ["--ks-pass", "pass:nodetest"]
-        if not keystore.is_file():
-            run("keytool", "-genkeypair", "-keystore", keystore, "-storepass", "nodetest", "-keypass", "nodetest", "-alias", alias,
-                "-keyalg", "RSA", "-keysize", "2048", "-validity", "30", "-dname", "CN=nodetest")
-    run(build_tools / "apksigner", "sign", "--ks", keystore, "--ks-key-alias", alias, *secret, "--out", signed, aligned)
+    run(build_tools / "apksigner", "sign", *signing(wanted), "--out", signed, aligned)
     return signed
 
 
@@ -153,11 +189,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--release", action="store_true")
     parser.add_argument("--keystore", type=Path)
     parser.add_argument("--alias", default="")
+    parser.add_argument("--commit", default="HEAD", help="the commit the phone builds from")
     args = parser.parse_args(argv)
-    if args.out.resolve().is_relative_to(HERE.parents[1]):
+    if args.out.resolve().is_relative_to(ROOT):
         parser.error("--out is a folder outside the checkout")
     try:
-        sys.stdout.write(f"{build(args.out.resolve(), args.sdk, args.release, args.keystore, args.alias)}\n")
+        sys.stdout.write(f"{build(Wanted(**{**vars(args), 'out': args.out.resolve()}))}\n")
     except (BuildError, subprocess.CalledProcessError, OSError) as exc:
         sys.stderr.write(f"phone worker build: {exc}\n")
         return 1

@@ -14,6 +14,8 @@
         android:debuggable="${debuggable}">
         <service android:name="app.poolhouse.worker.WorkerService" android:exported="true"
             android:permission="${package}.CONTROL" />
+        <provider android:name="app.poolhouse.worker.StatusProvider" android:authorities="${package}.state"
+            android:exported="true" android:permission="${package}.CONTROL" />
         ${debugService}
     </application>
 </manifest>
