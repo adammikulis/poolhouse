@@ -84,11 +84,13 @@ def unmarked(text: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Turn:
-    """One scripted reply: ``text`` pieces, then ``calls`` as ``(name, arguments text)``."""
+    """One scripted reply: ``text`` pieces, then ``calls`` as ``(name, arguments text)``; ``prompt_tokens`` and ``completion_tokens`` are the
+    usage it reports."""
 
     text: tuple[str, ...] = ()
     calls: tuple[tuple[str, str], ...] = ()
     completion_tokens: int = 0
+    prompt_tokens: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -334,8 +336,8 @@ def _calls(turn: Turn) -> list[dict[str, Any]]:
 
 
 def _usage(turn: Turn | None) -> dict[str, Any]:
-    spent = turn.completion_tokens if turn else 0
-    return {"prompt_tokens": 0, "completion_tokens": spent, "total_tokens": spent, _FIELD: CANNED_MARKER}
+    read, spent = (turn.prompt_tokens, turn.completion_tokens) if turn else (0, 0)
+    return {"prompt_tokens": read, "completion_tokens": spent, "total_tokens": read + spent, _FIELD: CANNED_MARKER}
 
 
 def _logprobs() -> dict[str, Any]:

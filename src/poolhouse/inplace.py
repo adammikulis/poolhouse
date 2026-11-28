@@ -23,6 +23,7 @@ from typing import Any
 
 from poolhouse import harnessing, isolation, platform, serverkeys
 from poolhouse.board import session as sessions
+from poolhouse.isolation import prompt_watch
 from poolhouse.serve.process import kill_process_tree
 
 __all__ = ["IDENTITY", "Context", "Direct", "Rendering", "environment", "key_variable", "run", "started"]
@@ -64,13 +65,14 @@ class Rendering:
 
 class Direct:
     """One harness run on the folder itself. It has the part of `isolation.Confinement` a runner uses; ``busy`` says whether a request of the harness
-    is with the model server, for a caller that watches for progress."""
+    is with the model server and ``look`` what its bridge knows of it, for a caller that watches for progress."""
 
     config: Path | None = None
     """No folder of the launcher's: the harness keeps what it writes in its own folders."""
 
-    def __init__(self, argv: Sequence[str], env: Mapping[str, str], cwd: str | Path, busy: Callable[[], int] = lambda: 0) -> None:
-        self.argv, self.cwd, self.busy = tuple(argv), str(cwd), busy
+    def __init__(self, argv: Sequence[str], env: Mapping[str, str], cwd: str | Path, busy: Callable[[], int] = lambda: 0,
+                 look: Callable[[], prompt_watch.Look] = prompt_watch.Look) -> None:
+        self.argv, self.cwd, self.busy, self.model_look = tuple(argv), str(cwd), busy, look
         self.env = {**env, "PWD": self.cwd}   # a harness works in the folder PWD names (OpenCode 2.4.2 does), as a shell standing in it would say
         self.process: subprocess.Popen[bytes] | None = None
 

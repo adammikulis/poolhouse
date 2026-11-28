@@ -591,20 +591,43 @@ class Broker(BrokerStops, BrokerHolds):
         need, room = ask.weight or resident_of(ask.models[0]), self.room()
         if not need or room is None:
             return None, evict, ""
-        freed = sum(h.weight for h in evict)
+        records = recorded_servers(self.manager.state_file)
+
+        def given_back(held: Held) -> int:
+            """The bytes stopping ``held`` frees: all its record holds, its KV and prompt cache among it, and never less than its weights."""
+            return max(held.weight, admission.entry_mb(records[held.port]) * admission.MIB if held.port in records else 0)
+
+        freed = sum(given_back(h) for h in evict)
         spare = sorted((h for h in self.servers.values() if h.ours and not h.loading
                         and not h.holders and not h.spared_why() and h not in evict),
                        key=lambda h: h.idle_since)
         while need > room + freed and spare:
             evict.append(spare.pop(0))
-            freed += evict[-1].weight
+            freed += given_back(evict[-1])
         if need <= room + freed:
-            return None, evict, ""
+            return None, evict + self._more_for(ask, spare, room + freed, given_back), ""
         held = [h for h in self.servers.values() if h.holders or h.loading or h.spared_why()]
         if not held:
             return None, evict, ""
         return None, [], (f"{ask.models[0]} needs {need >> 20} MiB and {room >> 20} MiB of the budget is "
                           f"free; " + "; ".join(self._held_said(h) for h in held))
+
+    @staticmethod
+    def _more_for(ask: Ask, spare: list[Held], room: int, given_back: Callable[[Held], int]) -> list[Held]:
+        """The idle servers of ``spare`` to stop as well, oldest first, where the weights fit ``room`` but all that admission will ask for
+        the server (`admission.estimate_bytes`: its KV and prompt cache too) does not. None of them when stopping every one would not be
+        enough, or for settings that cannot be sized: the start says what is wrong."""
+        try:
+            takes = admission.estimate_bytes(ask.server_spec(ask.port))
+        except (OSError, TypeError, ValueError):
+            return []
+        more: list[Held] = []
+        for held in spare:
+            if takes <= room:
+                break
+            more.append(held)
+            room += given_back(held)
+        return more if takes <= room else []
 
     @staticmethod
     def _held_said(held: Held) -> str:
