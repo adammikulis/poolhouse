@@ -1,5 +1,9 @@
 # Phone isolation prototype
 
+**Not wired into the app.** Nothing in the Poolhouse app, the node, the app's build or a release calls or ships any
+of this folder: it builds a separate APK of its own (`app.poolhouse.isolation`) by hand. The virtual machine work
+stops here; see [Later](#later) for the faster route.
+
 One APK in which untrusted code runs under another Android user id than the app: an `isolatedProcess` service runs
 a virtual machine (QEMU, TCG, no hardware virtualization), and the app hands it every disk and one channel as open
 descriptors. The guest has no network device. This is a prototype of the boundary, not a phone worker: it was run
@@ -93,7 +97,8 @@ of two. Read these as a size, not a figure: repeat them on an idle computer and 
 | optimized `rustc` build of one generated file | 16 to 40 | not measured | | | |
 
 - The processor the guest sees decides much of it: `cortex-a72` was two to six times faster here than `max`. The
-  runner uses it, with `mitigations=off` in the guest.
+  runner now asks for it, with `mitigations=off` in the guest. The timed runs passed both by hand; the APK has not
+  been built since they became the defaults.
 - A parallel build gained little from the machine's four processors here.
 - Letting go of the service ends the job: Android killed the runner ("isolated not needed") and the engine with it
   within two seconds, in the middle of a build.
@@ -104,6 +109,46 @@ of two. Read these as a size, not a figure: repeat them on an idle computer and 
 - Not measured: any phone, battery, heat, a Rust build or the repository's tests inside the machine (the guest lacks
   `keyring`, so its tests did not run natively either).
 - At these factors a test shard that takes minutes on a computer takes hours here. Short commands are usable.
+
+## Later
+
+**A native-speed layer in the isolated service.** The same isolated user id, with the guest's programs running on the
+phone's processor and a user-space Linux layer answering their system calls, in place of an emulated processor. The
+boundary does not change, so the layer is only compatibility: a fault in it, or code that leaves it, gains the
+isolated process and nothing more. Not started.
+
+| proven in the isolated service (`native/probe.c`, API 36 emulator) | what was not tried |
+|---|---|
+| writable and executable memory; code written then executed; a memfd mapped to execute | loading a whole ELF program, static or with its dynamic loader, from memory |
+| tracing a child it forked (it stopped under tracing) | stopping the child at each system call, reading and changing its registers or memory |
+| a seccomp filter of its own that traps a system call to its signal handler | serving that call, the trap's cost, signals and threads under it |
+| making a user-notify listener | receiving or answering a notification, passing a descriptor through it |
+| reading, writing and read-mapping a descriptor the app passed | a filesystem on such a descriptor, with folders, links and shared libraries |
+| running a program shipped in the APK's native library folder; 48 children alive after 45 s | `execve` between guest programs; Android's limit on extra child processes over a longer run |
+
+What shapes it: the isolated process may open none of the app's files, may not map a handed-over one for execution,
+and may not `execve` one or a memfd. So the filesystem (folder operations included) and `execve` are emulated inside
+the process, and program text is copied into memory it made itself, which separate processes may not share. It can
+make no internet socket.
+
+Two ways to build it:
+
+- **gVisor** (Apache-2.0): most is reused (system calls, filesystems, network stack, a trap-based platform). The
+  released `runsc` did not start here even as root, for want of `/proc/self/uid_map`: the emulator's kernel has no
+  user or process-id namespaces, and its address space is 39 bits. Its engine would be started by a launcher of our
+  own without that outer setup. Whether the engine runs with such an address space, or in the isolated service at
+  all, is unknown. A [forum report](https://groups.google.com/g/gvisor-users/c/DyIXSbxNOKI) of building `runsc` on
+  Android with a one-line address fix is unverified.
+- **Our own layer**: a loader, a trap or trace handler, and a filesystem over a disk descriptor. More code of ours,
+  and only what the node's tests need.
+
+**First experiment**, which chooses between them: on an emulator, start gVisor's engine inside the isolated service,
+with its root image passed as a descriptor, and run one program such as `uname`. Record the first thing that fails
+and whether a patch of ours removes it. If it cannot be made to start, load one static program from a passed
+descriptor under a trap filter, serve its file calls from memory and time a system call against a native one.
+
+**Size**, a judgement and not a measurement: the first experiment is a few days of one agent's work. A route that
+runs this repository's tests is weeks with gVisor, and considerably more with a layer of our own.
 
 ## Limits and open work
 
