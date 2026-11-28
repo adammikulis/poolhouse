@@ -53,6 +53,18 @@ The build keeps Gradle, its cache and the debug key in `~/.cache/poolhouse-andro
 `adb install -r <apk>`, or copy it to the phone and open it. A release APK needs `ANDROID_SIGNING_STORE` and
 `ANDROID_SIGNING_PASSWORD` for a keystore whose alias is `poolhouse-preview`.
 
+## Checking it on a phone
+
+```
+python app/android/phone_check.py --serial <serial> --apk <apk> --out <folder> [step ...]
+```
+
+Steps: `install`, `home`, `models`, `download`, `chat`, `reinstall`, `crashes`; with none named, install, home, models and
+crashes. It writes `report.txt`, pictures and the app's own log to the folder. It installs, opens, removes and reads only this
+app; it reads the screen, taps and types only while the app is focused, takes a picture only while nothing of the system is drawn
+over it (status bar cut off), never wakes or unlocks the phone and changes no setting. Where a person has to unlock or allow
+something it says so once and waits.
+
 ## Layout
 
 | Module | What |
@@ -76,6 +88,7 @@ the app and no Keystore key) at the app's own target SDK.
   `tests/fixtures/phone-api-vectors.json` (computed by Python, checked by `tests/test_android_phone_api.py`), and the client,
   the stream and the state against a real TLS 1.3 server that verifies every signature, time and nonce.
 - `tests/test_android_theme.py` holds the app's colours and navigation icons to the web UI's files.
+- `tests/test_android_phone_check.py` holds the phone check to what it may ask of a phone (a canned stand-in for `adb`).
 - **Looking at it without a computer:** `python app/android/build.py sample`, then run
   `java -cp "$(cat app/android/core/build/sample-classpath.txt)" app.poolhouse.core.SampleDayKt 7450`. It answers canned data on
   loopback, prints a link for an emulator (`10.0.2.2`) and one for a phone through `adb reverse tcp:7450 tcp:7450`, and the app
