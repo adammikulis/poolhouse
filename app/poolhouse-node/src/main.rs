@@ -4,7 +4,8 @@
 //! every interface and beacon on the multicast group (ports 7447 and 7448). `--beacon-bind ADDR` turns
 //! the beacon on, `--beacon-send ADDR` (repeatable) says where to send it (the multicast
 //! group in production, a peer in tests), `--advertise IP` the address it carries,
-//! `--allow-loopback` lets a test advertise loopback, `--sync-ms N` sets the sync interval.
+//! `--allow-loopback` lets a test advertise loopback. A node on a network swaps pool records and boards with its members every
+//! 20 seconds (`net::SYNC_EVERY`); `--sync-ms N` sets another interval.
 //!
 //! Nobody is asked for the first person key or the first phone (`poolhouse_node::presence`): there is no option that makes the node
 //! put a question to a person.
@@ -24,7 +25,7 @@ use poolhouse_node::beacon::{BeaconConfig, GROUP};
 use poolhouse_node::client::Client;
 use poolhouse_node::device::{Custody, Supplied};
 use poolhouse_node::fsutil::unhex;
-use poolhouse_node::net::{Net, NetConfig};
+use poolhouse_node::net::{Net, NetConfig, SYNC_EVERY};
 use poolhouse_node::projectid;
 use poolhouse_node::server::Server;
 use serde_json::json;
@@ -81,9 +82,10 @@ fn net_config(args: &[String]) -> Result<Option<NetConfig>, String> {
     let Some(listen) = flag(args, "--listen").or(lan(args).then_some(LAN_LISTEN)) else { return Ok(None) };
     let beacon_bind = format!("0.0.0.0:{LAN_BEACON_PORT}");
     let beacon = flag(args, "--beacon-bind").or(lan(args).then_some(beacon_bind.as_str())).map(|b| beacon_config(args, b)).transpose()?;
-    let sync_every = flag(args, "--sync-ms").map(|n| n.parse::<u64>().map(Duration::from_millis).map_err(|e| e.to_string())).transpose()?;
+    let sync_every = flag(args, "--sync-ms").map(|n| n.parse::<u64>().map(Duration::from_millis).map_err(|e| e.to_string())).transpose()?.or(Some(SYNC_EVERY));
     let project = if beacon.is_some() && !args.iter().any(|a| a == "--no-project") { project_key(args)? } else { None };
-    Ok(Some(NetConfig { listen: addr(listen)?, beacon, sync_every, project }))
+    let loopback_is_segment = args.iter().any(|a| a == "--allow-loopback");
+    Ok(Some(NetConfig { listen: addr(listen)?, beacon, sync_every, project, loopback_is_segment }))
 }
 
 /// The build this node advertises: `--build-id`, `--build-seq`, `--wire-version` and `--pinned` over the environment.

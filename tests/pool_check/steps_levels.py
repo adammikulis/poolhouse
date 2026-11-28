@@ -8,7 +8,7 @@ level, not that the level was earned.
 from __future__ import annotations
 
 from pool_check.device import Refused
-from pool_check.world import World, eventually
+from pool_check.world import SETTLE_S, World, eventually
 
 PLANTED = "the person's key was planted at level {level}, not custody"
 SEVEN_DAYS_S = 7 * 24 * 3600
@@ -41,7 +41,7 @@ def removes_computer_only(world: World) -> str:
     victim, rest = world.others[-1], [d for d in world.devices if d is not world.others[-1]]
     world.remove(world.first, victim)
     for device in rest:
-        eventually(lambda d=device: (d.member(victim.fingerprint) or {}).get("status") == "revoked", 30, f"{device.name} to record the removal of {victim.name}")
+        eventually(lambda d=device: (d.member(victim.fingerprint) or {}).get("status") == "revoked", SETTLE_S, f"{device.name} to record the removal of {victim.name}")
     return f"{victim.name} was removed by a computer-level key and {len(rest)} members record it; " + PLANTED.format(level="computer")
 
 

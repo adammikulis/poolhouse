@@ -7,19 +7,19 @@
 //!
 //! | op | who | what |
 //! |---|---|---|
-//! | `hello` | anyone not revoked | pool id, join policy, fingerprints, build and wire version, how the device is attached to the network (`network`); the boards held, to members |
+//! | `hello` | anyone not revoked | pool id, join policy, fingerprints, build and wire version, how the device is attached to the network (`network`); to a member, the boards shared with it |
 //! | `join_open` | anyone, under policy `open`; a member gets the record again | enrol the caller; reply with the pool record |
 //! | `join_exchange`, `join_confirm` | anyone, while a join code is open | SPAKE2 (`join_code`) |
 //! | `members` | members | swap the builds members report; no row and no policy in it is read |
 //! | `acts` | members | swap the signed acts of a governed pool, in pages (`gov::wire`) |
-//! | `boards`, `vector`, `pull`, `push` | members | board sync (`netsync`) |
+//! | `boards`, `vector`, `pull`, `push` | members, for the boards this device shares with the caller (`sharing`) | board sync (`netsync`) |
 //! | `shard_caps`, `shard_put`, `shard_start`, `shard_status`, `shard_cancel` | members | test shards (`shard`) |
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
@@ -36,6 +36,8 @@ use crate::tls::{self, Secured};
 use crate::wire::{read_frame_max, write_frame_max, MAX_PEER_FRAME};
 
 pub const IO_TIMEOUT: Duration = Duration::from_secs(30);
+/// The longest one request to a peer and its reply may take together: one that sends a byte every few seconds is cut off all the same.
+pub const CALL_FOR: Duration = Duration::from_secs(60);
 /// How long the connection of a device the pool does not list lasts: it says `hello` or joins and goes, and gets for all of it
 /// what one read of a member's gets.
 pub const STRANGER_FOR: Duration = IO_TIMEOUT;
@@ -55,8 +57,8 @@ fn reply_of(result: Result<Value>) -> Value {
     }
 }
 
-fn hello(node: &Node, standing: Standing) -> Value {
-    let boards: Vec<&String> = if standing == Standing::Active { node.boards.keys().collect() } else { Vec::new() };
+fn hello(node: &Node, fp: &str, standing: Standing) -> Value {
+    let boards = node.boards_shared_with(fp);
     let mut out = json!({"pool": node.members.id, "policy": node.members.policy.name(), "fingerprint": node.cert.fingerprint(), "project": node.members.project,
            "board_fingerprint": crate::device::fingerprint(&node.key), "member": standing == Standing::Active, "boards": boards, "network": node.network});
     out.as_object_mut().expect("an object").extend(node.build.json().as_object().cloned().unwrap_or_default());
@@ -112,14 +114,14 @@ fn open_join_allowed(node: &mut Node, ip: IpAddr, place: Option<&Permit>) -> Res
 
 /// A device that asks to join under `open`: it is enrolled and handed the pool's record. A device that is a member already is handed
 /// the record again and nothing else changes.
-fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Standing, place: Option<&Permit>) -> Result<Value> {
+fn join_open(net: &Net, node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Standing, place: Option<&Permit>) -> Result<Value> {
     if standing == Standing::Active {
         return record_json(node, &cert_fingerprint(der));
     }
     if node.members.policy != Policy::Open {
         return Err(Error::Denied("this pool takes a device only through a join code".into()));
     }
-    if !crate::netif::on_segment(ip) {
+    if !net.on_my_network(ip) {
         return Err(Error::Denied("this pool takes a device without a code only from its own network".into()));
     }
     let name = req.get("name").and_then(Value::as_str).unwrap_or("");
@@ -142,21 +144,23 @@ fn members(node: &mut Node, fp: &str, req: &Value) -> Result<Value> {
     Ok(json!({"pool": node.members.id, "builds": node.builds_known(), "service": node.own_service_binding()}))
 }
 
-fn hosted<'a>(node: &'a mut Node, req: &Value, bfp: &str) -> Result<&'a mut crate::node::Hosted> {
+/// The board a request names, for the member ``fp`` that asks: one this device does not share with it answers as one it does not hold.
+fn hosted<'a>(node: &'a mut Node, req: &Value, fp: &str, bfp: &str) -> Result<&'a mut crate::node::Hosted> {
     let (id, origin) = (text(req, "board")?, text(req, "origin")?);
     if !valid_name(id) || !valid_origin(origin) {
         return Err(Error::Invalid("a board and an origin are named".into()));
     }
-    let h = node.boards.get_mut(id).ok_or_else(|| Error::Denied("this device does not hold that board".into()))?;
+    let shared = node.shares(id, fp);
+    let h = node.boards.get_mut(id).filter(|_| shared).ok_or_else(|| Error::Denied("this device does not hold that board".into()))?;
     if !h.board.peer_agrees(bfp, origin) {
         return Err(Error::Denied(crate::sync::DIFFERENT_LOG.into()));
     }
     Ok(h)
 }
 
-fn pull(node: &mut Node, bfp: &str, req: &Value) -> Result<Value> {
+fn pull(node: &mut Node, fp: &str, bfp: &str, req: &Value) -> Result<Value> {
     let vector = vector_of(req, "vector")?;
-    let h = hosted(node, req, bfp)?;
+    let h = hosted(node, req, fp, bfp)?;
     h.board.acknowledge(bfp, &vector)?;
     h.board.seal()?;
     let logs = rows_since(&h.board, &seqs(&vector));
@@ -166,15 +170,15 @@ fn pull(node: &mut Node, bfp: &str, req: &Value) -> Result<Value> {
     Ok(json!({"origin": h.board.origin(), "trusted_vector": h.board.trusted_vector(), "logs": logs}))
 }
 
-fn vector(node: &mut Node, bfp: &str, req: &Value) -> Result<Value> {
-    let h = hosted(node, req, bfp)?;
+fn vector(node: &mut Node, fp: &str, bfp: &str, req: &Value) -> Result<Value> {
+    let h = hosted(node, req, fp, bfp)?;
     Ok(json!({"origin": h.board.origin(), "vector": h.board.vector()}))
 }
 
-fn push(node: &mut Node, bfp: &str, req: &Value) -> Result<Value> {
+fn push(node: &mut Node, fp: &str, bfp: &str, req: &Value) -> Result<Value> {
     let logs: BTreeMap<String, Vec<Row>> = serde_json::from_value(req.get("logs").cloned().unwrap_or(json!({}))).map_err(|_| Error::Invalid("logs map origins to rows".into()))?;
     let trusted = vector_of(req, "trusted_vector")?;
-    let h = hosted(node, req, bfp)?;
+    let h = hosted(node, req, fp, bfp)?;
     let mut report = Report::default();
     let stored = take_from(&mut h.board, &logs, bfp, text(req, "origin")?, &mut report)?;
     h.board.acknowledge(bfp, &trusted)?;
@@ -210,9 +214,9 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value, place
     match (op, standing) {
         ("hello", _) => {
             node.observe_build(&fp, req);
-            Ok(hello(node, standing))
+            Ok(hello(node, &fp, standing))
         }
-        ("join_open", _) => join_open(node, der, req, ip, standing, place),
+        ("join_open", _) => join_open(net, node, der, req, ip, standing, place),
         // a device whose admit was signed before it dialed (`add_device` with `presigned`) is a member already, and proves it holds the
         // code like any other: it is handed the record again and nothing else changes
         ("join_exchange" | "join_confirm", _) => net.join_code_step(node, der, op, req, place),
@@ -220,10 +224,10 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value, place
         ("members", _) => members(node, &fp, req),
         ("service_binding", _) => crate::services::peer_binding(node, req),
         ("acts", _) => crate::gov::wire::serve(node, req),
-        ("boards", _) => Ok(json!({"boards": node.boards.keys().collect::<Vec<_>>()})),
-        ("vector", _) => vector(node, &bfp, req),
-        ("pull", _) => pull(node, &bfp, req),
-        ("push", _) => push(node, &bfp, req),
+        ("boards", _) => Ok(json!({"boards": node.boards_shared_with(&fp)})),
+        ("vector", _) => vector(node, &fp, &bfp, req),
+        ("pull", _) => pull(node, &fp, &bfp, req),
+        ("push", _) => push(node, &fp, &bfp, req),
         (op, _) if crate::shard::OPS.contains(&op) => {
             if matches!(op, "shard_put" | "shard_start") {
                 node.work_gate()?;
@@ -313,13 +317,31 @@ pub fn serve_requests<S: Read + Write>(net: &Net, s: &mut S, der: &[u8], ip: IpA
     Ok(Ended::Closed)
 }
 
-/// What a connection is written to and read from.
-pub trait Link: Read + Write + Send {}
-impl<T: Read + Write + Send> Link for T {}
+/// What a connection is written to and read from, under a deadline while a request is out.
+pub trait Link: Read + Write + Send {
+    /// The reads and writes from now on are done within ``span`` together.
+    fn arm(&mut self, span: Duration);
+    /// End that deadline: each read may take ``read`` (any time at all when None) and each write `IO_TIMEOUT`.
+    fn rest(&mut self, read: Option<Duration>) -> std::io::Result<()>;
+}
+
+impl<C> Link for Secured<C> where C: Send, Secured<C>: Read + Write {
+    fn arm(&mut self, span: Duration) {
+        self.stream.sock.arm(span);
+    }
+
+    fn rest(&mut self, read: Option<Duration>) -> std::io::Result<()> {
+        self.stream.sock.rest(read, IO_TIMEOUT)
+    }
+}
 
 /// A connection to a peer, authenticated both ways.
 pub struct PeerClient {
     link: Box<dyn Link>,
+    /// How long a read may take while no request is out.
+    idle_read: Option<Duration>,
+    /// When every request on this connection is to be done, if a whole exchange has a deadline.
+    ends: Option<Instant>,
     pub fingerprint: String,
     pub board_fingerprint: String,
     pub der: Vec<u8>,
@@ -334,25 +356,33 @@ impl PeerClient {
     /// authenticate it (a join code).
     pub fn connect(me: &Identity, addr: SocketAddr, expect: Option<&str>) -> Result<PeerClient> {
         let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(5))?;
-        tcp.set_read_timeout(Some(IO_TIMEOUT))?;
-        tcp.set_write_timeout(Some(IO_TIMEOUT))?;
         tcp.set_nodelay(true)?;
         let secured = tls::connect(tls::client_config(me, expect)?, tcp)?;
+        PeerClient::over(secured, Some(IO_TIMEOUT), None, None)
+    }
+
+    /// A client of the finished handshake ``secured``, whose reads may take ``idle_read`` between requests.
+    fn over<C>(mut secured: Secured<C>, idle_read: Option<Duration>, closer: Option<TcpStream>, place: Option<Permit>) -> Result<PeerClient>
+    where C: Send + 'static, Secured<C>: Read + Write {
+        secured.rest(idle_read)?;
         let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer: None, _place: None })
+        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), idle_read, ends: None, closer, _place: place })
+    }
+
+    /// Every request from now on is done within ``span``, all of them together: past it each one fails, however steadily its bytes come.
+    pub fn done_within(&mut self, span: Duration) {
+        self.ends = Some(Instant::now() + span);
     }
 
     /// Like `connect`, for a connection that stays open for hours: no read timeout (the other end speaks when it has something) and TCP
     /// keepalives, so a path that died is noticed.
     pub fn connect_long(me: &Identity, addr: SocketAddr, expect: Option<&str>) -> Result<PeerClient> {
         let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(5))?;
-        tcp.set_write_timeout(Some(IO_TIMEOUT))?;
         tcp.set_nodelay(true)?;
         socket2::SockRef::from(&tcp).set_tcp_keepalive(&socket2::TcpKeepalive::new().with_time(Duration::from_secs(30)).with_interval(Duration::from_secs(10)))?;
         let closer = tcp.try_clone().ok();
         let secured = tls::connect(tls::client_config(me, expect)?, tcp)?;
-        let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer, _place: None })
+        PeerClient::over(secured, None, closer, None)
     }
 
     /// A second handle on the socket of a connection made with `connect_long`: `sys::hang_up` on it from another thread ends the
@@ -363,8 +393,7 @@ impl PeerClient {
 
     /// A connection a member opened to this device, to send that member requests over it; it keeps its ``place`` on the listener.
     pub fn accepted(secured: Secured<rustls::ServerConnection>, place: Permit) -> Result<PeerClient> {
-        let der = secured.peer.clone();
-        Ok(PeerClient { fingerprint: cert_fingerprint(&der), board_fingerprint: board_fingerprint(&der)?, der, link: Box::new(secured), closer: None, _place: Some(place) })
+        PeerClient::over(secured, Some(IO_TIMEOUT), None, Some(place))
     }
 
     /// Answer the requests that come down this connection (the other end holds the channel), until it closes.
@@ -373,10 +402,15 @@ impl PeerClient {
         serve_requests(net, &mut self.link, &der, ip, false, None)
     }
 
-    /// Send one request; a refusal comes back as the matching error.
+    /// Send one request, which with its reply takes `CALL_FOR` at most (less when the exchange has less left, `done_within`); a refusal
+    /// comes back as the matching error.
     pub fn call(&mut self, request: &Value) -> Result<Value> {
-        write_frame_max(&mut self.link, request, MAX_PEER_FRAME)?;
-        let reply = read_frame_max(&mut self.link, MAX_PEER_FRAME)?.ok_or_else(|| Error::Denied("the peer closed the connection".into()))?;
+        let span = self.ends.map_or(CALL_FOR, |end| end.saturating_duration_since(Instant::now()).min(CALL_FOR));
+        self.link.arm(span);
+        let reply = write_frame_max(&mut self.link, request, MAX_PEER_FRAME).and_then(|()| read_frame_max(&mut self.link, MAX_PEER_FRAME));
+        let rested = self.link.rest(self.idle_read);
+        let reply = reply?.ok_or_else(|| Error::Denied("the peer closed the connection".into()))?;
+        rested?;
         if reply["ok"] == true {
             return Ok(reply["result"].clone());
         }

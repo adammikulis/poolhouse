@@ -6,13 +6,14 @@ use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::net::{Shutdown, TcpStream};
 use std::os::windows::ffi::OsStrExt;
+use std::os::windows::fs::OpenOptionsExt;
 use std::os::windows::io::{AsRawHandle, AsRawSocket};
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE, INVALID_HANDLE_VALUE};
-use windows_sys::Win32::Storage::FileSystem::{LockFileEx, MoveFileExW, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH};
+use windows_sys::Win32::Storage::FileSystem::{LockFileEx, MoveFileExW, FILE_FLAG_OPEN_REPARSE_POINT, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH};
 use windows_sys::Win32::System::IO::{CancelIoEx, OVERLAPPED};
 
 use crate::error::Result;
@@ -106,6 +107,12 @@ pub fn replace_file(from: &Path, to: &Path) -> Result<()> {
 /// Files made under a private directory inherit its owner-only ACL, so nothing is set per file.
 pub fn private_file(options: &mut OpenOptions) -> &mut OpenOptions {
     options
+}
+
+/// The regular file at ``path`` opened to read, never through a link or another reparse point; None for anything else.
+pub fn open_regular(path: &Path) -> Option<File> {
+    let file = OpenOptions::new().read(true).custom_flags(FILE_FLAG_OPEN_REPARSE_POINT).open(path).ok()?;
+    file.metadata().ok()?.is_file().then_some(file)
 }
 
 /// Open the append-only log at ``path``. It is opened for writing at a position, not for

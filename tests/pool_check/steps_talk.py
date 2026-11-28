@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pool_check.world import World, eventually
+from pool_check.world import SETTLE_S, World, eventually
 
 
 def a_direct_message_reaches_its_session(world: World) -> None:
@@ -16,9 +16,9 @@ def a_direct_message_reaches_its_session(world: World) -> None:
         """How the first device's board names the target's session: the sender of the entry the target wrote."""
         seen = [e["sender"] for e in sender.call("read", "demo", kind="message", limit=500)["entries"] if e["fields"].get("body") == "hello from the target"]
         return seen[0] if seen else None
-    where = eventually(address, 30, f"the first device to hold the entry {target.name} wrote")
-    eventually(lambda: sender.post("a private word", to=target.session), 30, f"the first device to accept a message to {target.session} (shown there as {where})")
-    inbox = eventually(lambda: [e["fields"]["body"] for e in target.call("read", "demo", inbox=True, kind="message")["entries"]], 30, f"{target.name} to receive the direct message")
+    where = eventually(address, SETTLE_S, f"the first device to hold the entry {target.name} wrote")
+    eventually(lambda: sender.post("a private word", to=target.session), SETTLE_S, f"the first device to accept a message to {target.session} (shown there as {where})")
+    inbox = eventually(lambda: [e["fields"]["body"] for e in target.call("read", "demo", inbox=True, kind="message")["entries"]], SETTLE_S, f"{target.name} to receive the direct message")
     assert "a private word" in inbox, inbox
     for other in world.devices[1:-1]:
         read = [e["fields"]["body"] for e in other.call("read", "demo", inbox=True, kind="message")["entries"]]
@@ -39,8 +39,8 @@ def a_claim_is_held_pool_wide(world: World) -> None:
                 other.call("release", "demo", kind="branch", key="pool-check/branch")
                 raise AssertionError(f"{other.name} took a branch {first.name} holds")
             return out
-        out = eventually(refused, 30, f"{other.name} to be refused the branch {first.name} holds")
+        out = eventually(refused, SETTLE_S, f"{other.name} to be refused the branch {first.name} holds")
         assert "held by" in out["error"] and "of yours" not in out["error"], f"the refusal does not say who holds it: {out['error']}"
     first.call("release", "demo", kind="branch", key="pool-check/branch")
-    taken = eventually(lambda: rest[0].call("claim", "demo", kind="branch", key="pool-check/branch", ttl_s=600), 30, f"{rest[0].name} to take the branch after it was released")
+    taken = eventually(lambda: rest[0].call("claim", "demo", kind="branch", key="pool-check/branch", ttl_s=600), SETTLE_S, f"{rest[0].name} to take the branch after it was released")
     assert taken["changed"] is True

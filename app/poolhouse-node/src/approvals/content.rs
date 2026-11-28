@@ -22,6 +22,7 @@ pub fn risk_of(action: &str) -> (&'static str, &'static str) {
         "note_verify" => (ROUTINE, "It records that a note's command was run; it runs nothing."),
         "add_device" => (SENSITIVE, "It makes a code that lets another device join this pool."),
         "join_pool" => (SENSITIVE, "It joins this device to another pool and shares its boards with it."),
+        "board_share" => (SENSITIVE, "Another device can read and write the boards of this computer that you share with it."),
         "shard_call" => (SENSITIVE, "It sends tests and their files to run on another device."),
         "shard_consent" => (SENSITIVE, "It lets other devices run code here."),
         "service_bind" => (SENSITIVE, "It lets the pool recognize this computer's compute service."),
@@ -55,7 +56,7 @@ pub fn riskiest<'a>(levels: impl Iterator<Item = &'a str>) -> &'static str {
 
 /// Whether a request for ``action`` connects something, so the text states the pool's join policy.
 pub fn connects(action: &str) -> bool {
-    matches!(action, "add_device" | "join_pool" | "link_read" | "link_write" | "shard_call" | "shard_consent" | "sync_now" | "phone_add" | "service_bind")
+    matches!(action, "add_device" | "join_pool" | "board_share" | "link_read" | "link_write" | "shard_call" | "shard_consent" | "sync_now" | "phone_add" | "service_bind")
 }
 
 /// A short phrase for what ``action`` does, for a title.
@@ -64,6 +65,7 @@ pub fn label_of(action: &str) -> &'static str {
         "add_device" => "add a device",
         "join_pool" => "join a pool",
         "member_remove" => "remove a device",
+        "board_share" => "share boards with a device",
         "sync_now" => "sync the pool",
         "link_read" | "link_write" => "share a board",
         "link_remove" => "end a sharing link",
@@ -126,6 +128,7 @@ pub fn sentence(action: &str, resource: &str) -> String {
         "member_remove" => format!("Remove the device {named} from the pool."),
         "add_device" => "Make a short code that lets one more device join this pool.".into(),
         "join_pool" => format!("Join this device to the pool at {named}."),
+        "board_share" => format!("Change which boards of this computer the device {named} is shared."),
         "sync_now" => "Swap board entries with the pool's devices now.".into(),
         "shard_call" => format!("Send test runs to the device {named}."),
         "shard_consent" => format!("Let other devices send test runs here ({named})."),
@@ -145,7 +148,7 @@ pub fn sentence(action: &str, resource: &str) -> String {
 
 /// The `POOL:` line: the join policy of this node's pool and what it means for the person.
 pub fn pool_line(policy: &str, joining: bool) -> String {
-    let means = |p: &str| if p == "open" { "Devices on the same network join without asking." } else { "Each device needs your code to join." };
+    let means = |p: &str| if p == "open" { "A device on the same network can join without a code and is shared no board until you share one." } else { "Each device needs your code to join." };
     match joining {
         true => format!("POOL: this device's pool is {}; the pool it would join states its own policy when this device connects.", policy.to_uppercase()),
         false => format!("POOL: {}. {}", policy.to_uppercase(), means(policy)),
@@ -295,6 +298,6 @@ mod tests {
     #[test]
     fn the_pool_line_says_what_the_policy_means_and_what_a_change_would_do() {
         assert!(pool_line("secure", false).starts_with("POOL: SECURE. Each device needs your code"));
-        assert!(pool_line("open", false).contains("without asking"));
+        assert_eq!(pool_line("open", false), "POOL: OPEN. A device on the same network can join without a code and is shared no board until you share one.");
     }
 }

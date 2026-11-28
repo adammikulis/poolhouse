@@ -8,7 +8,7 @@ use std::ops::{Deref, DerefMut};
 use crate::node::update_activity::{Registry, Source, Writer, AdmittedEffect, EffectFlow};
 use std::net::{IpAddr, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
+use std::sync::{mpsc, Arc, Mutex, MutexGuard, OnceLock, Weak};
 use std::time::Duration;
 
 use rustls::ServerConfig;
@@ -22,7 +22,8 @@ use crate::fsutil::{sha256_hex, unhex};
 use crate::gate::{unhurried, Gate, Permit};
 use crate::lineage::Peer;
 use crate::membership::{Device, Standing};
-use crate::netsync::sync_all_admitted;
+use crate::netsync::{sync_pool_admitted, sync_shared_admitted};
+use crate::nearby::Nearby;
 use crate::node::Node;
 use crate::join_code::{context_for, new_code, Session, Window};
 use crate::peer::{self, PeerClient};
@@ -31,8 +32,13 @@ use crate::poolops::wall_ms;
 use crate::shard::{self, Shards};
 use crate::tls::{server_config, StandingFn};
 
-/// How long a device does not ask again a pool that refused it a join.
-const REFUSED_FOR: Duration = Duration::from_secs(10);
+/// How often a node on a network swaps pool records and boards with every member, unless it is started with another interval.
+pub const SYNC_EVERY: Duration = Duration::from_secs(20);
+/// The longest one exchange with a member takes, however it paces its replies; each request in it has `peer::CALL_FOR`.
+const SYNC_FOR: Duration = Duration::from_secs(300);
+/// How long a sync round waits for the member it just dialed to hand over the pool's acts before it dials the next: a removal an
+/// earlier member carries is then held before the removed device would be dialed, and a slow member holds up the next no longer.
+const HEAD_START: Duration = Duration::from_secs(2);
 /// The connections the peer listener holds together: half of the 256 descriptors macOS gives a process by default, so that peers
 /// leave the node the rest.
 const MOST_PEER_CONNECTIONS: usize = 128;
@@ -50,15 +56,20 @@ pub struct NetConfig {
     pub beacon: Option<BeaconConfig>,
     /// How often to swap pool records and boards with every member; None for only on request.
     pub sync_every: Option<Duration>,
-    /// The project key (`projectid::project_of`) of this device: while it is in no pool it joins an `open` pool of that project that
-    /// it hears. A device never founds a pool by itself; founding is asked for by a command. None leaves the device as it is.
+    /// The project key (`projectid::project_of`) of this device: while it is in no pool it lists the founded pools of that project that
+    /// it hears (`pool_status` `nearby`) for the person to choose from. A device never founds or joins a pool by itself; each is asked
+    /// for by a call. None leaves the device as it is.
     pub project: Option<String>,
+    /// Whether a caller from a loopback address counts as on this device's network, so an `open` pool admits it without a code: only
+    /// where the devices of a pool are processes of one machine (a test). Whatever forwards a connection to this listener calls from
+    /// loopback, so it is false otherwise.
+    pub loopback_is_segment: bool,
 }
 
 impl NetConfig {
     /// Listen on every interface on ``port`` with the default beacon on ``beacon_port``.
     pub fn standard(port: u16, beacon_port: u16) -> NetConfig {
-        NetConfig { listen: SocketAddr::from(([0, 0, 0, 0], port)), beacon: Some(BeaconConfig::multicast(beacon_port)), sync_every: Some(Duration::from_secs(20)), project: None }
+        NetConfig { listen: SocketAddr::from(([0, 0, 0, 0], port)), beacon: Some(BeaconConfig::multicast(beacon_port)), sync_every: Some(SYNC_EVERY), project: None, loopback_is_segment: false }
     }
 }
 
@@ -71,12 +82,12 @@ pub struct Net {
     pub stop: Arc<AtomicBool>,
     pub shards: Arc<Shards>,
     window: Mutex<Option<Window>>,
-    joining: Mutex<BTreeSet<String>>,
-    /// Devices whose pool refused this one a join lately, and when.
-    refused: Mutex<BTreeMap<String, std::time::Instant>>,
+    /// The pools heard while this device is in none.
+    nearby: Nearby,
+    /// Members the periodic sync has an exchange out with.
+    syncing: Mutex<BTreeSet<String>>,
     beacon_stats: OnceLock<Arc<BeaconStats>>,
-    /// The last attempt to join a pool automatically, and how it ended.
-    last_join: Mutex<Value>,
+    loopback_is_segment: bool,
     /// Members that opened a connection to this device and keep it open for requests to go down (they cannot be dialed: they are behind NAT).
     reverse: Mutex<BTreeMap<String, Arc<Mutex<PeerClient>>>>,
     /// Members this device is keeping such a connection to, so each is attached once, with a handle that closes the connection.
@@ -94,6 +105,14 @@ impl Drop for AttachCleanup<'_> {
     fn drop(&mut self) {
         let Ok(_cleanup)=self.net.activity.maintenance(Source::Network) else { return };
         if let Ok(mut kept)=locked(&self.net.attaching) { kept.remove(self.fingerprint); }
+    }
+}
+
+/// A member's place among the exchanges the periodic sync has out (`Net::syncing`), given up however the exchange ends or fails to start.
+struct Out { net: Arc<Net>, fingerprint: String }
+impl Drop for Out {
+    fn drop(&mut self) {
+        if let Ok(mut out)=self.net.syncing.lock() { out.remove(&self.fingerprint); }
     }
 }
 
@@ -129,9 +148,12 @@ pub(crate) fn activity_error(_: crate::node::update_activity::Refusal) -> Error 
     Error::say("update_pending", "network activity waits for the node update", "none", "retry")
 }
 
+/// The address to join at: of the ones ``host`` names, an IPv4 one first, because a node on the LAN listens on IPv4 alone and a name often
+/// resolves to IPv6 first.
 fn addr_of(host: &str, port: u64) -> Result<SocketAddr> {
     let port = u16::try_from(port).ok().filter(|p| *p > 0).ok_or_else(|| Error::Invalid("port is 1 to 65535".into()))?;
-    (host, port).to_socket_addrs()?.next().ok_or_else(|| Error::Invalid("host does not resolve".into()))
+    let all: Vec<SocketAddr> = (host, port).to_socket_addrs()?.collect();
+    all.iter().find(|a| a.is_ipv4()).or(all.first()).copied().ok_or_else(|| Error::Invalid("host does not resolve".into()))
 }
 
 /// ``base`` with the keys of ``more`` added (both are objects).
@@ -142,14 +164,13 @@ fn merged(mut base: Value, more: Value) -> Value {
     base
 }
 
-/// A join failure as a person should read it: what happened and what to do about it.
-fn join_hint(e: &Error) -> String {
-    let text = e.to_string();
-    let blocked = matches!(e, Error::Io(io) if matches!(io.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock | std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ConnectionRefused));
+/// A join failure as a person should read it: a connection that never got through says what to do about it.
+fn join_hint(e: Error) -> Error {
+    let blocked = matches!(&e, Error::Io(io) if matches!(io.kind(), std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock | std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ConnectionRefused));
     if blocked {
-        return format!("{text}: the other device did not accept the connection; allow this program through its firewall on the private network (macOS: Privacy & Security > Local Network)");
+        return Error::Invalid(format!("{e}: the other device did not accept the connection; allow this program through its firewall on the private network (macOS: Privacy & Security > Local Network)"));
     }
-    text
+    e
 }
 
 /// A dial's failure as the device that made it should read it: a TLS alert at the handshake is how a member refuses a device it put out of
@@ -178,7 +199,7 @@ impl Net {
         let port = listener.local_addr()?.port();
         let net = Arc::new(Net {
             node, activity, server_config: server_config(&me, standing)?, me, port, stop, shards,
-            window: Mutex::new(None), joining: Mutex::new(BTreeSet::new()), refused: Mutex::new(BTreeMap::new()), beacon_stats: OnceLock::new(), last_join: Mutex::new(Value::Null),
+            window: Mutex::new(None), nearby: Nearby::default(), syncing: Mutex::new(BTreeSet::new()), beacon_stats: OnceLock::new(), loopback_is_segment: cfg.loopback_is_segment,
             reverse: Mutex::new(BTreeMap::new()), attaching: Mutex::new(BTreeMap::new()),
             places: Gate::new(MOST_PEER_CONNECTIONS, MOST_PEER_PER_ADDRESS, PEER_RESERVED),
             lingering: Gate::new(MOST_LINGERING, MOST_LINGERING, 0), this: OnceLock::new(),
@@ -293,33 +314,21 @@ impl Net {
         Ok(())
     }
 
-    /// What the beacon has sent and heard, and how the last automatic join ended.
-    fn network_facts(&self) -> Value {
+    /// What the beacon has sent and heard, and the pools a device in no pool (``alone``) may choose from.
+    fn network_facts(&self, alone: bool) -> Value {
         let count = |f: fn(&BeaconStats) -> &std::sync::atomic::AtomicU64| self.beacon_stats.get().map_or(0, |s| f(s).load(Ordering::Relaxed));
         let text = |f: fn(&BeaconStats) -> &Mutex<String>| self.beacon_stats.get().and_then(|s| f(s).lock().ok().map(|t| t.clone())).unwrap_or_default();
         json!({
             "beacon_sent": count(|s| &s.sent), "beacon_send_errors": count(|s| &s.send_errors), "beacon_heard": count(|s| &s.heard),
             "beacon_own": count(|s| &s.own), "beacon_rejected": count(|s| &s.rejected),
             "beacon_last_send_error": text(|s| &s.last_send_error), "beacon_last_reject": text(|s| &s.last_reject),
-            "last_join": self.last_join.lock().map(|j| j.clone()).unwrap_or(Value::Null),
+            "nearby": if alone { self.nearby.list() } else { json!([]) },
         })
     }
 
-    fn record_join(&self, fingerprint: &str, addr: SocketAddr, result: &Result<()>) {
-        let Ok(_activity) = self.activity.maintenance(Source::Network) else { return };
-        let (ok, error) = match result {
-            Ok(()) => (true, String::new()),
-            Err(e) => (false, join_hint(e)),
-        };
-        if let Ok(mut j) = self.last_join.lock() {
-            *j = json!({"fingerprint": fingerprint, "addr": addr.to_string(), "ok": ok, "error": error, "at": wall_ms()});
-        }
-    }
-
-    /// A valid beacon was heard. A member's address is remembered; a non-member is answered only by a device in no pool yet, only when
-    /// the sender's pool is founded (has an id) and is of this device's project, and not again for ten seconds after a refusal (a
-    /// pool that is not `open` refuses it). Two devices in no pool never join each other, and a device in a pool joins no other.
-    fn heard(self: &Arc<Net>, b: Beacon) {
+    /// A valid beacon was heard. A member's address is remembered. A device in no pool lists the founded pool of its project that a
+    /// non-member names, for the person to choose; nothing is dialed and nothing is joined. A device in a pool lists no other.
+    fn heard(&self, b: Beacon) {
         let Ok(mut node) = tracked_node(&self.node, Source::Beacon) else { return };
         if b.fingerprint == node.cert.fingerprint() {
             return;
@@ -335,51 +344,29 @@ impl Net {
                 }
             }
             Standing::Unknown => {
-                let eligible = node.members.can_join_other() && b.pool.len() == 32 && b.project == node.members.project && crate::netif::on_segment(b.addr);
-                drop(node);
-                let waiting = self.refused.lock().is_ok_and(|r| r.get(&b.fingerprint).is_some_and(|at| at.elapsed() < REFUSED_FOR));
-                let admitted = self.activity.admit_effect(Source::Beacon,EffectFlow::Join);
-                if eligible && !waiting && admitted.is_ok() && self.joining.lock().is_ok_and(|mut j| j.insert(b.fingerprint.clone())) {
-                    let admitted = admitted.expect("checked admission");
-                    let (net, fp) = (self.clone(), b.fingerprint.clone());
-                    let started = std::thread::Builder::new().name("peer-join".into()).spawn(move || {
-                        let admitted = admitted; // Owned before spawn; retained through result and cleanup.
-                        let result = net.join_open_admitted(addr, &fp, &admitted);
-                        net.record_join(&fp, addr, &result);
-                        if result.is_err() {
-                            if let Ok(mut r) = net.refused.lock() {
-                                r.insert(fp.clone(), std::time::Instant::now());
-                            }
-                        }
-                        if let Ok(mut j) = net.joining.lock() {
-                            j.remove(&fp);
-                        }
-                    });
-                    // A device with no thread to join on tries at a later beacon.
-                    if started.is_err() {
-                        if let Ok(mut j) = self.joining.lock() {
-                            j.remove(&b.fingerprint);
-                        }
-                    }
+                if node.members.can_join_other() && b.pool.len() == 32 && b.project == node.members.project && crate::netif::on_segment(b.addr) {
+                    self.nearby.heard(&b);
                 }
             }
         }
     }
 
+    /// Whether a caller at ``ip`` is on this device's network, for an admit without a code. Loopback is no network: a connection that
+    /// something on this device forwards arrives from it.
+    pub(crate) fn on_my_network(&self, ip: IpAddr) -> bool {
+        if ip.to_canonical().is_loopback() { self.loopback_is_segment } else { crate::netif::on_segment(ip) }
+    }
+
     // -- joining ----------------------------------------------------------
     /// Join the pool of the device at ``addr`` whose certificate has fingerprint ``expect``,
-    /// under its policy `open`; the device is enrolled here and this one there.
-    pub fn join_open(&self, addr: SocketAddr, expect: &str) -> Result<()> {
-        let effect=self.activity.admit_effect(Source::Network,EffectFlow::Join).map_err(activity_error)?;
-        self.join_open_admitted(addr,expect,&effect)
-    }
+    /// under its policy `open`; the device is enrolled here and this one there. Only `join_pool` asks for it.
     fn join_open_admitted(&self, addr: SocketAddr, expect: &str, effect: &AdmittedEffect) -> Result<()> {
         let _child=self.activity.continue_effect(effect,Source::Network,EffectFlow::Join).map_err(activity_error)?;
         if !crate::netif::on_segment(addr.ip()) {
             return Err(Error::Denied(format!("{} is not on a network this device is on; a device joins without a code only from the same network, so use a join code", addr.ip())));
         }
         let mut c = PeerClient::connect(&self.me, addr, Some(expect))?;
-        let name = tracked_node(&self.node, Source::Network)?.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default();
+        let name = tracked_node(&self.node, Source::Network)?.own_name();
         let ask = peer::hello_request(&*tracked_node(&self.node, Source::Network)?);
         let hello = c.call(&ask)?;
         tracked_node(&self.node, Source::Network)?.observe_build(&c.fingerprint, &hello);
@@ -490,7 +477,7 @@ impl Net {
         let _child=self.activity.continue_effect(effect,Source::Network,EffectFlow::Join).map_err(activity_error)?;
         let (alone, name) = {
             let n = tracked_node(&self.node, Source::Network)?;
-            (n.members.can_join_other(), n.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default())
+            (n.members.can_join_other(), n.own_name())
         };
         if !alone {
             return Err(Error::Denied("a device that is in a pool does not change pool".into()));
@@ -499,7 +486,7 @@ impl Net {
             if !crate::cert::valid_fingerprint(fingerprint) {
                 return Err(Error::Invalid("without a passphrase the device is named by its fingerprint".into()));
             }
-            self.join_open_admitted(addr, fingerprint, effect)?;
+            self.join_open_admitted(addr, fingerprint, effect).map_err(join_hint)?;
             return Ok(json!({"pool": tracked_node(&self.node, Source::Network)?.members.id, "peer": fingerprint, "approved": self.approved_words()?}));
         }
         let mut c = PeerClient::connect(&self.me, addr, None)?;
@@ -533,54 +520,81 @@ impl Net {
     // -- sync -------------------------------------------------------------
     /// Swap pool records and boards with every active member we can reach; the number reached. A member whose last dials failed is left
     /// alone until its backoff ends (a second, then twice as long, up to a minute) unless ``force``: a device nothing can reach does not
-    /// hold up the members that can be reached. A member put out of the pool while the cycle runs (heard from an earlier dial of it) is
-    /// not dialed, and one put out during its dial is not recorded as reached or attached to.
+    /// hold up the members that can be reached. Members are dialed in the order of the list, each once the one before it has handed over
+    /// the pool's acts (`HEAD_START` at most), so a member put out of the pool while the cycle runs (heard from an earlier dial of it) is
+    /// not dialed; one put out during its dial is not recorded as reached or attached to.
     pub fn sync_once(&self, force: bool) -> Result<usize> {
         let effect=self.activity.admit_effect(Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
         self.sync_once_admitted(force,&effect)
     }
     fn sync_once_admitted(&self, force: bool, effect: &AdmittedEffect) -> Result<usize> {
         let _child=self.activity.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
-        let targets: Vec<(String, String)> = {
-            let mut n = tracked_node(&self.node, Source::Network)?;
-            n.gov_tick()?;
-            let me = self.me.fingerprint();
-            let now = wall_ms();
-            n.members.active().into_iter().filter(|d| d.fingerprint != me)
-                .filter(|d| force || n.facts.peers.get(&d.fingerprint).is_none_or(|f| f.retry_at_ms <= now))
-                .filter_map(|d| n.facts.peers.get(&d.fingerprint).and_then(|f| f.addr.clone()).map(|a| (d.fingerprint, a))).collect()
-        };
-        let mut reached = 0;
-        for (fp, addr) in targets {
-            if !tracked_node(&self.node, Source::Network)?.members.is_active(&fp) {
-                continue;
+        let targets = self.sync_targets(force)?;
+        // each member on a thread of its own: one that is slow to answer holds up the next no longer than `HEAD_START`
+        let reached = std::thread::scope(|scope| -> Result<usize> {
+            let mut dials = Vec::new();
+            for (fp, addr) in &targets {
+                let (heard, handed_over) = mpsc::channel::<()>();
+                dials.push(std::thread::Builder::new().name("peer-dial".into()).spawn_scoped(scope, move || self.sync_member(fp, addr, effect, heard))?);
+                let _ = handed_over.recv_timeout(HEAD_START);
             }
-            let result = addr.parse::<SocketAddr>().map_err(|e| Error::Invalid(e.to_string()))
-                .and_then(|a| self.dial_member(&fp, a))
-                .and_then(|mut c| self.compatible(&mut c).and_then(|()| sync_all_admitted(&self.node, &mut c, effect)));
-            let mut n = tracked_node(&self.node, Source::Network)?;
-            if !n.members.is_active(&fp) {
-                continue;
-            }
-            let f = n.facts.peer(&fp);
-            match result {
-                Ok(reports) => {
-                    (f.last_sync_ms, f.last_seen_ms, f.last_error, f.fails, f.retry_at_ms) = (wall_ms(), wall_ms(), crate::netsync::refused_note(&reports), 0, 0);
-                    reached += 1;
-                    drop(n);
-                    if let Ok(a) = addr.parse::<SocketAddr>() {
-                        self.attach(&fp, a);
-                    }
-                }
-                Err(e) => {
-                    f.fails = f.fails.saturating_add(1);
-                    f.retry_at_ms = wall_ms() + (1000u64 << f.fails.min(6)).min(60_000);
-                    f.last_error = refusal_hint(&e);
-                }
-            }
-        }
+            dials.into_iter().try_fold(0, |reached, dial| -> Result<usize> {
+                let answered = dial.join().map_err(|_| Error::Damaged("a sync thread ended early".into()))??;
+                Ok(reached + usize::from(answered))
+            })
+        })?;
         self.drop_removed();
         Ok(reached)
+    }
+
+    /// The members to sync with now and where each is: every active one with an address, less (unless ``force``) those still in backoff.
+    fn sync_targets(&self, force: bool) -> Result<Vec<(String, String)>> {
+        let mut n = tracked_node(&self.node, Source::Network)?;
+        n.gov_tick()?;
+        let me = self.me.fingerprint();
+        let now = wall_ms();
+        Ok(n.members.active().into_iter().filter(|d| d.fingerprint != me)
+            .filter(|d| force || n.facts.peers.get(&d.fingerprint).is_none_or(|f| f.retry_at_ms <= now))
+            .filter_map(|d| n.facts.peers.get(&d.fingerprint).and_then(|f| f.addr.clone()).map(|a| (d.fingerprint, a))).collect())
+    }
+
+    /// Dial the member ``fp`` at ``addr``, exchange with it within `SYNC_FOR` and record how that went; whether it was reached. What one
+    /// exchange did not finish the next takes up. ``heard`` is dropped once the member has handed over the pool's acts, or will not: the
+    /// round dials its next member then.
+    fn sync_member(&self, fp: &str, addr: &str, effect: &AdmittedEffect, heard: mpsc::Sender<()>) -> Result<bool> {
+        if !tracked_node(&self.node, Source::Network)?.members.is_active(fp) {
+            return Ok(false);
+        }
+        let result = addr.parse::<SocketAddr>().map_err(|e| Error::Invalid(e.to_string()))
+            .and_then(|a| self.dial_member(fp, a))
+            .and_then(move |mut c| {
+                c.done_within(SYNC_FOR);
+                self.compatible(&mut c)?;
+                sync_pool_admitted(&self.node, &mut c, effect)?;
+                drop(heard);
+                sync_shared_admitted(&self.node, &mut c, effect)
+            });
+        let mut n = tracked_node(&self.node, Source::Network)?;
+        if !n.members.is_active(fp) {
+            return Ok(false);
+        }
+        let f = n.facts.peer(fp);
+        match result {
+            Ok(reports) => {
+                (f.last_sync_ms, f.last_seen_ms, f.last_error, f.fails, f.retry_at_ms) = (wall_ms(), wall_ms(), crate::netsync::refused_note(&reports), 0, 0);
+                drop(n);
+                if let Ok(a) = addr.parse::<SocketAddr>() {
+                    self.attach(fp, a);
+                }
+                Ok(true)
+            }
+            Err(e) => {
+                f.fails = f.fails.saturating_add(1);
+                f.retry_at_ms = wall_ms() + (1000u64 << f.fails.min(6)).min(60_000);
+                f.last_error = refusal_hint(&e);
+                Ok(false)
+            }
+        }
     }
 
     /// Keep one connection open to ``fp`` for it to send this device requests down, unless one is already kept: this device may be behind
@@ -724,7 +738,7 @@ impl Net {
                 other => return other,
             }
         }
-        let addr = addr.ok_or_else(|| Error::Invalid("this device has no address for it and it has not connected to this device: a device behind NAT cannot be dialed, it connects to the members whose address it has; wait for its next sync, or run `sync_now` on it".into()))?;
+        let addr = addr.ok_or_else(|| Error::Invalid("this device has no address for it and it has not connected to this device: a device behind NAT cannot be dialed, it connects to the members whose address it has; wait for it to sync, which it does by itself".into()))?;
         let mut c = self.dial_member(fp, addr).map_err(|e| match e {
             Error::Io(io) => Error::Invalid(format!("{io} at {addr}, and it has not connected to this device: a device behind NAT cannot be dialed, it connects to the members whose address it has; wait for its next sync")),
             other => other,
@@ -746,9 +760,31 @@ impl Net {
         Ok(())
     }
 
+    /// One round of the periodic sync: a thread for each member due, started as `sync_once` starts them, no exchange waited for to its
+    /// end, and none for a member whose last is still out. A member no exchange could be started for is taken up at a later round.
+    fn sync_due(self: &Arc<Net>) -> Result<()> {
+        let _round = self.activity.admit_effect(Source::Sync, EffectFlow::Sync).map_err(activity_error)?;
+        for (fp, addr) in self.sync_targets(false)? {
+            if !locked(&self.syncing)?.insert(fp.clone()) {
+                continue;
+            }
+            let out = Out { net: self.clone(), fingerprint: fp };
+            let admitted = self.activity.admit_effect(Source::Sync, EffectFlow::Sync).map_err(activity_error)?;
+            let (heard, handed_over) = mpsc::channel::<()>();
+            // A thread that cannot be started drops what it was given, which gives up the member's place.
+            let _ = std::thread::Builder::new().name("peer-dial".into()).spawn(move || {
+                let _ = out.net.sync_member(&out.fingerprint, &addr, &admitted, heard);
+                out.net.drop_removed();
+            });
+            let _ = handed_over.recv_timeout(HEAD_START);
+        }
+        self.drop_removed();
+        Ok(())
+    }
+
     fn sync_loop(self: Arc<Net>, every: Duration) {
         while !self.stop.load(Ordering::SeqCst) {
-            let _ = self.sync_once(false);
+            let _ = self.sync_due();
             let mut waited = Duration::ZERO;
             while waited < every && !self.stop.load(Ordering::SeqCst) {
                 std::thread::sleep(Duration::from_millis(50));
@@ -764,7 +800,7 @@ impl Net {
         match parsed {
             Ok(c) if NETWORK.contains(&c.method.as_str()) => respond(request, self.network(&c, peer)),
             Ok(c) if c.method == "pool_status" => match tracked_node(&self.node, Source::Network) {
-                Ok(mut n) => respond(request, n.gov_tick().map(|_| merged(n.pool_status(), self.network_facts()))),
+                Ok(mut n) => respond(request, n.gov_tick().map(|_| merged(n.pool_status(), self.network_facts(n.members.can_join_other())))),
                 Err(error) => respond(request, Err(error)),
             },
             _ => {
@@ -912,7 +948,7 @@ mod activity_tests {
         let directory=tempfile::tempdir().unwrap();
         let node=Arc::new(Mutex::new(Node::open(directory.path()).unwrap()));
         let net=Net::start(node,NetConfig { listen:"127.0.0.1:0".parse().unwrap(),
-            beacon:None,sync_every:None,project:None }).unwrap();
+            beacon:None,sync_every:None,project:None,loopback_is_segment:false }).unwrap();
         Running { net, _directory:directory }
     }
     #[test]
@@ -977,6 +1013,33 @@ mod activity_tests {
         assert!(net.sync_once(true).is_err());
         assert_eq!(net.activity.active_writer_count_for_test(),1);
         drop(effect); assert_eq!(net.activity.active_writer_count_for_test(),0);
+    }
+
+    #[test]
+    fn a_member_whose_sync_is_not_admitted_is_taken_up_by_a_later_round() {
+        use crate::gov::signer::{RigSigner, Signer};
+        let owned=running(); let net=owned.net.clone();
+        let other_dir=tempfile::tempdir().unwrap(); let other=Node::open(other_dir.path()).unwrap();
+        {
+            let mut node=net.node.lock().unwrap();
+            let signer=Arc::new(RigSigner::new().with_key(1,"ann"));
+            for key in signer.keys() {
+                node.persons.add_claimed_key(crate::grants::person::ED25519,&key.public,&key.label,wall_ms(),crate::gov::keys::Claim::keystore_prompt()).unwrap();
+            }
+            node.set_signer(signer);
+            node.pool_create("home",crate::membership::Policy::Secure,"").unwrap();
+            node.enrol_device(&other.cert.der,"other","join-code",false).unwrap();
+            node.facts.set_addr(&other.cert.fingerprint(),"127.0.0.1:1").unwrap();
+        }
+        // the round is admitted, then waits for the node; new work is paused before it takes up the member
+        let held=net.node.lock().unwrap();
+        let round={ let net=net.clone(); std::thread::spawn(move || net.sync_due()) };
+        let deadline=std::time::Instant::now()+Duration::from_secs(5);
+        while net.activity.active_writer_count_for_test()==0 && std::time::Instant::now()<deadline { std::thread::yield_now(); }
+        net.activity.drain_for_test();
+        drop(held);
+        assert!(round.join().unwrap().is_err(),"the member's own sync is not admitted");
+        assert!(net.syncing.lock().unwrap().is_empty(),"a member left marked as syncing is never synced again");
     }
 
     #[test]

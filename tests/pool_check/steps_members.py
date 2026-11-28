@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 
 from pool_check.report import Skip
-from pool_check.world import World, eventually, everyone_holds
+from pool_check.world import SETTLE_S, World, eventually, everyone_holds
 
 
 def join_order_does_not_matter(world: World) -> None:
@@ -47,7 +47,7 @@ def a_removed_device_is_refused_by_every_member(world: World) -> str:
     world.remove(world.first, victim)
     removed_at, seen_at = time.monotonic(), {"removed at (ms since the epoch)": int(time.time() * 1000)}
     for device in rest:
-        eventually(lambda d=device: (d.member(victim.fingerprint) or {}).get("status") == "revoked", 30, f"{device.name} to record the removal of {victim.name}")
+        eventually(lambda d=device: (d.member(victim.fingerprint) or {}).get("status") == "revoked", SETTLE_S, f"{device.name} to record the removal of {victim.name}")
         seen_at[f"{device.name} recorded it"] = round(time.monotonic() - removed_at, 1)
     for device in rest:
         host, port = device.reach(victim)
@@ -55,7 +55,7 @@ def a_removed_device_is_refused_by_every_member(world: World) -> str:
         def refused(host=host, port=port):
             after = victim.probe(host, port, {"op": "boards"})
             return after if "error" in after or not after["replies"][0]["ok"] else None
-        eventually(refused, 30, f"{device.name} to refuse {victim.name}'s next request (not only the member that removed it)")
+        eventually(refused, SETTLE_S, f"{device.name} to refuse {victim.name}'s next request (not only the member that removed it)")
         seen_at[f"{device.name} refused it"] = round(time.monotonic() - removed_at, 1)
     victim.post("written after removal")
     victim.admin("sync_now")
@@ -102,7 +102,7 @@ def a_swapped_certificate_is_refused(world: World) -> None:
     for device in rest:
         member = next(m for m in device.members() if m["fingerprint"] == old)
         if member["addr"]:
-            pinned[device.name] = eventually(lambda d=device: next((m["last_error"] for m in d.members() if m["fingerprint"] == old and "pinned" in m["last_error"]), None), 30,
+            pinned[device.name] = eventually(lambda d=device: next((m["last_error"] for m in d.members() if m["fingerprint"] == old and "pinned" in m["last_error"]), None), SETTLE_S,
                                              f"{device.name}, which dials {target.name}'s address, to refuse the swapped certificate")
     assert pinned, "no member had an address for the device whose certificate was swapped, so no pin was tested"
     time.sleep(2)
@@ -121,6 +121,6 @@ def sync_follows_the_chain_of_dials(world: World) -> None:
     bodies = [f"relay: from {d.name}" for d in world.devices]
     for device, body in zip(world.devices, bodies, strict=True):
         device.post(body)
-    everyone_holds(world.devices, bodies, seconds=60)
+    everyone_holds(world.devices, bodies)
     dialed = {d.name: sorted(m["name"] for m in d.others() if m["addr"]) for d in world.devices}
     return "each device has an address for: " + "; ".join(f"{name} -> {', '.join(who) or 'nobody'}" for name, who in dialed.items())

@@ -31,6 +31,14 @@ def test_found_makes_the_pool_at_once_with_a_key_this_computer_makes_and_a_secon
     assert again.already and "already in the pool home" in again.say and again.pool.id == made.pool.id
 
 
+def test_a_device_alone_hears_no_pool_to_choose_and_shares_boards_with_no_stranger(workspace_node):
+    pool = ph.pool.status()
+    assert pool.nearby == () and ph.pool.Nearby.__doc__, "the pools to choose from are the ones heard, and this node hears none"
+    assert pool.words.replace(" ", "") == pool.fingerprint[:24], "the words another device's person compares with theirs"
+    with pytest.raises(ph.Error, match="no other member is called"):
+        ph.pool.share("a stranger")
+
+
 def test_found_says_in_one_sentence_what_is_missing_when_this_computer_cannot_keep_the_key(workspace_node, monkeypatch):
     monkeypatch.setattr(keystore, "default", NoKeystore)  # a machine with no keystore of its own, and no passphrase to keep a key file under
     monkeypatch.delenv("POOLHOUSE_SIGNING_PASSPHRASE")

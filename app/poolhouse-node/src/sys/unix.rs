@@ -185,6 +185,12 @@ impl Lock {
     }
 }
 
+/// The regular file at ``path`` opened to read, never through a link and without waiting on a pipe or a device; None for anything else.
+pub fn open_regular(path: &Path) -> Option<File> {
+    let file = OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC).open(path).ok()?;
+    file.metadata().ok()?.is_file().then_some(file)
+}
+
 fn flock(path: &Path, blocking: bool) -> Result<Option<Lock>> {
     let file = private_file(OpenOptions::new().read(true).write(true).create(true).truncate(false)).open(path)?;
     let op = if blocking { libc::LOCK_EX } else { libc::LOCK_EX | libc::LOCK_NB };

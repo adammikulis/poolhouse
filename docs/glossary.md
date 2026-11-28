@@ -16,11 +16,11 @@ Poolhouse pools devices. Devices join a pool, the pool's compute is pooled, and 
 | **device** | A machine running the node. |
 | **member** | A device in the pool. Every member is a device; a device is a member of the pool it joined. |
 | **node** | The daemon that runs on a device (the `poolhouse-node` program). The node is software; it is never the machine. Say device for the machine. |
-| **join** | What a device does to enter a pool. The pool's join policy decides how: `open` joins automatically on the same network; `secure` needs approval with a short join code. |
+| **join** | What a device does to enter a pool. Its person asks for it; no device joins by itself. The pool's join policy decides how: `open` takes a device on the same network without a code, chosen by its fingerprint words; `secure` needs a short join code. |
 | **join code** | The short code a person reads from a member to a new device to approve a join under `secure`. It is checked by a password-authenticated exchange (SPAKE2). |
 | **add a device** | What a person does to bring a device into a `secure` pool: ask a member for a join code and give it to the new device. |
 | **remove** | Take a member out of the pool. A removed device is refused at its next request. `revoke` stays only as a verb on keys, tokens and grants (a key is revoked), and `revoked` stays as the recorded state of a removed member; `left` is the recorded state of a member that left by its own act. |
-| **board** | One per project: the replicated, signed entries every member of the pool holds a copy of. |
+| **board** | One per project: the replicated, signed entries each member that holds the board and is shared it keeps a copy of. |
 | **entry** | One signed record on a board. A device keeps its own entries in its log and a verbatim copy of every other member's. |
 | **log** | A device's signed, append-only run of entries. |
 | **session**, **agent** | A running coding agent. A session or an agent **registers** its identity on a board; register is used for that and nothing else. A main session registers from any process and the node keeps its name: it moves to the process that registers it when the one it had has ended, a live sibling gets a token of its own, and a session the node retired comes back under its name. A client whose token the node does not know registers again by itself; nobody is asked to run a command, tap a phone or start a new session. |

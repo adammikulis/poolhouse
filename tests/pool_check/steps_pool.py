@@ -9,7 +9,7 @@ from poolhouse.board import founding
 
 
 def join_open(world: World) -> str:
-    """Under policy `open` a device on the same network joins with no code; one the first device only sees through NAT or loopback is refused with the reason."""
+    """Under policy `open` a device on the same network joins with no code when it chooses the pool, and gets boards once shared them; one the first device only sees through NAT or loopback is refused with the reason."""
     world.fresh()
     first, second = world.first, world.others[0]
     world.found(first, "open")
@@ -17,6 +17,7 @@ def join_open(world: World) -> str:
     out = second.try_call("join_pool", token=_admin(second), host=host, port=port, fingerprint=first.fingerprint)
     notes = []
     if out["ok"]:
+        first.admin("board_share", device=second.fingerprint, shared=True)
         world.converged([first, second])
         by = {m["fingerprint"]: m["by"] for m in first.others()}
         assert by == {second.fingerprint: "open"}, f"{first.name} recorded the join as {by}, not by open"
@@ -29,6 +30,7 @@ def join_open(world: World) -> str:
         if not out["ok"]:
             world.found(second, "open")
         world.join(third, second)
+        second.admin("board_share", device=third.fingerprint, shared=True)
         world.converged([first, second, third] if out["ok"] else [second, third])
         by = {m["fingerprint"]: m["by"] for m in second.others() if m["fingerprint"] == third.fingerprint}
         assert by == {third.fingerprint: "open"}, f"{second.name} recorded the join of {third.name} as {by}, not by open"

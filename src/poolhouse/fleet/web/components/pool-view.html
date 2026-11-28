@@ -283,7 +283,7 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
 
     drawPool(pool, error) {
       const signature = JSON.stringify([error, pool && [pool.id, pool.name, pool.policy, pool.governance, pool.listening, pool.joining_open, pool.missing,
-        pool.members.map(m => [m.fingerprint, m.name, m.active, m.connected])]]);
+        pool.members.map(m => [m.fingerprint, m.name, m.active, m.connected, m.shared])]]);
       if (signature === this.poolSignature) return;
       this.poolSignature = signature;
       const joined = this.querySelector("#pool-joined");
@@ -291,9 +291,10 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
         this.poolSignature = "";
         this.draw();
       };
-      const fail = (text) => joined.append(el("div", { class: "err", role: "alert" }, text));
+      const status = this.connections || (this.connections = el("div", {}));
+      const fail = (text) => status.append(el("div", { class: "err", role: "alert" }, text));
       const members = (pool?.members || []).filter(m => m.active);
-      joined.replaceChildren(
+      status.replaceChildren(
         el("h2", {}, "Pool connections"),
         el("div", { class: "hint" }, "This device shares compute with the devices of the pool its node is in."),
         ...M.kids(error ? el("div", { class: "err", role: "alert" }, error) : null),
@@ -308,15 +309,30 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
               await refresh();
             }, title: M.plain("action.leave") }, M.t("action.leave")) : null)),
           ...M.kids(pool.missing ? el("div", { class: "hint" }, pool.missing) : null),
+          ...M.kids(pool.words ? el("div", { class: "hint" }, "This computer's fingerprint words: ", el("code", { id: "pool-words" }, pool.words)) : null),
           ...members.map(m => el("div", { class: "row" },
             el("span", {}, el("b", {}, m.name),
-              el("span", { class: "why" }, m.this_device ? "This device" : m.connected ? "Connected" : "Known")),
+              el("span", { class: "why" }, (m.this_device ? "This device" : m.connected ? "Connected" : "Known")
+                + (m.this_device || m.shared ? "" : " · gets none of this computer's boards")),
+              // a name is whatever that computer chose: before its boards are shared, its words are compared with its screen
+              ...M.kids(m.this_device ? null : el("span", { class: "why" }, "Its fingerprint words: ", el("code", { class: "pool-member-words" }, m.words)))),
+            ...M.kids(m.this_device || (m.shared && m.joined_by !== "open") ? null : el("button", { class: "ghost small", onclick: async () => {
+              const done = await api("/ui/pool/share", { method: "POST", body: JSON.stringify({ device: m.fingerprint, shared: !m.shared }) });
+              if (done.error || done.ok === false) { fail(done.error || "Could not change what this device is shared."); return; }
+              await refresh();
+            } }, m.shared ? "Stop sharing boards" : "Share boards")),
             ...M.kids(m.this_device ? null : el("button", { class: "ghost small", onclick: async () => {
               const removed = await api("/ui/pool/remove-device", { method: "POST", body: JSON.stringify({ device: m.fingerprint }) });
               if (removed.error || removed.ok === false) { fail(removed.error || "Could not remove this device."); return; }
               await refresh();
-            } }, "Remove"))))] : []),
-        M.poolForm({ founded: pool?.governance === "governed", onComplete: refresh }));
+            } }, "Remove"))))] : []));
+      // The forms stay while the list above them is drawn again, so a code on show and what is typed are not lost when a device changes.
+      const founded = pool?.governance === "governed";
+      if (this.actionsFounded !== founded) {
+        this.actionsFounded = founded;
+        this.actions = M.poolForm({ founded, onComplete: refresh });
+        joined.replaceChildren(status, this.actions);
+      }
     }
 
     drawSweep(fleet) {

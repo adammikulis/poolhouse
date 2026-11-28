@@ -13,8 +13,20 @@ from pathlib import Path
 
 from poolhouse import errors, node_health
 from poolhouse.checks import Finding
+from poolhouse.files import write_text
 
 LAN = "--lan"
+NAME_FILE = "device-name"
+"""The file in the node's state directory that holds the name the person gave this device (`poolops.rs` reads it)."""
+
+
+def name_device(state: Path, name: str) -> None:
+    """Tell the node of ``state`` what the person calls this device. A pool this device founds or joins from now on lists it by that name,
+    not by its host name; a pool it is in already keeps the name it has. Nothing is written where there is no node state."""
+    held = state / NAME_FILE
+    if not state.is_dir() or (held.is_file() and held.read_text(encoding="utf-8", errors="replace") == name):
+        return
+    write_text(held, name)
 
 
 def network_args(*, project: str = "", project_dir: str = "") -> list[str]:

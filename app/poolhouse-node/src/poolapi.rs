@@ -26,6 +26,7 @@ pub fn params(method: &str) -> Option<&'static [&'static str]> {
         "service_draft" => &["cert", "endpoint"],
         "service_bind" => &["cert", "endpoint", "challenge", "proof"],
         "member_remove" => &["fingerprint"],
+        "board_share" => &["device", "board", "shared", "ticket"],
         "pool_create" => &["title", "policy", "project"],
         "pool_leave" => &[],
         "pool_propose" => &["kind", "body"],
@@ -122,6 +123,7 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
             }
             Ok(json!({"fingerprint": device.fingerprint, "status": device.status}))
         }
+        "board_share" => crate::sharing::call(node, token, p),
         "pool_create" => {
             let (name, policy) = (text(p, "title")?, text(p, "policy")?);
             authorize(node, token, method, name)?;

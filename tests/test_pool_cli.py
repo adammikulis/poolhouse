@@ -4,6 +4,8 @@ import json
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from poolhouse import errors
 
 
@@ -57,6 +59,15 @@ def test_leave_uses_registered_node_session(monkeypatch, capsys):
     assert pool_cli.main(["leave", "--json"]) == 0
     assert calls == [("pool_leave", {"token": "session-token"})]
     assert json.loads(capsys.readouterr().out) == {"state": "pending"}
+
+
+def test_there_is_no_command_that_asks_for_a_sync(capsys):
+    """The node syncs by itself, and the command that asked it to was refused to every member."""
+    from poolhouse import pool_cli
+
+    with pytest.raises(SystemExit) as ended:
+        pool_cli.parser().parse_args(["sync"])
+    assert ended.value.code == 2 and "invalid choice" in capsys.readouterr().err
 
 
 def test_file_and_installation_commands_run_in_the_onboard_module(monkeypatch):

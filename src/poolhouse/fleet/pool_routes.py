@@ -1,7 +1,7 @@
 """``/ui/pool*`` and ``/ui/fleet``: this device's pool as its node reports it, acting on it, and the machines in it.
 
 Every pool action here is the node's own (`poolhouse.api.pool`, which the command that starts the daemon hands in as `ui.pool_actions`): the page founds a pool, makes the short code that adds a device,
-joins another device's pool and removes a member by asking the node, which asks the person where only they can answer. Nothing in
+joins another device's pool, shares boards with a member and removes one by asking the node, which asks the person where only they can answer. Nothing in
 this module holds a key, a join code or a membership record.
 """
 
@@ -45,22 +45,29 @@ class PoolRoutes:
     def route(self) -> bool:
         if self.path == "/ui/pool" and self.method == "GET":
             return self._guarded(self._status)
-        if self.path == "/ui/pool/found" and self.method == "POST":
-            return self._guarded(self._found)
-        if self.path == "/ui/pool/add-device" and self.method == "POST":
-            return self._guarded(self._add_device)
-        if self.path == "/ui/pool/join" and self.method == "POST":
-            return self._guarded(self._join)
-        if self.path == "/ui/pool/remove-device" and self.method == "POST":
-            return self._guarded(self._remove)
-        if self.path == "/ui/pool" and self.method == "DELETE":
-            return self._guarded(lambda: {"left": self.ui.pool_actions.leave()})
+        changes = {("POST", "/ui/pool/found"): self._found, ("POST", "/ui/pool/add-device"): self._add_device,
+                   ("POST", "/ui/pool/join"): self._join, ("POST", "/ui/pool/remove-device"): self._remove,
+                   ("POST", "/ui/pool/share"): self._share,
+                   ("DELETE", "/ui/pool"): self._leave}
+        if act := changes.get((self.method, self.path)):
+            return self._by_a_window(act)
         if self.path == "/ui/fleet" and self.method == "GET":
             self.send(200, self.ui.fleet())
             return True
         if self.path == "/ui/fleet/pause" and self.method == "POST":
             return self._pause_fleet()
         return super().route()
+
+    def _by_a_window(self, act) -> bool:
+        """Change the pool only for a window that signed in with a launch ticket, whether or not the pool is founded: reaching this
+        computer's loopback is not enough, which any program here and a web page that points a name at it can do."""
+        if not self.ui.credentialed(self.cookie):
+            self.send(403, {"error": "Open Poolhouse from its own window to change which pool this computer is in."})
+            return True
+        return self._guarded(act)
+
+    def _leave(self) -> dict[str, Any]:
+        return {"left": self.ui.pool_actions.leave()}
 
     def _guarded(self, act) -> bool:
         """Answer with what ``act`` returns, or the one sentence the node or the request gave for refusing."""
@@ -91,9 +98,10 @@ class PoolRoutes:
         policy = req.get("policy", "secure")
         if policy not in POLICIES:
             raise _Refused("policy must be secure or open")
-        said: list[str] = []
-        made = self.ui.pool_actions.found(_text(req, "name", most=64), policy, say=said.append)
-        return {"pool": asdict(made.pool), "already": made.already, "say": made.say, "asked": said}
+        name = _text(req, "name", most=64)
+        self.ui.name_node()
+        made = self.ui.pool_actions.found(name, policy)
+        return {"pool": asdict(made.pool), "already": made.already, "say": made.say}
 
     def _add_device(self) -> dict[str, Any]:
         return dict(self.ui.pool_actions.add_device(_whole(self.body(), "ttl_s", 300, 30, 3600)))
@@ -104,11 +112,19 @@ class PoolRoutes:
         fingerprint = _text(req, "fingerprint", most=64, required=False)
         if bool(code) == bool(fingerprint) or (fingerprint and not FINGERPRINT.match(fingerprint)):
             raise _Refused("give the code the other device showed, or for an open pool its 64 hex digit fingerprint")
-        return {"joined": self.ui.pool_actions.join(_text(req, "host"), code, port=_whole(req, "port", self.ui.pool_actions.DEFAULT_PORT, 1, 65535),
-                                        fingerprint=fingerprint)}
+        host, port = _text(req, "host"), _whole(req, "port", self.ui.pool_actions.DEFAULT_PORT, 1, 65535)
+        self.ui.name_node()
+        return {"joined": self.ui.pool_actions.join(host, code, port=port, fingerprint=fingerprint)}
 
     def _remove(self) -> dict[str, Any]:
         return {"removed": asdict(self.ui.pool_actions.remove(_text(self.body(), "device", most=128)))}
+
+    def _share(self) -> dict[str, Any]:
+        req = self.body()
+        shared = req.get("shared")
+        if type(shared) is not bool:
+            raise _Refused("shared must be true or false")
+        return {"member": asdict(self.ui.pool_actions.share(_text(req, "device", most=128), shared))}
 
     def _pause_fleet(self) -> bool:
         req = self.body()

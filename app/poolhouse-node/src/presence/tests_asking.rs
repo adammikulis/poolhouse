@@ -155,7 +155,7 @@ fn what_waits_for_the_person_is_reported_in_their_words_until_it_is_answered() {
     assert_eq!(waiting.len(), 2, "{waiting:?}");
     assert_eq!(waiting[0]["say"], "waiting for you: Poolhouse - make the pool home.");
     assert_eq!((waiting[0]["by"].as_str(), waiting[0]["via"].as_str()), (Some("demo/a"), Some("scripted")));
-    assert!(waiting[1]["say"].as_str().unwrap().starts_with("waiting for you: poolhouse allow the session demo/b to add your first phone"), "{waiting:?}");
+    assert!(waiting[1]["say"].as_str().unwrap().starts_with("waiting for you: poolhouse: allow the session demo/b to add your first phone"), "{waiting:?}");
     assert!(firsts.waiting(30 + ASK_FOR_MS).is_empty(), "a request whose time is past is not reported as waiting");
     *answer.lock().unwrap() = Some(true);
     firsts.settle(40);

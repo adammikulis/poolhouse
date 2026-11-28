@@ -15,8 +15,8 @@ built and tested alone. The shipping section below puts it in every runtime and 
   board id, and the id is part of the hash, so an entry cannot be moved to another board.
 - **Hosting.** The node hosts any number of boards, each in its own directory
   `<state>/boards/<board>/` with its own logs, its own origin id and its own names. A session
-  registers on its project's board; names, claims, reads and posts are all per board. A device
-  only syncs boards it holds.
+  registers on its project's board; names, claims, reads and posts are all per board. Two devices
+  sync a board only when both hold it and each shares it with the other ("Sharing a board with a device").
 - **Projects.** The node keeps a project registry (`projects.json`): project id (= board id) and
   its sources, each `git`, `folder`, `gdrive` or `onedrive` with a local path (the sync folder for
   the last two). A client resolves its board with `project_resolve {path}`: the project whose
@@ -239,7 +239,8 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `project_list`, `project_resolve` | | `path` | projects / `{board}` |
 | `status` | (board, token for detail) | | counts; with a token, the board's detail: `sessions`, `entries` by kind, `damaged`, `rejected` |
 | `shutdown` | board, token | | `{stopping}` |
-| `pool_status` | | | the pool id, join policy, this device, `listen`, `join_code_open`, `governance` ("Who governs a pool") and each member with `status` (`active`, `revoked` or `left`), `by`, `connected`, `addr`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none` or `self`) with `reach_hint` (the exact fix when it is not direct) and `network` (`wsl-nat`, `wsl-mirrored` or empty, as the member's hello said) |
+| `pool_status` | | | the pool id, join policy, this device, `listen`, `join_code_open`, `governance` ("Who governs a pool") and each member with `status` (`active`, `revoked` or `left`), `by`, `shared` (whether this device shares its boards with it, apart from single boards), `connected`, `addr`, `last_seen_ms`, `last_sync_ms`, `last_error`, `reach` (`direct`, `channel`, `none` or `self`) with `reach_hint` (the exact fix when it is not direct) and `network` (`wsl-nat`, `wsl-mirrored` or empty, as the member's hello said) |
+| `board_share` | token with the grant `board_share` on the device, or the person's own session with the `ticket` of its yes | `device`, `shared`, `board` (none: every board), `ticket` | `{device, board, shared}` ("Sharing a board with a device") |
 | `member_remove` | token with the grant `member_remove` | `fingerprint` | `{fingerprint, status}`; in a governed pool an act of the admins ("Who governs a pool") |
 | `pool_create` | token with the grant `pool_create` | `title`, `policy` (default `secure`), `project` | `{pool, name, policy, epoch}`: founds the governed pool of this device, which must be alone in its pool |
 | `pool_leave` | token with the grant `pool_leave` | | the `leave` act this device signed with its own key |
@@ -249,8 +250,8 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `pool_draft` | | `kind`, `body` | `{act, sign_bytes, summary}`: the act this pool would take next, unsigned, the bytes a key signs and what a person is shown, for a key that signs outside the node |
 | `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; `key` is an Ed25519 key of 64 hex digits or a phone's P-256 point of 130, and the charter says which as `alg`; a key that names its level is refused) | `{charter, anchor, accept, summary, counting, card, card_why}`: the charter with this device as its `first` device (a delegate for thirty days) and blank acceptances, each key with the `claim` this device recorded for it when the key was enrolled (`phone-keystore` when a phone enrolled it, `keystore-prompt` through the computer's prompt, `keystore-typed` for a typed yes; for a key not enrolled yet, the claim the node's way of asking would record), `counting` (whether any key counts), and for each key its `alg` and the bytes it signs to accept it; `card` names the draft the person may answer at the computer's prompt (null, with `card_why`, when the one sentence it shows would be cut or changed); the rig or person signs them (a P-256 key in strict DER with `s` in the lower half of the group) and hands the charter back to `pool_found` |
 | `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it), or `charter` (the drafted one with the acceptances filled; the node makes the act) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the charter must name this device as its `first`, which is then the pool's first member with no admit |
-| `add_device` | token with the grant `add_device`, or the person's own session with the `ticket` of its yes (and `window`, the act this computer's key signed under it) | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other), `ticket`, `window` | `{code, expires_in_s, port, fingerprint}` |
-| `join_pool` | token with the grant `join_pool`, or the person's own session with the `ticket` of its yes | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`); `ticket` | `{pool, peer}` |
+| `add_device` | token with the grant `add_device`, or the person's own session with the `ticket` of its yes (and `window`, the act this computer's key signed under it) | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other), `ticket`, `window` | `{code, expires_in_s, port, fingerprint}`. A member that did not make the pool and can admit nobody is told to add the device from the computer that made it, by its name |
+| `join_pool` | token with the grant `join_pool`, or the person's own session with the `ticket` of its yes | `host, port, passphrase` (`host` is a name or an IPv4 or IPv6 address; of the addresses a name has, an IPv4 one is dialed first); without a passphrase `fingerprint` (join under `open`); `ticket` | `{pool, peer}` |
 | `sync_now` | token with the grant `sync_now` | | `{reached}` |
 | `shard_call` | token with the grant `shard_call` | `device` (name or fingerprint), `op`, `args` | the device's answer to one test-shard op (docs/test-farm.md); the node adds `op` and the session as `by`, and refuses `op`/`by` in `args` |
 | `shard_consent` | (token with the grant `shard_consent` to change) | `enabled`, `python`, `repo` | `{enabled, python, repo, by, at_ms}`; turning it on or off writes an audit entry to the pool board; shards are off until a person turns them on at that device |
@@ -278,9 +279,18 @@ and one session.
 **Direct messages.** A message whose `to` is a session name is a direct message. The recipient must
 be a live session of the board (here or announced by an identity entry from another device); the post
 is refused otherwise. `read` returns it only to its sender and its recipient, on every path, including
-a linked board that shares everything. Peers replicate it like any row (every member of the pool holds
-the log), so this is privacy between sessions, not encryption between members. A sender shown as
+a linked board that shares everything. Peers replicate it like any row (every device the board is shared with
+receives the whole log, direct messages and private rooms included), so this is privacy between sessions, not
+encryption and not privacy between devices. A sender shown as
 `name@dN` (written on another device) is matched by recipient only.
+
+**Sharing a board with a device.** The device that serves a board decides who gets it (`sharing.rs`). `hello` and `boards` list to a
+member only the boards shared with it; `pull`, `vector` and `push` of any other board are denied as a board this device does not hold;
+this device's own sync, whichever side dialed, keeps to the same answer. A member that a person or a delegate let in is shared every
+board unless told otherwise, and stays one whatever is signed for its certificate later. A member admitted without a code and no other
+way (`by: open`: every admit that stands for it is one a member signed for a device on its segment) is shared none until `board_share {device, shared, board?}` shares one or all (grant `board_share` on the device, or the
+ticket the node makes for the person's own session). The choice is kept in `<state>/sharing.json`, never replicated, per pool; one for
+every board replaces the choices for single boards. Sharing is of the whole board, and what was sent stays with the other device.
 
 **Replies, threads and held text.** A message that carries a `reply_id` (a number of this device, or an id) is tied
 to the thread of the message it answers: the node sets `thread_id` (the root's id) itself, refuses a reply to a
@@ -432,7 +442,7 @@ API, for itself or anyone, and a `grant` entry any writer puts on the board with
 allows nothing. What gates a signature is the custody of the key: the operating-system user and a typed confirmation, not the node
 ("Key custody" below says exactly what that does and does not protect).
 
-**The registry.** The actions in `grants::spec::ACTIONS` are `member_remove`, `add_device`, `join_pool`,
+**The registry.** The actions in `grants::spec::ACTIONS` are `member_remove`, `add_device`, `join_pool`, `board_share`,
 `sync_now`, `shard_call`, `shard_consent`, `device_trust`, `task_authority`, `note_verify`, `quarantine_release`,
 `file_delete`, `link_read`, `link_write`, `link_remove`, `source_add`, `pool_create`, `pool_leave`, `admin_manage` and `service_bind`. Anything else is `invalid` to grant. A `service_bind` grant names one exact `service:<digest>` resource, the receiving device fingerprint and one use; it authorizes the compute certificate and endpoint shown by `service_draft`. A fresh proof of the same service private key renews the current approved capability across restarts, with a new live generation. **The floors** are refused by name, at issue, in the fold and at every
 use, whoever signed: `push_main`, `merge_main`, `release_main`, `tag_release`, `force_push`, `act_as_person`, `agent_is_human`,
@@ -622,7 +632,7 @@ picked from the list of the board's main sessions it prints, where the model and
 It enrols the person's key if the node holds none and signs one grant per action and session on this device, 30 days each:
 `task_authority`, `shard_call`, and `note_verify` for the session's subagents too. The
 exact list is the one question, answered by a typed `yes` on the terminal. Nothing else: the pool actions, `shard_consent`, `sync_now`,
-`device_trust`, `quarantine_release`, `file_delete`, `link_read`, `link_write`, `link_remove` and `source_add` stay with the person's own
+`device_trust`, `board_share`, `quarantine_release`, `file_delete`, `link_read`, `link_write`, `link_remove` and `source_add` stay with the person's own
 commands (`poolhouse-workspace grant shard_consent --to NAME --until 30d`, each its own typed `yes`). Each is revoked
 by its id. A class grant stays in the registry but is refused by `grants-setup --family` and `grant --class` unless the person passes
 `--i-understand-registration-is-open`: it is held by every session that says it is of the family, which is any process.
@@ -822,7 +832,7 @@ listener is the one network port.
   whose fingerprint is not the hash of its certificate is dropped; a removed (`revoked`) certificate cannot come back, and a device
   that `left` comes back only by an admit. Every request is checked against the record when it arrives, so a device removed after
   it connected is refused at its next request on the same connection. A device that records a removal also stops using the
-  connections it holds to the removed device: a sync cycle does not dial a member removed since the cycle began, and a dial already
+  connections it holds to the removed device: a sync cycle does not dial a member it has heard was removed since the cycle began ("Deadlines"), and a dial already
   open ends at its next request, so nothing is sent to, taken from or merged from the removed device once the record says so
   (`netsync::locked_for`); it closes the connections it keeps open to the removed device and the ones the removed device opened to
   it (`Net::drop_removed`, run after a removal is made here, after a `members` request is served and at the end of each sync cycle),
@@ -841,7 +851,8 @@ listener is the one network port.
   both hold, through `sync::rows_since` and `sync::take`, so a wire row meets the checks an in-process row
   does and the same quotas (400 rows, 2 MiB, 16 origins per request). A relay's copy never marks an origin
   damaged; only the device that owns the origin can, by sending a forged copy of it.
-- **Who dials whom.** A device dials every active member whose address it holds, each cycle (`--sync-ms`), and swaps pool records and
+- **Who dials whom.** A node on a network dials every active member whose address it holds when it starts and then every 20 seconds
+  (`net::SYNC_EVERY`; `--sync-ms` sets another interval), with nobody asking, and swaps pool records and
   boards in both directions over that one connection, so a device only the others cannot dial (behind NAT, as WSL2 is) still sends and
   receives everything by dialing out. An address is learned at the join (the one the joiner dialed; for the member joined, the source
   address it saw plus the port the joiner announced) and from a beacon; addresses are not passed on, because an address is only good
@@ -865,16 +876,28 @@ listener is the one network port.
   a port, signed with the device key and valid for a minute; sent to the multicast group on a configurable
   port. Never matched by name. Loopback, unspecified and multicast addresses are never advertised (a
   test on one machine passes `allow_loopback`). A member's beacon updates its address (its key must be the
-  one in its certificate). A non-member's is ignored unless this pool's policy is `open`, and then only
-  when it names this pool, or this device is alone and the beacon's pool id sorts before its own (so two
-  lone devices never join each other at once); the dial is pinned to the fingerprint in the beacon.
+  one in its certificate). A non-member's is listed only by a device in no pool, when it names a founded pool of the device's
+  project from its network: `pool_status` `nearby` gives each as `{fingerprint, words, pool, host, port}`, for a minute after its
+  last beacon, at most 32. Hearing a beacon dials nothing and joins nothing.
 - **Joining** (`join_code.rs`). `secure`: `add_device` opens a window (a six-digit code or a passphrase,
   three tries, a time limit), `join_pool` on the other device runs SPAKE2 (`spake2`) with both certificate
   fingerprints as its identities and HMAC-SHA256 confirmations; the pool
-  record then arrives sealed under the exchange (in a governed pool, the founding act and the acts that stand). `open`: the device
-  is admitted on its first contact from the same segment and the admit is recorded with the certificate fingerprint (`by: open`).
+  record then arrives sealed under the exchange (in a governed pool, the founding act and the acts that stand). `open`: when its
+  person chooses a pool, `join_pool` dials it pinned to the chosen certificate fingerprint (the words on both screens are its first 24
+  digits); the member admits a caller from its own segment, never from loopback (anything forwarding a connection calls from there;
+  `--allow-loopback` is for tests on one machine), and records the admit with the certificate fingerprint (`by: open`).
   A device joins only if it is alone in a pool that no admin governs (`Pool::can_join_other`); a governed pool is left by its own
-  `leave` act and never merged into another.
+  `leave` act and never merged into another. A pool lists a device by the name the person gave it, which the page writes to
+  `<state>/device-name` (`node_pool.name_device`), else by its host name; the name is fixed when the device founds or joins. The node
+  reads that file only when it is a regular one, never through a link, and shows no quote or bidirectional control of any name
+  (`membership::shown_name`); in the ASCII text a key signs, a name loses its accents and every other character but letters, digits,
+  spaces, dots, dashes and underscores (`sentence_name`).
+- **Deadlines.** A dial has 5 s to connect and `tls::HANDSHAKE_FOR` for the handshake, a request and its reply `peer::CALL_FOR`, and one
+  sync with a member 300 s (`net::SYNC_FOR`), however slowly the bytes come. Each member is synced on a thread of its own. A round dials
+  them in the order of its list, each once the one before it has handed over the pool's acts, or after 2 s (`net::HEAD_START`): a removal
+  an earlier member carries is held before the removed device would be dialed, and a slow member holds up the next no longer.
+- **The page.** Founding, joining, adding or removing a device and leaving take a window that signed in with a launch ticket, also before
+  there is a pool. Without a session, a page on this computer answers only a request addressed to an address or `localhost`.
 
 `poolhouse-node run --state DIR --listen 127.0.0.1:0 --beacon-bind ADDR --beacon-send ADDR
 --advertise IP --sync-ms N` starts the network; tests use real sockets on loopback with injected
@@ -886,7 +909,7 @@ Network permission. The LAN tests are `#[ignore]`d / need `POOLHOUSE_LAN_TESTS=1
 the multicast group and each network's broadcast address (`netif.rs` reads the interfaces; a VPN or loopback is not
 a segment), each beacon advertising the address of the interface it leaves by. Open join is accepted from, and dialled
 to, an address inside a subnet of this machine only. `pool_status` adds `beacon_sent|heard|own|rejected`, the last send
-error and `last_join`: a node that sends but never hears its own beacon is blocked by the system (macOS Local Network,
+error and `nearby`: a node that sends but never hears its own beacon is blocked by the system (macOS Local Network,
 a firewall, WSL2 NAT). `poolhouse pool listen` starts it that way after showing what
 it does (nothing is asked), and `scripts/pool-join-check` walks every step on one device and prints
 the fix for the first that fails.

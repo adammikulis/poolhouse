@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 import json
 import threading
 import time
+import urllib.parse
 from collections.abc import Callable
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler
@@ -132,7 +134,9 @@ class UI:
                     "to the machine itself, which is how a web page tries to reach your "
                     "loopback. Open the address bar and type it yourself.")
         if client_ip in LOOPBACK:
-            return ""
+            if _names_itself(host_header):
+                return ""
+            return "refused: open this page at localhost or 127.0.0.1, not at a name that was looked up."
         if self.setup_token and token and _same(token, self.setup_token):
             return ""
         return ("refused: set this machine up on the machine itself, or over an ssh tunnel to it. "
@@ -232,11 +236,17 @@ class UI:
         return found_rows
 
     def set_name(self, name: str) -> str:
-        """Set the device name through the active advertiser."""
+        """Set the device name through the active advertiser, and tell this device's node."""
         self.name = self.rename(name) if callable(self.rename) else name
         if self.settings is not None:
             self.settings.name = self.name
+        self.name_node()
         return self.name
+
+    def name_node(self) -> None:
+        """Tell this device's node the name this page shows for it, so a pool it founds or joins lists it by that name."""
+        if self.name:
+            node_pool.name_device(self.pool.state, self.name)
 
     def apply_prefs(self, req: dict[str, Any]) -> dict[str, Any]:
         """Apply the wizard's preference step. Everything takes effect now."""
@@ -504,6 +514,21 @@ class UI:
 def _same(a: str, b: str) -> bool:
     import hmac
     return hmac.compare_digest(a.strip(), b.strip())
+
+
+def _names_itself(host_header: str) -> bool:
+    """Whether a Host header reaches this computer without a name anybody else can point at it: an address, or ``localhost``."""
+    try:
+        host = urllib.parse.urlsplit("//" + (host_header or "")).hostname or ""
+    except ValueError:
+        return False
+    if not host_header or host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return True
 
 
 def _looks_like_dns(host: str) -> bool:

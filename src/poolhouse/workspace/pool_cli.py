@@ -24,7 +24,7 @@ OPTIONS = [
     flag("verb", choices=("found",), help="found: make this device's pool, governed by the person's key"),
     flag("name", nargs="?", default=None, help="found: the pool's name (default: this computer's)"),
     flag("--policy", choices=("secure", "open"), default="secure",
-         help="found: secure, devices join with a code (default); open, devices on this network join by themselves"),
+         help="found: secure, devices join with a code (default); open, devices on this network can join without a code"),
 ]
 
 

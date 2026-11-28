@@ -74,8 +74,8 @@ fn a_device_that_cannot_sign_does_not_open_a_window_and_says_so_in_one_sentence(
     let reply = b.call("add_device", "", &b.token, json!({}));
     assert_eq!(reply["ok"], false);
     let say = reply["error"]["say"].as_str().unwrap();
-    assert!(say.len() <= 160 && say.contains("OK"), "{say}");
-    assert_eq!((reply["error"]["needs"].as_str(), reply["error"]["then"].as_str()), (Some("approval"), Some("ask-owner")));
+    assert!(say.len() <= 160 && say.contains("the computer that made it") && say.contains("Add a device"), "{say}");
+    assert_eq!((reply["error"]["needs"].as_str(), reply["error"]["then"].as_str()), (Some("device"), Some("ask-owner")));
 }
 
 #[test]
@@ -291,11 +291,11 @@ fn an_act_a_person_signed_with_a_key_of_their_own_is_submitted_without_any_signe
 }
 
 fn beacon_config(beacon_cfg: poolhouse_node::beacon::BeaconConfig, project: Option<&str>) -> NetConfig {
-    NetConfig { listen: "127.0.0.1:0".parse().unwrap(), beacon: Some(beacon_cfg), sync_every: None, project: project.map(project_key) }
+    NetConfig { listen: "127.0.0.1:0".parse().unwrap(), beacon: Some(beacon_cfg), sync_every: None, project: project.map(project_key), loopback_is_segment: true }
 }
 
 #[test]
-fn a_device_in_no_pool_that_hears_the_beacon_of_an_open_governed_pool_of_its_project_joins_it() {
+fn a_device_in_no_pool_lists_the_open_governed_pool_of_its_project_and_joins_the_one_chosen() {
     let (pa, pb) = (udp_port(), udp_port());
     let a = device_with(beacon_config(beacon(pa, &[pb]), None));
     let id = found_for(&a, person(ANN, "ann"), "open", &project_key("poolhouse"));
@@ -304,7 +304,10 @@ fn a_device_in_no_pool_that_hears_the_beacon_of_an_open_governed_pool_of_its_pro
     let net = Net::start(node.clone(), beacon_config(beacon(pb, &[pa]), Some("poolhouse"))).unwrap();
     let mut b = Dev { dir, node, net, token: String::new() };
     b.token = b.session("demo", "main").1;
-    eventually("b to join the open governed pool it hears", 15, || a.is_member(&b.fp()) && b.is_member(&a.fp()));
+    eventually("b to list the open governed pool it hears", 15, || b.status()["nearby"].as_array().is_some_and(|n| n.iter().any(|p| p["pool"] == id.as_str())));
+    assert!(!a.is_member(&b.fp()), "hearing the pool joins nothing");
+    b.net.join_pool(a.addr(), "", &a.fp()).unwrap();
+    assert!(a.is_member(&b.fp()) && b.is_member(&a.fp()));
     assert_eq!(b.pool(), id);
     assert_eq!(a.member(&b.fp()).unwrap()["by"], "open", "admitted by the member's own device signature");
     assert!(b.node.lock().unwrap().members.gov().is_some());
