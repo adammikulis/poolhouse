@@ -42,7 +42,7 @@ class Computer:
         name = f"run-{len(self.asked)}"
         store.save(store.Delegate(name, given["--as"], "board", given["--task"], given["--project"], given["--model"], card=given["--card"]))
         store.set_status(name, "working")
-        jobs.record(delegate_record.JOB, pid=4242, argv=[], log="", home=store.folder(name))
+        jobs.record(delegate_record.JOB, pid=4242, argv=[], log="", home=store.folder(name), refuse_if_alive=False)
         return 0
 
     def host(self, idle_s: float = 0.0) -> cards_run.Host:

@@ -18,6 +18,7 @@ delegates-view .delegate-tests { margin:0 0 12px; color:var(--muted); overflow-w
 delegates-view .delegate-why { margin:0 0 12px; overflow-wrap:anywhere; white-space:pre-wrap; }
 delegates-view .delegate-empty { color:var(--muted); }
 delegates-view .delegate-cards { margin-bottom:18px; overflow-wrap:anywhere; } delegates-view .delegate-cards summary { cursor:pointer; }
+delegates-view .delegate-cards ul { list-style:none; margin:12px 0 0; padding:0; } delegates-view .delegate-cards li { display:flex; gap:10px; align-items:baseline; border-top:1px solid var(--line); padding:9px 0; }
 delegates-view .delegate-detail dl { display:grid; grid-template-columns:110px minmax(0,1fr); gap:6px 8px; font-size:0.929rem; margin:12px 0; }
 delegates-view .delegate-detail dt { color:var(--muted); } delegates-view .delegate-detail dd { margin:0; overflow-wrap:anywhere; white-space:pre-wrap; }
 delegates-view .delegate-timeline { list-style:none; margin:16px 0 0; padding:0; }
@@ -37,7 +38,7 @@ delegates-view .delegate-event summary { cursor:pointer; color:var(--muted); fon
 <section class="workspace page-shell" hidden>
   <header class="delegates-heading page-heading"><div><h1>Delegates</h1><p class="intro">Tasks handed to a local model on this computer: what each is doing now and everything it has done.</p></div></header>
   <p class="status" id="delegates-status" role="status">Loading delegate runs…</p>
-  <details class="workspace-card delegate-cards" id="delegate-cards" hidden><summary id="delegate-cards-said"></summary><ol class="delegate-timeline" id="delegate-card-list"></ol></details>
+  <details class="workspace-card delegate-cards" id="delegate-cards" hidden><summary id="delegate-cards-said"></summary><ul id="delegate-card-list"></ul></details>
   <div class="delegate-layout">
     <div class="delegate-list" id="delegate-list" aria-label="Delegate runs"></div>
     <article class="workspace-card delegate-detail" id="delegate-detail" aria-label="Delegate run" hidden>
@@ -129,8 +130,9 @@ delegates-view .delegate-event summary { cursor:pointer; color:var(--muted); fon
    const waiting=found.filter(card=>card.state==='review'||card.state==='returned').length;
    const state=shown.held?`held: ${shown.held}`:`released for ${shown.release.lead}`;
    this.querySelector('#delegate-cards-said').textContent=`Session cards: ${found.length}, ${waiting} waiting for the lead, ${state} · listed ${clock(shown.at)}`;
-   this.querySelector('#delegate-card-list').replaceChildren(...found.map(card=>E('li',{class:'delegate-event','data-tone':card.state==='returned'||card.state==='invalid'?'bad':card.state==='review'?'warn':'','data-card':card.id},
-    E('span',{class:'delegate-state'},card.state),E('div',{},E('strong',{},card.title||card.id),E('small',{},` ${card.id}${card.branch?' · '+card.branch:''}${card.why?' · '+card.why:''}`)))));
+   this.querySelector('#delegate-card-list').replaceChildren(...found.map(card=>E('li',{'data-card':card.id},
+    E('span',{class:'delegate-state','data-bad':String(card.state==='returned'||card.state==='invalid')},card.state),
+    E('div',{},E('strong',{},card.title||card.id),E('small',{},` ${card.id}${card.branch?' · '+card.branch:''}${card.why?' · '+card.why:''}`)))));
   }
   choose(name){
    if(name===this.selected)return;

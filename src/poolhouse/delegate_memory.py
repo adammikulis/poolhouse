@@ -17,9 +17,10 @@ from typing import Any
 
 from poolhouse import delegate_store as store, files, lead_bridge, lock
 from poolhouse.isolation import session_verbs
-from poolhouse.memory import project as projects, tools
+from poolhouse.memory import project as projects
 from poolhouse.memory.facts import Refused
 from poolhouse.memory.store import Setup, Store, Tampered
+from poolhouse.memory.tools import lookup, propose as checked
 from poolhouse.memory.vault import KeyUnavailable
 
 __all__ = ["LIMIT", "NOTHING", "held", "opened", "propose", "reach", "recall", "settle"]
@@ -68,7 +69,7 @@ def _looked(source: str, query: str) -> tuple[str, list[str]]:
         if mine is None:
             return "", []
         try:
-            return tools.lookup(mine, query)
+            return lookup(mine, query)
         finally:
             mine.close()
     except FAILED:
@@ -95,7 +96,7 @@ def propose(name: str, fact: str) -> str:
     """The answer of the `remember` tool: the fact kept as a proposal, or why it is not."""
     if STATUS.search(fact):
         return "Not kept: the state of work belongs in the backlog or git. Remember only what stays true about the project."
-    offer = tools.propose(fact, "note", "agent-observed")
+    offer = checked(fact, "note", "agent-observed")
     if not offer["ok"]:
         return f"Not kept: {offer['reason']}"
     with _edited(name) as found:
