@@ -1,12 +1,23 @@
-"""Modules of the experimental layer, loaded by name when the build holds them."""
+"""Modules of the experimental layer and libraries a machine may lack, loaded by name when it holds them."""
 
 from __future__ import annotations
 
+import sys
 from importlib import import_module
 from importlib.util import find_spec
 from types import ModuleType
 
-__all__ = ["command", "held", "load", "module"]
+__all__ = ["command", "held", "load", "mlx_core", "module"]
+
+
+def mlx_core() -> ModuleType:
+    """``mlx.core``, for a caller that may go on without it. A try that fails (no Metal device, say) is remembered, so every later import of it
+    in this process raises `ImportError`: a second try at the half-loaded extension ends the process."""
+    try:
+        return import_module("mlx.core")
+    except (ImportError, OSError, RuntimeError):
+        sys.modules["mlx.core"] = None   # an import of a name held as None raises ImportError
+        raise
 
 
 def held(name: str) -> bool:

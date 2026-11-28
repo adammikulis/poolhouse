@@ -6,7 +6,7 @@ import os
 import random
 from dataclasses import dataclass
 
-from poolhouse.backend import mlx_ops
+from poolhouse.optional import mlx_core
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +57,7 @@ def _seed_numpy(seed: int) -> bool:
 
 def _seed_mlx(seed: int) -> bool:
     try:
-        mx = mlx_ops.core()
+        mx = mlx_core()
     except ImportError:
         return False
     seeder = getattr(getattr(mx, "random", None), "seed", None)

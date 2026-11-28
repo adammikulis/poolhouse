@@ -2,28 +2,18 @@
 
 from __future__ import annotations
 
-import importlib
-import sys
 from collections.abc import Callable
 from typing import Any
 
+from poolhouse.optional import mlx_core
+
 Tensor = Any
-
-
-def core() -> Any:
-    """``mlx.core``, for a caller that may go on without it. A try that fails (no Metal device, say) is remembered, so every later import of it
-    in this process raises `ImportError`: a second try at the half-loaded extension ends the process."""
-    try:
-        return importlib.import_module("mlx.core")
-    except (ImportError, OSError, RuntimeError):
-        sys.modules["mlx.core"] = None   # what an import of a name held as None raises is ImportError
-        raise
 
 
 def require_mlx() -> tuple[Any, Any]:
     """Import ``mlx.core`` and ``mlx.nn``, with a clear error if they are absent."""
     try:
-        mx = core()
+        mx = mlx_core()
         import mlx.nn as nn
     except ImportError as exc:
         raise RuntimeError(
