@@ -20,6 +20,7 @@ STANDALONE = {
     "pi_tools": "the tool-proxy model's per-tool worker, kept until the native path is proven (docs/design-isolated-launcher.md, 15.2 and 18.10); "
                 "Pi's launcher no longer calls it, since Pi's own tools run inside the confinement",
     "protectedwrites":"loaded by file through poolhouse.worktreerules, so the hook scripts need no package on the path",
+    "delegate_acp": "a trial driver for delegates, run only by its own module command and tests (docs/delegate-acp-trial.md)",
 }
 
 
