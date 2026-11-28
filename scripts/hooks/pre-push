@@ -20,8 +20,18 @@ while [ -L "$self" ]; do
     esac
 done
 here=$(cd "$(dirname "$self")" && pwd)
+
+# "No harness above me" is believed only from a clean answer: an interpreter that runs, and a check that exits 1 and says nothing.
+# A check that crashes, a missing or failing interpreter and every other end leave the checks on.
+no_harness() {
+    "${PYTHON:-python3}" -c '' </dev/null >/dev/null 2>&1 || return 1
+    status=0
+    said=$("${PYTHON:-python3}" "$here/harness-ancestry" </dev/null 2>&1) || status=$?
+    [ "$status" = 1 ] && [ -z "$said" ]
+}
+
 if [ -z "${CLAUDECODE-}${POOLHOUSE_AGENT-}${POOLHOUSE_WORKSPACE_AGENT-}${CODEX_THREAD_ID-}${CODEX_SESSION_ID-}" ] &&
-   ! "${PYTHON:-python3}" "$here/harness-ancestry" </dev/null 2>/dev/null; then
+   no_harness; then
     exit 0
 fi
 primary=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")

@@ -144,6 +144,17 @@ def test_a_push_from_a_terminal_of_your_own_is_not_stopped(checkout):
     assert done.stderr == ""
 
 
+@pytest.mark.parametrize("end", ["exit 1", "exit 2", "exit 126", "exit 127",
+                                 '[ "$1" = -c ] && exit 0\necho Traceback >&2; exit 1'])
+def test_a_harness_check_that_fails_does_not_pass_for_a_person(checkout, tmp_path, end):
+    broken = tmp_path / "broken-python"
+    broken.write_text(f"#!/bin/sh\n{end}\n")
+    broken.chmod(0o755)
+    markers = dict.fromkeys(("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_WORKSPACE_AGENT", "CODEX_THREAD_ID", "CODEX_SESSION_ID"), "")
+    done = push(checkout, "main", "split-something", scoped=True, PYTHON=str(broken), **markers)
+    assert done.returncode != 0 and "refused" in done.stderr, done.stderr
+
+
 def test_the_installer_wires_it_up():
     installer = HOOK.parent.parent / "install-hooks.sh"
     assert "install-hooks.py" in installer.read_text()

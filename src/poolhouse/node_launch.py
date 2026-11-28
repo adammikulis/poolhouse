@@ -331,6 +331,8 @@ GROUP.add("supervise", lambda args: node_supervise.supervise(Path(args.state) if
 
 main = GROUP.run
 
+POOLHOUSE_ENTRY_POINT = "starts, replaces and reads this computer's node from a checkout, as device setup does"
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -110,5 +110,7 @@ def run(argv: list[str]) -> int:
     return 0
 
 
+POOLHOUSE_ENTRY_POINT = "records, in this computer's node, the checkout other devices may run tests in"
+
 if __name__ == "__main__":
     sys.exit(run(sys.argv[1:]))

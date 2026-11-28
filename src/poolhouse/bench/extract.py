@@ -23,7 +23,7 @@ from poolhouse.bench.askings import sampling_from
 from poolhouse.bench.counting import PER_QUESTION, Counting
 from poolhouse.bench.folding import consistency, fold, score
 from poolhouse.bench.holding import _idle, footprint
-from poolhouse.bench.keep import RunNotKept, _plain, home_dir, runs, stamped
+from poolhouse.bench.keep import IN_HOME, STORE, RunNotKept, _plain, in_home, runs, stamped
 from poolhouse.bench.score import _which
 from poolhouse.bench.serve import smoked
 from poolhouse.bench.show import _shown
@@ -412,7 +412,7 @@ def add_arguments(sub: Any) -> Any:
                     help="the most one message may take before it is recorded as timed out "
                          "-- nothing extracted, the cap as its wall clock -- and the next is "
                          "read (default: %(default)s)")
-    ap.add_argument("--kept", default=str(home_dir() / "runs.ladybug"),
+    ap.add_argument("--kept", default=STORE, type=in_home,
                     help="where to keep the run (default: %(default)s)")
     ap.add_argument("--smoke", action="store_true",
                     help=f"read only {SMOKE_MESSAGES} messages, to prove the whole path -- "
@@ -439,7 +439,7 @@ def add_arguments(sub: Any) -> Any:
                          "queue behind it")
     ap.add_argument("--detach", action="store_true",
                     help="run this in the background, owned by nobody's terminal, with its "
-                         f"output in a log under {home_dir() / 'logs'}; status, tail -f and stop "
+                         f"output in a log under {IN_HOME}logs; status, tail -f and stop "
                          "as for run")
     ap.add_argument("--no-prefetch", action="store_true",
                     help="do not download an hf: model before the measuring lock is taken")

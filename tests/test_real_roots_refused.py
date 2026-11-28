@@ -145,6 +145,7 @@ def test_the_installed_copy_reaches_the_accounts_roots_unless_a_test_started_it(
     probe = account.script(account.base / "probe.py", PROBE)
     assert resolved(account.run(account.env(installed), probe))
     assert refused(account.run(account.env(installed, POOLHOUSE_TEST_PROCESS="1"), probe))
+    assert refused(account.run(account.env(installed, PYTEST_CURRENT_TEST="x"), probe)), "pytest's own mark says a test started it"
 
 
 def test_a_test_run_hands_the_mark_to_the_processes_it_starts():
@@ -203,7 +204,8 @@ def test_a_real_model_test_may_name_downloaded_files_and_nothing_else():
     state, cache = home.account_roots()
     assert home.machine_asset("llama.cpp", "current", "llama-server") == state / "llama.cpp" / "current" / "llama-server"
     assert home.machine_asset("guard", "classifier") == cache / "guard" / "classifier"
-    for parts in (("keystore",), ("node", "node.sock"), ("llama.cpp", "..", "keystore"), ("llama.cpp", "/etc"), ()):
+    for parts in (("keystore",), ("node", "node.sock"), ("llama.cpp", "..", "keystore"), ("llama.cpp", "/etc"), (),
+                  ("llama.cpp", "../keystore"), ("tools", "x/../../node/node.sock"), ("guard", f"..{os.sep}keystore")):
         with pytest.raises(home.RealRootRefused):
             home.machine_asset(*parts)
 
@@ -212,6 +214,47 @@ def test_a_file_outside_tests_is_given_no_downloaded_file(account):
     probe = account.script(account.base / "probe.py", "from poolhouse import home\ntry:\n    print(home.machine_asset('tools'))\n"
                                                       "except home.RealRootRefused:\n    print('REFUSED')\n")
     assert account.run(account.env(SRC), probe).strip() == "REFUSED"
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="the data volume's second spelling is a macOS matter")
+def test_the_data_volumes_spelling_of_the_accounts_root_is_the_same_folder(account):
+    real = account.folder / ".poolhouse"
+    real.mkdir()
+    other = Path("/System/Volumes/Data") / real.relative_to("/")
+    assert other.samefile(real)
+    probe = account.script(account.base / "probe.py", "from poolhouse import home\nfor ask in (lambda: home.state('x'), "
+                                                      "lambda: home.cache('x')):\n    try:\n        print(ask())\n"
+                                                      "    except home.RealRootRefused:\n        print('REFUSED')\n")
+    cache = Path("/System/Volumes/Data") / account.folder.relative_to("/") / ".cache" / "poolhouse"   # not made yet
+    said = account.run(account.env(SRC, POOLHOUSE_HOME=str(other), POOLHOUSE_CACHE=str(cache)), probe)
+    assert said.split() == ["REFUSED", "REFUSED"], said
+
+
+def test_a_process_that_cannot_read_the_password_database_still_imports_and_keeps_scratch_roots(account):
+    with (account.hook / "sitecustomize.py").open("a") as stand_in:
+        stand_in.write("if os.name == 'posix':\n    def nothing(uid):\n        raise KeyError(uid)\n    pwd.getpwuid = nothing\n")
+    probe = account.script(account.base / "probe.py", PROBE)
+    said = account.run(account.env(SRC, POOLHOUSE_HOME=str(account.base / "s"), POOLHOUSE_CACHE=str(account.base / "c")), probe)
+    assert resolved(said), said
+    assert refused(account.run(account.env(SRC), probe)), "the home directory stands for the account when nothing else names it"
+
+
+def test_asking_for_test_workers_where_the_roots_are_refused_falls_back_to_the_default(account):
+    probe = account.script(account.base / "probe.py", "from poolhouse.testing.cores import workers_for\nprint(workers_for(3))\n")
+    assert account.run(account.env(SRC, POOLHOUSE_TEST_PROCESS="1"), probe).strip() == "3"
+
+
+@pytest.mark.parametrize("module", ["poolhouse.bench.run", "poolhouse.train.run", "poolhouse.ingest", "poolhouse.testing.canary"])
+def test_help_is_shown_from_a_checkout_that_is_refused_the_accounts_roots(account, module):
+    assert "usage" in account.run(account.env(SRC), "-m", module, "--help").lower()
+
+
+def test_the_experiment_runs_its_commands_inside_itself_where_its_grant_holds(account):
+    modules = account.base / "modules"
+    account.script(modules / "probe_command.py", "from poolhouse import home\ndef main(argv):\n"
+                                                 "    print('ran', argv, home.state('x').name)\n    return 0\n")
+    said = account.run(account.env(modules), str(REPO / "scripts" / "experiments" / "iq_vs_kquant.py"), "--as", "probe_command", "a")
+    assert said.strip().endswith("ran ['a'] x"), said
 
 
 GRANTED = {
@@ -224,6 +267,7 @@ GRANTED = {
     "scripts/pool-join-check", "scripts/release-key", "scripts/review-backlog", "scripts/test", "scripts/testslots.py",
     "src/poolhouse/bench/__main__.py", "src/poolhouse/device_setup.py", "src/poolhouse/hook_diagnostics.py",
     "src/poolhouse/runtime_cli.py", "src/poolhouse/workspace/release_check.py",
+    "src/poolhouse/node_launch.py", "src/poolhouse/testfarm/consent.py",
 }
 """Every program that may use the account's roots from a checkout. Adding one is a decision made here, where a review sees it."""
 

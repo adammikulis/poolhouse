@@ -34,7 +34,7 @@ PNG = bytes.fromhex(
 @pytest.fixture(scope="module", autouse=True)
 def _needs_pillow():
     """Say why, rather than failing oddly, when the image library is not installed."""
-    pytest.importorskip("PIL", reason="image tests need Pillow: pip install -e '.[vision]'")
+    pytest.importorskip("PIL", reason="image tests need Pillow: pip install '.[vision]'")
 
 CHART = [
     {"name": "Wren Halloway", "title": "Head of Works", "team": "", "above": []},

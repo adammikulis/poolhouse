@@ -791,7 +791,7 @@ def add_arguments(sub: Any) -> argparse.ArgumentParser:
     one.add_argument("--reference", default="", metavar="NAME", help="the build the others are compared with")
     one.add_argument("--versus", action="append", default=[], metavar="IQ,K",
                      help="with --model, an IQ build reported against a K build; repeatable")
-    one.add_argument("--kept", default=str(bench.home_dir() / "runs.ladybug"),
+    one.add_argument("--kept", default=bench.STORE, type=bench.in_home,
                      help="where the runs are kept (default: %(default)s)")
     one.add_argument("--anyway", action="store_true", help="measure on a busy machine")
     one.add_argument("--cache-of", default="", metavar="NAME",

@@ -81,7 +81,7 @@ def test_every_installed_extra_holds_the_version_its_pin_asks_for():
     """
     behind = installed.unmet(offered())
     assert not behind, "installed below the pin:\n  " + "\n  ".join(
-        f"{name} {have}, {spec} asked for (pip install -e '.[{extra}]')"
+        f"{name} {have}, {spec} asked for (pip install '.[{extra}]')"
         for extra, name, have, spec in behind)
 
 

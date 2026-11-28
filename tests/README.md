@@ -68,7 +68,7 @@ takes the union of two selections:
 It runs the full tier, and says why, when the change touches `pyproject.toml`,
 `tests/conftest.py`, a `budgets.json` change that raises a number or changes its shape, a file
 that is not source, a test or prose and that no test names, a deleted module, or when
-pytest-testmon is not installed (`pip install -e '.[test]'`). `--explain` prints the reason for
+pytest-testmon is not installed (`pip install '.[test]'`). `--explain` prints the reason for
 each path that forces it.
 
 Three cases are narrower (`scripts/affected_rules.py`; `tests/test_affected_scripts.py` pins them

@@ -10,7 +10,8 @@ There is one command, the same on every platform:
 python -m poolhouse.device_setup
 ```
 
-(from the repository root, with `PYTHONPATH=src` when Poolhouse is not installed; on Windows use `py` or `python`).
+(from the repository root, with `PYTHONPATH=src` when Poolhouse is not installed, which runs the checkout's own code on this
+device's node; on Windows use `py` or `python`, and `$env:PYTHONPATH="src"`).
 `--dry-run` lists the changes and makes none. It does only what this machine needs, so it is safe to rerun:
 
 | Machine | What it may change |

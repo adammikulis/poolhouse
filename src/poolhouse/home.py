@@ -80,14 +80,24 @@ def user_home() -> Path:
 
 def account_roots() -> tuple[Path, Path]:
     """The names of the account's default state and cache roots, for comparing against and protecting. Open nothing under them: a path
-    to use comes from `state`, `cache` or `guarded`."""
-    account = Path(pwd.getpwuid(os.getuid()).pw_dir) if os.name == "posix" else user_home()
+    to use comes from `state`, `cache` or `guarded`. A process that cannot read the password database (a strict box) gets the
+    roots under its home directory."""
+    try:
+        account = Path(pwd.getpwuid(os.getuid()).pw_dir) if os.name == "posix" else user_home()
+    except (KeyError, OSError):
+        account = user_home()
     account = account.resolve()
     return account / DEFAULT_NAME, account / ".cache" / CACHE_NAME
 
 
-_ACCOUNT_ROOTS = account_roots()
+_ACCOUNT_ROOTS: tuple[Path, Path] | None = None
+with contextlib.suppress(RuntimeError, OSError):  # no home to be found: importing still works, and the first use says so
+    _ACCOUNT_ROOTS = account_roots()
 """The roots refused below, read once: a caller that replaces `account_roots` or ``HOME`` later moves nothing."""
+
+
+def _refused_roots() -> tuple[Path, Path]:
+    return _ACCOUNT_ROOTS or account_roots()
 
 
 def expand(path: str | Path) -> Path:
@@ -131,9 +141,20 @@ def _is_entry_point() -> bool:
 
 
 def _same_or_inside(path: str, root: str) -> bool:
-    if sys.platform != "linux":  # the usual file systems of macOS and Windows ignore case
-        path, root = path.casefold(), root.casefold()
-    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+    """Whether ``path`` is ``root`` or under it, by name or because one of its folders is the very folder the root is (or would be) in,
+    however that folder is spelled (macOS's ``/System/Volumes/Data``, a bind mount)."""
+    fold = str.casefold if sys.platform != "linux" else str  # the usual file systems of macOS and Windows ignore case
+    if fold(path) == fold(root) or fold(path).startswith(fold(root).rstrip(os.sep) + os.sep):
+        return True
+    base, below = Path(root), []
+    while not base.exists() and base != base.parent:  # a root not made yet is known by the nearest folder that is
+        below.insert(0, fold(base.name))
+        base = base.parent
+    for folder in (Path(path), *Path(path).parents):
+        with contextlib.suppress(OSError):
+            if folder.samefile(base):
+                return [fold(part) for part in Path(path).relative_to(folder).parts[:len(below)]] == below
+    return False
 
 
 def _is_installed_copy() -> bool:
@@ -148,7 +169,7 @@ def _root_refusal() -> str:
         return ""
     if under_test():
         _mark_test_process()
-    if under_test() or TEST_PROCESS_ENV in os.environ:
+    if under_test() or TEST_PROCESS_ENV in os.environ or "PYTEST_CURRENT_TEST" in os.environ:
         return "this is a test run, or a process one started"
     if _is_installed_copy():
         return ""
@@ -161,7 +182,7 @@ def _allowed_path(path: Path) -> Path:
     if not why:
         return path
     real = os.path.realpath(path)
-    for root in _ACCOUNT_ROOTS:
+    for root in _refused_roots():
         if _same_or_inside(real, os.path.realpath(root)):
             raise RealRootRefused(f"{path} is the account's own Poolhouse folder and is refused: {why}. Name scratch folders with "
                                   f"{ROOT_ENV} and {CACHE_ENV}.")
@@ -174,9 +195,9 @@ def machine_asset(*parts: str) -> Path:
     caller = Path(sys._getframe(1).f_code.co_filename).resolve()
     if not caller.is_relative_to(_CHECKOUT / "tests"):
         raise RealRootRefused(f"{caller} is not a test of {_CHECKOUT}; only its real-model tests read the account's downloaded files")
-    if not parts or parts[0] not in ASSETS or any(part in ("", "..") or Path(part).is_absolute() for part in parts):
+    if not parts or parts[0] not in ASSETS or any(part in ("", "..") or "/" in part or os.sep in part for part in parts):
         raise RealRootRefused(f"{'/'.join(parts)!r} is not a downloaded file a test may read; only {', '.join(ASSETS)} are")
-    return _ACCOUNT_ROOTS[ASSETS[parts[0]]].joinpath(*parts)
+    return _refused_roots()[ASSETS[parts[0]]].joinpath(*parts)
 
 
 _REAL: contextvars.ContextVar[bool] = contextvars.ContextVar("poolhouse_real_roots", default=False)

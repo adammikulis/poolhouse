@@ -62,7 +62,7 @@ jobs:
       - name: every dependency has a build for this Python
         id: ready
         run: |
-          if python -m pip install --upgrade pip && python -m pip install --dry-run -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update]" > "$RUNNER_TEMP/dry.txt" 2>&1; then
+          if python -m pip install --upgrade pip && python -m pip install --dry-run ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update]" > "$RUNNER_TEMP/dry.txt" 2>&1; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
           elif [ "${{ matrix.python }}" = "3.14" ]; then
             tail -5 "$RUNNER_TEMP/dry.txt"
@@ -84,7 +84,7 @@ jobs:
           python -m pip install claude-agent-sdk==0.2.152
           # the store, the Hub client and the page reader: 150 tests build a real store,
           # and a title read without trafilatura is a different title
-          python -m pip install -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update]"
+          python -m pip install ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update]"
           python -m spacy download en_core_web_sm
           python -m playwright install --with-deps chromium
           # CPU torch: 28 tests across backend, graph and recipes need a framework,
@@ -164,7 +164,7 @@ jobs:
           python -m pip install pytest pytest-timeout pytest-xdist pyyaml numpy psutil pillow networkx gguf safetensors
           # the Claude Agent SDK, which tests/test_delegate.py reads a run through
           python -m pip install claude-agent-sdk==0.2.152
-          python -m pip install -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update]"
+          python -m pip install ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update]"
           python -m spacy download en_core_web_sm
           python -m playwright install chromium
           # The CPU index carries no macOS arm64 wheel; the default one is CPU-only here.
@@ -255,7 +255,7 @@ jobs:
           sudo apt-get install -y bubblewrap rustc cargo
           python -m pip install --upgrade pip build
           python -m pip install pytest pytest-timeout pytest-xdist pyyaml numpy psutil pillow networkx gguf safetensors huggingface_hub
-          python -m pip install -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update,redteam]"
+          python -m pip install ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update,redteam]"
 
       - name: build the node the tests start
         run: |
@@ -482,7 +482,7 @@ jobs:
           python -m pip install pytest pytest-timeout pytest-xdist pyyaml numpy psutil pillow networkx gguf safetensors
           # the Claude Agent SDK, which tests/test_delegate.py reads a run through
           python -m pip install claude-agent-sdk==0.2.152
-          python -m pip install -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update,redteam]"
+          python -m pip install ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update,redteam]"
           python -m spacy download en_core_web_sm
           python -m playwright install chromium
           python -m pip install torch
@@ -528,7 +528,7 @@ jobs:
       - name: install the name gate
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[privacy]"
+          python -m pip install ".[privacy]"
           python -m spacy download en_core_web_sm
 
       # A pull request compares against its base; a push (and any other trigger, which

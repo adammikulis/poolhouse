@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib
 import io
 import json
 import math
@@ -34,6 +35,9 @@ from poolhouse.bench.intervals import T95  # noqa: E402 - after the checkout's s
 POOLHOUSE_ENTRY_POINT = "measures real models leased on this computer"
 CONFIG = ROOT / "docs/experiments/iq-vs-kquant-metal.json"
 QUIET = r"llama-server|decide_cli train"
+AS = "--as"
+"""``iq_vs_kquant.py --as MODULE ARGS`` runs that Poolhouse module's command in this program, where the grant above holds: a
+module started on its own from a checkout is refused the account's folders."""
 
 
 @dataclass(frozen=True)
@@ -94,10 +98,11 @@ def command(config: dict[str, Any], cell: Cell, out_dir: Path) -> list[str]:
     common = ["--serve", model, "--serve-label", label(cell), "--no-profile", "--no-draft",
               "--context", str(config["context"]), "--kept", str(expand(config["store"])),
               "--no-queue"]
-    bench = [sys.executable, "-m", "poolhouse.bench.run"]
+    own = [sys.executable, str(Path(__file__).resolve()), AS]
+    bench = [*own, "poolhouse.bench.run"]
     if cell.task == "jevbench":
         spec = config["tasks"]["jevbench"]
-        return [sys.executable, "-m", "poolhouse.decide_cli", "jevbench", "--yes", "--backend",
+        return [*own, "poolhouse.decide_cli", "jevbench", "--yes", "--backend",
                 "logprob", "--gguf", model, "--context", str(spec["context"]), "--tier",
                 spec["tier"], "--limit", str(spec["limit"]),
                 "--out", str(out_dir / f"{cell.id}.json")]
@@ -155,7 +160,7 @@ def _flags(config: dict[str, Any]) -> list[str]:
 
     out: list[str] = []
     for cell in cells(config):
-        argv = command(config, cell, Path("/nonexistent"))[3:]
+        argv = command(config, cell, Path("/nonexistent"))[4:]
         group = decide_cli.COMMANDS if cell.task == "jevbench" else bench_run.COMMANDS
         try:
             with contextlib.redirect_stderr(io.StringIO()):
@@ -317,13 +322,16 @@ def table(analysis: dict[str, Any]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    rest = list(sys.argv[1:] if argv is None else argv)
+    if rest[:1] == [AS]:
+        return importlib.import_module(rest[1]).main(rest[2:])
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--config", default=str(CONFIG))
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--analyse", action="store_true")
-    args = ap.parse_args(argv)
+    args = ap.parse_args(rest)
     config = load(Path(args.config))
     if args.check:
         found = problems(config)
