@@ -9,7 +9,7 @@ publish.workspace = true
 poolhouse-manifest = { path = "../poolhouse-manifest" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "=0.10.9"
+sha2 = "=0.11.1"
 getrandom = "=0.3.4"
 ed25519-dalek = "=2.2.0"
 curve25519-dalek = "=4.1.3"

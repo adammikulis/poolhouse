@@ -26,7 +26,7 @@ rustls = { version = "0.23.45", default-features = false, features = ["ring", "s
 rustls-webpki = { version = "0.103.15", default-features = false, features = ["ring", "std"] }
 serde ={ version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "=0.10.9"
+sha2 = "=0.11.1"
 socket2 = { version = "0.6.5", features = ["all"] }
 spake2 = "0.4.0"
 webpki-roots = "1"
