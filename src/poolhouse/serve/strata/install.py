@@ -112,6 +112,8 @@ def existing(pin: dict | None = None) -> Engine | None:
         return None
     source = where / "source"
     binary = where / record["binary"]
+    for cache in [found for found in source.rglob("__pycache__") if found.is_dir() and not found.is_symlink()]:
+        shutil.rmtree(cache)   # a program of Strata's that starts another without -B writes these; none is ever read from them
     if content_digest(_tree(source)) != engine["source_content_sha256"]:
         raise ServerFailed(f"the Strata source in {source} is not the pinned one any more; remove {where} and it is installed again")
     if not binary.is_file() or sha256_file(binary) != record["binary_sha256"]:

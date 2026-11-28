@@ -193,7 +193,9 @@ class StrataBackend(ServerBackend):
         path.chmod(0o600)
         argv = [*python, str(job.engine.source / "terminal" / "serve" / "server.py"), *self.command(spec)]
         log_path = server_log(NAME, spec.port)
-        environment = python_runtime.environment_for_child({"HOME": str(path.parent), "HF_HUB_OFFLINE": "1"})
+        # Strata keeps its own per-user records under the home folder it sees; here that is this run's folder
+        private = {name: str(path.parent) for name in ("HOME", "USERPROFILE", "LOCALAPPDATA", "XDG_STATE_HOME", "XDG_DATA_HOME")}
+        environment = python_runtime.environment_for_child({**private, "HF_HUB_OFFLINE": "1"})
         logger.info("starting: %s", " ".join(argv))
         try:
             process, base_url, load_s = launch(argv, lease, log_path=log_path, timeout=timeout, env=environment,

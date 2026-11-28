@@ -136,6 +136,10 @@ class TestInstall:
         (where / install.RECORD).write_text(json.dumps(
             {"commit": engine["commit"], "binary": "strata", "binary_sha256": hashlib.sha256(b"program\n").hexdigest()}))
         assert install.existing({"engine": engine}).binary == where / "strata"
+        cache = where / "source" / "terminal" / "__pycache__"
+        cache.mkdir()
+        (cache / "server.cpython-313.pyc").write_bytes(b"left by a child interpreter")
+        assert install.existing({"engine": engine}) is not None and not cache.exists()
         (where / "source" / "terminal" / "added.py").write_text("two\n")
         with pytest.raises(ServerFailed, match="not the pinned one"):
             install.existing({"engine": engine})
