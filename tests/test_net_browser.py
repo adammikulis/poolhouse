@@ -228,6 +228,23 @@ def test_the_proxy_serves_nobody_without_its_guards_own_credential(credential, r
         assert beyond.connections == 0 and guard.refused == []
 
 
+def test_connections_that_say_nothing_do_not_keep_the_guards_browser_out(monkeypatch):
+    from poolhouse.scrape import browserguard
+
+    monkeypatch.setattr(browserguard, "HEAD_SECONDS", 0.2, raising=False)
+    with browserguard.Guard() as guard:
+        guard._server.limit = 2   # the machine's own bound, made small enough to fill here
+        idle = [socket.create_connection(("127.0.0.1", guard.port), timeout=10) for _ in range(2)]
+        try:
+            for one in idle:
+                while one.recv(65536):   # the proxy gives up on a connection that has not said who it is
+                    pass
+            assert asked(guard, b"CONNECT 127.0.0.1:9 HTTP/1.1\r\n\r\n").startswith(b"HTTP/1.1 403 ")
+        finally:
+            for one in idle:
+                one.close()
+
+
 CALLER = """import socket, sys
 s = socket.create_connection(('127.0.0.1', int(sys.argv[1])), 10)
 s.sendall(('CONNECT beyond.example:' + sys.argv[2] + ' HTTP/1.1\\r\\n\\r\\n').encode())

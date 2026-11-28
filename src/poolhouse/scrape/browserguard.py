@@ -38,6 +38,8 @@ HOP = frozenset({"connection", "keep-alive", "proxy-connection", "proxy-authoriz
 MOST_ANSWER_HEAD = 4 * wire.MAX_HEAD
 """The most bytes an answer's head may have: Chromium's own limit on one."""
 USER = "poolhouse"
+HEAD_SECONDS = 10.0
+"""The most seconds a connection may take to send the head of its request, which holds the password."""
 
 
 def allowed(url: str, limits: Limits | None = None) -> list[str]:
@@ -86,7 +88,7 @@ class Guard:
         client.settimeout(IDLE_SECONDS)
         buffer = bytearray()
         try:
-            head = wire.read_head(client, buffer, tunnel=True, within=IDLE_SECONDS)
+            head = wire.read_head(client, buffer, tunnel=True, within=HEAD_SECONDS)
             if not wire.presented(head, self._expected):
                 wire.answer(client, 407, b"", extra=(wire.CHALLENGE,))
             elif head.method == "CONNECT":
