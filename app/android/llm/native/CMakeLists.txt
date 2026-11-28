@@ -1,0 +1,35 @@
+cmake_minimum_required(VERSION 3.22)
+project(poolhouse_llama C CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
+# llama.cpp as shared libraries: the CPU code is built once per Arm feature level and the phone loads the best one it runs,
+# and the OpenCL backend loads only where the phone has a driver.
+set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_COMMON ON CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_MTMD ON CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+set(LLAMA_OPENSSL OFF CACHE BOOL "" FORCE)
+set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
+set(GGML_CCACHE OFF CACHE BOOL "" FORCE)
+set(GGML_BACKEND_DL ON CACHE BOOL "" FORCE)
+set(GGML_CPU_ALL_VARIANTS ON CACHE BOOL "" FORCE)
+set(GGML_CPU_KLEIDIAI ON CACHE BOOL "" FORCE)
+set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
+set(GGML_OPENCL ON CACHE BOOL "" FORCE)
+set(GGML_OPENCL_EMBED_KERNELS ON CACHE BOOL "" FORCE)
+set(GGML_OPENCL_USE_ADRENO_KERNELS ON CACHE BOOL "" FORCE)
+
+add_subdirectory(${LLAMA_SOURCE} llama.cpp)
+
+add_library(poolhouse_llama SHARED poolhouse_llama.cpp)
+target_link_libraries(poolhouse_llama PRIVATE llama-common llama mtmd log)
+if(TARGET mtmd-helper)
+    target_link_libraries(poolhouse_llama PRIVATE mtmd-helper)
+endif()
+target_link_options(poolhouse_llama PRIVATE "-Wl,-z,max-page-size=16384")

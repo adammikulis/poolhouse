@@ -19,6 +19,7 @@ import android.os.PowerManager
 import android.os.Process
 import android.util.Log
 import app.poolhouse.llm.android.LiteRtEngine
+import app.poolhouse.llm.android.LlamaEngine
 import app.poolhouse.llm.android.batteryCelsius
 import app.poolhouse.llm.android.metered
 import app.poolhouse.llm.android.phoneCondition
@@ -39,6 +40,7 @@ import app.poolhouse.llm.model.ModelFile
 import app.poolhouse.llm.model.ModelStore
 import java.io.File
 import kotlin.concurrent.thread
+import org.json.JSONArray
 import org.json.JSONObject
 
 private const val TAG = "PoolhouseBench"
@@ -65,6 +67,7 @@ class BenchRunner : Instrumentation() {
                 "info" -> info()
                 "download" -> download()
                 "run" -> measure()
+                "pool" -> poolBench(context, text("model"), number("context", 8192), ::say)
                 "delete" -> say(JSONObject().put("event", "deleted").put("ok", store().delete(model())))
                 else -> throw IllegalArgumentException("No such action.")
             }
@@ -118,6 +121,7 @@ class BenchRunner : Instrumentation() {
                 .put("lowThreshold", room.lowMemoryThreshold).put("freeStorage", room.freeStorage)
                 .put("metered", metered(targetContext)).put("charging", condition.charging).put("battery", condition.batteryPercent)
                 .put("thermal", condition.thermalStatus).put("batteryC", batteryCelsius(targetContext))
+                .put("powerSave", condition.powerSave)
                 .put("interactive", targetContext.getSystemService(PowerManager::class.java).isInteractive),
         )
         val manager = targetContext.getSystemService(ActivityManager::class.java)
@@ -149,7 +153,12 @@ class BenchRunner : Instrumentation() {
 
     private fun engine(format: ModelFormat): LocalEngine = when (format) {
         ModelFormat.LITERTLM -> LiteRtEngine()
-        ModelFormat.GGUF -> throw IllegalStateException("This build measures LiteRT-LM only.")
+        ModelFormat.GGUF -> {
+            val threads = number("threads", LlamaEngine.defaultThreads())
+            val llama = LlamaEngine.orNull(targetContext, threads) ?: throw IllegalStateException("This build has no llama.cpp.")
+            say(JSONObject().put("event", "llama").put("devices", JSONArray(llama.devices)).put("threads", threads))
+            llama
+        }
     }
 
     private fun measure() {
@@ -163,6 +172,8 @@ class BenchRunner : Instrumentation() {
         say(
             JSONObject().put("event", "loading").put("model", model.id).put("accelerator", accelerator.label).put("context", context)
                 .put("availableBefore", before).put("thermal", phoneCondition(targetContext).thermalStatus)
+                .put("powerSave", phoneCondition(targetContext).powerSave).put("battery", phoneCondition(targetContext).batteryPercent)
+                .put("charging", phoneCondition(targetContext).charging)
                 .put("batteryC", batteryCelsius(targetContext)).put("cpuset", File("/proc/self/cpuset").readText().trim()),
         )
         try {

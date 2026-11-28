@@ -29,7 +29,7 @@ val CONTEXT_CHOICES = listOf(4096, DEFAULT_CONTEXT, 16_384, 32_000, 65_536, 131_
 class LocalModels private constructor(private val context: Context) {
     val store = ModelStore(File(context.filesDir, "llm-models"))
     val host = ModelHost<Held>()
-    private val engines: List<LocalEngine> = listOf(LiteRtEngine())
+    private val engines: List<LocalEngine> = listOfNotNull(LiteRtEngine(), LlamaEngine.orNull(context))
     private val preferences = context.getSharedPreferences("poolhouse-llm", Context.MODE_PRIVATE)
 
     /** The models this build can run. */
