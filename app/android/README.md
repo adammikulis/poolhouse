@@ -40,8 +40,9 @@ python app/android/build.py lint     # the same with Android lint (what the `and
 python app/android/build.py test     # the protocol checks only
 ```
 
-The APK is `app/android/app/build/outputs/apk/debug/app-debug.apk`, signed with the debug key kept in Poolhouse's state folder
-(`android/android-home`), so a later build updates the installed app. Install it with a phone that has wireless or USB debugging on:
+The build keeps Gradle, its cache and the debug key in `~/.cache/poolhouse-android` (on Windows
+`%LOCALAPPDATA%\poolhouse-android`), never in Poolhouse's state folder; `--home DIR` moves them. The APK is
+`app/android/app/build/outputs/apk/debug/app-debug.apk`, signed with that debug key, so a later build updates the installed app. Install it with a phone that has wireless or USB debugging on:
 `adb install -r <apk>`, or copy it to the phone and open it. A release APK needs `ANDROID_SIGNING_STORE` and
 `ANDROID_SIGNING_PASSWORD` for a keystore whose alias is `poolhouse-preview`.
 

@@ -5,14 +5,16 @@
     python app/android/build.py lint       the checks, Android lint and the debug APK
     python app/android/build.py release    the checks and the release APK (ANDROID_SIGNING_STORE and ANDROID_SIGNING_PASSWORD)
     python app/android/build.py sample     the classpath of the sample computer that answers canned data (core/.../SampleDay.kt)
-    python app/android/build.py --home DIR ...   keep Gradle, its cache and the debug key in DIR
+    python app/android/build.py --home DIR ...   keep Gradle, its cache and the debug key in DIR instead
 
 Needed on the computer, and found automatically: an Android SDK with the packages of `PACKAGES` and its licences accepted by a
 person, and a JDK 17 or newer. This script never installs an SDK package or accepts a licence; it names what is missing. Gradle
 needs no licence: the pinned release is downloaded and checked against its SHA-256 when none is named with GRADLE.
 
-Gradle's cache and the debug signing key live in Poolhouse's state folder (`android/`), so a later build can update the app it
-installed; set GRADLE_USER_HOME or ANDROID_USER_HOME to move them.
+Gradle, its cache and the debug signing key live in the account's cache folder (`~/.cache/poolhouse-android`, on Windows
+`%LOCALAPPDATA%\\poolhouse-android`), so a later build can update the app it installed; --home, GRADLE_USER_HOME or
+ANDROID_USER_HOME move them. Never into Poolhouse's state folder: it holds thousands of files there, which breaks the programs
+that walk the state, so such a place is refused.
 """
 from __future__ import annotations
 
@@ -127,11 +129,27 @@ def find_gradle(env: dict[str, str], store: Path) -> Path:
     return binary
 
 
-def environment(env: dict[str, str], sdk: Path, java: Path, state: Path) -> dict[str, str]:
+def default_home(env: dict[str, str], user: Path) -> Path:
+    """Where the build keeps its own files when nothing says otherwise: a folder of its own in the account's cache folder."""
+    cache = env.get("LOCALAPPDATA") or env.get("XDG_CACHE_HOME")
+    return (Path(cache) if cache else user / ".cache") / "poolhouse-android"
+
+
+def build_home(asked: Path | None, env: dict[str, str], user: Path, states: list[Path]) -> Path:
+    """The build's folder, `asked` or the default. It, GRADLE_USER_HOME and ANDROID_USER_HOME are refused inside a state folder."""
+    chosen = (asked or default_home(env, user)).resolve()
+    named = [("The build folder", chosen), *((name, Path(env[name]).resolve()) for name in ("GRADLE_USER_HOME", "ANDROID_USER_HOME") if env.get(name))]
+    for name, path in named:
+        if any(path.is_relative_to(state.resolve()) for state in states):
+            raise Missing(f"{name} {path} is inside Poolhouse's state folder, which a build must not fill. Name a folder outside it.")
+    return chosen
+
+
+def environment(env: dict[str, str], sdk: Path, java: Path, folder: Path) -> dict[str, str]:
     out = {**env, "ANDROID_HOME": str(sdk), "JAVA_HOME": str(java)}
     out.pop("ANDROID_SDK_ROOT", None)
-    out.setdefault("GRADLE_USER_HOME", str(state / "gradle-home"))
-    out.setdefault("ANDROID_USER_HOME", str(state / "android-home"))
+    out.setdefault("GRADLE_USER_HOME", str(folder / "gradle-home"))
+    out.setdefault("ANDROID_USER_HOME", str(folder / "android-home"))
     for name in ("GRADLE_USER_HOME", "ANDROID_USER_HOME"):
         Path(out[name]).mkdir(parents=True, exist_ok=True)
     return out
@@ -140,7 +158,7 @@ def environment(env: dict[str, str], sdk: Path, java: Path, state: Path) -> dict
 def arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="python app/android/build.py", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("kind", nargs="?", default="debug", choices=sorted(TASKS))
-    parser.add_argument("--home", type=Path, help="keep Gradle, its cache and the debug key here instead of Poolhouse's state folder")
+    parser.add_argument("--home", type=Path, help="keep Gradle, its cache and the debug key here instead of ~/.cache/poolhouse-android")
     return parser.parse_args(argv)
 
 
@@ -151,11 +169,11 @@ def main(argv: list[str]) -> int:
     import testslots
     from poolhouse import home
 
-    state = asked.home.resolve() if asked.home else home.state("android")
     try:
+        folder = build_home(asked.home, dict(os.environ), Path.home(), [home.home(), home.account_roots()[0]])
         sdk = find_sdk(sdk_candidates(dict(os.environ), Path.home()))
         java = find_java(dict(os.environ))
-        gradle = find_gradle(dict(os.environ), state / "gradle")
+        gradle = find_gradle(dict(os.environ), folder / "gradle")
     except Missing as missing:
         print(f"build: {missing}", file=sys.stderr)
         return 3
@@ -163,7 +181,7 @@ def main(argv: list[str]) -> int:
         workers = min(admitted.workers, WORKERS)
         code = subprocess.run([str(gradle), "--no-daemon", "--console=plain", f"--max-workers={workers}",
                                "-Pkotlin.compiler.execution.strategy=in-process", *TASKS[kind]], cwd=HERE,
-                              env=environment(dict(os.environ), sdk, java, state), check=False).returncode
+                              env=environment(dict(os.environ), sdk, java, folder), check=False).returncode
     if code == 0 and kind in APK:
         print(f"build: {HERE / APK[kind]}")
     return code

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import sys
 from pathlib import Path
 
 import pytest
@@ -64,10 +65,43 @@ def test_a_download_that_does_not_match_the_pinned_checksum_is_removed(tmp_path)
     assert build.checked(archive, hashlib.sha256(b"gradle").hexdigest()) == archive
 
 
-def test_the_build_keeps_its_caches_and_debug_key_in_the_state_folder_unless_moved(tmp_path):
-    env = build.environment({"ANDROID_SDK_ROOT": "/old"}, tmp_path / "sdk", tmp_path / "jdk", tmp_path / "state")
-    assert env["GRADLE_USER_HOME"] == str(tmp_path / "state" / "gradle-home")
-    assert env["ANDROID_USER_HOME"] == str(tmp_path / "state" / "android-home")
+def test_the_build_keeps_its_caches_and_debug_key_in_its_folder_unless_moved(tmp_path):
+    env = build.environment({"ANDROID_SDK_ROOT": "/old"}, tmp_path / "sdk", tmp_path / "jdk", tmp_path / "folder")
+    assert env["GRADLE_USER_HOME"] == str(tmp_path / "folder" / "gradle-home")
+    assert env["ANDROID_USER_HOME"] == str(tmp_path / "folder" / "android-home")
     assert env["ANDROID_HOME"] == str(tmp_path / "sdk") and "ANDROID_SDK_ROOT" not in env
-    moved = build.environment({"GRADLE_USER_HOME": str(tmp_path / "mine")}, tmp_path / "sdk", tmp_path / "jdk", tmp_path / "state")
+    moved = build.environment({"GRADLE_USER_HOME": str(tmp_path / "mine")}, tmp_path / "sdk", tmp_path / "jdk", tmp_path / "folder")
     assert moved["GRADLE_USER_HOME"] == str(tmp_path / "mine")
+
+
+def test_a_build_with_nothing_said_keeps_its_files_in_the_cache_folder_and_never_in_the_state_folder(tmp_path, monkeypatch):
+    """The run of `main` itself, stopped where it would fetch Gradle: the folder it would fill is outside every state folder."""
+    user, state = tmp_path / "user", tmp_path / "user" / ".poolhouse"
+    monkeypatch.setenv("HOME", str(user))
+    monkeypatch.setenv("USERPROFILE", str(user))
+    monkeypatch.setenv("POOLHOUSE_HOME", str(state))
+    for name in ("XDG_CACHE_HOME", "LOCALAPPDATA", "GRADLE_USER_HOME", "ANDROID_USER_HOME"):
+        monkeypatch.delenv(name, raising=False)
+    stores: list[Path] = []
+
+    def stop_here(env, store):
+        stores.append(store)
+        raise build.Missing("stop here")
+
+    monkeypatch.setattr(build, "find_sdk", lambda candidates: tmp_path / "sdk")
+    monkeypatch.setattr(build, "find_java", lambda env: tmp_path / "jdk")
+    monkeypatch.setattr(build, "find_gradle", stop_here)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    assert build.main(["debug"]) == 3
+    assert stores == [(user / ".cache" / "poolhouse-android" / "gradle").resolve()]
+    assert not stores[0].is_relative_to(state.resolve()) and not state.exists()
+
+
+def test_a_folder_inside_the_state_folder_is_refused_however_it_is_named(tmp_path):
+    state = tmp_path / ".poolhouse"
+    assert build.build_home(None, {"XDG_CACHE_HOME": str(tmp_path / "xdg")}, tmp_path, [state]) == (tmp_path / "xdg" / "poolhouse-android").resolve()
+    assert build.default_home({"LOCALAPPDATA": str(tmp_path / "local")}, tmp_path) == tmp_path / "local" / "poolhouse-android"
+    for asked, env in ((state / "android", {}), (None, {"XDG_CACHE_HOME": str(state)}),
+                       (None, {"GRADLE_USER_HOME": str(state / "gradle")}), (tmp_path / "ok", {"ANDROID_USER_HOME": str(state)})):
+        with pytest.raises(build.Missing, match="state folder"):
+            build.build_home(asked, env, tmp_path, [state])
