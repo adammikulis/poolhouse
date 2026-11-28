@@ -5,6 +5,11 @@ on:
 permissions:
   contents: read
 
+# A newer commit of a pull request cancels the run of the older one.
+concurrency:
+  group: dependency-review-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   review:
     runs-on: ubuntu-latest
