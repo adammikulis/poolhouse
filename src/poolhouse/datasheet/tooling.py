@@ -7,6 +7,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from poolhouse import provision
 from poolhouse.datasheet.finder import NotFound, find
 from poolhouse.sources import datasheet
 from poolhouse.web import Engine, downloads_dir
@@ -73,7 +74,8 @@ def _saved(path: str) -> Path:
 def tools(*, engine: Engine | None = None, vision: bool = True
           ) -> list[tuple[dict[str, Any], Callable[[Mapping[str, Any]], Any]]]:
     """The datasheet tools; ``datasheet_outline`` only with ``vision``, since its answer is
-    images. Each callable returns ``{"none": reason}`` instead of raising."""
+    images. Each callable returns ``{"none": reason}`` instead of raising. Reading a saved
+    document installs nothing: it came from outside, and may be what asked to be read."""
     def finding(args: Mapping[str, Any]) -> Any:
         part = str(args.get("part") or "").strip()
         if not part:
@@ -85,21 +87,23 @@ def tools(*, engine: Engine | None = None, vision: bool = True
 
     def pins(args: Mapping[str, Any]) -> Any:
         try:
-            rows = datasheet.pin_tables(_saved(str(args.get("path") or "")))
+            with provision.nothing_installed():
+                rows = datasheet.pin_tables(_saved(str(args.get("path") or "")))
         except (OSError, ValueError, RuntimeError, ImportError) as exc:
             return {"none": str(exc)}
         return [asdict(p) for p in rows[:MOST_PINS]] or {"none": "no pin table found"}
 
     def outline(args: Mapping[str, Any]) -> Any:
         try:
-            where = _saved(str(args.get("path") or ""))
-            found = datasheet.outline_pages(where)
+            with provision.nothing_installed():
+                where = _saved(str(args.get("path") or ""))
+                found = datasheet.outline_pages(where)
+                images = [datasheet.render(where, o.page) for o in found[:MOST_IMAGES]]
         except (OSError, ValueError, RuntimeError, ImportError) as exc:
             return {"none": str(exc)}
         if not found:
             return {"none": "no package outline or land pattern page found"}
-        return {"pages": [asdict(o) for o in found[:6]],
-                "_images": [datasheet.render(where, o.page) for o in found[:MOST_IMAGES]]}
+        return {"pages": [asdict(o) for o in found[:6]], "_images": images}
 
     pairs = [(SCHEMAS[0], finding), (SCHEMAS[1], pins)]
     if vision:

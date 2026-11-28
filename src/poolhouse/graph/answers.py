@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from poolhouse import provision
 from poolhouse.asking import Asking
 from poolhouse.client.spent import Spent
 from poolhouse.graph.looking import ids_in, kind_of
@@ -139,7 +140,8 @@ def without_images(name: str, result: Any, out: Answer) -> tuple[Any, dict[str, 
     llama.cpp cannot carry an image inside a tool result, so what `web.tools(vision=True)`
     returns under ``_images`` comes out before the result is encoded and goes in as a user
     message of its own. A picture that cannot be prepared is said in the steps and not
-    sent: a model told to look at nothing answers about nothing, confidently.
+    sent: a model told to look at nothing answers about nothing, confidently. Preparing
+    them installs nothing, since what they are was chosen by wherever they came from.
     """
     if not (isinstance(result, Mapping) and "_images" in result):
         return result, None, 0
@@ -147,8 +149,9 @@ def without_images(name: str, result: Any, out: Answer) -> tuple[Any, dict[str, 
     pictures = list(result.pop("_images") or ())
     if not pictures:
         return result, None, 0
-    seen, report = build_message(f"What {name} returned for the call above, as seen:",
-                                 pictures)
+    with provision.nothing_installed():
+        seen, report = build_message(f"What {name} returned for the call above, as seen:",
+                                     pictures)
     kept = sum(1 for p in seen["content"] if p.get("type") == "image_url")
     if kept:
         return result, seen, kept

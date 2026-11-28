@@ -16,7 +16,7 @@ done = net.download(url, dest, net.Want(sha256=digest, require_digest=True))
 | Step | What happens | Where |
 |---|---|---|
 | Policy | A host is reached only if it is on the allow-list (`huggingface.co`, `*.hf.co`, `github.com` and its release hosts, `nominatim.openstreetmap.org`, the host of `$HF_ENDPOINT`, hosts in `$POOLHOUSE_NET_ALLOW_HOSTS`) or a person approved it. An approval is a row in `net/approvals.jsonl` with who, when, why and an optional expiry. `NeedsApproval` names the `allowed` argument of `net.Policy` first and then the command. `net.get` and `net.download` take a `pipeline` argument; without one the caller named the URL and they go through `net.named()`, which also fetches any https URL (no reputation hold; plain http still needs a listed host; a model that came over an unlisted hop is not pinned as a pull; digest and scan checks unchanged); a program that reaches hosts of its own passes `pipeline=net.Pipeline(policy=net.Policy(allowed=(...)))`, or `pipeline=net.library()`, whose policy lists every host (`policy.ANYWHERE`) with the same address, redirect, size, scan and hold checks; a model file kept through it is not pinned as a pull, so serving it asks like any file nobody pinned. The app and agent code passes `pipeline=net.default()` itself, and `net.use(pipeline)` replaces both. Web pages a model reads use the origin rule below instead. | `net/policy.py`, `net/pipeline.py` |
-| Address | The name is resolved once, every address must be public (no loopback, private, link-local, the cloud metadata address, carrier-grade NAT, multicast, or any of those wrapped in IPv6), the connection goes to the address that was checked, and the check repeats on every redirect hop. A redirect from HTTPS to HTTP is refused. | `httpguard.py` |
+| Address | The name is resolved once, every address must be public (no loopback, private, link-local, site-local, the cloud metadata address, carrier-grade NAT, multicast, or any of those wrapped in IPv6, and no address of this machine or of a network one of its interfaces is on), the connection goes to the address that was checked, and the check repeats on every redirect hop. A redirect from HTTPS to HTTP is refused. | `httpguard.py` |
 | TLS | Certificates are verified against the system store; there is no switch to turn that off. | `httpguard.py` |
 | Credentials | A token goes to the host it was given for, over HTTPS (a private mirror the person named may use HTTP). `Authorization`, `Cookie`, `Proxy-Authorization` and `X-Api-Key` are dropped on a redirect to another host. No cookie jar exists. | `net/pipeline.py`, `httpguard.py` |
 | Limits | Bytes (declared and actual, after decompression, with a ratio cap), redirects, a wait per socket read, and a deadline for a whole page or API answer. A file saved to disk has no total deadline: it must deliver 8 KiB of the file a second averaged over each 60 s (headers, chunk framing and compressed bytes that expand to nothing do not count), and a connection that drops, goes silent or trickles is taken up again from the staged bytes (waiting 1 to 30 s between attempts). A cancel is checked at every read. It is `Truncated` after 10 attempts in a row without 64 KiB of new data (4 when no byte ever arrived), when an attempt fails after the file has been started over more than 3 times, or when cancelled; a body over the cap is `TooLarge`, and bytes after the end of a compressed body are refused. | `httpguard.py`, `net/download.py` |
@@ -56,10 +56,13 @@ one `taint.Label(Level.UNTRUSTED, origin)` takes where the taint ledger is in us
   typed (`graph.conversation` does).
 - The browser a model drives (`web.look`, rendered reads) connects only through a proxy on a
   loopback port of its own (`scrape/browserguard.py`), loopback addresses included. The proxy
-  resolves each host once, refuses it unless every address is public and connects to the address
-  it checked, so redirects, forms, WebSockets and a name whose answer changes are held to the one
-  rule; WebRTC sends no datagram around it, and downloads are off.
-- A model's tool call that reads or looks at a page installs and downloads nothing.
+  resolves each host once, refuses it unless every address is public and is not this machine's or
+  on its network, and connects to the address it checked, so redirects, forms, WebSockets and a
+  name whose answer changes are held to the one rule; WebRTC sends no datagram around it, and
+  downloads are off. It serves only the browser it was made for, which holds that proxy's own
+  password; any other program gets a 407.
+- A model's tool call that reads or looks at a page or a saved datasheet installs and downloads
+  nothing, and neither does preparing the pictures such a call brought.
 
 ## Every path
 

@@ -7,15 +7,18 @@ import contextlib
 import importlib
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from poolhouse import codex_install, harnessing, opencode_install, provision, web
+from poolhouse.datasheet import tooling
 from poolhouse.decide import router
 from poolhouse.fleet import environment as environments, updates
 from poolhouse.gguf import tools
+from poolhouse.graph import answers
 from poolhouse.serve import (
     binary,
     build_patches,
@@ -115,7 +118,7 @@ def test_a_missing_converter_is_fetched_whole_at_the_verified_commit_the_first_t
 
 def test_a_cmake_on_path_is_used_and_a_missing_one_is_installed(monkeypatch, tmp_path):
     assert build_platform.cmake_program("/usr/bin/cmake") == "/usr/bin/cmake"
-    monkeypatch.setattr(build_platform.shutil, "which", lambda name: None)
+    monkeypatch.setattr(build_platform.safelaunch, "which", lambda name: None)
     asked = []
     monkeypatch.setattr(provision, "module", lambda name, extra: asked.append((name, extra))
                         or SimpleNamespace(CMAKE_BIN_DIR=str(tmp_path)))
@@ -285,7 +288,8 @@ def test_a_missing_browser_is_answered_with_the_bundled_one_sandboxed_either_way
     with browser.browserguard.Guard() as guard:
         assert browser._context(SimpleNamespace(chromium=chromium), tmp_path, window, guard if guarded else None) == "context"
     assert chromium.asked[1]["executable_path"] == "/kept/chromium"
-    through = {"server": f"http://127.0.0.1:{guard.port}", "bypass": "<-loopback>"} if guarded else None
+    through = {"server": f"http://127.0.0.1:{guard.port}", "bypass": "<-loopback>", "username": "poolhouse",
+               "password": guard.password} if guarded else None
     for options in chromium.asked:
         assert options["chromium_sandbox"] is (guarded or not own), "only a window for the project's own pages goes without"
         assert options.get("service_workers") == ("block" if guarded else None)
@@ -304,6 +308,42 @@ def test_only_a_walk_of_this_machine_goes_without_the_browsers_sandbox():
         assert ops._window(ops.Walk(base=base)).own_pages, base
     for base in ("https://tessyn.example", "http://192.168.1.4:8787", "http://127.0.0.1.tessyn.example", ""):
         assert not ops._window(ops.Walk(base=base)).own_pages, base
+
+
+def test_a_picture_a_page_chose_installs_nothing_when_it_is_prepared(switched_on, monkeypatch):
+    held, real = [], provision.module
+
+    def module(name, extra):
+        held.append((extra, bool(provision.download_refusal())))
+        if extra != "heif":
+            return real(name, extra)
+        raise provision.Unavailable("plumbing only: the picture reader is taken as missing")
+
+    monkeypatch.setattr(provision, "module", module)
+    heic = b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic" + b"\x00" * 64
+    steps = SimpleNamespace(steps=[])
+    _result, message, kept = answers.without_images("web_look", {"url": "u", "_images": [heic]}, steps)
+    assert ("heif", True) in held and (message, kept) == (None, 0) and "none could be shown" in steps.steps[0]
+    assert provision.download_refusal() == ""
+
+
+@pytest.mark.parametrize("tool,reads", [("datasheet_pins", ("pin_tables",)), ("datasheet_outline", ("outline_pages", "render"))])
+def test_reading_a_saved_datasheet_for_a_model_installs_nothing(switched_on, monkeypatch, tmp_path, tool, reads):
+    held = []
+
+    def reading(answer):
+        return lambda *a, **k: held.append(bool(provision.download_refusal())) or answer
+
+    @dataclass
+    class Page:
+        page: int = 1
+
+    monkeypatch.setattr(tooling, "_saved", lambda path: tmp_path / path)
+    for name, answer in {"pin_tables": [], "outline_pages": [Page()], "render": b"png"}.items():
+        monkeypatch.setattr(tooling.datasheet, name, reading(answer))
+    calls = {schema["function"]["name"]: call for schema, call in tooling.tools()}
+    calls[tool]({"path": "a.pdf"})
+    assert held == [True] * len(reads)
 
 
 @pytest.mark.parametrize("tool,asked", [("web_read", {"rendered": True}), ("web_read", {}), ("web_look", {})])
