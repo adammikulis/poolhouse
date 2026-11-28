@@ -4,7 +4,14 @@ Direct a Poolhouse computer from a phone: talk to Claude sessions, their subagen
 conversations; see every device of the pool; follow and cancel work; start delegates and serve models. The app speaks only the
 phone API of [docs/phone-api.md](../../docs/phone-api.md) to the computer it is linked to.
 
-## What is on each screen
+## Without a computer
+
+The app opens on its own screens; nothing asks for a code. **Chats** lists the phone's own conversations (the on-device model,
+when the build has the `llm` module), **Pool** shows this phone (model, Android, chip, memory, storage) and its switch, **Work**
+and **Inbox** say they need a computer, and linking one is offered on those screens and in Settings. A computer that removes the
+phone returns it to this home. Joining a pool as a node on its own is not built yet, and the switch says so.
+
+## What is on each screen, linked
 
 - **Chats** (first): every agent the computer sees, subagents under their lead, the ones that need you first; finished agents fold
   to one line and stay readable. Each row says how a message reaches the agent (at its next step, through its lead, read only).
@@ -54,8 +61,17 @@ The build keeps Gradle, its cache and the debug key in `~/.cache/poolhouse-andro
 | `app` | the screens (Jetpack Compose), the Keystore key, preferences |
 | `llm` | optional: a model on the phone. The app finds `app.poolhouse.llm.LlmPlugin` at run time; without the module it only directs |
 
+## Where a node goes
+
+The phone is to be a pool node inside this one app. The link's key and record stay in `app`'s `platform` package and are used only
+by the app's own process; a module is given only `ComputerLink`, a call of the linked computer, never the key. Whatever runs code
+received from the pool must run in a separate isolated process (`android:isolatedProcess`, which has no permissions, no files of
+the app and no Keystore key) at the app's own target SDK.
+
 ## Checks
 
+- `python app/android/build.py test` also runs `app`'s screen tests on a JVM (Robolectric): a fresh install reaches chats and
+  devices with no code (`FreshInstallTest`).
 - `python app/android/build.py test` runs `core`'s tests on a JVM: the bytes of linking and signing against
   `tests/fixtures/phone-api-vectors.json` (computed by Python, checked by `tests/test_android_phone_api.py`), and the client,
   the stream and the state against a real TLS 1.3 server that verifies every signature, time and nonce.
