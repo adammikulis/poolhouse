@@ -279,7 +279,10 @@ def ensure(root: Path, *, cache: Path | None = None, cargo: str = "",
     compiler = cargo or tool("cargo")
     version("cargo", compiler, ["--version"])
     base = node_folder(cache)
-    base.mkdir(parents=True, exist_ok=True)
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        raise BuildError(f"the node cannot be built in {base}: {error}") from error
     app = root / "app"
     files = sources(app)
     key = key_of(app, files, toolchain)

@@ -176,6 +176,17 @@ def test_a_build_that_fails_says_so_and_leaves_no_binary(site, tmp_path):
     assert not list((tmp_path / "cache" / testnode.FOLDER).glob("?" * testnode.KEY_LENGTH))
 
 
+def test_a_build_folder_that_cannot_be_written_is_a_build_that_failed(site, tmp_path):
+    """In a coding box the account's build folder is refused: the runner then runs the rest, where an error of another kind ended the run."""
+    closed = tmp_path / "closed"
+    closed.mkdir(mode=0o500)
+    try:
+        with pytest.raises(testnode.BuildError, match="cannot be built in"):
+            site.build(closed / "cache")
+    finally:
+        closed.chmod(0o700)
+
+
 def test_the_node_fixture_uses_the_runners_binary_and_never_runs_cargo(tmp_path, monkeypatch):
     made = tmp_path / "poolhouse-node"
     made.write_text("binary")
