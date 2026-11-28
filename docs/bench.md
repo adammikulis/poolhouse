@@ -49,6 +49,27 @@ marker existed, because not knowing which graph a run read is not the same as kn
 invented. The ranking also ignores anything shorter than a short run, so a `--smoke` run
 cannot rank a model on two questions.
 
+## Comparing serving engines
+
+```sh
+python -m poolhouse.bench engines plan
+python -m poolhouse.bench engines tune --only main-iq2,main-iq3s --repeats 1
+python -m poolhouse.bench engines run --only fork-iq2,main-iq2,main-iq3s --repeats 3 --hard-until 06:45
+python -m poolhouse.bench engines report
+```
+
+A campaign file ([experiments/engines-qwen3.8-flash.json](experiments/engines-qwen3.8-flash.json)) names the model files
+and the arms of each device (`--device mac` or `windows`). `plan` prints what is here, what would be downloaded and the
+free disk. `tune` loads each arm's candidate drafters, asks each draft length per request and keeps the fastest. `run`
+leases the arms in turn through the broker, turning the order each round, and holds one session on each: a conversation
+that grows to 4k, 32k, 128k and 200k tokens, answering about a fact planted at each level, writing 256 tokens, running
+tool turns over the checkout's files, then recalling facts from the start, middle and end; the first round also asks
+tool-calling items and coding items graded in the sandbox. Every request is a JSON line under
+`~/.poolhouse/bench/engines/`, with its server timings and the GPU time other processes took while it ran
+(Apple's per-process counters; `nvidia-smi` on NVIDIA). A request over the limit in `poolhouse.bench.gpuwatch` is marked
+contended and left out of every figure. `cold_s` and `cold_tps` are the read turns summed up to a level: the time and
+rate of reading that much text into an empty server.
+
 ## Accuracy per generated token
 
 Generated tokens are what a model writes, thinking included, and what a smaller quant or a

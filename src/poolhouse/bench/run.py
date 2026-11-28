@@ -623,6 +623,8 @@ COMMANDS.borrow(lambda sub: _module("comparison").add_arguments(sub),
 
 COMMANDS.borrow(lambda sub: _module("quants").add_arguments(sub),
                 lambda args: int(_module("quants").run(args)))
+COMMANDS.borrow(lambda sub: _module("engines").add_arguments(sub),
+                lambda args: int(_module("engines").run(args)))
 
 
 COMMANDS.add("standard", lambda args: int(_module("standard").run(args)),
@@ -685,9 +687,9 @@ def main(argv: list[str] | None = None) -> int:
     """
     # every subcommand there is, so a *value* that happens to read like one -- `report
     # --model run` -- is not mistaken for the command and sent through the lock
-    # `standard` and `quants` take the measuring lock themselves, so they are not in MEASURING here;
+    # `standard`, `quants` and `engines` take the measuring lock themselves, so they are not in MEASURING here;
     # `quants speed` reads as `quants` because the first known word wins.
-    known = {*MEASURING, "standard", "quants", "animate", "show", "report", "prepare", "forget",
+    known = {*MEASURING, "standard", "quants", "engines", "animate", "show", "report", "prepare", "forget",
              "status", "tail", "stop", "wait", "history", "compare"}
     cmd = next((a for a in (argv if argv is not None else sys.argv[1:]) if a in known), "")
     if cmd not in MEASURING:
