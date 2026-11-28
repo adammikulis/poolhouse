@@ -15,6 +15,11 @@ import sys
 from poolhouse import home
 from poolhouse.caller import AGENT_MARKERS
 
+DAEMON_PORT, NODE_PORT, BEACON_PORT, PHONE_PORT = 8770, 7447, 7448, 7450
+NODE_RULES = (("Poolhouse node", "TCP", NODE_PORT), ("Poolhouse node discovery", "UDP", BEACON_PORT))
+RULES = (("Poolhouse", "TCP", DAEMON_PORT), *NODE_RULES, ("Poolhouse phones", "TCP", PHONE_PORT))
+"""Every inbound port Poolhouse listens on for other devices, as (firewall rule name, protocol, port): the daemon, the node and its
+beacons, and linked phones. A Windows rule for one is made for private networks only."""
 OFF_ENV = "POOLHOUSE_NODE_LAN"
 TESTS_ENV = "POOLHOUSE_LAN_TESTS"
 LAN_FLAG = "--lan"

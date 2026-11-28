@@ -1,7 +1,7 @@
-"""Windows only: whether the inbound rule the daemon needs to be reached is in place, said with the reason and the line to run where it is not.
+"""Windows only: whether the inbound rules other devices need to reach this one are in place, said with the reason and the line to run where they are not.
 
 Nothing here changes the firewall: the installer and `python -m poolhouse.device_setup`, which a person runs, are what add rules, and no
-administrator prompt is ever raised. The rule is TCP for the daemon's port, on private networks.
+administrator prompt is raised from here. The rules are `poolhouse.lan.RULES`, on private networks only.
 """
 
 from __future__ import annotations
@@ -9,18 +9,16 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Callable
 
+from poolhouse.lan import RULES
 from poolhouse.log import warn
 
-from .onboard.lan import DEFAULT_HTTP_PORT
-
-FIREWALL_RULE_HTTP = "Poolhouse"
 POWERSHELL = "powershell.exe"
 TIMEOUT_S = 300
 PUBLIC = (r"Windows treats this network as Public, which blocks your other devices from reaching Poolhouse here: "
           r"in Settings > Network & internet, open this network's properties and choose Private")
 
-NOT_ADDED = ("the Windows firewall rule that lets your other devices reach Poolhouse is not there, and starting Poolhouse does not change the "
-             "firewall: run this line once in an administrator prompt")
+NOT_ADDED = ("a Windows firewall rule that lets your other devices reach Poolhouse is not there, and starting Poolhouse does not change the "
+             "firewall: install Poolhouse again and allow the administrator prompt, or run this line once in an administrator prompt")
 
 Run = Callable[[str], str]
 
@@ -36,12 +34,12 @@ def powershell(script: str) -> str:
 
 
 def rules() -> list[tuple[str, str, int]]:
-    """``(name, protocol, port)`` of each rule: the daemon's TCP port."""
-    return [(FIREWALL_RULE_HTTP, "TCP", DEFAULT_HTTP_PORT)]
+    """``(name, protocol, port)`` of each rule."""
+    return list(RULES)
 
 
 def line() -> str:
-    """The rule as one line a person can paste into an administrator's prompt."""
+    """The rules as one line a person can paste into an administrator's prompt."""
     return " && ".join(f'netsh advfirewall firewall add rule name="{name}" dir=in action=allow profile=private protocol={proto} localport={port}'
                        for name, proto, port in rules())
 
@@ -60,7 +58,7 @@ def public_only(run: Run = powershell) -> bool:
 
 
 def check(run: Run = powershell) -> bool:
-    """Whether the rule is in place on a network that lets it work. False, after saying what to do, when not; nothing is changed."""
+    """Whether the rules are in place on a network that lets them work. False, after saying what to do, when not; nothing is changed."""
     if missing(run):
         warn(f"{NOT_ADDED}: {line()}")
         return False

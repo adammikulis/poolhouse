@@ -353,7 +353,7 @@ def _firewall_rule_present(name: str) -> bool:
 
 
 def _firewall_finding() -> Finding:
-    """Windows only: the daemon is unreachable until the firewall lets TCP 8770 in. The fix is
+    """Windows only: other devices reach this one only once the firewall lets Poolhouse's ports in. The fix is
     one line for an administrator's prompt -- the one `poolhouse-setup` cannot run for
     you from an ordinary one."""
     from poolhouse.fleet import windows_firewall
@@ -368,8 +368,8 @@ def _firewall_finding() -> Finding:
         fix=[] if not missing else ["cmd", "/c", windows_firewall.line()],
         root=True,
         note="" if not missing else
-             "Windows blocks inbound TCP 8770 (the daemon) by default, so other machines cannot "
-             "reach it. Run the line in a prompt opened as administrator")
+             "Windows blocks inbound connections by default, so other devices cannot reach this "
+             "one. Run the line in a prompt opened as administrator")
 
 
 def _lacking_flags(binary: str) -> list[tuple[str, str]]:

@@ -229,7 +229,6 @@ def test_the_login_plist_of_the_older_install_path_also_starts_the_launcher_unde
 
 def test_the_older_install_path_installs_nothing_on_an_installed_mac_that_has_no_signed_executable(tmp_path, user, monkeypatch):
     monkeypatch.setattr(autostart.sys, "platform", "darwin")
-    monkeypatch.setattr(autostart.wsl_startup, "guest", lambda: False)
     monkeypatch.setattr(autostart, "uninstall", lambda: [])
     monkeypatch.setattr(autostart, "_runs", lambda argv: True)
     monkeypatch.setattr(autostart, "_mac_install", lambda *a: pytest.fail("a unit that cannot start was installed"))

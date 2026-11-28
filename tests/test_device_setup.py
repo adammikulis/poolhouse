@@ -77,7 +77,7 @@ def test_the_firewall_script_covers_both_ports_and_the_vm():
     assert device_host.HYPERV_ID in script
     assert "DefaultInboundAction" not in script, "nothing allows all inbound traffic to the WSL machine"
     added = [step for step in script.split("New-NetFirewall")[1:] if "-Action Allow" in step]
-    assert len(added) == 4 and all("-Profile Private" in step or "-Profiles Private" in step for step in added)
+    assert len(added) == 6 and all("-Profile Private" in step or "-Profiles Private" in step for step in added)
 
 
 def test_a_dry_run_lists_the_changes_and_makes_none(monkeypatch, capsys):

@@ -183,20 +183,11 @@ def test_standalone_bootstrap_contains_verified_checkout_helpers(repository, tmp
 
 @pytest.mark.parametrize("address", ["", "127.0.0.1", "0.0.0.0", "224.1.2.3", "8.8.8.8", "::1"])  # noqa: S104
 def test_lan_host_refuses_non_network_addresses(monkeypatch, address):
-    monkeypatch.delenv("POOLHOUSE_WSL_NETWORK", raising=False)
     monkeypatch.setattr(projects, "primary_ip", lambda: address)
     assert lan_host(8770) == ""
 
 
 @pytest.mark.parametrize("address, expected", [("192.168.40.2", "192.168.40.2"), ("fd00::2", "[fd00::2]")])
 def test_lan_host_uses_current_route_address(monkeypatch, address, expected):
-    monkeypatch.delenv("POOLHOUSE_WSL_NETWORK", raising=False)
     monkeypatch.setattr(projects, "primary_ip", lambda: address)
     assert lan_host(8770) == f"https://{expected}:8770"
-
-
-def test_wsl_lan_host_uses_authenticated_bridge_address(monkeypatch):
-    monkeypatch.setenv("POOLHOUSE_WSL_NETWORK", json.dumps({"address": ["192.168.2.59", 4321]}))
-    assert lan_host(8770) == "https://192.168.2.59:8770"
-    monkeypatch.setenv("POOLHOUSE_WSL_NETWORK", json.dumps({"address": ["127.0.0.1", 4321]}))
-    assert lan_host(8770) == ""

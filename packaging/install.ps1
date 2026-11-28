@@ -85,14 +85,15 @@ poolhouse runs on Python $python. Install it with:
 
 # -- the firewall rules -------------------------------------------------------
 # Windows Defender Firewall blocks inbound by default, so without these rules the machine is
-# invisible to the rest of the pool: the daemon (TCP 8770) and the Rust node's pool port and
-# its beacons (TCP 7447, UDP 7448). Names and ports match poolhouse.device_host.RULES and
-# poolhouse.fleet.windows_firewall. One approval prompt.
+# invisible to the rest of the pool: the daemon (TCP 8770), the Rust node's pool port and
+# its beacons (TCP 7447, UDP 7448) and linked phones (TCP 7450). Names and ports match
+# poolhouse.lan.RULES.
 function Open-Firewall {
     $rules = @(
         @{ Name = "Poolhouse";                Protocol = "TCP"; Port = 8770 },
         @{ Name = "Poolhouse node";           Protocol = "TCP"; Port = 7447 },
-        @{ Name = "Poolhouse node discovery"; Protocol = "UDP"; Port = 7448 }
+        @{ Name = "Poolhouse node discovery"; Protocol = "UDP"; Port = 7448 },
+        @{ Name = "Poolhouse phones";         Protocol = "TCP"; Port = 7450 }
     )
     $missing = @($rules | Where-Object {
         -not (Get-NetFirewallRule -DisplayName $_.Name -ErrorAction SilentlyContinue) })

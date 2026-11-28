@@ -1,4 +1,4 @@
-"""The Windows firewall check at start, and the sentence for a WSL machine the network cannot reach.
+"""The Windows firewall check at start.
 
 PowerShell does not run on the machines these tests run on, so the commands the check sends are the thing under test: `run` stands in
 for `powershell.exe` and records what it was given. Nothing here is a model.
@@ -8,11 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from poolhouse.fleet import windows_firewall as firewall
-from poolhouse.fleet.onboard.lan import DEFAULT_HTTP_PORT
-from poolhouse.fleet.wsl_network import nat_notice
+
+EVERY = [name for name, _, _ in firewall.rules()]
 
 
 class Windows:
@@ -35,14 +33,12 @@ class Windows:
         return ""
 
 
-def test_the_one_rule_is_the_daemons_port_and_there_is_no_beacon_rule():
-    assert firewall.rules() == [("Poolhouse", "TCP", DEFAULT_HTTP_PORT)]
-    assert "UDP" not in firewall.line()
-    assert "profile=private" in firewall.line(), "a public network gets no open port"
+def test_no_rule_opens_a_port_on_a_public_network():
+    assert firewall.line().count("profile=private") == len(EVERY), "a public network gets no open port"
 
 
-def test_with_the_rule_held_nothing_is_added_and_nothing_is_said(capsys):
-    windows = Windows(held=["Poolhouse"])
+def test_with_the_rules_held_nothing_is_added_and_nothing_is_said(capsys):
+    windows = Windows(held=EVERY)
     assert firewall.check(windows) is True
     assert not any("New-NetFirewallRule" in s for s in windows.sent) and capsys.readouterr().out == ""
 
@@ -56,22 +52,11 @@ def test_starting_never_adds_a_rule_even_in_an_administrators_shell_and_says_the
 
 
 def test_a_network_windows_calls_public_is_named_with_the_setting_to_change(capsys):
-    windows = Windows(held=["Poolhouse"], categories="Public")
+    windows = Windows(held=EVERY, categories="Public")
     assert firewall.check(windows) is False
     assert "choose Private" in capsys.readouterr().err
     assert firewall.public_only(Windows(categories="Public,Private")) is False
     assert firewall.public_only(Windows(categories="")) is False
-
-
-@pytest.mark.parametrize("address", ["172.20.144.1", "172.16.0.9", "172.31.255.254"])
-def test_a_wsl_machine_on_the_hyper_v_network_is_told_how_to_be_reached(address):
-    said = nat_notice(address)
-    assert address in said and "cannot find it or reach it" in said and "python -m poolhouse.device_setup" in said
-
-
-@pytest.mark.parametrize("address", ["192.168.2.59", "10.0.0.4", "172.32.0.1", "", "not an address"])
-def test_a_machine_on_the_network_itself_is_not_told_anything(address):
-    assert nat_notice(address) == ""
 
 
 def test_nothing_in_the_source_raises_a_windows_administrator_prompt():

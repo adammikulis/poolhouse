@@ -1,57 +1,24 @@
 """Startup and binary information arguments remain literal argv values."""
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
-from poolhouse.fleet import windows_firewall, wsl, wsl_startup
+from poolhouse.fleet import windows_firewall
 from poolhouse.serve import backend
 
 
-@pytest.mark.parametrize("action", ["status", "configure"])
-def test_guest_owner_uses_literal_executable_and_json(monkeypatch, action):
-    executable = "C:/tools/python name; $(payload).exe"
-    monkeypatch.setenv("POOLHOUSE_WINDOWS_PYTHON", executable)
-    run = Mock(return_value=SimpleNamespace(stdout='{"installed": true}'))
-    monkeypatch.setattr(wsl_startup.subprocess, "run", run)
-    hostile = "label; $(payload) & command"
-    assert wsl_startup.call(action, labels=[hostile])["installed"]
-    assert run.call_args.args[0] == [executable, "-m", "poolhouse.fleet.autostart", "windows-owner"]
-    assert json.loads(run.call_args.kwargs["input"])["labels"] == [hostile]
-    assert not run.call_args.kwargs.get("shell")
-
-
-def test_wsl_start_preserves_hostile_arguments_and_service_setup(monkeypatch):
-    calls = []
-    child = Mock()
-    child.wait.return_value = 0
-    monkeypatch.setattr(wsl, "_read", lambda *args: "/mnt/c/python; $(payload).exe")
-    monkeypatch.setattr(wsl, "_bridge", lambda *args: None)
-    local_ui = Mock()
-    bridge_factory = Mock(return_value=local_ui)
-    monkeypatch.setattr(wsl.wsl_ui, "LocalUIBridge", bridge_factory)
-    monkeypatch.setattr(wsl, "command", lambda *args: ["wsl.exe", "--exec", *args])
-    run = Mock(return_value=SimpleNamespace(stdout=windows_firewall.FIREWALL_RULE_HTTP))
-    monkeypatch.setattr(wsl.subprocess, "run", run)
-    monkeypatch.setattr(wsl, "launch", lambda argv, **kwargs: calls.append((argv, kwargs)) or child)
-    monkeypatch.delenv("POOLHOUSE_HOME", raising=False)
-    monkeypatch.delenv("POOLHOUSE_CACHE", raising=False)
-    payload = "label; $(payload) & command"
-    assert wsl.start(["--label", payload], executable="/usr/bin/python name") == 0
-    for asked in run.call_args_list:   # only the firewall questions of fixed text, none holding anything the caller chose
-        assert asked.args[0][:4] == [windows_firewall.POWERSHELL, "-NoProfile", "-NonInteractive", "-Command"] and len(asked.args[0]) == 5
-        assert "payload" not in asked.args[0][4] and "python name" not in asked.args[0][4] and not asked.kwargs.get("shell")
+def test_the_windows_start_asks_the_firewall_only_questions_of_fixed_text(monkeypatch):
+    held = "\n".join(name for name, _, _ in windows_firewall.rules())   # every rule held, so the network's kind is asked too
+    run = Mock(return_value=SimpleNamespace(stdout=held))
+    monkeypatch.setattr(windows_firewall.subprocess, "run", run)
+    assert windows_firewall.check() is True
     assert run.call_count == 2
-    bridge_factory.assert_called_once_with(["wsl.exe", "--exec", "/usr/bin/python name", "-m",
-                                            "poolhouse.fleet.wsl_ui", "8770"], 8770)
-    local_ui.start.assert_called_once()
-    local_ui.close.assert_called_once()
-    assert calls[0][0][-2:] == ["--label", payload]
-    assert "POOLHOUSE_WINDOWS_PYTHON=/mnt/c/python; $(payload).exe" in calls[0][0]
-    assert not calls[0][1].get("shell")
+    for asked in run.call_args_list:
+        assert asked.args[0][:4] == [windows_firewall.POWERSHELL, "-NoProfile", "-NonInteractive", "-Command"] and len(asked.args[0]) == 5
+        assert not asked.kwargs.get("shell")
 
 
 @pytest.mark.parametrize("devices, option", [(False, "--help"), (True, "--list-devices")])

@@ -101,8 +101,8 @@ What runs today:
 
 - `scripts/test-on-linux [--single] [--rebuild] [--platform P] [pytest args]` runs the suite in a Docker
   container against the worktree (`scripts/test-on-linux` header [V]).
-- Inside WSL: `scripts/setup-wsl-dev` creates a venv and refuses outside WSL (header [V]); the application
-  can run in a WSL distribution (`fleet/wsl.py`, `wsl_network.py`, `wsl_startup.py` [V]); admission fixes
+- Inside WSL: `scripts/setup-wsl-dev` creates a venv and refuses outside WSL (header [V]); the Windows
+  application runs on Windows itself (docs/windows-runtime.md); admission fixes
   for the Linux runner sit on unmerged branches (`fix/linux-admission-stdio-current`,
   `fix/linux-immutable-runner`, `docs/linux-wsl-current` [V: branches exist]; contents not reviewed here).
 - A Windows or WSL device joins a pool as any other device would; whether it does today is a live-proof

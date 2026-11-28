@@ -11,13 +11,13 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from poolhouse import node_binary, node_pool, node_supervise
+from poolhouse import lan, node_binary, node_pool, node_supervise
 from poolhouse.log import say
 from poolhouse.node_health import call, node_health
 from poolhouse.node_launch import NodeUnavailable, ensure_node, stop_node
 
-DEFAULT_PORT = 7447
-DEFAULT_BEACON_PORT = 7448
+DEFAULT_PORT = lan.NODE_PORT
+DEFAULT_BEACON_PORT = lan.BEACON_PORT
 POLL_S = 1.0
 
 

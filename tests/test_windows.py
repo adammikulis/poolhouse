@@ -443,7 +443,7 @@ class TestAutostartOnWindows:
         wrapper = Path(create[create.index("/TR") + 1].strip('"'))
         assert wrapper == done.path == tmp_path / "poolhouse-traind.cmd"
         body = wrapper.read_text()
-        assert "-m poolhouse.fleet.launch --no-browser --slots 2 --label prep" in body
+        assert "C:\\Tools\\poolhouse\\poolhouse-traind.exe --slots 2 --label prep >> " in body
         assert str(tmp_path / "traind.log") in body, "a task's /TR cannot redirect; the wrapper does"
         assert ["schtasks", "/Run", "/TN", auto.LOGIN_TASK] in ran, "started now, not at the next logon"
         assert not (tmp_path / "startup.cmd").exists()
@@ -458,7 +458,7 @@ class TestAutostartOnWindows:
         assert done.installed
         assert done.path == tmp_path / "startup.cmd"
         assert "Startup folder" in done.note and "Access is denied" in done.note
-        assert "-m poolhouse.fleet.launch --no-browser" in done.path.read_text()
+        assert "C:\\Tools\\poolhouse\\poolhouse-traind.exe >> " in done.path.read_text()
 
     def test_changing_the_answer_ends_and_deletes_the_logon_task(
             self, win_autostart, monkeypatch, tmp_path):
@@ -520,12 +520,12 @@ class TestTraindPersist:
 
 # -- what the firewall has to let through -------------------------------------------
 class TestTheFirewall:
-    def test_the_inbound_rule_names_the_daemons_port(self):
+    def test_the_inbound_rules_are_one_line_naming_every_port(self):
         from poolhouse.fleet.windows_firewall import line, rules
 
-        assert rules() == [("Poolhouse", "TCP", 8770)]
-        assert line().endswith("protocol=TCP localport=8770")
-        assert line().count("netsh advfirewall firewall add rule") == 1
+        assert rules()[0] == ("Poolhouse", "TCP", 8770)
+        assert [port for _, _, port in rules()] == [8770, 7447, 7448, 7450]
+        assert line().count("netsh advfirewall firewall add rule") == len(rules())
         assert "\n" not in line(), "one line, for one administrator's prompt"
 
     def test_setup_prints_the_netsh_line_until_the_rule_exists(self, windows, monkeypatch):
@@ -541,10 +541,10 @@ class TestTheFirewall:
         assert len(found) == 1
         finding = found[0]
         assert not finding.good and finding.root
-        assert finding.said == "no inbound rule for Poolhouse"
+        assert finding.said == "no inbound rule for Poolhouse, Poolhouse node, Poolhouse node discovery, Poolhouse phones"
         assert finding.fix[:2] == ["cmd", "/c"]
         assert "protocol=TCP localport=8770" in finding.fix[2]
-        assert "UDP" not in finding.fix[2]
+        assert "protocol=UDP localport=7448" in finding.fix[2] and "profile=public" not in finding.fix[2]
         assert "administrator" in finding.note
 
     def test_setup_is_satisfied_once_netsh_finds_it(self, windows, monkeypatch):

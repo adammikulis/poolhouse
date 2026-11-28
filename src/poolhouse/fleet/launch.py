@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import socket
-import subprocess
 import sys
 import threading
 import time
@@ -18,19 +17,12 @@ from poolhouse import node_pool, runtime, spawned
 from poolhouse.http import Options, ServerError, request_json
 from poolhouse.log import say, warn
 
-from . import launch_health, launch_open, wsl_network, wsl_registration, wsl_startup
+from . import launch_health, launch_open, windows_firewall
 from .daemon_control import ControlError, launch_of, request_replacement
 from .handover import claim, finish
-from .onboard.lan import can_bind, primary_ip
+from .onboard.lan import can_bind
 from .runtime_paths import default_root
 from .updates import state
-from .wsl import (
-    WSLError,
-    authenticated_health as wsl_authenticated_health,
-    prepare,
-    replace_running,
-    start,
-)
 
 __all__ = ["already_running", "last_screen", "main", "wait_for_health"]
 
@@ -186,26 +178,19 @@ def _reuse(running: dict[str, Any], known: argparse.Namespace, rest: list[str]) 
 
 
 def _replace(known: argparse.Namespace, rest: list[str], running: dict[str, Any], expected: str,
-             release: Callable[[], None]) -> int | None:
-    """Ask the running daemon to stop and put another in its place. On Windows the daemon is the WSL one: its exit is waited for and
-    None comes back, for the caller to start it. Elsewhere the successor is started and proved here (`handover`), so the exit status
-    says whether a daemon answers."""
-    previous = None
+             release: Callable[[], None]) -> int:
+    """Ask the running daemon to stop and put another in its place. The successor is started and proved here (`handover`), so
+    the exit status says whether a daemon answers."""
     try:
-        if sys.platform == "win32":
-            replace_running(rest, known.port, running, expected, restart="preserve")
-        else:
-            previous = launch_of(_root(rest), known.port)
-            answer = request_replacement(_root(rest), known.port, running, expected, restart="preserve")
-            if isinstance(answer, dict) and answer.get("preserved"):
-                say(f"Restart preserves jobs: {answer['preserved']}")
-    except (ControlError, ServerError, WSLError, OSError, ValueError) as exc:
+        previous = launch_of(_root(rest), known.port)
+        answer = request_replacement(_root(rest), known.port, running, expected, restart="preserve")
+        if isinstance(answer, dict) and answer.get("preserved"):
+            say(f"Restart preserves jobs: {answer['preserved']}")
+    except (ControlError, ServerError, OSError, ValueError) as exc:
         warn(str(exc))
         return 1
     while not _wait_for_exit(known.port):
         say("The previous daemon was told to stop and is still exiting; waiting for it.")
-    if sys.platform == "win32":
-        return None
     code = finish(_daemon_arguments(known, rest), previous, lambda: _health(known.port), release)
     if code == 0 and not known.no_browser:
         webbrowser.open(launch_open.page_url(known.port, _root(rest)))
@@ -233,9 +218,8 @@ def _settle(known: argparse.Namespace, rest: list[str], release: Callable[[], No
         expected = str(state().get("commit") or "")
         return _replace(known, rest, running, expected, release)
     try:
-        authenticated = (wsl_authenticated_health(rest, known.port) if sys.platform == "win32"
-                         else launch_health.authenticated(known.port, _root(rest)))
-    except (WSLError, OSError, ValueError, subprocess.SubprocessError):
+        authenticated = launch_health.authenticated(known.port, _root(rest))
+    except (OSError, ValueError):
         authenticated = None
     if authenticated is None:
         warn("The running daemon could not authenticate this installation; leaving it running.")
@@ -249,11 +233,9 @@ def main(argv: list[str] | None = None, *,
     if daemon_main is None and known.restart:
         runtime.forward("poolhouse.fleet.launch", list(sys.argv[1:] if argv is None else argv))
 
-    linux_executable = None
     try:
         with contextlib.ExitStack() as held:
-            if sys.platform != "win32":
-                held.enter_context(claim(_root(rest), known.port))
+            held.enter_context(claim(_root(rest), known.port))
             settled = _settle(known, rest, held.close)
     except ControlError as exc:
         warn(str(exc))
@@ -263,27 +245,12 @@ def main(argv: list[str] | None = None, *,
     if daemon_main is None and not known.restart:
         runtime.forward("poolhouse.fleet.launch", list(sys.argv[1:] if argv is None else argv))
 
-    if sys.platform == "win32" and linux_executable is None:
-        try:
-            linux_executable = prepare()
-        except (WSLError, OSError) as exc:
-            warn(str(exc))
-            return 1
-
+    if sys.platform == "win32":
+        windows_firewall.check()   # says what keeps other devices from reaching this one; changes nothing
     stopped = threading.Event()
     threading.Thread(target=_open_when_ready,
                      args=(known.port, not known.no_browser, stopped, _root(rest)), daemon=True).start()
     arguments = _daemon_arguments(known, rest)
-    if sys.platform == "win32":
-        try:
-            return start(arguments, executable=linux_executable)
-        except (WSLError, OSError) as exc:
-            warn(str(exc))
-            return 1
-        finally:
-            stopped.set()
-    if wsl_startup.guest() and wsl_registration.configuration() is None and (note := wsl_network.nat_notice(primary_ip())):
-        warn(note)
     if daemon_main is None:
         from .daemon import run as daemon_main
 

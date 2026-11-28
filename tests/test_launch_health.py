@@ -105,48 +105,6 @@ def test_held_unresponsive_port_is_left_alone(monkeypatch):
     assert launch._settle(argparse.Namespace(port=8770, restart=False), [], lambda: None) == 1
 
 
-@pytest.mark.parametrize("root", ["", "/linux/root", "windows-root"])
-def test_legacy_wsl_authentication_uses_translated_root_without_prepare(monkeypatch, root):
-    from poolhouse.fleet import wsl
-
-    calls = []
-    health = {"ok": True, "name": "box", "slots": 1, "free": 1, "busy": False, "proof": "a" * 64}
-
-    def read(*args):
-        calls.append(args)
-        if args[0] == "python3":
-            return "/installed/python"
-        if args[0] == "wslpath":
-            return "/translated/root"
-        return json.dumps(health)
-
-    monkeypatch.delenv("POOLHOUSE_HOME", raising=False)
-    monkeypatch.delenv("POOLHOUSE_CACHE", raising=False)
-    monkeypatch.setattr(wsl, "_read", read)
-    monkeypatch.setattr(wsl, "prepare", lambda: pytest.fail("prepared runtime"))
-    assert wsl.authenticated_health(["--root", root] if root else [], 8770) == health
-    call = calls[-1]
-    assert call[:4] == ("env", "/installed/python", "-I", "-c")
-    assert call[-2:] == (("/translated/root" if root == "windows-root" else root), "8770")
-    assert "launch_health import authenticated" in call[4]
-    assert "print(json.dumps(authenticated" in call[4]
-
-
-def test_legacy_wsl_probe_timeout_leaves_host_running(monkeypatch):
-    import subprocess
-
-    monkeypatch.setattr(launch.sys, "platform", "win32")
-    monkeypatch.setattr(launch, "already_running", lambda _: {"commit": "old"})
-    monkeypatch.setattr(launch, "_replace", lambda *args: pytest.fail("replaced host"))
-
-    def timeout(*args):
-        raise subprocess.TimeoutExpired("wsl", 60)
-
-    monkeypatch.setattr(launch, "wsl_authenticated_health", timeout)
-    known = argparse.Namespace(port=8770, restart=False, no_browser=True)
-    assert launch._settle(known, [], lambda: None) == 1
-
-
 @pytest.mark.parametrize("newline", [False, True])
 def test_daemon_readable_directory_private_key_is_supported(existing, newline):
     from poolhouse.fleet import launch_health

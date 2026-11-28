@@ -20,12 +20,11 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from poolhouse import home, jobs, runtime, runtime_identity
 from poolhouse.log import say, warn
 
-from . import autostart_cli, autostart_keystore, wsl_startup
+from . import autostart_cli, autostart_keystore
 from .autostart_backends import NEEDS_ROOT
 from .autostart_models import (
     ADOPTED,
@@ -273,8 +272,6 @@ def _windows_install(mode: str, argv: list[str], log_dir: Path, *, start_now: bo
 def plan(mode: str, *, slots: int = 1, labels: tuple[str, ...] = (),
          report: str = "") -> list[str]:
     """The exact command line that would be installed. Shown before anything is."""
-    if sys.platform == "win32":
-        return [sys.executable, "-m", "poolhouse.fleet.launch", "--no-browser", *_args(slots, labels, report)]
     return _executable() + _args(slots, labels, report)
 
 
@@ -283,9 +280,6 @@ def install(mode: str, *, slots: int = 1, labels: tuple[str, ...] = (),
     """Arrange for the daemon to start, or explain what a human must run."""
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}, got {mode!r}")
-    if wsl_startup.guest():
-        result = wsl_startup.call("configure", mode=mode, slots=slots, labels=list(labels), report=report)
-        return Autostart(mode, installed=bool(result.get("installed")), note=str(result.get("note", "")))
     uninstall()
     if mode == "manual":
         left = _left_behind()
@@ -523,8 +517,6 @@ def _left_behind() -> str:
 
 
 def status() -> dict[str, object]:
-    if wsl_startup.guest():
-        return wsl_startup.call("status")
     """Which mode, if any, is currently installed on this machine."""
     out: dict[str, object] = {"platform": sys.platform, "mode": "manual", "paths": []}
     checks = {
@@ -580,16 +572,6 @@ def _install_system(user: str, home_dir: str, *, only_print: bool = False) -> in
 
 
 
-def _windows_owner(request: dict[str, Any]) -> dict[str, object]:
-    mode = request["mode"]
-    subprocess.run(["schtasks", "/Delete", "/F", "/TN", LOGIN_TASK], capture_output=True, check=False)
-    _windows_startup().unlink(missing_ok=True)
-    if mode == "manual":
-        return {"installed": True, "note": "Windows login startup removed; the running launcher remains active."}
-    argv = plan(mode, slots=request["slots"], labels=tuple(request["labels"]), report=request["report"])
-    got = _windows_install(mode, argv, home.home(), start_now=False)
-    return {"installed": got.installed, "note": got.note}
-
 def main(argv: list[str] | None = None) -> int:
     """What ``packaging/install.sh`` calls rather than writing any of it in shell.
 
@@ -601,10 +583,7 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
     import json as _json
 
-    if (argv or sys.argv[1:]) == ["windows-owner"]:
-        return wsl_startup.answer(status, _windows_owner)
-
-    ap = argparse.ArgumentParser(prog="python -m poolhouse.fleet.autostart",
+    ap =argparse.ArgumentParser(prog="python -m poolhouse.fleet.autostart",
                                  description="what the installer asks about this machine")
     sub = ap.add_subparsers(dest="cmd", required=True)
 

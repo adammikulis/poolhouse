@@ -14,12 +14,13 @@ import ipaddress
 import socket
 from urllib.parse import urlsplit
 
+from poolhouse import lan as network
 from poolhouse.httpguard import allowed_address
 
 __all__ = ["DEFAULT_HTTP_PORT", "NotLocal", "can_bind", "in_tailnet", "loopback_host", "primary_ip", "require_local",
            "require_local_url", "secure_scheme"]
 
-DEFAULT_HTTP_PORT = 8770
+DEFAULT_HTTP_PORT = network.DAEMON_PORT
 
 TAILNET_V4 = ipaddress.ip_network("100.64.0.0/10")
 TAILNET_V6 = ipaddress.ip_network("fd7a:115c:a1e0::/48")

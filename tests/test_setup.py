@@ -401,8 +401,8 @@ def test_the_speech_findings_are_printed_with_the_rest(monkeypatch, capsys):
 
 
 def test_the_firewall_finding_names_the_inbound_rule_and_how_to_add_it():
-    """Windows answers no member until TCP 8770 is let in. `_firewall_rule_present` asks ``netsh``;
-    where there is none, every rule reads absent. The node's own ports belong to `device_host`."""
+    """Windows answers no member until Poolhouse's ports are let in. `_firewall_rule_present` asks ``netsh``;
+    where there is none, every rule reads absent."""
     from poolhouse.fleet.windows_firewall import line, rules
     from poolhouse.setup import _firewall_finding
 
@@ -418,8 +418,8 @@ def test_the_firewall_finding_names_the_inbound_rule_and_how_to_add_it():
     if not finding.good:
         assert finding.said.startswith("no inbound rule for ")
         assert finding.fix == ["cmd", "/c", line()]
-        assert "protocol=TCP" in finding.fix[2] and "UDP" not in finding.fix[2]
-        assert "Windows blocks inbound TCP 8770" in finding.note
+        assert "protocol=TCP localport=8770" in finding.fix[2] and "protocol=UDP localport=7448" in finding.fix[2]
+        assert "Windows blocks inbound connections" in finding.note
     else:
         assert finding.said.startswith("inbound rules present: ")
         assert finding.note == ""

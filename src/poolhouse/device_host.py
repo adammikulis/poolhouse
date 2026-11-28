@@ -11,10 +11,9 @@ import sys
 from pathlib import Path
 
 from poolhouse.home import user_home
-from poolhouse.node_join import DEFAULT_BEACON_PORT, DEFAULT_PORT
+from poolhouse.lan import NODE_RULES, RULES
 
 HYPERV_ID = "{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}"
-RULES = (("Poolhouse node", "TCP", DEFAULT_PORT), ("Poolhouse node discovery", "UDP", DEFAULT_BEACON_PORT))
 POWERSHELL = "powershell.exe"
 TIMEOUT = 600
 
@@ -48,14 +47,14 @@ def _powershell(script: str) -> str:
 
 
 def rules_script() -> str:
-    """PowerShell that adds each missing inbound rule, on private networks only, for Windows and for the same ports of the WSL VM."""
+    """PowerShell that adds each missing inbound rule, on private networks only: Windows's, and the node's ports of the WSL VM."""
     adds = "; ".join(f"if (-not (Get-NetFirewallRule -DisplayName '{name}' -ErrorAction SilentlyContinue)) "
                      f"{{ New-NetFirewallRule -DisplayName '{name}' -Direction Inbound -Action Allow -Profile Private -Protocol {proto} -LocalPort {port} | Out-Null }}"
                      for name, proto, port in RULES)
     vm = "; ".join(f"if (-not (Get-NetFirewallHyperVRule -Name '{_vm_rule(name)}' -ErrorAction SilentlyContinue)) "
                    f"{{ New-NetFirewallHyperVRule -Name '{_vm_rule(name)}' -DisplayName '{name}' -Direction Inbound -Action Allow -Profiles Private "
                    f"-VMCreatorId '{HYPERV_ID}' -Protocol {proto} -LocalPorts {port} | Out-Null }}"
-                   for name, proto, port in RULES)
+                   for name, proto, port in NODE_RULES)
     return f"{adds}; if ({_HYPERV_PRESENT}) {{ {vm} }}"
 
 
@@ -66,7 +65,7 @@ def _vm_rule(name: str) -> str:
 def firewall_missing() -> bool:
     """Whether the inbound rules (Windows's or the WSL VM's) still need adding."""
     names = ",".join(f"'{name}'" for name, _, _ in RULES)
-    vm_names = ",".join(f"'{_vm_rule(name)}'" for name, _, _ in RULES)
+    vm_names = ",".join(f"'{_vm_rule(name)}'" for name, _, _ in NODE_RULES)
     script = (f"$m = @({names}) | Where-Object {{ -not (Get-NetFirewallRule -DisplayName $_ -ErrorAction SilentlyContinue) }}; "
               f"$h = if ({_HYPERV_PRESENT}) {{ @({vm_names}) | Where-Object {{ -not (Get-NetFirewallHyperVRule -Name $_ -ErrorAction SilentlyContinue) }} }}; "
               "if ($m -or $h) { 'missing' } else { 'ok' }")

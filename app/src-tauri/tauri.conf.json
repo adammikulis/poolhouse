@@ -23,6 +23,11 @@
       "icons/icon.ico"
     ],
     "externalBin": ["binaries/poolhouse-headless"],
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/hooks.nsh"
+      }
+    },
     "macOS": {
       "minimumSystemVersion": "12.0"
     }

@@ -19,7 +19,6 @@ import pytest
 from poolhouse import pool_cli
 from poolhouse.device_host import RULES
 from poolhouse.fleet.onboard.lan import DEFAULT_HTTP_PORT
-from poolhouse.fleet.windows_firewall import FIREWALL_RULE_HTTP
 
 PACKAGING = Path(__file__).resolve().parent.parent / "packaging"
 SH = PACKAGING / "install.sh"
@@ -27,12 +26,13 @@ PS1 = PACKAGING / "install.ps1"
 
 
 def test_the_windows_installer_opens_the_ports_the_daemon_and_the_rust_node_need():
-    """Windows Defender Firewall blocks inbound by default; the installer adds the daemon's rule and
-    the node's pool port and beacon rules, by the names and ports `windows_firewall` and `device_host`
-    use, so a machine joined from the app is not invisible to the rest of the pool."""
+    """Windows Defender Firewall blocks inbound by default; the installer adds a rule for every port Poolhouse
+    listens on, by the names and ports of `poolhouse.lan.RULES`, so a machine joined from the app is not
+    invisible to the rest of the pool."""
     script = PS1.read_text(encoding="utf-8")
     rules = dict(re.findall(r'Name = "([^"]+)";\s+Protocol = "(?:TCP|UDP)"; Port = (\d+)', script))
-    assert rules == {FIREWALL_RULE_HTTP: str(DEFAULT_HTTP_PORT), **{name: str(port) for name, _, port in RULES}}
+    assert rules == {name: str(port) for name, _, port in RULES}
+    assert ("Poolhouse", "TCP", DEFAULT_HTTP_PORT) in RULES
     assert "Poolhouse discovery" not in script, "only the daemon port is opened"
     assert "RunAs" not in script and "IsInRole" in script, "the rules are added only where the shell is already an administrator's: no prompt is raised"
     assert "Get-NetFirewallRule" in script, "a rule already present is not added twice"

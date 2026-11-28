@@ -503,16 +503,6 @@ tests = ["tests/test_autostart_hostile.py::test_an_error_or_a_non_json_answer_is
 note = "the health probe reads one loopback URL from the verified manifest; an error status, non-JSON body, slow answer or closed port is an unhealthy unit, never an exception"
 
 [[group]]
-match = ["spawn:fleet/projects.py:local_root"]
-status = "covered"
-count = 1
-tests = ["tests/test_project_registration.py::test_windows_registration_in_wsl_uses_literal_argv_and_verified_git_root",
-         "tests/test_project_registration.py::test_registration_refuses_invalid_path_without_spawning",
-         "tests/test_project_registration.py::test_registration_refuses_invalid_wsl_translation",
-         "tests/test_project_registration.py::test_windows_drive_path_is_not_translated_outside_wsl"]
-note = "WSL drive paths reach a fixed literal argument vector; bounded absolute paths and authenticated local Dev admission are checked before translation, and mismatched Git identities cannot persist"
-
-[[group]]
 match = ["spawn:board/place.py:_git"]
 status = "covered"
 count = 1
@@ -1261,14 +1251,10 @@ status = "n/a"
 note = "fixed git argv over the checkout scripts/test is run in, in a throwaway index; no model, member or file name reaches it"
 
 [[group]]
-match = ["spawn:platform.py:launch", "spawn:fleet/wsl.py:_read", "spawn:fleet/wsl.py:prepare"]
+match = ["spawn:platform.py:launch"]
 status = "covered"
-tests = [
-  "tests/test_wsl_backend.py::test_owned_process_preserves_hostile_arguments_without_a_shell",
-  "tests/test_wsl_backend.py::test_wsl_read_preserves_hostile_text_and_unicode",
-  "tests/test_wsl_backend.py::test_wsl_installer_uses_cached_wheel_without_source_checkout",
-]
-note = "shell metacharacters remain argv values; the WSL installer wheel path is one pip argument"
+tests = ["tests/test_model_namespace.py::test_owned_process_preserves_hostile_arguments_without_a_shell"]
+note = "shell metacharacters remain argv values"
 
 [[group]]
 match = ["spawn:workspace/integration_git.py:git", "spawn:workspace/integration_git.py:ancestor",
@@ -1281,18 +1267,10 @@ tests = [
 note = "real isolated repositories exercise literal hostile paths, exact reviewed ancestry, gate failure and the maintained publication hook; only fixed gate command forms run"
 
 [[group]]
-match = ["spawn:fleet/autostart.py:_windows_owner"]
-status = "covered"
-tests = ["tests/test_wsl_autostart.py::test_hostile_request_refused",
-         "tests/test_wsl_autostart.py::test_invalid_wire_never_mutates_tasks",
-         "tests/test_wsl_autostart.py::test_windows_owner_preserves_running_launcher"]
-note = "hostile startup fields refuse before task mutation; validated requests use fixed task commands and preserve the running launcher"
-
-[[group]]
-match = ["spawn:fleet/wsl.py:start", "spawn:fleet/wsl_startup.py:call", "spawn:serve/backend.py:_binary_info"]
+match = ["spawn:serve/backend.py:_binary_info"]
 status = "covered"
 tests = ["tests/test_redteam_startup_arguments.py"]
-note = "hostile executable and label text stays in literal argv or JSON fields; service commands and information flags remain fixed without a shell"
+note = "a hostile binary path stays one literal argument and the information flags are fixed, without a shell"
 
 [[group]]
 match = ["spawn:runtime_trust.py:_git", "spawn:hookcheck.py:_git", "spawn:hookcheck.py:_entries"]
@@ -1403,17 +1381,6 @@ note = "the AST gate shows no spawn goes through a shell; what each argv carries
 
 # -- listeners -----------------------------------------------------------------------------
 [[group]]
-match = ["listener:fleet/wsl_network.py:NetworkBridge._listen"]
-status = "covered"
-tests = ["tests/test_wsl_network.py::test_a_bridge_without_a_lan_address_refuses_to_listen_on_every_interface",
-         "tests/test_wsl_network.py::test_lan_relay_preserves_stream_half_close_and_releases_ports",
-         "tests/test_wsl_ui.py::test_local_ui_relay_preserves_bytes_and_actual_loopback_member",
-         "tests/test_wsl_ui.py::test_local_ui_queues_connections_over_admission_limit",
-         "tests/test_wsl_ui.py::test_local_ui_close_terminates_idle_helper_and_releases_slot",
-         "tests/test_wsl_network.py::test_gateway_relay_preserves_raw_transport_and_nonloopback_scope"]
-note = "the discovery control listener rejects bad capabilities, destinations and oversized frames; the TCP listener relays opaque bytes to the fixed daemon target"
-
-[[group]]
 match = ["listener:fleet/daemon.py:*"]
 status = "partial"
 tests = ["tests/test_redteam_fleet.py", "tests/test_onboard_tailnet.py"]
@@ -1438,7 +1405,7 @@ note = "Loopback broker rejects IQ downgrades and forged claim ownership; queued
 [[group]]
 match = ["listener:serve/socket_relay.py:supervise"]
 status = "covered"
-tests = ["tests/test_wsl_backend.py::test_relay_preserves_stream_and_releases_port_on_child_exit",
+tests = ["tests/test_model_namespace.py::test_relay_preserves_stream_and_releases_port_on_child_exit",
          "tests/test_serverkeys.py"]
 note = "loopback relays opaque hostile HTTP and binary bytes through the private Unix socket; the managed model command includes its API key"
 
@@ -1479,26 +1446,10 @@ tests = ["tests/test_fleet_launch.py::test_launcher_waits_for_tcp_close_when_hea
 note = "a fixed loopback TCP probe treats timeouts and unhealthy listeners as live; only connection refusal authorizes starting the replacement"
 
 [[group]]
-match = ["egress:fleet/wsl_ui.py:stdio"]
-status = "covered"
-tests = ["tests/test_wsl_ui.py::test_local_ui_relay_preserves_bytes_and_actual_loopback_member",
-         "tests/test_wsl_ui.py::test_local_ui_transport_keeps_silent_connections_unbounded",
-         "tests/test_wsl_ui.py::test_stdio_helper_exits_cleanly_after_http_response_with_input_open",
-         "tests/test_wsl_ui.py::test_local_ui_close_terminates_idle_helper_and_releases_slot"]
-note = "the helper connects only to Linux loopback with a launcher-selected port, preserves opaque bytes and releases owned sockets and processes on cancellation"
-
-[[group]]
 match = ["egress:fleet/project_client.py:read"]
 status = "covered"
 tests = ["tests/test_remote_transport_attacks.py", "tests/test_project_source.py"]
 note = "signed source replies stay on the exact LAN authority endpoint; wire and plaintext bounds include authenticated sealing overhead"
-
-[[group]]
-match = ["egress:fleet/wsl_network.py:_forward"]
-status = "covered"
-tests = ["tests/test_wsl_network.py::test_lan_forward_refuses_public_target",
-         "tests/test_wsl_network.py::test_lan_relay_preserves_stream_half_close_and_releases_ports"]
-note = "the relay connects only to the launcher-selected private daemon destination, and relay bytes cannot redirect it"
 
 [[group]]
 match = ["egress:scrape/browserguard.py:*", "listener:scrape/browserguard.py:*", "parser:scrape/browserguard.py"]

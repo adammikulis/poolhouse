@@ -133,7 +133,6 @@ def test_a_listener_beyond_this_machine_cannot_be_built_without_tls():
 
 def test_the_old_switch_changes_nothing(tmp_path, monkeypatch):
     monkeypatch.setenv("POOLHOUSE_FLEET_TLS", "off")
-    monkeypatch.delenv("POOLHOUSE_WSL_NETWORK", raising=False)
     monkeypatch.setattr(projects, "primary_ip", lambda: "192.168.40.2")
     assert not hasattr(tls, "disabled")
     assert lan_host(8770) == "https://192.168.40.2:8770"

@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
-import json
 import os
-import re
-import subprocess
 import threading
 import urllib.parse
 from collections.abc import Callable
@@ -20,9 +17,8 @@ from poolhouse.home import DEFAULT_NAME
 from poolhouse.net import git
 from poolhouse.redact import secrets
 
-from . import project_source as source, runtime_wheel, wsl_startup
+from . import project_source as source, runtime_wheel
 from .onboard.lan import primary_ip
-from .wsl_network import ENV as BRIDGE_ENV
 
 
 def local_candidates() -> tuple[Path, ...]:
@@ -33,18 +29,10 @@ def local_candidates() -> tuple[Path, ...]:
 
 
 def local_root(value: str) -> Path:
-    """Validate a local path and translate Windows drive paths inside WSL."""
+    """Validate a local path."""
     if (not isinstance(value, str) or not value or len(value) > 2048
             or any(ord(c) < 32 for c in value) or value.startswith(("\\\\", "//"))):
         raise source.ProjectError("Choose an absolute local project path")
-    if re.match(r"^[A-Za-z]:[\\/]", value) and wsl_startup.guest():
-        try:
-            value = subprocess.run(["wslpath", "-a", "-u", value], capture_output=True,
-                                   text=True, timeout=5, check=True).stdout.strip()
-        except (OSError, subprocess.SubprocessError) as exc:
-            raise source.ProjectError("Windows project path could not be resolved in WSL") from exc
-        if len(value) > 2048 or any(ord(c) < 32 for c in value):
-            raise source.ProjectError("Choose an absolute local project path")
     root = Path(value)
     if not root.is_absolute():
         raise source.ProjectError("Choose an absolute local project path")
@@ -52,16 +40,8 @@ def local_root(value: str) -> Path:
 
 
 def lan_host(port: int) -> str:
-    """Return the daemon address reachable through its Windows bridge or LAN interface."""
+    """Return the daemon address reachable on the LAN interface."""
     address = primary_ip()
-    if configured := os.environ.get(BRIDGE_ENV):
-        try:
-            address = json.loads(configured)["address"][0]
-            parsed = ipaddress.ip_address(address)
-            if not parsed.is_private or parsed.is_loopback or parsed.is_unspecified:
-                return ""
-        except (ValueError, KeyError, TypeError, IndexError):
-            return ""
     try:
         parsed = ipaddress.ip_address(address)
         if parsed.is_loopback or parsed.is_unspecified or parsed.is_multicast or not parsed.is_private:

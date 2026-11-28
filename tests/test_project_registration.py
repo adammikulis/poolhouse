@@ -1,8 +1,6 @@
 """Installed source discovery and local checkout path resolution."""
 
-import subprocess
 from pathlib import PurePosixPath
-from types import SimpleNamespace
 
 import pytest
 
@@ -53,62 +51,16 @@ def test_stale_installed_source_provenance_is_not_a_candidate(tmp_path, monkeypa
 
 
 @pytest.mark.redteam
-def test_windows_registration_in_wsl_uses_literal_argv_and_verified_git_root(tmp_path, monkeypatch):
-    checkout = repository(tmp_path / "source")
-    calls = []
-    requested = r"C:\repos\project $(unexpected)"
-    monkeypatch.setattr(projects.wsl_startup, "guest", lambda: True)
-
-    def translate(args, **kwargs):
-        calls.append((args, kwargs))
-        return SimpleNamespace(stdout=str(checkout) + "\n")
-
-    monkeypatch.setattr(projects.subprocess, "run", translate)
-    assert projects.local_root(requested) == checkout
-    assert calls == [(["wslpath", "-a", "-u", requested],
-                      {"capture_output": True, "text": True, "timeout": 5, "check": True})]
-    monkeypatch.undo()
-    registry = projects.ProjectRegistry(tmp_path / "registry", "device")
-    assert registry.register(checkout, projects.identity(checkout))["id"] == projects.identity(checkout)
-    assert registry.list() == []
-
-
-@pytest.mark.redteam
 @pytest.mark.parametrize("value", [r"C:relative", r"\\host\share\project", r"\\?\C:\project",
                                   "relative", "/bad\npath", "x" * 2049, None, []])
-def test_registration_refuses_invalid_path_without_spawning(tmp_path, monkeypatch, value):
-    monkeypatch.setattr(projects.wsl_startup, "guest", lambda: True)
-    monkeypatch.setattr(projects.subprocess, "run", lambda *args, **kwargs: pytest.fail("invalid path spawned"))
+def test_registration_refuses_an_invalid_path(value):
     with pytest.raises(ProjectError, match="absolute local project path"):
         projects.local_root(value)
 
 
 @pytest.mark.redteam
-@pytest.mark.parametrize("result", ["relative", "", "/bad\npath", "/" + "x" * 2048])
-def test_registration_refuses_invalid_wsl_translation(monkeypatch, result):
-    monkeypatch.setattr(projects.wsl_startup, "guest", lambda: True)
-    monkeypatch.setattr(projects.subprocess, "run", lambda *args, **kwargs: SimpleNamespace(stdout=result))
-    with pytest.raises(ProjectError, match="absolute local project path"):
-        projects.local_root(r"C:\repos\project")
-
-
-@pytest.mark.redteam
-def test_wsl_translation_failure_is_not_silent(monkeypatch):
-    monkeypatch.setattr(projects.wsl_startup, "guest", lambda: True)
-
-    def failed(*args, **kwargs):
-        raise subprocess.CalledProcessError(1, args[0])
-
-    monkeypatch.setattr(projects.subprocess, "run", failed)
-    with pytest.raises(ProjectError, match="could not be resolved"):
-        projects.local_root(r"C:\repos\project")
-
-
-@pytest.mark.redteam
-def test_windows_drive_path_is_not_translated_outside_wsl(monkeypatch):
-    monkeypatch.setattr(projects.wsl_startup, "guest", lambda: False)
+def test_a_windows_drive_path_is_not_a_path_on_another_system(monkeypatch):
     monkeypatch.setattr(projects, "Path", PurePosixPath)
-    monkeypatch.setattr(projects.subprocess, "run", lambda *args, **kwargs: pytest.fail("not WSL"))
     with pytest.raises(ProjectError, match="absolute local project path"):
         projects.local_root(r"C:\repos\project")
 
