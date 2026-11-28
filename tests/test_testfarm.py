@@ -255,18 +255,84 @@ def test_the_device_table_says_how_each_device_is_reached_and_the_fix_when_it_is
     assert sum(fix in line for line in lines) == 1, "the fix is printed once, under the device it is for"
 
 
+# -- a run of one commit ------------------------------------------------------
+
+def committed(tmp_path: Path) -> tuple[Path, str]:
+    """The stub tree with its files committed, and the commit's full id."""
+    tree = make_tree(tmp_path / "src", tmp_path / "pids")
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@localhost", "-C", str(tree)]
+    subprocess.run([*git, "add", "--all"], check=True, capture_output=True)
+    subprocess.run([*git, "commit", "-q", "-m", "one"], check=True, capture_output=True)
+    return tree, subprocess.run([*git, "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def test_a_commit_packs_as_it_was_committed_whatever_the_working_tree_holds(tmp_path):
+    tree, commit = committed(tmp_path)
+    first = shard_tree.pack(shard_tree.Commit(tree, commit))
+    (tree / "tests" / "test_a.py").write_text("def test_one():\n    raise AssertionError\n", encoding="utf-8")
+    (tree / "tests" / "test_new.py").write_text("def test_new():\n    pass\n", encoding="utf-8")
+    (tree / "tests" / "test_b.py").unlink()
+    again = shard_tree.pack(shard_tree.Commit(tree, commit))
+    assert again == first, "the same commit is the same bytes, so anyone holding it can check the digest a result names"
+    with tarfile.open(fileobj=io.BytesIO(first[0]), mode="r:gz") as found:
+        names = found.getnames()
+        assert b"assert True" in found.extractfile("tests/test_a.py").read()
+        assert found.getmember("scripts/test").mode == 0o644
+    assert "tests/test_b.py" in names and "tests/test_new.py" not in names
+    assert [member.name for member in shard_tree.members(*first)] == sorted(names)
+    assert shard_tree.pack(tree) != first, "without a commit the working tree travels"
+
+
+def test_a_commit_pack_carries_only_what_a_shard_may_and_an_unknown_commit_is_refused(tmp_path):
+    tree, _ = committed(tmp_path)
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@localhost", "-C", str(tree)]
+    (tree / ".github").mkdir()
+    (tree / ".github" / "ci.yml").write_text("on: push\n", encoding="utf-8")
+    (tree / ".env").write_text("TOKEN=x\n", encoding="utf-8")
+    (tree / "elsewhere").mkdir()
+    (tree / "elsewhere" / "x.py").write_text("x = 1\n", encoding="utf-8")
+    (tree / "tests" / "link.py").symlink_to("/etc/passwd")
+    subprocess.run([*git, "add", "--all", "--force"], check=True, capture_output=True)
+    subprocess.run([*git, "commit", "-q", "-m", "two"], check=True, capture_output=True)
+    names = [member.name for member in shard_tree.members(*shard_tree.pack(shard_tree.Commit(tree, "HEAD")))]
+    assert names == ["scripts/test", "tests/test_a.py", "tests/test_b.py", "tests/test_fail.py", "tests/test_hang.py"]
+    for unknown in ("0" * 40, "--output=/tmp/x", "HEAD:tests"):
+        with pytest.raises(shard_tree.TreeError, match="no commit"):
+            shard_tree.pack(shard_tree.Commit(tree, unknown))
+
+
+@pytest.mark.parametrize(("tier", "split"), [("quick", False), ("all", True)])
+def test_a_commit_run_takes_neither_quick_nor_a_split(tier, split, capsys):
+    args = argparse.Namespace(tier=tier, on="somewhere", split=split, base="main", timeout=60.0, commit="HEAD")
+    assert on_device.main(args, [], ROOT, lambda tier, file: [], True) == 4
+    assert "a run of one commit" in capsys.readouterr().err
+
+
+def test_a_commit_that_does_not_exist_is_refused_before_a_device_is_asked(monkeypatch, capsys):
+    monkeypatch.setattr(on_device, "pool_devices", lambda: pytest.fail("no device is looked for when the commit is unknown"))
+    args = argparse.Namespace(tier="all", on="somewhere", split=False, base="main", timeout=60.0, commit="0" * 40)
+    assert on_device.main(args, ["tests/test_a.py"], ROOT, lambda tier, file: [], True) == 4
+    assert "no commit" in capsys.readouterr().err
+
+
+def test_a_commit_without_a_device_is_refused_by_the_runner(tmp_path):
+    done = subprocess.run([sys.executable, str(ROOT / "scripts" / "test"), "all", "tests/test_testfarm.py", "--commit", "HEAD"],
+                          cwd=ROOT, capture_output=True, text=True, timeout=60, check=False)
+    assert done.returncode == 4 and "--commit is for a run on another device" in done.stderr
+
+
 # -- the command line ---------------------------------------------------------
 
 @pytest.mark.parametrize("rest", [["--rootdir=/"], ["-k", "x"], ["tests/test_a.py::test_one"], ["../tests/test_a.py"], ["scripts/test"],
                                   ["/etc/passwd"], ["tests/sub/test_a.py"], ["tests/.hidden.py"]])
 def test_a_remote_run_takes_test_files_and_nothing_else(rest, capsys):
-    args = argparse.Namespace(tier="all", on="somewhere", split=False, base="main", timeout=60.0)
+    args = argparse.Namespace(tier="all", on="somewhere", split=False, base="main", timeout=60.0, commit="")
     assert on_device.main(args, rest, ROOT, lambda tier, file: [], True) == 4
     assert "test files tests/NAME.py only" in capsys.readouterr().err
 
 
 def test_the_gate_takes_no_files_and_a_job_command_does_not_run_elsewhere(capsys):
-    args = argparse.Namespace(tier="gate", on="somewhere", split=False, base="main", timeout=60.0)
+    args = argparse.Namespace(tier="gate", on="somewhere", split=False, base="main", timeout=60.0, commit="")
     assert on_device.main(args, ["tests/test_a.py"], ROOT, lambda tier, file: [], True) == 4
     assert "the gate takes no files" in capsys.readouterr().err
     args.tier = "submit"
@@ -283,7 +349,7 @@ def test_the_tiers_a_node_accepts_are_the_ones_the_runner_has():
 def test_nothing_is_sent_or_taken_until_the_experimental_feature_is_on(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path))
     monkeypatch.setattr(on_device, "pool_devices", lambda: pytest.fail("no device is looked for while the feature is off"))
-    args = argparse.Namespace(tier="all", on="somewhere", split=False, base="main", timeout=60.0)
+    args = argparse.Namespace(tier="all", on="somewhere", split=False, base="main", timeout=60.0, commit="")
     assert on_device.main(args, ["tests/test_a.py"], ROOT, lambda tier, file: [], True) == 4
     assert "experimental feature" in capsys.readouterr().err
     assert features.enabled(consent.FEATURE) is False and consent.run(["on"]) == 1
@@ -294,7 +360,7 @@ def test_a_person_who_turned_remote_tests_off_here_sends_nothing_to_any_device(t
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path))
     features.switch(consent.FEATURE, False)
     monkeypatch.setattr(on_device, "pool_devices", lambda: pytest.fail("no device is looked for once tests were turned off here"))
-    args = argparse.Namespace(tier="all", on="somewhere", split=False, base="main", timeout=60.0)
+    args = argparse.Namespace(tier="all", on="somewhere", split=False, base="main", timeout=60.0, commit="")
     assert on_device.main(args, ["tests/test_a.py"], ROOT, lambda tier, file: [], True) == 4
     assert "turned off here" in capsys.readouterr().err
 

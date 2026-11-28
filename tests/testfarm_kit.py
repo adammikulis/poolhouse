@@ -192,7 +192,7 @@ def member(a: Device) -> dict:
 
 def go(b_fp: str, tree: Path, files: list[str], reuse: bool = True, tier: str = "all") -> int:
     """`scripts/test` with a tier and test files, run on one device by its fingerprint, in this process."""
-    args = argparse.Namespace(tier=tier, on=b_fp, split=False, base="main", timeout=300.0)
+    args = argparse.Namespace(tier=tier, on=b_fp, split=False, base="main", timeout=300.0, commit="")
     return on_device.main(args, files, tree, lambda t, f: [sys.executable, "-m", "pytest", "-n", "1", f], reuse)
 
 

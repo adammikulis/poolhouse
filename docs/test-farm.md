@@ -15,6 +15,20 @@ poolhouse test-devices                                  the devices: platform, f
 The exit status is the worst of the runs; 70 means a device never ran its part (not in the pool, shards off,
 unreachable, refused, Python 3.13 missing). A refused or unreachable device is named on stderr with its reason.
 
+## Verifying a commit on another device
+
+```
+scripts/test all tests/test_x.py --on phone --commit 1a2b3c4
+```
+
+`--commit` sends that commit as it was committed, read from git's objects, so uncommitted edits stay behind; it is
+how one agent's work is checked on hardware it did not write on. The packed tree holds no time and no owner, so a
+commit is always the same bytes with the same digest: a result is taken only when it names that digest, and the
+printed lines, the ledger and the board line (`commit=<full id>`) name the commit. Every named file runs again,
+whatever the ledger holds. `quick` and `--split` work from the working tree and are refused with it. The commit id is
+the sender's statement; a device is trusted to have run what it was sent, as in every shard. [The phone
+worker](../app/phone-worker/README.md) is a device that takes such runs.
+
 ## How the owner turns it on (devices reached through the node)
 
 Nothing runs on a device until its person says so, per device, and the default is off. There are two switches,

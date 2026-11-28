@@ -48,8 +48,11 @@ def show(result: dict, name: str, reused: list[str] | None = None) -> list[str]:
 
 
 def board_line(device: dict, tier: str, files: int, result: dict, tree: str) -> str:
-    """The one line posted to the board for a run: key=value pairs a reader can grep, keyed by device."""
+    """The one line posted to the board for a run: key=value pairs a reader can grep, keyed by device; a run of one
+    commit (``result["commit"]``, which the sender sets) ends with its full id."""
     n = counts(result)
+    commit = result.get("commit", "")
     return plain(f"test-result device={device['name']} fp={device['fingerprint'][:16]} tier={tier} files={files} exit={result['exit']} "
                  f"passed={n['passed']} failed={n['failed'] + n['error']} skipped={n['skipped']} wall_s={result['wall_s']:.0f} "
-                 f"platform={result['platform']['system']}{'-wsl' if result['platform'].get('wsl') else ''} tree={tree[:12]}")
+                 f"platform={result['platform']['system']}{'-wsl' if result['platform'].get('wsl') else ''} tree={tree[:12]}"
+                 f"{f' commit={commit}' if commit else ''}")

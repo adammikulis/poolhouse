@@ -67,10 +67,10 @@ class Shards:
         """What ``device`` says about shards: ``accepts`` (and ``reason`` when not), platform, python, free slots."""
         return self.call(device, "shard_caps")
 
-    def send(self, device: str, root: Path, tier: str, files: list[str], timeout_s: int) -> str:
-        """Pack the tree at ``root``, upload it to ``device`` in order and start the run; the shard id."""
+    def send(self, device: str, source: Path | shard_tree.Commit, tier: str, files: list[str], timeout_s: int) -> str:
+        """Pack ``source`` (a working tree, or one commit), upload it to ``device`` in order and start the run; the shard id."""
         try:
-            tree, digest = shard_tree.pack(root)
+            tree, digest = shard_tree.pack(source)
         except (shard_tree.TreeError, OSError) as exc:
             raise ShardError(str(exc)) from None
         shard_id = secrets.token_hex(16)
