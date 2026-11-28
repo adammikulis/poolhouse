@@ -87,6 +87,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev \
             librsvg2-dev patchelf
+      # The window links a Swift library and takes only a root-owned toolchain for it (app/src-tauri/native_service_build.rs);
+      # the runner's Xcode belongs to its own user, the Command Line Tools beside it to root.
+      - name: the root-owned Swift toolchain
+        if: runner.os == 'macOS'
+        run: sudo xcode-select --switch /Library/Developer/CommandLineTools
       - run: python -m pip install --upgrade pip build
       - run: python packaging/build.py --bundle
 
