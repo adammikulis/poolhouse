@@ -7,7 +7,9 @@
 Covers tests/ files named test_redteam_*, test_*guard* or test_*auth*, and files that use the
 redteam marker. Weakening is fewer assertions than before, a removed test function, or an added
 skip, skipif or xfail. A `Reviewed-by-second:` or `Owner-order:` line in the commit message accepts the diff.
-Every diff is read as text, whatever attributes and diff settings the repository carries.
+Every diff is read as text, whatever attributes and diff settings the repository carries, and over the whole repository from
+whichever of its folders the check starts in. Exit 0 when nothing is weakened or the message accepts it, 1 with the list, and 2
+when git does not give what the check has to read, or --against names no commit.
 """
 
 from __future__ import annotations
@@ -128,9 +130,16 @@ def check(path: str, removed: list[str], added: list[str],
     return out
 
 
+class Unread(RuntimeError):
+    """Something the check has to read and git does not give."""
+
+
 def run(*args: str) -> str:
-    """Standard output of a git command."""
-    return merge_history.output(*args).stdout
+    """Standard output of a git command that has to succeed."""
+    done = merge_history.output(*args)
+    if done.returncode:
+        raise Unread(f"git {' '.join(args)}: {(done.stderr.strip() or f'exit {done.returncode}').splitlines()[0]}")
+    return done.stdout
 
 
 def merge_heads() -> list[str]:
@@ -260,14 +269,19 @@ def range_changes(rev: str) -> tuple[str, str]:
 def text_at(rev: str | None, *paths: str) -> str:
     """The first of ``paths`` that exists at ``rev`` (the index when ``rev`` is empty), else nothing."""
     for path in paths if rev is not None else ():
-        if body := run("show", f"{rev}:{path}"):
+        if body := show(rev, path):
             return body
     return ""
 
 
+def show(rev: str, path: str) -> str:
+    """``path`` at ``rev`` (the index when ``rev`` is empty), nothing where there is no such file."""
+    return run("show", f"{rev}:{path}") if object_id(f"{rev}:{path}") else ""
+
+
 def object_id(spec: str) -> str:
     """The id of the object ``spec`` names, empty when there is none."""
-    return run("rev-parse", "-q", "--verify", spec).strip()
+    return merge_history.output("rev-parse", "-q", "--verify", spec).stdout.strip()
 
 
 def count(text: str) -> int:
@@ -302,17 +316,24 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--staged", action="store_true")
     parser.add_argument("--message", default="")
-    parser.add_argument("--against", default="")
+    parser.add_argument("--against")
     args = parser.parse_args(argv)
-    if args.against:
-        diff, base = range_changes(args.against)
-        message = run("log", "--format=%B", f"{args.against}..HEAD")
-        befores = [base]
-    else:
-        diff = merge_own(run(*DIFF, "--cached", "--", "tests"))
+    try:
+        # the message is named from the folder the check was started in; every pathspec is read from the top
         message = Path(args.message).read_text(encoding="utf-8") if args.message else ""
-        befores = ["HEAD", *merge_heads()]
-    found = weakened(diff, lambda p: "\n".join(run("show", f"{rev}:{p}") for rev in befores))
+        os.chdir(run("rev-parse", "--show-toplevel").rstrip("\n"))
+        if args.against is not None:
+            against = run("rev-parse", "--verify", f"{args.against}^{{commit}}").strip()
+            diff, base = range_changes(against)
+            message = run("log", "--format=%B", f"{against}..HEAD")
+            befores = [base]
+        else:
+            diff = merge_own(run(*DIFF, "--cached", "--", "tests"))
+            befores = ["HEAD", *merge_heads()]
+        found = weakened(diff, lambda p: "\n".join(show(rev, p) for rev in befores))
+    except Unread as why:
+        print(f"weakened-assertions: could not read the change, so it is not clean: {why}", file=sys.stderr)
+        return 2
     if not found or SIGN.search(message):
         return 0
     print("weakened-assertions: a guard, authority or red-team test lost strength", file=sys.stderr)
