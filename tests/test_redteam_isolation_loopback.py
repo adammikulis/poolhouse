@@ -26,6 +26,7 @@ import poolhouse
 from poolhouse import loopback_window
 from poolhouse.isolation import ports as windows
 from poolhouse.isolation.capability import lan_address
+from poolhouse.isolation.confinement import Admission
 from poolhouse.platform import start_process
 from poolhouse.sandbox import Net, Policy, policies, seatbelt as profiles
 from poolhouse.serve import free_port
@@ -347,7 +348,7 @@ def test_a_confined_model_server_is_reached_on_loopback_and_binds_no_address_its
 def test_a_socket_the_launcher_hands_over_takes_its_first_connection_every_time(tmp_path, monkeypatch):
     """macOS breaks a socket now and then (about one in eight) when its sender closes it while it is still in flight."""
     root = tempfile.mkdtemp(prefix="pp-", dir="/tmp")
-    bridge = windows.PortBridge(root, tmp_path / "locks")
+    bridge = windows.PortBridge(root, tmp_path / "locks", admit=Admission())
     bridge.start()
     monkeypatch.setenv(loopback_window.ENV, bridge.setting)
     broken: list[str] = []
@@ -380,13 +381,13 @@ def test_a_window_holds_no_port_in_use_or_fixed_and_no_two_launches_share_one(tm
     roots = [tempfile.mkdtemp(prefix="pp-", dir="/tmp") for _ in range(2)]
     every = range(windows.FIRST, windows.LAST + 1)
     left = range(windows.FIRST, windows.FIRST + 2 * windows.SIZE)
-    first, second = (windows.PortBridge(root, locks, avoid=set(every) - set(left)) for root in roots)
+    first, second = (windows.PortBridge(root, locks, avoid=set(every) - set(left), admit=Admission()) for root in roots)
     try:
         first.start()
         second.start()
         assert not set(first.ports) & set(second.ports) and set(first.ports) | set(second.ports) <= set(left)
         with pytest.raises(OSError, match="in use"):
-            windows.PortBridge(roots[0], locks, avoid=set(every) - set(left)).start()
+            windows.PortBridge(roots[0], locks, avoid=set(every) - set(left), admit=Admission()).start()
     finally:
         first.stop()
         second.stop()

@@ -115,9 +115,10 @@ a file. Two of them reach {lead}:
 OPEN_LIMITS = """\
 shell runs in the same working copy, inside a sandbox that lets a command do what it does in a shell on this computer (GPU compute, headless
 browsers, the installed tools and libraries and connections to this computer's own loopback among it) and refuses these: writing anywhere but
-the copy, your home folder and temporary files; reading keys, credentials and the person's own folders; any network beyond this computer; the
-model server's own port; listening on a port (a Python server on 127.0.0.1 is given one of the sandbox's, no other program can listen); opening
-apps; and starting a sandbox of its own (sandbox-exec)."""
+the copy, your home folder and your own temporary folder ($TMPDIR; the shared /tmp is refused, so name temporary files under $TMPDIR); reading
+keys, credentials and the person's own folders; any network beyond this computer; the model server's own port; listening on a port (a Python
+server on 127.0.0.1 is given one of the sandbox's, no other program can listen); opening apps; and starting a sandbox of its own
+(sandbox-exec)."""
 CLOSED_LIMITS = """\
 shell runs in the same working copy, inside a sandbox with these limits: no network; no localhost port of this computer reached by a test; no
 Poolhouse node; no nested sandbox; and no real model."""

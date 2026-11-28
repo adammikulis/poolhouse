@@ -245,9 +245,11 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
   delegate's Python serves over TCP on `127.0.0.1` and `::1` within the box's own window of ports: a bind of port 0 gets the next one. The
   box binds no IP address itself; the launcher binds each socket and hands it over, so nothing the box runs listens on another address. A
   server of a program that is not Python, of a Python started with `-I`, over UDP or on a fixed port outside the window is refused; unix
-  sockets in the box's own folders and `/tmp` work.
+  sockets in the box's own folders work. The launcher hands a port only to a process of that launch's own tree (`serving.admitted`).
+- **Temporary files** (macOS). `TMPDIR` is a short folder of the launch's own in `/tmp`. The rest of `/tmp` and `/var/tmp` is not listed,
+  read, written or reached, so a program that names `/tmp` itself instead of `TMPDIR` is refused.
 - **Refused** (macOS; `sandbox/seatbelt_open.py`, held by `tests/test_redteam_open_box.py`). Writing outside the copy, the box's home and
-  temporary files; reading the person's folders, other programs' temporary files, keys, the keychain and credential services; a network
+  its own temporary folder; reading the person's folders, other programs' temporary files, keys, the keychain and credential services; a network
   beyond this computer; other processes' signals, memory, arguments and terminals; opening apps, scheduling jobs, Apple events, the
   clipboard, screen, camera and microphone; a sandbox of its own (`sandbox-exec`). The brief tells the agent to name every test it could
   not run.

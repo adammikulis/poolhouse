@@ -212,7 +212,7 @@ def test_a_probe_that_is_not_answered_inside_the_budget_is_a_deviation_and_the_p
     with world(tmp_path) as w:
         began = time.monotonic()
         with pytest.raises(IsolationFailed) as stopped:
-            proof.run(w.profile, w.services, lan=False, budget=0.4)
+            proof.run(w.profile, w.services, lan=False, budget=0.01)   # less than any interpreter takes to start
     assert time.monotonic() - began < 3 and stopped.value.attempt.startswith("P")
 
 

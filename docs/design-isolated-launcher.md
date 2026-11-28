@@ -369,6 +369,8 @@ Facts found by running the harnesses under the existing profile on this Mac (5.6
 - **A window of loopback ports** (macOS, writable stage), which grants no bind either. The launcher picks 128 ports of 41000 to 48999 that no socket holds, claims the block
   with a file lock, allows TCP to them and serving on them (`Net.accept`), refuses every bind of them, and serves a Unix socket on which it binds
   `127.0.0.1` or `::1` and passes the socket back (`isolation/ports.py`; `loopback_window.py`, the box's `sitecustomize.py`). UDP stays refused.
+  That socket and the session bridge answer only processes of the launch's own tree (`serving.admitted`, `confinement.Admission`): before the
+  harness runs, what the launcher itself runs, and from then on the harness's tree, each pid held to the start time the tree noted.
   What remains: a process outside that starts to listen on a port of a live window can be reached by that box over loopback.
 - **The project's environments** (`.venv`, `venv`, `node_modules`) are linked into the stage and granted read and exec by their
   real paths (`Spec.environments`), never write, and their programs are on `PATH`. The link is not a change of the session; a link
@@ -699,8 +701,8 @@ engine keeps (the model server, MCP servers, the Pi tool worker).
 |---|---|
 | compute on the GPU (the classes of `IOKIT_CLASSES`, `com.apple.MTLCompilerService`) | open a camera, microphone, input device or any other device class; reach the window server, clipboard or audio |
 | run a headless Chromium, which registers and looks up its own rendezvous names (`BROWSER_NAMES`) with its inner sandbox off | look up any system service not in `SERVICES`: launchd and LaunchServices, Apple events, the keychain and other credential services, the permission, preference-writing, download and name-resolving services; `job-creation`, `lsopen`, `appleevent-send` |
-| read and run the system's own trees, Homebrew, `/Applications`, the tools a version or package manager installed under the home folder (`toolchain.HOME_TOOLS`, linked at the same place in the agent home) | read, write, link, run or reach a socket in a private tree (`toolchain.private_trees`: `/Users`, other volumes, the account's temporary and cache folders, keychains, `/etc` credential files, Homebrew's and `/usr/local`'s `etc` and `var`, Poolhouse's state, and every entry the shared `/tmp` held when the profile was made), unless a granted tree inside it names it; read a registry token kept among the tools |
-| write the stage (an editing session), the agent home, its own `TMPDIR` and `/tmp` | write anywhere else |
+| read and run the system's own trees, Homebrew, `/Applications`, the tools a version or package manager installed under the home folder (`toolchain.HOME_TOOLS`, linked at the same place in the agent home) | read, write, link, run or reach a socket in a private tree (`toolchain.private_trees`: `/Users`, other volumes, the account's temporary and cache folders, keychains, `/etc` credential files, Homebrew's and `/usr/local`'s `etc` and `var`, Poolhouse's state, and the shared `/tmp` and `/var/tmp`, which it cannot even list), unless a granted tree inside it names it; read a registry token kept among the tools |
+| write the stage (an editing session), the agent home and its own `TMPDIR` (a short folder of the launch's own in `/tmp`) | write anywhere else |
 | connect to this computer's loopback, over TCP and UDP, and serve on a socket of its window (`isolation.ports`) | reach a host beyond this machine, resolve a name, reach the model server's port (`Spec.withheld`), bind or listen on any IP address, reach a unix socket outside the writable trees that was not granted |
 | start programs, signal and inspect its own, make pseudo-terminals, list processes | signal, trace or inspect another process or read its arguments and environment; use another terminal |
 

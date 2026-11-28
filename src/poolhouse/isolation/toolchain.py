@@ -130,13 +130,14 @@ def system_toolchain() -> tuple[str, ...]:
     return tuple(os.path.realpath(path) for path in found if Path(path).is_dir() and os.path.realpath(path) == path)
 
 
-PRIVATE = ("/Users", "/System/Volumes/Data/Users", "/Volumes", "/private/var/root", "/private/var/folders", "/private/var/at",
-           "/Library/Keychains", "/opt/homebrew/etc", "/opt/homebrew/var", "/usr/local/etc", "/usr/local/var")
-"""The trees of a Mac an open box reads, writes and reaches nothing of, unless a tree it is granted lies inside one: every home folder, other
-volumes, the per-user temporary and cache folders, the keychains and the settings and data of installed services. The system's own credential
-files (`secretpaths.ABSOLUTE`) are added to them."""
 TEMPORARY = "/private/tmp"
-"""The shared temporary folder an open box writes and reads, except what was in it before the box's profile was made (`private_trees`)."""
+"""The shared temporary folder, where a launch makes the short folders of its own. A box is refused all of it but those: it lists, reads, writes
+and reaches nothing another program or box has there, whenever it was made."""
+PRIVATE = ("/Users", "/System/Volumes/Data/Users", "/Volumes", "/private/var/root", "/private/var/folders", TEMPORARY, "/private/var/tmp",
+           "/private/var/at", "/Library/Keychains", "/opt/homebrew/etc", "/opt/homebrew/var", "/usr/local/etc", "/usr/local/var")
+"""The trees of a Mac an open box reads, writes and reaches nothing of, unless a tree it is granted lies inside one: every home folder, other
+volumes, the shared and the per-user temporary and cache folders, the keychains and the settings and data of installed services. The system's own
+credential files (`secretpaths.ABSOLUTE`) are added to them."""
 HOME_TOOLS = (".pyenv", ".local/bin", ".local/lib", ".local/share/uv", ".local/share/pnpm", ".nvm", ".volta", ".rustup", ".cargo/bin",
               ".cache/huggingface/hub", "Library/Python", "Library/Caches/ms-playwright", ".bun", ".deno", "go/pkg/mod")
 """Where version managers, package managers and test tools keep the programs, libraries, browsers and downloaded models they installed, under
@@ -154,17 +155,11 @@ def user_temporary() -> str:
 
 
 def private_trees() -> tuple[str, ...]:
-    """The trees an open box is refused unless granted: `PRIVATE`, this account's home and Poolhouse's state wherever they are, and each entry
-    of the shared temporary folder as it is now, so that another program's sockets, scripts and files there stay its own. What is made there
-    later is temporary like the box's own (a link is passed over: what it leads to is judged where it is)."""
+    """The trees an open box is refused unless granted: `PRIVATE`, this account's home and Poolhouse's state wherever they are, and its version
+    managers' folders."""
     own = [os.path.realpath(each) for each in (home.user_home(), home.home(), home.cache())]
-    try:
-        with os.scandir(TEMPORARY) as entries:
-            before = sorted(entry.path for entry in entries if not entry.is_symlink() and entry.path.isprintable())
-    except OSError:
-        before = []
     system = (os.path.realpath(each) for each in (*PRIVATE, *secretpaths.ABSOLUTE))
-    return tuple(dict.fromkeys((*system, *(each for each in own if each != "/"), *_managed_versions(), *before)))
+    return tuple(dict.fromkeys((*system, *(each for each in own if each != "/"), *_managed_versions())))
 
 
 def installed() -> dict[str, str]:
