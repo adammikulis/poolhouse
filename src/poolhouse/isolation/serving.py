@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import os
 import socket
 import struct
 import threading
@@ -18,7 +19,7 @@ from pathlib import Path
 
 from poolhouse.sandbox.run import fair_share
 
-__all__ = ["IDLE_SECONDS", "Server", "connection_bound", "credentials", "tell"]
+__all__ = ["IDLE_SECONDS", "Server", "admitted", "connection_bound", "credentials", "tell"]
 
 IDLE_SECONDS = 180.0
 """The longest the other end may be silent before a step is abandoned: the project's one request timeout (`poolhouse.http.Options.timeout`), an
@@ -62,6 +63,13 @@ def credentials(sock: socket.socket) -> tuple[int, int]:
         return int(sock.getsockopt(SOL_LOCAL, LOCAL_PEERPID)), uid
     except OSError:
         return -1, uid
+
+
+def admitted(connection: socket.socket, admit: Callable[[int], bool]) -> bool:
+    """Whether the process at the other end of a connected unix socket runs as this user and ``admit`` admits its pid: the one check of who a
+    launch's unix sockets answer. A connection the system names no process of is not admitted."""
+    pid, uid = credentials(connection)
+    return uid == os.getuid() and pid >= 0 and bool(admit(pid))
 
 
 class Server:

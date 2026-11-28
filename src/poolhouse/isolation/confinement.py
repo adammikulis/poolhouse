@@ -30,6 +30,8 @@ from pathlib import Path
 from typing import IO, Any
 from urllib.parse import urlsplit
 
+import psutil
+
 from poolhouse import activity, coding_policy, home as state_home, loopback_window
 from poolhouse.isolation import client as client_module, history, preflight, toolchain
 from poolhouse.isolation.attestation import attest
@@ -148,14 +150,21 @@ class Plan:
 
 
 class Admission:
-    """Which processes the session bridge answers: before the harness exists, the proof's own probe is the only client; once it runs, a process
-    that is in the harness's tree (`sandbox.process_tree`, which follows every fork from the first instruction) and no other."""
+    """Which processes a launch's unix sockets answer, the session bridge's and its window's: the launch's own tree and no other. Before the
+    harness exists that is what the launcher itself runs (the proof's probe, the preflight); from then on a process of the harness's tree
+    (`sandbox.process_tree`, which follows every fork from the first instruction)."""
 
     def __init__(self) -> None:
         self.tree: process_tree.Tree | None = None
+        self.launcher = os.getpid()
 
     def __call__(self, pid: int) -> bool:
-        return self.tree is None or pid in self.tree
+        if self.tree is not None:
+            return process_tree.member(self.tree, pid)
+        try:
+            return pid == self.launcher or any(each.pid == self.launcher for each in psutil.Process(pid).parents())
+        except psutil.Error:
+            return False
 
 
 @dataclass(slots=True)
@@ -209,6 +218,17 @@ def _private(path: Path, mode: int) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     path.chmod(mode)
     return path
+
+
+def _installed(agent_home: Path) -> None:
+    """Links in the agent home to what this account installed under its own (`toolchain.installed`), so a program that looks under its home for
+    its libraries, browsers or models finds in an open box what it finds outside it. Linux binds no part of the person's home."""
+    if sys.platform != "darwin":
+        return
+    for place, real in toolchain.installed().items():
+        link = agent_home / place
+        _private(link.parent, 0o700)
+        link.symlink_to(real, target_is_directory=True)
 
 
 def _write(path: Path, text: str) -> None:
@@ -416,6 +436,23 @@ def _server_folder(parts: Parts) -> str:
     return root
 
 
+def _temporary(parts: Parts) -> str:
+    """The session's own temporary folder, its ``TMPDIR``, removed when the launch ends: a short one in the shared temporary folder, where the
+    path of a socket made in it fits (the agent home's is longer than a socket's may be). Empty on a system whose box has a temporary folder of
+    its own (Linux)."""
+    if sys.platform != "darwin":
+        return ""
+    root = os.path.realpath(tempfile.mkdtemp(prefix="pb-", dir=toolchain.TEMPORARY))
+    parts.scratch.append(root)
+    return root
+
+
+def _withheld(upstream: str) -> tuple[int, ...]:
+    """The loopback ports a box that reaches its loopback is still refused: the model server it is served by (reached through the bridge alone,
+    I6) and every other model server Poolhouse recorded on this machine."""
+    return tuple(sorted({each for each in (urlsplit(upstream).port, *leases.recorded_servers()) if each}))
+
+
 def _window(plan: Plan, parts: Parts, taken: tuple[int, ...]) -> PortBridge | None:
     """The window of loopback ports of an editing session on macOS, served until the launch ends; None for a session that only reads, on another
     system, and where none could be opened (a program that serves on loopback is then refused, as the box refuses every bind)."""
@@ -424,7 +461,7 @@ def _window(plan: Plan, parts: Parts, taken: tuple[int, ...]) -> PortBridge | No
     root = tempfile.mkdtemp(prefix="pp-", dir="/tmp")
     parts.scratch.append(root)
     avoid = (*taken, urlsplit(plan.upstream).port or 0, *leases.recorded_servers())
-    bridge = PortBridge(root, state_home.state("isolation") / "ports", avoid)
+    bridge = PortBridge(root, state_home.state("isolation") / "ports", avoid, admit=parts.admission)
     try:
         bridge.start()
     except OSError as why:
@@ -451,12 +488,14 @@ def prepare(plan: Plan) -> Confinement:
         scratch.append(str(agent_home))
         for name in ("bin", "tmp", HARNESS_DIRECTORIES[plan.harness]):
             _private(agent_home / name, 0o700)
+        _installed(agent_home)
         model, bridge = _services(plan, session, parts)
         client = agent_home / "bin" / CLIENT
         _write(client, Path(client_module.__file__).read_text(encoding="utf-8"))
         stage = str(session.stage.physical)
         server = _server_folder(parts)
-        context = Context(agent_home, agent_home / HARNESS_DIRECTORIES[plan.harness], stage, os.path.realpath(sys.executable), str(client), bridge.path,
+        temp = _temporary(parts)
+        context =Context(agent_home, agent_home / HARNESS_DIRECTORIES[plan.harness], stage, os.path.realpath(sys.executable), str(client), bridge.path,
                           os.getpid(), f"http://127.0.0.1:{model.port}", plan.lease.alias, plan.lease.window, model.token,
                           f"{server}/server" if server else "")
         rendering = plan.render(context)
@@ -472,12 +511,12 @@ def prepare(plan: Plan) -> Confinement:
             frozen.append(str(agent_home / name))
         spec = Spec(plan.harness, stage, str(agent_home), install_tree(plan.binary), model.port, bridge.path, 0, session.patches, plan.project,
                     plan.policy, plan.interactive, tuple(frozen), server if rendering.serves else "", session.reads,
-                    tuple(window.ports) if window else (), window.path if window else "")
+                    tuple(window.ports) if window else (), window.path if window else "", temp, _withheld(plan.upstream))
         env = environment(Inputs(plan.harness, str(agent_home), search_path(spec, plan.grants), context.base_url, model.token, plan.lease.alias,
                                  plan.lease.window, plan.interactive, {}, plan.extras, (*shims, *session.sources),
-                                 window.setting if window else ""))
+                                 window.setting if window else "", temp))
         bounds = plan.bounds or derive(stage)
-        parts.watch = None if bounds is None else Watch(bounds, (stage, str(agent_home)))
+        parts.watch = None if bounds is None else Watch(bounds, (stage, str(agent_home), *([temp] if temp else [])))
         profile = build(spec, plan.grants, env, None if bounds is None else bounds.limits())
         granted = toolchain.runnable(grant.subject for grant in plan.grants if grant.kind == "toolchain")
         proved = run_proof(profile, Services(model.port, bridge.path, granted))

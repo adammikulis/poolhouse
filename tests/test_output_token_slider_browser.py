@@ -3,9 +3,14 @@ from itertools import pairwise
 
 import pytest
 from browser_expect import expect
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: this test's own node)
+    alone,
+    unfounded_node,
+)
 from test_models_settings_feedback_browser import feedback_page  # noqa: F401
 from test_studio_canvas_browser import studio_browser, studio_page  # noqa: F401
 
+pytest_plugins = ('testfarm_kit',)  # the `node_binary` fixture
 pytestmark = pytest.mark.slow
 
 
@@ -97,7 +102,7 @@ def test_generation_node_uses_slider_in_inspector_and_canvas(generation_page):
     assert not errors
 
 
-def test_chat_output_drag_saves_once_on_release(feedback_page, tmp_path):  # noqa: F811
+def test_chat_output_drag_saves_once_on_release(alone, feedback_page, tmp_path):  # noqa: F811 - node first: the daemon finds it
     from poolhouse.fleet.conversations import Conversations
 
     served, page, errors = feedback_page

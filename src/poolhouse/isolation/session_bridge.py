@@ -31,7 +31,7 @@ from poolhouse import activity
 from poolhouse.errors import Error
 from poolhouse.isolation import session_verbs
 from poolhouse.isolation.refusals import IsolationRefused, sentence
-from poolhouse.isolation.serving import IDLE_SECONDS, Server, credentials, tell
+from poolhouse.isolation.serving import IDLE_SECONDS, Server, admitted, tell
 from poolhouse.json_objects import unique_object
 
 __all__ = ["GRANT_REFUSAL", "Handlers", "SessionBridge", "Terms"]
@@ -145,10 +145,7 @@ class SessionBridge:
 
     def _admitted_here(self, connection: socket.socket) -> bool:
         """The connecting process runs as this user and, where the launcher said how, is one of the session's."""
-        pid, uid = credentials(connection)
-        if uid != os.getuid():
-            return False
-        return self._admit is None or bool(pid >= 0 and self._admit(pid))
+        return admitted(connection, self._admit or (lambda _pid: True))
 
     def _count(self, kind: str, *, refused: bool = False) -> None:
         with self._lock:

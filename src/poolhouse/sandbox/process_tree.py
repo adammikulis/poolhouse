@@ -26,7 +26,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import ClassVar
 
-__all__ = ["Ended", "Tree", "end", "flush", "follow", "release", "usage"]
+__all__ = ["Ended", "Tree", "end", "flush", "follow", "member", "release", "usage"]
 
 logger = logging.getLogger("poolhouse.sandbox")
 
@@ -51,6 +51,8 @@ CHILD_WORDS = range(12, 18)
 PIDTBSDINFO = 3
 PID_WORD = 3
 """The word of ``proc_bsdinfo`` that holds the pid it describes (``pbi_pid``)."""
+PARENT_WORD = 4
+"""The word of ``proc_bsdinfo`` that holds the parent's pid (``pbi_ppid``)."""
 STATUS_WORD = 1
 ZOMBIE = 5
 """The word of ``proc_bsdinfo`` that holds the process state (``pbi_status``), and its value for a process that has ended and not been waited for."""
@@ -298,6 +300,22 @@ class _Follower:
                 found.append((pid, words[FOOTPRINT_WORD]))
         return found
 
+    def member(self, tree: Tree, pid: int) -> bool:
+        """Whether the live process ``pid``, or one above it, is the process the tree noted under that pid (see `member`)."""
+        if not self._start():
+            return pid in tree
+        self.flush()
+        seen: set[int] = set()
+        while pid > 1 and pid not in seen:
+            if pid in tree and self._alive(pid, tree):
+                return True
+            info = self._info(pid)
+            if info is None:
+                return False
+            seen.add(pid)
+            pid = info.ids[PARENT_WORD]
+        return False
+
     def end(self, tree: Tree, stalled: float) -> Ended:
         """End every process of ``tree``: stop each member, and list again until a pass finds none that is new, so that none forks
         while the others are ended; kill each; wait until none is alive. A member is signalled only while its pid and start time are
@@ -448,6 +466,13 @@ def release(tree: Tree) -> None:
 def flush() -> None:
     """Take in every fork and exit the kernel has reported so far."""
     _FOLLOWER.flush()
+
+
+def member(tree: Tree, pid: int) -> bool:
+    """Whether the live process ``pid`` is of ``tree``: one the tree noted that began when it noted, or a child of one at any depth (the kernel's
+    report of a fork may still be on its way). A later process that took the pid of an ended member is none. Where nothing is followed, only the
+    pids the tree holds."""
+    return _FOLLOWER.member(tree, pid)
 
 
 def usage(tree: Tree) -> list[tuple[int, int]]:

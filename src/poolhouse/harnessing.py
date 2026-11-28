@@ -139,8 +139,8 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
     ap.add_argument("--execution-mode", choices=coding_policy.EXECUTION_MODES, default=coding_policy.EXECUTE,
                     help="plan inspects without applying changes; execute uses the selected permissions")
     ap.add_argument("--sandbox", action="store_true",
-                    help="run on a copy of the git project inside an operating-system sandbox with no network but the model; changes are published "
-                         "when the turn ends (default: on the project folder itself, with your own settings and network)")
+                    help="run on a copy of the git project inside an operating-system sandbox that reaches no network beyond this computer; changes are "
+                         "published when the turn ends (default: on the project folder itself, with your own settings and network)")
     ap.add_argument("--protect", action="append", default=[], help="with --sandbox: additional launcher-owned paths tools cannot access")
     ap.add_argument("--read", action="append", default=[], metavar="DIR", help="with --sandbox: a folder the session may read and never change")
     ap.add_argument("--toolchain", action="append", default=[], metavar="DIR", help="with --sandbox: a folder of programs the session may run")

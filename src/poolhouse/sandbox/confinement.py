@@ -20,10 +20,15 @@ import stat
 import sys
 from pathlib import Path
 
-__all__ = ["MARKER", "confined", "seatbelt_state"]
+__all__ = ["BOX_MARKER", "MARKER", "confined", "seatbelt_state"]
 
 MARKER = "/run/poolhouse/confined"
 """Where the Linux backend binds the null device, read-only, inside the namespace."""
+BOX_MARKER = "com.poolhouse.box"
+"""A system service no program offers, whose lookup an open box of the engine's (`sandbox.seatbelt_open`) refuses: how a process in one, which
+allows by default, is told from a process under another program's deny-list."""
+NAME_FILTER = 2
+"""``SANDBOX_FILTER_GLOBAL_NAME``: the argument of `sandbox_check` that follows is a service's name."""
 NULL_DEVICE = (1, 3)
 """The major and minor number of the null device, which the marker must be."""
 TOKEN_QUERY = 0x8
@@ -42,11 +47,12 @@ def confined() -> bool:
 
 
 def seatbelt_state(pid: int) -> str:
-    """What the kernel says of the sandbox of process ``pid``: ``none`` (no sandbox applies), ``refuses`` (one applies and its default is to
-    refuse: every profile the engine builds starts `(deny default ...)`), ``allows`` (one applies and its default is to allow, a deny-list
-    such as the one the test runner puts around the whole suite or a harness puts around its own tools) or ``unknown`` (the call failed).
-    The one answer behind `confined` and behind the attestation of the launcher's proof (docs/design-isolated-launcher.md, 10.3): a process
-    is confined, here and there, exactly when it is ``refuses``. Raises `OSError` or `AttributeError` where the library is missing."""
+    """What the kernel says of the sandbox of process ``pid``: ``none`` (no sandbox applies), ``refuses`` (a box of the engine's applies: its
+    default is to refuse, as `(deny default ...)` profiles do, or it refuses the lookup of `BOX_MARKER`, as an open box does), ``allows`` (another
+    sandbox whose default is to allow, a deny-list such as the one the test runner puts around the whole suite or a harness puts around its own
+    tools) or ``unknown`` (the call failed). The one answer behind `confined` and behind the attestation of the launcher's proof
+    (docs/design-isolated-launcher.md, 10.3): a process is confined, here and there, exactly when it is ``refuses``. Raises `OSError` or
+    `AttributeError` where the library is missing."""
     library = ctypes.CDLL("/usr/lib/system/libsystem_sandbox.dylib")
     library.sandbox_check.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
     library.sandbox_check.restype = ctypes.c_int
@@ -55,11 +61,14 @@ def seatbelt_state(pid: int) -> str:
         return "none"
     if applies != 1:
         return "unknown"
-    return "refuses" if library.sandbox_check(pid, b"default", 0) != 0 else "allows"
+    if library.sandbox_check(pid, b"default", 0) != 0:
+        return "refuses"
+    marked = library.sandbox_check(pid, b"mach-lookup", NAME_FILTER, ctypes.c_char_p(BOX_MARKER.encode()))
+    return "refuses" if marked == 1 else "allows" if marked == 0 else "unknown"
 
 
 def _seatbelt() -> bool:
-    """A sandbox applies and its default is to refuse (`seatbelt_state`). A deny-list profile, which holds no harness and is not the engine's
+    """A box of the engine's applies (`seatbelt_state`). A deny-list profile of another program, which holds no harness and is not the engine's
     confinement, is not one (a process in it is judged by what the node attests of its ancestry, not by this); a failed call counts as
     yes, the safe side."""
     try:

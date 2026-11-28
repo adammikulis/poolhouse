@@ -157,7 +157,8 @@ def test_http_source_requires_auth_and_transfers_verified_checkout(repository, t
 def test_ui_project_share_refuses_arbitrary_paths(repository, tmp_path, payload):
     registry = ProjectRegistry(tmp_path / "daemon", "pc", (repository,))
     answers = []
-    request = SimpleNamespace(ui=SimpleNamespace(projects=registry), path="/ui/projects", method="POST",
+    signed_in = SimpleNamespace(projects=registry, credentialed=lambda cookie: True)
+    request = SimpleNamespace(ui=signed_in, cookie="", path="/ui/projects", method="POST",
                               body=lambda: payload, send=lambda *args: answers.append(args))
     assert project_client.route(request)
     assert answers[0][0] == 400 and registry.list() == []

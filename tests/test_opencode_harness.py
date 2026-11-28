@@ -112,7 +112,12 @@ def test_opencode_run_is_confined_offline_and_points_at_the_bridge(monkeypatch, 
     assert rest == ["--format", "json", "--model", "poolhouse/local-model", "fix it"]
     assert '"$1" serve --print-logs --log-level warn --hostname 127.0.0.1 --port "$2" >&2 &' in script
     assert 'run --server "http://127.0.0.1:$port"' in script and "--standalone" not in script
-    assert len(seen["net"].ports) == 1 and int(port) not in seen["net"].ports, "the model bridge's port and no other: the server's is only a name"
+    if sys.platform == "darwin":
+        # Owner-order: "No agent should be inhibited from doing their work that is given them." The box reaches this machine's loopback, and
+        # is refused the model server's own port
+        assert seen["net"].mode == "loopback" and 8080 in seen["net"].refused and int(port) not in seen["net"].refused, seen["net"]
+    else:
+        assert len(seen["net"].ports) == 1 and int(port) not in seen["net"].ports, "the model bridge's port and no other: the server's is only a name"
     assert seen["sockets"] == (str(Path(server).parent),) and preload == str(Path(seen["env"]["HOME"]) / "bin" / "poolhouse-server.js")
     assert seen["through"].startswith(f"const socket = {json.dumps(server)};\nconst port = {port};\n")
     assert seen["env"]["OPENCODE_PASSWORD"] == provider_key(seen), "the server answers only to the bridge token"
