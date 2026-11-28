@@ -1,0 +1,112 @@
+# What enforces a sentence of agent guidance, and what was decided about it. Read by scripts/prose_to_code.py, which
+# reports a link whose evidence has moved away as stale. `match` is words the sentence holds (any file); `id` is one
+# sentence, added by `scripts/prose_to_code.py --link` or `--decide`. Evidence is `path::text found in that file now`.
+
+[[link]]
+match = "never force-push or delete remote refs by hand"
+verdict = "partly"
+evidence = ["scripts/hooks/claude-bash-guard::(PUSH_FLAGS,", "scripts/hooks/pre-push::the update is not a fast-forward",
+            "scripts/dev-branch-rule::deletion and force push stay closed"]
+note = "force, delete and tag pushes are refused; owner-only authorization for main and releases is not covered here"
+
+[[link]]
+match = "never push with force, delete a remote ref"
+verdict = "enforced"
+evidence = ["scripts/hooks/claude-bash-guard::(PUSH_FLAGS,", "scripts/hooks/pre-push::deletions are not development pushes"]
+
+[[link]]
+match = "never force push, push the development branch"
+verdict = "partly"
+evidence = ["scripts/hooks/claude-bash-guard::(PUSH_FLAGS,", "scripts/hooks/pre-push::the update is not a fast-forward"]
+note = "discarding local work to get a clean sync is not covered"
+
+[[link]]
+match = "never merge your own"
+verdict = "partly"
+evidence = ["scripts/lead-review::does not accept its own work", "scripts/dev-branch-rule::\"lead-review\")"]
+note = "an author's accept is refused and the status is required; the shared admin sign-in can still bypass the rule"
+
+[[link]]
+match = "never ship a feature as an unconditional refusal"
+verdict = "enforced"
+evidence = ["scripts/gates/refusal_stubs.py::NAME = \"refusal-stubs\"", "budgets.json::\"refusal-stubs\": 0"]
+
+[[link]]
+source = "AGENTS.md"
+match = "tests use isolated temporary state"
+verdict = "partly"
+evidence = ["tests/conftest.py::def _real_home(", "tests/conftest.py::def _no_real_keychain(",
+            "tests/conftest.py::def _no_public_network("]
+note = "held inside pytest; a script or a manual run outside the suite is not covered by these fixtures"
+
+[[link]]
+match = "never git add -a"
+verdict = "enforced"
+evidence = ["scripts/hooks/claude-bash-guard::Do not stage everything"]
+
+[[link]]
+match = "never git stash"
+verdict = "enforced"
+evidence = ["scripts/hooks/claude-bash-guard::(STASH, STASH_MESSAGE)"]
+
+[[link]]
+match = "never drive the owner's own browser"
+verdict = "partly"
+evidence = ["src/poolhouse/protectedwrites.py::name.startswith(\"mcp__claude-in-chrome__\")"]
+note = "the tool guard reads that tool name; other ways to drive the browser are not covered by this link"
+
+[[link]]
+match = "never review or merge your own pull request"
+verdict = "partly"
+evidence = ["scripts/lead-review::does not accept its own work", "scripts/dev-branch-rule::\"lead-review\")"]
+note = "an author's accept is refused and the status is required; the shared admin sign-in can still bypass the rule"
+
+[[link]]
+match = "development merge, main and releases need a review"
+verdict = "partly"
+evidence = ["scripts/dev-branch-rule::\"lead-review\")", "scripts/hooks/pre-push::release_refusal"]
+note = "the development rule requires the status and a push to main is checked; the shared admin sign-in can bypass"
+
+[[link]]
+match = "never tag or touch main"
+verdict = "partly"
+evidence = ["scripts/hooks/claude-bash-guard::(PUSH_FLAGS,", "scripts/hooks/claude-bash-guard::(PUSH_MAIN,",
+            "scripts/hooks/primary-only::commit_refusal"]
+note = "tag pushes, unaccepted pushes of main and agent commits on main are refused; a local tag is not"
+
+[[link]]
+match = "real people's identifying information out of the repository"
+verdict = "partly"
+evidence = ["scripts/hooks/pre-commit::no-real-names", ".github/workflows/ci.yml::no-real-names --against"]
+note = "a recogniser reads staged files and pushed ranges; it can miss a name"
+
+[[link]]
+match = "never substitute fake model behavior"
+verdict = "partly"
+evidence = ["scripts/gates/model_replies.py::HARD = True", "scripts/gates/server_starts.py::HARD = True",
+            "scripts/hooks/claude-bash-guard::Do not start llama-server by hand"]
+note = "reply-shaped values in tests, server starts and a typed llama-server are caught; docs and demos are not read"
+
+[[link]]
+match = "remove duplicate implementations"
+verdict = "partly"
+evidence = ["scripts/gates/duplicates.py::duplicate-bodies", "budgets.json::\"duplicate-bodies\": 0"]
+note = "identical function bodies only; shims, redirects, compatibility paths and migrations are not detected"
+
+[[link]]
+match = "stage named files"
+verdict = "partly"
+evidence = ["scripts/hooks/claude-bash-guard::Do not stage everything"]
+note = "staging everything is refused; the choice of sibling worktrees is not covered by this link"
+
+[[link]]
+match = "keep credentials out of output"
+verdict = "partly"
+evidence = ["scripts/github-protection::secret_scanning_push_protection"]
+note = "the protection check reads that GitHub push protection is on; terminal output and file modes are not covered"
+
+[[link]]
+match = "budgets only fall"
+verdict = "partly"
+evidence = ["scripts/hooks/pre-commit::budgets-only-fall", ".github/workflows/ci.yml::budgets-only-fall --against"]
+note = "a raised budget is refused at commit and in CI; the rest of a sentence that holds these words is not covered"
