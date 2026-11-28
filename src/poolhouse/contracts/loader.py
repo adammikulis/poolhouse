@@ -109,8 +109,3 @@ def recipe(recipe_id: str) -> dict[str, Any]:
             return found
     known = ", ".join(sorted(r.get("id", "?") for r in recipes())) or "none"
     raise ContractError(f"no recipe {recipe_id!r}; have {known}")
-
-
-def reset_cache() -> None:
-    """Drop the parse cache. For tests that point POOLHOUSE_CONTRACTS somewhere else."""
-    _CACHE.clear()

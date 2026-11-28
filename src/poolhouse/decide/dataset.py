@@ -10,7 +10,6 @@ from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 from poolhouse import jsonl
 from poolhouse.decide.base import text_of
@@ -140,8 +139,3 @@ def leaks(train: Sequence[Case], held: Sequence[Case], *, held_label: str = "eva
         out.append(f"{len(shared)} groups are in both the training and {held_label} sets "
                    f"(first: {shared[0]!r})")
     return out
-
-
-def raw_rows(path: Path | str) -> list[Any]:
-    """The parsed lines of a JSONL file, unchecked."""
-    return list(jsonl.rows(path))
