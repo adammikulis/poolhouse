@@ -324,9 +324,10 @@ class Stopped(SystemExit):
 
 def unstopped() -> None:
     """The work of the run is over and what it made is now published, committed and written down: a stop signal has nothing left to end and from
-    here on is not heard, so none cuts that short. Does nothing off the process's main thread, which alone sets a signal."""
+    here on does nothing, so none cuts that short. A program started meanwhile takes the signal as usual. Does nothing off the process's main
+    thread, which alone sets a signal."""
     if threading.current_thread() is threading.main_thread():
-        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, lambda _number, _frame: None)
 
 
 def _chunks(pipe: int) -> queue.Queue[bytes]:
