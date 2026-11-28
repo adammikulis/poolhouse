@@ -1,7 +1,8 @@
 """What already enforces a sentence of guidance, said only where a file and line can be shown.
 
 ``enforced`` and ``partly`` come from a link in ``scripts/prose_links.toml`` whose evidence is found in the tree now.
-``prose`` means the sentence names something and no enforcement file names it. Everything else is ``unknown``.
+``prose`` means the sentence names something and no code, workflow or settings file names it. Everything else is
+``unknown``.
 """
 
 from __future__ import annotations
@@ -20,9 +21,11 @@ DECISIONS = ("keep", "encode", "delete")
 SURFACES = ("scripts/hooks/*", "scripts/gates/*", "scripts/lead-review", "scripts/dev-branch-rule",
             "scripts/github-protection*", "scripts/test", ".github/workflows/*", ".claude/settings.json",
             ".codex/config.toml", "src/poolhouse/worktreerules.py", "src/poolhouse/protectedwrites.py",
-            "src/poolhouse/harnesshook.py", "src/poolhouse/guard/*.py", "tests/*.py")
-"""Hooks, gates, server rules, workflows, guard code and tests, best evidence first."""
-NOT_SURFACES = ("tests/test_prose_to_code.py",)
+            "src/poolhouse/harnesshook.py", "src/poolhouse/guard/*.py", "tests/*.py", "*.py", "*.rs", "*.sh", "*.ps1",
+            "*.js", "*.ts", "contracts/*", "budgets.json", "pyproject.toml", "scripts/*")
+"""Where a name is looked for, best evidence first: hooks, gates, server rules, workflows, guard code and tests, then
+every other code and settings file, so that nothing is called prose while any code names it."""
+NOT_SURFACES = ("tests/test_prose_to_code.py", "scripts/prose_*", "*.min.js", "*.md")
 WIRING = (".claude/settings.json", ".codex/config.toml", ".github/workflows/*", "scripts/install-hooks*",
           "scripts/hooks/*", "docs/landing.md")
 CODE_SPAN = re.compile(r"`([^`]+)`")
@@ -75,7 +78,7 @@ def anchors(sentence: str) -> list[str]:
 
 
 class Tree:
-    """The enforcement files of one checkout, indexed by the words they hold."""
+    """The code and settings of one checkout, searched for names and for a link's evidence."""
 
     def __init__(self, root: Path, files: list[str]):
         self.root = root
@@ -85,6 +88,7 @@ class Tree:
         self.found: dict[tuple[str, str], str] = {}
         self.surfaces = list(dict.fromkeys(name for pattern in SURFACES for name in files
                                            if matches(name, (pattern,)) and not matches(name, NOT_SURFACES)))
+        self.words: str | None = None
 
     def text(self, name: str) -> str:
         if name not in self.texts:
@@ -92,17 +96,27 @@ class Tree:
         return self.texts[name]
 
     def place(self, word: str, apart_from: str) -> str:
-        """``path:line`` of the first enforcement file that holds the word anywhere, even inside a longer one."""
+        """``path:line`` of the first surface file that holds the word anywhere, even inside a longer one."""
         if (word, apart_from) not in self.found:
             self.found[word, apart_from] = ""
-            for name in self.surfaces:
-                if name not in self.lowered:
-                    self.lowered[name] = f"{name}\n{self.text(name)}".lower()
-                at = self.lowered[name].find(word) if name != apart_from else -1
+            for name in self.surfaces if word in self._vocabulary() else []:
+                at = self._lower(name).find(word) if name != apart_from else -1
                 if at >= 0:
                     self.found[word, apart_from] = f"{name}:{max(1, self.lowered[name].count(chr(10), 0, at))}"
                     break
         return self.found[word, apart_from]
+
+    def _lower(self, name: str) -> str:
+        """The file's name and text in lower case."""
+        if name not in self.lowered:
+            self.lowered[name] = f"{name}\n{self.text(name)}".lower()
+        return self.lowered[name]
+
+    def _vocabulary(self) -> str:
+        """Every distinct word of the surface files, so a name none of them holds is answered without reading them all."""
+        if self.words is None:
+            self.words = "\n".join({word for name in self.surfaces for word in WORD.findall(self._lower(name))})
+        return self.words
 
     def wired(self, name: str) -> bool:
         """Whether a hook script is started by anything: a settings file, an installer, a workflow or another hook."""
@@ -156,8 +170,8 @@ def _searched(item: Item, tree: Tree) -> Verdict:
         return Verdict("unknown", note="names nothing to search for")
     found = [f"{name} at {place}" for name in names if (place := tree.place(name, item.path))]
     if not found:
-        return Verdict("prose", note=f"none of {', '.join(names)} appears in {len(tree.surfaces)} enforcement files")
-    return Verdict("unknown", found[:SHOWN], "named by enforcement files, which does not show it is enforced")
+        return Verdict("prose", note=f"none of {', '.join(names)} appears in {len(tree.surfaces)} code, workflow or settings files")
+    return Verdict("unknown", found[:SHOWN], "named by code, which does not show it is enforced")
 
 
 def judge(items: list[Item], tree: Tree, records: dict[str, list[dict]]) -> dict[str, Verdict]:

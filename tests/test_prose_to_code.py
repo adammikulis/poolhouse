@@ -80,6 +80,12 @@ def test_instructions_are_found_with_file_and_line_and_other_prose_is_not(tmp_pa
         assert absent not in everything
 
 
+def test_a_document_named_by_its_path_alone_is_read_like_a_linked_one(tmp_path):
+    files = {**FILES, "docs/landing.md": 'Always open a pull request. Detail: docs/agent-extra.md, "Landing".\n',
+             "docs/agent-extra.md": "Never leave a branch behind.\n"}
+    assert by_text(scan(tree(tmp_path, files)), "branch behind")["path"] == "docs/agent-extra.md"
+
+
 def test_a_status_is_claimed_only_with_something_to_show(tmp_path):
     root = tree(tmp_path)
     found = scan(root)
@@ -90,6 +96,12 @@ def test_a_status_is_claimed_only_with_something_to_show(tmp_path):
     silent = by_text(found, "Keep the outcome fixed")
     assert silent["status"] == "unknown" and silent["note"] == "names nothing to search for"
     assert not [row for row in found["items"] if row["status"] in ("enforced", "partly")]
+
+
+def test_a_name_any_code_holds_is_never_called_prose_only(tmp_path):
+    files = {**FILES, "app/node/src/quota.rs": "// zzz_unheard_of_tool is refused here\n"}
+    row = by_text(scan(tree(tmp_path, files)), "zzz_unheard_of_tool")
+    assert row["status"] == "unknown" and row["evidence"] == ["zzz_unheard_of_tool at app/node/src/quota.rs:1"]
 
 
 def test_a_link_counts_only_while_its_evidence_holds_and_something_starts_it(tmp_path):

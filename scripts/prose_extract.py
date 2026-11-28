@@ -14,7 +14,7 @@ from pathlib import Path
 SEEDS = ("AGENTS.md", "CLAUDE.md")
 DOCUMENTS = ("AGENTS.md", "CLAUDE.md", "*/AGENTS.md", "*/CLAUDE.md", "CONTRIBUTING.md", ".claude/agents/*.md",
              ".claude/commands/*.md", ".claude/skills/*.md", ".agents/*.md")
-"""Documents that are guidance by where they are; the ones the seeds link to, two links deep, are added."""
+"""Documents that are guidance by where they are; the ones the seeds link or name, two steps deep, are added."""
 NOT_FOLLOWED = ("docs/notes/*", "docs/research/*", "docs/experiments/*", "docs/design-*", "README.md", "CHANGELOG.md")
 LINK_DEPTH = 2
 SOURCES = ("src/poolhouse/briefing.py", "src/poolhouse/delegate*.py", "src/poolhouse/worktreerules.py",
@@ -41,6 +41,8 @@ ABBREVIATION = re.compile(r"\b(e\.g|i\.e|vs|etc|cf)\.$", re.I)
 BULLET = re.compile(r"^\s*([-*+]|\d+\.)\s+")
 MARKDOWN_LINK = re.compile(r"\[([^\]]*)\]\(([^)]*)\)")
 TARGET = re.compile(r"\]\(([^)#\s]+\.md)(#[^)]*)?\)")
+NAMED = re.compile(r"(?<![\w./(-])(?:docs|tests)/[\w./-]+\.md\b")
+"""A document named by its path from the repository root, outside a link."""
 SHELL_STRING = re.compile(r"\"([^\"\n]{20,})\"")
 FEWEST_WORDS = 3
 FEWEST_SOURCE_WORDS = 5
@@ -82,10 +84,10 @@ def matches(name: str, patterns: tuple[str, ...]) -> bool:
 
 
 def _linked(root: Path, name: str, known: set[str]) -> set[str]:
-    """The repository documents ``name`` links to."""
-    found = set()
-    for target, _anchor in TARGET.findall(text_of(root / name)):
-        place = (root / name).parent / target
+    """The repository documents ``name`` links to or names by path."""
+    content, found = text_of(root / name), set()
+    places = [(root / name).parent / target for target, _anchor in TARGET.findall(content)]
+    for place in [*places, *(root / named for named in NAMED.findall(content))]:
         try:
             linked = place.resolve().relative_to(root.resolve()).as_posix()
         except ValueError:
