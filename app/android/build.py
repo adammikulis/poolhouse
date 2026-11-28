@@ -40,8 +40,9 @@ BUILD_TOOLS = "36.0.0"
 PACKAGES = {f"platforms;android-{COMPILE_SDK}.0": (f"platforms/android-{COMPILE_SDK}.0", f"platforms/android-{COMPILE_SDK}"),
             f"build-tools;{BUILD_TOOLS}": (f"build-tools/{BUILD_TOOLS}",)}
 WORKERS = 3
-TASKS = {"debug": [":core:test", ":app:assembleDebug"], "test": [":core:test"],
-         "lint": [":core:test", ":app:lintDebug", ":app:assembleDebug"], "release": [":core:test", ":app:assembleRelease"],
+CHECKS = [":core:test", ":app:testDebugUnitTest"]
+TASKS = {"debug": [*CHECKS, ":app:assembleDebug"], "test": CHECKS,
+         "lint": [*CHECKS, ":app:lintDebug", ":app:assembleDebug"], "release": [*CHECKS, ":app:assembleRelease"],
          "sample": [":core:sampleClasspath"]}
 APK = {"debug": "app/build/outputs/apk/debug/app-debug.apk", "lint": "app/build/outputs/apk/debug/app-debug.apk",
        "release": "app/build/outputs/apk/release/app-release.apk"}

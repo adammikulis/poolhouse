@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -51,8 +53,8 @@ import app.poolhouse.core.store.needsYou
 import app.poolhouse.core.store.sessionRows
 import app.poolhouse.core.theme.Section
 import app.poolhouse.phone.PhoneViewModel
-import app.poolhouse.phone.PoolSession
 import app.poolhouse.phone.Screen
+import app.poolhouse.phone.ui.components.Card
 import app.poolhouse.phone.ui.components.Chips
 import app.poolhouse.phone.ui.components.Dot
 import app.poolhouse.phone.ui.components.EmptyState
@@ -95,8 +97,40 @@ fun SessionMark(session: Session, modifier: Modifier = Modifier) {
     }
 }
 
+/** The first screen: the conversations. With no computer linked they are the phone's own, and linking is offered below them. */
 @Composable
-fun SessionsScreen(model: PhoneViewModel, pool: PoolSession, state: PoolState) {
+fun SessionsScreen(model: PhoneViewModel, state: PoolState?) {
+    if (state == null) PhoneChats(model) else AllChats(model, state)
+}
+
+@Composable
+private fun PhoneChats(model: PhoneViewModel) {
+    Column(Modifier.fillMaxSize()) {
+        TopBar("Chats", subtitle = "This phone") {
+            IconButton({ model.open(Screen.Settings) }) { Icon(Icons.Settings, "Settings", tint = Pool.colors.text) }
+        }
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            SectionLabel("On this phone")
+            PhoneEntries(model)
+            LinkOfferCard(model, Modifier.padding(12.dp))
+        }
+    }
+}
+
+/** The rows of the on-device model, or why there are none. */
+@Composable
+fun PhoneEntries(model: PhoneViewModel) {
+    if (model.entries.isEmpty()) {
+        Card(Modifier.padding(horizontal = 12.dp)) {
+            Text("This build has no model for the phone", style = MaterialTheme.typography.titleSmall)
+            Text("Chat on the phone comes with the on-device model module.", style = MaterialTheme.typography.bodySmall, color = Pool.colors.muted)
+        }
+    }
+    for (entry in model.entries) PhoneEntry(entry)
+}
+
+@Composable
+private fun AllChats(model: PhoneViewModel, state: PoolState) {
     var filter by rememberSaveable { mutableStateOf(SessionFilter.ALL) }
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }

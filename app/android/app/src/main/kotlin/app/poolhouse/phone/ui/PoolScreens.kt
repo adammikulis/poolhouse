@@ -25,8 +25,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,6 +42,7 @@ import app.poolhouse.core.theme.Section
 import app.poolhouse.phone.PhoneViewModel
 import app.poolhouse.phone.PoolSession
 import app.poolhouse.phone.Screen
+import app.poolhouse.phone.platform.phoneFacts
 import app.poolhouse.phone.ui.components.Card
 import app.poolhouse.phone.ui.components.Dot
 import app.poolhouse.phone.ui.components.EmptyState
@@ -64,14 +67,16 @@ private fun deviceState(d: Device): Pair<String, androidx.compose.ui.graphics.Co
 }
 
 /**
- * The one switch of this phone (docs/phone-api.md section 5), off until the person turns it on, with what it does now. With an
- * on-device model it switches that model's worker; a build without one only shows the state and can switch it off.
+ * The one switch of this phone (docs/phone-api.md section 5), off until the person turns it on, with what it does now. It lends
+ * the on-device model to a linked computer's pool; joining a pool as a node on its own is not built, and the card says so rather
+ * than claiming it. A switch left on can always be turned off.
  */
 @Composable
-fun ThisPhoneCard(pool: PoolSession, state: PoolState, modifier: Modifier = Modifier) {
-    val worker = pool.worker
+fun ThisPhoneCard(model: PhoneViewModel, pool: PoolSession?, state: PoolState?, modifier: Modifier = Modifier) {
+    val worker = model.worker
     val local: WorkerState? = worker?.state?.collectAsState()?.value
-    val computerSays = state.poolUse.value?.enabled
+    val computerSays = state?.poolUse?.value?.enabled
+    val linked = pool != null
     val on = local?.enabled ?: (computerSays == true)
     Card(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -79,13 +84,19 @@ fun ThisPhoneCard(pool: PoolSession, state: PoolState, modifier: Modifier = Modi
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text("This phone", style = MaterialTheme.typography.titleMedium)
-                Text(if (on) "Part of the pool" else "Directing only", style = MaterialTheme.typography.bodySmall, color = if (on) Pool.colors.good else Pool.colors.muted)
+                val standing = when {
+                    on && linked -> "Part of the pool"
+                    on -> "Switched on"
+                    linked -> "Directing only"
+                    else -> "On its own"
+                }
+                Text(standing, style = MaterialTheme.typography.bodySmall, color = if (on) Pool.colors.good else Pool.colors.muted)
             }
-            if (worker != null || on) {
+            if ((worker != null && (linked || on)) || (worker == null && linked && on)) {
                 Switch(
                     checked = on,
-                    onCheckedChange = { want -> if (worker != null) worker.setEnabled(want) else if (!want) pool.store.endPoolUse() },
-                    enabled = "pool-use" !in state.busy,
+                    onCheckedChange = { want -> if (worker != null) worker.setEnabled(want) else if (!want) pool?.store?.endPoolUse() },
+                    enabled = state == null || "pool-use" !in state.busy,
                     colors = SwitchDefaults.colors(checkedTrackColor = Pool.colors.accent, checkedThumbColor = Pool.colors.onAccent),
                     modifier = Modifier.semantics { contentDescription = "Let the pool use this phone as a worker or coding agent" },
                 )
@@ -93,22 +104,68 @@ fun ThisPhoneCard(pool: PoolSession, state: PoolState, modifier: Modifier = Modi
         }
         Spacer(Modifier.height(8.dp))
         val explain = when {
-            local != null -> local.detail
+            local != null && (linked || on) -> local.detail
+            !linked -> "This phone is not part of a pool. Joining one on its own is not in this build; link a computer to lend it this phone's model."
             on -> "The computer says the pool may use this phone, and this build has no on-device model to answer it."
             else -> "The pool sends this phone no work. This build has no on-device model, so there is nothing to switch on."
         }
         Text(explain, style = MaterialTheme.typography.bodyMedium, color = Pool.colors.muted)
-        local?.blocked?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Pool.colors.warn, modifier = Modifier.padding(top = 4.dp)) }
-        local?.model?.let { Text(it, style = Pool.mono, modifier = Modifier.padding(top = 4.dp)) }
-        local?.cost?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Pool.colors.muted, modifier = Modifier.padding(top = 4.dp)) }
+        if (local != null && (linked || on)) {
+            local.blocked?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Pool.colors.warn, modifier = Modifier.padding(top = 4.dp)) }
+            local.model?.let { Text(it, style = Pool.mono, modifier = Modifier.padding(top = 4.dp)) }
+            local.cost?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Pool.colors.muted, modifier = Modifier.padding(top = 4.dp)) }
+        }
         if (local != null && computerSays != null && computerSays != local.enabled) {
             Text(if (computerSays) "The computer still shows it on." else "The computer still shows it off.", style = MaterialTheme.typography.bodySmall, color = Pool.colors.warn, modifier = Modifier.padding(top = 4.dp))
         }
     }
 }
 
+/** What Android says about this phone: shown on the devices screen with or without a computer. */
 @Composable
-fun PoolScreen(model: PhoneViewModel, pool: PoolSession, state: PoolState) {
+fun PhoneFactsCard(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val now = rememberNow(5_000)
+    val facts = remember(now) { phoneFacts(context) }
+    Card(modifier) {
+        Fact("Device", facts.name)
+        Fact("System", facts.android)
+        Fact("Chip", facts.chip)
+        Fact("Cores", "${facts.cores}")
+        if (facts.memoryTotal > 0) Measure("Memory", facts.memoryUsed.toFloat() / facts.memoryTotal, "${bytes(facts.memoryUsed)} of ${bytes(facts.memoryTotal)}")
+        if (facts.storageTotal > 0) {
+            val used = facts.storageTotal - facts.storageFree
+            Measure("Storage", used.toFloat() / facts.storageTotal, "${bytes(facts.storageFree)} free")
+        }
+    }
+}
+
+@Composable
+fun PoolScreen(model: PhoneViewModel, pool: PoolSession?, state: PoolState?) {
+    if (pool == null || state == null) PhonePool(model) else LinkedPool(model, pool, state)
+}
+
+/** The devices screen of an unlinked phone: this phone, its models, and the offer to link. */
+@Composable
+private fun PhonePool(model: PhoneViewModel) {
+    Column(Modifier.fillMaxSize()) {
+        TopBar("Pool", subtitle = "This phone") {
+            IconButton({ model.open(Screen.Settings) }) { Icon(Icons.Settings, "Settings", tint = Pool.colors.text) }
+        }
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                ThisPhoneCard(model, null, null)
+                PhoneFactsCard()
+            }
+            SectionLabel("Models on this phone")
+            PhoneEntries(model)
+            LinkOfferCard(model, Modifier.padding(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun LinkedPool(model: PhoneViewModel, pool: PoolSession, state: PoolState) {
     val devices = state.devices.value
     val now = rememberNow()
     val computers = devices?.devices.orEmpty().filter { !it.isThisPhone(pool.link.phone) }
@@ -117,7 +174,11 @@ fun PoolScreen(model: PhoneViewModel, pool: PoolSession, state: PoolState) {
             IconButton({ model.open(Screen.Settings) }) { Icon(Icons.Settings, "Settings", tint = Pool.colors.text) }
         }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
-            item { ThisPhoneCard(pool, state, Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp)) }
+            item {
+                ThisPhoneCard(model, pool, state, Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp))
+                Text("This phone's details", style = MaterialTheme.typography.labelLarge, color = Pool.colors.accentInk,
+                    modifier = Modifier.clickable { model.open(Screen.Device("phone:${pool.link.phone}")) }.padding(horizontal = 16.dp, vertical = 10.dp))
+            }
             if (state.devices.error.isNotEmpty()) item { Text(state.devices.error, color = Pool.colors.bad, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp)) }
             if (devices == null) {
                 if (state.devices.error.isEmpty()) item { EmptyState("Reading the pool", "Waiting for ${state.computer.ifEmpty { "the computer" }}.") }
@@ -212,15 +273,20 @@ private fun Measure(name: String, fraction: Float, value: String) {
 @Composable
 fun DeviceScreen(model: PhoneViewModel, pool: PoolSession, state: PoolState, id: String) {
     val d = state.devices.value?.devices?.firstOrNull { it.id == id }
+    val mine = id == "phone:${pool.link.phone}"
     val now = rememberNow()
     Column(Modifier.fillMaxSize()) {
-        TopBar(d?.name?.ifBlank { d.id } ?: "Device", subtitle = d?.let { deviceState(it).first } ?: "", onBack = model::back)
-        if (d == null) {
+        TopBar(d?.name?.ifBlank { d.id } ?: if (mine) "This phone" else "Device", subtitle = d?.let { deviceState(it).first } ?: "", onBack = model::back)
+        if (d == null && !mine) {
             EmptyState("Gone from the pool", "The computer no longer lists this device.")
             return@Column
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (d.isThisPhone(pool.link.phone)) ThisPhoneCard(pool, state)
+            if (mine) {
+                ThisPhoneCard(model, pool, state)
+                PhoneFactsCard()
+            }
+            if (d == null) return@Column
             Card {
                 Fact("Kind", if (d.thisComputer) "Computer (linked)" else d.kind.replaceFirstChar { it.uppercase() })
                 Fact("State", deviceState(d).first.replaceFirstChar { it.uppercase() } + if (d.paused && d.pausedBecause.isNotBlank()) ": ${d.pausedBecause}" else "")

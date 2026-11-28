@@ -41,10 +41,10 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.poolhouse.core.store.Connection
+import app.poolhouse.core.store.PoolState
 import app.poolhouse.core.theme.Section
 import app.poolhouse.phone.Linking
 import app.poolhouse.phone.PhoneViewModel
-import app.poolhouse.phone.PoolSession
 import app.poolhouse.phone.Screen
 import app.poolhouse.phone.Tab
 import app.poolhouse.phone.platform.ThemeChoice
@@ -64,7 +64,8 @@ fun AppRoot(model: PhoneViewModel) {
         ThemeChoice.DARK -> true
     }
     val pool = model.pool
-    val onTabs = pool != null && model.linking is Linking.Idle && model.screens.isEmpty()
+    val home = model.linking is Linking.Off || model.linking is Linking.Replace
+    val onTabs = home && model.screens.isEmpty()
     val activity = LocalActivity.current as? ComponentActivity
     DisposableEffect(dark, onTabs) {
         val clear = Color.Transparent.toArgb()
@@ -89,26 +90,29 @@ fun AppRoot(model: PhoneViewModel) {
                     Banner("Android blocks the home network until you allow it.", Pool.colors.accentDim, Pool.colors.text, "Allow", network)
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    val linking = model.linking
-                    when {
-                        linking is Linking.Scanning -> ScanScreen(onCode = model::opened, onClose = model::cancelLinking)
-                        linking is Linking.Permission -> EmptyState("Allow the home network", "The phone reaches your computer over your home network or Tailscale, and Android asks first.",
-                            action = "Allow", onAction = { network?.invoke() })
-                        linking is Linking.Working -> LinkingScreen(linking.computer, model::cancelLinking)
-                        linking is Linking.Confirm -> ConfirmScreen(linking.link, model::confirmed)
-                        pool == null -> LinkScreen(model, (linking as? Linking.Idle)?.error ?: "")
-                        else -> Home(model, pool)
+                    when (val linking = model.linking) {
+                        is Linking.Choosing -> LinkScreen(model, linking.error)
+                        is Linking.Scanning -> ScanScreen(onCode = model::opened, onClose = { model.cancelLinking() })
+                        is Linking.Permission -> {
+                            BackHandler { model.cancelLinking() }
+                            EmptyState("Allow the home network", "The phone reaches your computer over your home network or Tailscale, and Android asks first.",
+                                action = "Allow", onAction = { network?.invoke() })
+                        }
+                        is Linking.Working -> LinkingScreen(linking.computer) { model.cancelLinking() }
+                        is Linking.Confirm -> ConfirmScreen(linking.link, model::confirmed)
+                        // The app itself, with or without a computer.
+                        is Linking.Off, is Linking.Replace -> Home(model)
                     }
                 }
             }
             val replace = model.linking as? Linking.Replace
             if (replace != null && pool != null) {
                 AlertDialog(
-                    onDismissRequest = model::cancelLinking,
+                    onDismissRequest = { model.cancelLinking() },
                     title = { Text("Link another computer?") },
                     text = { Text("The phone is linked to ${pool.link.computer}. Linking ${replace.offer.computer.ifEmpty { "the new computer" }} replaces that link.") },
                     confirmButton = { TextButton({ model.link(replace.offer, model.defaultName()) }) { Text("Replace") } },
-                    dismissButton = { TextButton(model::cancelLinking) { Text("Keep") } },
+                    dismissButton = { TextButton({ model.cancelLinking() }) { Text("Keep") } },
                 )
             }
         }
@@ -142,13 +146,14 @@ fun Tab.section(): Section = when (this) {
     Tab.INBOX -> Section.MODELS
 }
 
+/** The tabs and their screens. Without a computer they are the phone's own; a computer adds the rest. */
 @Composable
-private fun Home(model: PhoneViewModel, pool: PoolSession) {
-    val state by pool.store.state.collectAsStateWithLifecycle()
-    val connection = state.connection
+private fun Home(model: PhoneViewModel) {
+    val pool = model.pool
+    val state: PoolState? = pool?.store?.state?.collectAsStateWithLifecycle()?.value
+    val connection = state?.connection
     if (connection is Connection.Unlinked) {
-        EmptyState("This phone was removed", "${connection.why} Link it again to carry on.", action = "Link again", onAction = model::unlink)
-        return
+        LaunchedEffect(connection) { model.removedByComputer(connection.why) }
     }
     var directing by remember { mutableStateOf(false) }
     BackHandler(model.screens.isNotEmpty() || model.tab != Tab.CHATS) {
@@ -156,26 +161,29 @@ private fun Home(model: PhoneViewModel, pool: PoolSession) {
     }
     val top = model.screens.lastOrNull()
     Column(Modifier.fillMaxSize().then(if (top == null) Modifier else Modifier.navigationBarsPadding().imePadding())) {
-        if (state.canned) Banner("CANNED SAMPLE DATA: this is a test server, not your pool.", Color(Section.WORK.color), Color(0xFF1B1F3A))
+        if (state?.canned == true) Banner("CANNED SAMPLE DATA: this is a test server, not your pool.", Color(Section.WORK.color), Color(0xFF1B1F3A))
         if (connection is Connection.Offline) {
             Banner("${connection.why} Showing what was last read.", Pool.colors.accentDim, Pool.colors.text, "Settings") { model.open(Screen.Settings) }
         } else if (connection is Connection.Connecting) {
             Banner("Connecting to ${state.computer}…", Pool.colors.sunken, Pool.colors.muted)
         }
+        if (model.notice.isNotEmpty()) Banner(model.notice, Pool.colors.accentDim, Pool.colors.text, "OK", model::clearNotice)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when (top) {
                 null -> when (model.tab) {
-                    Tab.CHATS -> SessionsScreen(model, pool, state)
+                    Tab.CHATS -> SessionsScreen(model, state)
                     Tab.POOL -> PoolScreen(model, pool, state)
-                    Tab.WORK -> WorkScreen(model, state)
-                    Tab.INBOX -> InboxScreen(model, state)
+                    Tab.WORK -> if (state != null) WorkScreen(model, state)
+                        else NeedsComputer(model, "Work", "Delegates, jobs and scheduled jobs run on a computer; link one to follow and cancel them here.")
+                    Tab.INBOX -> if (state != null) InboxScreen(model, state)
+                        else NeedsComputer(model, "Inbox", "Questions and notices come from a computer's agents; link one to answer them here.")
                 }
-                is Screen.Conversation -> ConversationScreen(model, pool, state, top.session)
-                is Screen.Device -> DeviceScreen(model, pool, state, top.id)
-                is Screen.Work -> WorkDetailScreen(model, pool, state, top.kind, top.id)
+                is Screen.Conversation -> if (pool != null && state != null) ConversationScreen(model, pool, state, top.session)
+                is Screen.Device -> if (pool != null && state != null) DeviceScreen(model, pool, state, top.id)
+                is Screen.Work -> if (pool != null && state != null) WorkDetailScreen(model, pool, state, top.kind, top.id)
                 is Screen.Settings -> SettingsScreen(model, pool, state)
             }
-            if (top == null && model.tab != Tab.INBOX) {
+            if (top == null && model.tab != Tab.INBOX && pool != null) {
                 ExtendedFloatingActionButton(
                     onClick = { directing = true },
                     containerColor = model.tab.section().tint(),
@@ -186,7 +194,7 @@ private fun Home(model: PhoneViewModel, pool: PoolSession) {
                     modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
                 )
             }
-            if (state.notice.isNotEmpty()) {
+            if (pool != null && state != null && state.notice.isNotEmpty()) {
                 LaunchedEffect(state.notice) {
                     delay(4_000)
                     pool.store.clearNotice()
@@ -197,7 +205,7 @@ private fun Home(model: PhoneViewModel, pool: PoolSession) {
                 ) { Text(state.notice) }
             }
         }
-        if (top == null) BottomBar(model.tab, state.inbox.value?.questions?.size ?: 0, model::show)
+        if (top == null) BottomBar(model.tab, state?.inbox?.value?.questions?.size ?: 0, model::show)
     }
-    if (directing) DirectSheet(model, pool, state, onClose = { directing = false })
+    if (directing && pool != null && state != null) DirectSheet(model, pool, state, onClose = { directing = false })
 }

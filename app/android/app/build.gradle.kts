@@ -47,6 +47,15 @@ android {
     }
 
     buildFeatures { compose = true }
+
+    // The screens are tested on the JVM (src/test) with the app's own resources and manifest.
+    testOptions { unitTests { isIncludeAndroidResources = true } }
+}
+
+tasks.withType<Test>().configureEach {
+    // Robolectric fetches the Android it runs on into the build's own folder, not the account's Maven folder.
+    systemProperty("maven.repo.local", gradle.gradleUserHomeDir.resolve("robolectric-m2").path)
+    testLogging { events("failed") }
 }
 
 dependencies {
@@ -66,4 +75,10 @@ dependencies {
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
     implementation(libs.zxing.core)
+
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    debugImplementation(libs.compose.ui.test.manifest)
 }

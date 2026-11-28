@@ -1,5 +1,6 @@
 package app.poolhouse.phone.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +22,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +61,7 @@ fun LinkScreen(model: PhoneViewModel, error: String) {
     var address by rememberSaveable { mutableStateOf("") }
     var code by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf(model.defaultName()) }
+    BackHandler { model.cancelLinking() }
     Column(
         Modifier.fillMaxSize().navigationBarsPadding().imePadding().verticalScroll(rememberScrollState()).padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -94,6 +97,8 @@ fun LinkScreen(model: PhoneViewModel, error: String) {
             Spacer(Modifier.height(8.dp))
             SecondaryButton("Type the code instead", { typing = true }, Modifier.fillMaxWidth())
         }
+        Spacer(Modifier.height(8.dp))
+        TextButton({ model.cancelLinking() }, Modifier.fillMaxWidth()) { Text("Not now", color = Pool.colors.muted) }
     }
 }
 

@@ -27,26 +27,35 @@ import app.poolhouse.phone.ui.components.Card
 import app.poolhouse.phone.ui.components.Chips
 import app.poolhouse.phone.ui.components.Fact
 import app.poolhouse.phone.ui.components.SecondaryButton
+import app.poolhouse.phone.ui.components.SectionLabel
 import app.poolhouse.phone.ui.components.TopBar
 import app.poolhouse.phone.ui.theme.Pool
 
 @Composable
-fun SettingsScreen(model: PhoneViewModel, pool: PoolSession, state: PoolState) {
+fun SettingsScreen(model: PhoneViewModel, pool: PoolSession?, state: PoolState?) {
     var unlinking by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val version = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName.orEmpty() }
     Column(Modifier.fillMaxSize()) {
-        TopBar("Settings", subtitle = connectionLine(state), onBack = model::back)
+        TopBar("Settings", subtitle = state?.let(::connectionLine) ?: "This phone", onBack = model::back)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            ThisPhoneCard(pool, state)
-            Card {
-                Text("Linked computer", style = MaterialTheme.typography.titleSmall)
-                Fact("Name", state.computer.ifBlank { pool.link.computer })
-                Fact("Reached at", pool.link.addresses.joinToString("\n"), mono = true)
-                Fact("This phone", state.me.value?.name.orEmpty())
-                Fact("Key words", pool.link.words, mono = true)
-                Text("The computer's Phones screen shows the same words for this phone.", style = MaterialTheme.typography.bodySmall, color = Pool.colors.muted)
-                SecondaryButton("Unlink this phone", { unlinking = true }, Modifier.fillMaxWidth().padding(top = 8.dp), danger = true)
+            ThisPhoneCard(model, pool, state)
+            if (pool == null) {
+                LinkOfferCard(model)
+            } else {
+                Card {
+                    Text("Linked computer", style = MaterialTheme.typography.titleSmall)
+                    Fact("Name", state?.computer.orEmpty().ifBlank { pool.link.computer })
+                    Fact("Reached at", pool.link.addresses.joinToString("\n"), mono = true)
+                    Fact("This phone", state?.me?.value?.name.orEmpty())
+                    Fact("Key words", pool.link.words, mono = true)
+                    Text("The computer's Phones screen shows the same words for this phone.", style = MaterialTheme.typography.bodySmall, color = Pool.colors.muted)
+                    SecondaryButton("Unlink this phone", { unlinking = true }, Modifier.fillMaxWidth().padding(top = 8.dp), danger = true)
+                }
+            }
+            if (model.entries.isNotEmpty()) {
+                SectionLabel("Models on this phone")
+                PhoneEntries(model)
             }
             Card {
                 Text("Appearance", style = MaterialTheme.typography.titleSmall)
@@ -54,12 +63,15 @@ fun SettingsScreen(model: PhoneViewModel, pool: PoolSession, state: PoolState) {
             }
             Card {
                 Fact("App version", version)
-                Text("The app talks only to the linked computer, over a connection pinned to its certificate. It stores no conversation: closing the app forgets what was read.",
-                    style = MaterialTheme.typography.bodySmall, color = Pool.colors.muted)
+                Text(
+                    if (pool == null) "With no computer linked, the app talks to no computer. It stores no conversation of a computer's agents."
+                    else "The app talks only to the linked computer, over a connection pinned to its certificate. It stores no conversation: closing the app forgets what was read.",
+                    style = MaterialTheme.typography.bodySmall, color = Pool.colors.muted,
+                )
             }
         }
     }
-    if (unlinking) {
+    if (unlinking && pool != null) {
         AlertDialog(
             onDismissRequest = { unlinking = false },
             title = { Text("Unlink this phone?") },
