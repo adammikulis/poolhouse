@@ -1,41 +1,60 @@
-"""Pool overview and benchmark controls driven in Chromium."""
+"""Pool overview and benchmark controls driven in Chromium, on a daemon simulated in the browser (tests/web_assets.py)."""
 
 import pytest
-
-pytest_plugins = ("test_fleet_usability_browser",)
+from web_assets import SimulatedDaemon, canned, fleet_answer, pool_answer
 
 pytestmark = pytest.mark.slow
 
 
-def test_pool_capacity_selection_and_leave_failure(usability_page):
+@pytest.fixture
+def pool_page(browser_owner):
+    """``open(answers)`` shows the Pool page of a simulated daemon: ``(page, errors)``."""
+    pytest.importorskip("playwright.sync_api")
+    errors = []
+    with browser_owner.pages(viewport={"width": 1280, "height": 900}) as page:
+        page.on("pageerror", lambda error: errors.append(str(error)))
+
+        def show(answers):
+            daemon = SimulatedDaemon(answers)
+            daemon.attach(page)
+            page.goto(daemon.url + "#pool")
+            return page, errors
+
+        yield show
+
+
+def test_pool_capacity_selection_and_leave_failure(pool_page):
     from playwright.sync_api import expect
-    served, page, errors = usability_page
-    members = [{"name": "cedar", "slots": 3, "device": {}, "models": ["demo-model"]}]
-    page.route("**/ui/fleet", lambda route: route.fulfill(json={"members": members, "models": ["demo-model"], "bench": {}}))
-    page.route("**/ui/pools", lambda route: route.fulfill(status=400, json={"error": "Pool has active jobs"})
-               if route.request.method == "DELETE" else route.fulfill(json={"pools": [{"group": "lab", "mode": "prod"}]}))
-    page.goto(f"http://127.0.0.1:{served.port}/ui/#pool")
+    fleet = fleet_answer({"name": "cedar", "slots": 3, "device": {}, "models": ["demo-model"]})
+    left = []
+
+    def pool(request):
+        if request.request.method == "DELETE":
+            left.append(request.request.url)
+            return canned(request, {"error": "Pool has active jobs"}, 400)
+        return canned(request, pool_answer("governed"))
+
+    page, errors = pool_page({"/ui/fleet": lambda request: canned(request, fleet), "/ui/pool": pool})
     expect(page.locator("#pool-stat")).to_contain_text("0/3")
     expect(page.get_by_role("heading", name="Devices", exact=True)).to_be_visible()
     page.get_by_text("Pool connections & joining", exact=True).click()
     page.locator("#pool-joined").get_by_role("button", name="Leave", exact=True).click()
     expect(page.locator("#pool-joined [role=alert]")).to_have_text("Pool has active jobs")
+    assert len(left) == 1
     page.locator("#pool-sweep summary").first.click()
     page.locator("#bench-model-0").check()
     expect(page.locator("#benchmark-run")).to_be_enabled()
-    members.clear()
+    fleet["members"].clear()
     page.evaluate("document.querySelector('pool-view').draw()")
     expect(page.locator("#benchmark-run")).to_be_disabled()
     expect(page.locator("#benchmark-status")).to_contain_text("Choose at least one device")
     assert not errors
 
 
-def test_benchmark_rejection_and_stop_error_are_visible(usability_page):
+def test_benchmark_rejection_and_stop_error_are_visible(pool_page):
     from playwright.sync_api import expect
-    served, page, errors = usability_page
-    page.route("**/ui/fleet", lambda route: route.fulfill(json={"members": [{"name": "cedar", "device": {}, "models": ["demo-model"]}], "models": ["demo-model"], "bench": {}}))
-    page.route("**/ui/bench/sweep", lambda route: route.fulfill(json={"ok": False}))
-    page.goto(f"http://127.0.0.1:{served.port}/ui/#pool")
+    page, errors = pool_page({"/ui/fleet": fleet_answer({"name": "cedar", "device": {}, "models": ["demo-model"]}),
+                              "/ui/bench/sweep": {"ok": False}})
     page.locator("#pool-sweep summary").first.click()
     page.locator("#bench-model-0").check()
     page.locator("#benchmark-run").click()

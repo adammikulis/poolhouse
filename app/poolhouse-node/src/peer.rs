@@ -18,6 +18,7 @@
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpStream};
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -87,11 +88,23 @@ const OPEN_JOINS_PER_SOURCE: usize = 5;
 const OPEN_JOINS_PER_POOL: usize = 10;
 const OPEN_JOIN_WINDOW: std::time::Duration = std::time::Duration::from_secs(600);
 
-fn open_join_allowed(node: &mut Node, ip: IpAddr) -> Result<()> {
+/// What is done just before the device on a connection that holds ``place`` is admitted: the connection keeps its place from here
+/// on, so that no later one ends it between the admit and the reply. One that was hung up already admits nobody, so a code is left
+/// to use and the device asks again. A connection this device dialed holds no place.
+pub(crate) fn hold(place: Option<&Permit>) -> Result<()> {
+    if place.is_some_and(|p| !p.keep()) {
+        return Err(Error::Denied("this connection gave up its place to a later one: ask again".into()));
+    }
+    Ok(())
+}
+
+fn open_join_allowed(node: &mut Node, ip: IpAddr, place: Option<&Permit>) -> Result<()> {
     let source = format!("open-join {ip}");
     if !node.rates.permits(&source, OPEN_JOINS_PER_SOURCE, OPEN_JOIN_WINDOW) || !node.rates.permits("open-join", OPEN_JOINS_PER_POOL, OPEN_JOIN_WINDOW) {
         return Err(crate::limits::floor("this pool is taking open joins as fast as it may: try again in a few minutes"));
     }
+    // Only an ask that may be admitted keeps its connection, and one whose connection is gone is not counted.
+    hold(place)?;
     node.rates.record(&source, OPEN_JOIN_WINDOW);
     node.rates.record("open-join", OPEN_JOIN_WINDOW);
     Ok(())
@@ -99,7 +112,7 @@ fn open_join_allowed(node: &mut Node, ip: IpAddr) -> Result<()> {
 
 /// A device that asks to join under `open`: it is enrolled and handed the pool's record. A device that is a member already is handed
 /// the record again and nothing else changes.
-fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Standing) -> Result<Value> {
+fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Standing, place: Option<&Permit>) -> Result<Value> {
     if standing == Standing::Active {
         return record_json(node, &cert_fingerprint(der));
     }
@@ -110,7 +123,7 @@ fn join_open(node: &mut Node, der: &[u8], req: &Value, ip: IpAddr, standing: Sta
         return Err(Error::Denied("this pool takes a device without a code only from its own network".into()));
     }
     let name = req.get("name").and_then(Value::as_str).unwrap_or("");
-    open_join_allowed(node, ip)?;
+    open_join_allowed(node, ip, place)?;
     record_json(node, "")?;
     node.enrol_device(der, name, "open", false)?;
     record_json(node, &cert_fingerprint(der))
@@ -168,14 +181,14 @@ fn push(node: &mut Node, bfp: &str, req: &Value) -> Result<Value> {
     Ok(json!({"stored": stored, "refused": report.refused}))
 }
 
-/// Answer one request from the device with certificate ``der``. The pool record is read here,
-/// under the node's lock, so the check and the work see the same record.
-fn dispatch(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Result<Value> {
+/// Answer one request from the device with certificate ``der``, on a connection that holds ``place`` when this device accepted it.
+/// The pool record is read here, under the node's lock, so the check and the work see the same record.
+fn dispatch(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value, place: Option<&Permit>) -> Result<Value> {
     let _activity = if matches!(req["op"].as_str(), Some("join_open" | "join_exchange" | "shard_put" | "shard_start")) {
         net.activity.new_effect(crate::node::update_activity::Source::Peer)
     } else { net.activity.maintenance(crate::node::update_activity::Source::Peer) }.map_err(crate::net::activity_error)?;
     let fp = cert_fingerprint(der);
-    let result = answer(net, node, der, ip, req)?;
+    let result = answer(net, node, der, ip, req, place)?;
     // A device that has just joined says which port it listens on; its address is where it called from.
     if matches!(req["op"].as_str(), Some("join_open" | "join_confirm")) {
         if let Some(port) = req["port"].as_u64().and_then(|p| u16::try_from(p).ok()).filter(|p| *p > 0) {
@@ -185,7 +198,7 @@ fn dispatch(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> 
     Ok(result)
 }
 
-fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Result<Value> {
+fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value, place: Option<&Permit>) -> Result<Value> {
     let fp = cert_fingerprint(der);
     node.gov_tick()?;
     let standing = node.members.standing(&fp);
@@ -199,10 +212,10 @@ fn answer(net: &Net, node: &mut Node, der: &[u8], ip: IpAddr, req: &Value) -> Re
             node.observe_build(&fp, req);
             Ok(hello(node, standing))
         }
-        ("join_open", _) => join_open(node, der, req, ip, standing),
+        ("join_open", _) => join_open(node, der, req, ip, standing, place),
         // a device whose admit was signed before it dialed (`add_device` with `presigned`) is a member already, and proves it holds the
         // code like any other: it is handed the record again and nothing else changes
-        ("join_exchange" | "join_confirm", _) => net.join_code_step(node, der, op, req),
+        ("join_exchange" | "join_confirm", _) => net.join_code_step(node, der, op, req, place),
         (_, Standing::Unknown) => Err(Error::Denied("this device is not a member of the pool".into())),
         ("members", _) => members(node, &fp, req),
         ("service_binding", _) => crate::services::peer_binding(node, req),
@@ -230,8 +243,9 @@ pub enum Ended {
 
 /// Serve one accepted connection, which holds ``place`` on the listener, until the peer closes it or is refused; a member that sends
 /// `attach` hands the connection over to `Net::register_reverse`, which uses it to send that member requests. A member's address
-/// is vouched for and each of its reads may take `IO_TIMEOUT`; the whole connection of any other device has `STRANGER_FOR`.
-pub fn serve(net: &Net, tcp: TcpStream, place: Permit) -> Result<()> {
+/// is vouched for, its connection keeps its place and each of its reads may take `IO_TIMEOUT`; the whole connection of any other
+/// device has `STRANGER_FOR`, and keeps its place only from when its device is about to be admitted on it (`hold`).
+pub fn serve(net: &Net, tcp: Arc<TcpStream>, place: Permit) -> Result<()> {
     let handshake=net.activity.maintenance(crate::node::update_activity::Source::Peer).map_err(crate::net::activity_error)?;
     let ip = tcp.peer_addr()?.ip();
     let mut s = match tls::accept(net.server_config.clone(), tcp) {
@@ -248,17 +262,18 @@ pub fn serve(net: &Net, tcp: TcpStream, place: Permit) -> Result<()> {
     };
     let der = s.peer.clone();
     let fp = cert_fingerprint(&der);
-    if net.is_member(&fp) {
-        place.vouch();
+    if net.vouch_member(&fp, ip) {
+        place.keep();
         s.stream.sock.disarm(IO_TIMEOUT)?;
     } else {
         s.stream.sock.arm(STRANGER_FOR);
     }
     net.session_opened(&fp);
     drop(handshake); // A waiting connection is not an in-flight handshake or storage writer.
-    let result = serve_requests(net, &mut s, &der, ip, true);
+    let result = serve_requests(net, &mut s, &der, ip, true, Some(&place));
     // A channel has no deadline, also when the device became a member while this connection was a stranger's.
     if matches!(result, Ok(Ended::Attached)) && s.stream.sock.disarm(IO_TIMEOUT).is_ok() {
+        place.keep();
         net.register_reverse(PeerClient::accepted(s, place)?);
         return Ok(());
     }
@@ -267,8 +282,9 @@ pub fn serve(net: &Net, tcp: TcpStream, place: Permit) -> Result<()> {
 }
 
 /// Answer requests on ``s`` from the device with certificate ``der`` until it closes. ``allow_attach`` is false on a connection this
-/// device dialed: only the device that was dialed may be asked to hand the connection over.
-pub fn serve_requests<S: Read + Write>(net: &Net, s: &mut S, der: &[u8], ip: IpAddr, allow_attach: bool) -> Result<Ended> {
+/// device dialed: only the device that was dialed may be asked to hand the connection over. ``place`` is the one an accepted
+/// connection holds on the listener.
+pub fn serve_requests<S: Read + Write>(net: &Net, s: &mut S, der: &[u8], ip: IpAddr, allow_attach: bool, place: Option<&Permit>) -> Result<Ended> {
     while let Some(req) = read_frame_max(s, MAX_PEER_FRAME)? {
         // Retain activity through reply I/O and postdispatch cleanup, outside the Node mutex.
         let _request=net.activity.maintenance(crate::node::update_activity::Source::Peer).map_err(crate::net::activity_error)?;
@@ -283,7 +299,7 @@ pub fn serve_requests<S: Read + Write>(net: &Net, s: &mut S, der: &[u8], ip: IpA
         }
         let (result, revoked) = {
             let mut node = crate::net::tracked_node(&net.node, crate::node::update_activity::Source::Peer)?;
-            let result = dispatch(net, &mut node, der, ip, &req);
+            let result = dispatch(net, &mut node, der, ip, &req, place);
             (result, node.members.standing(&cert_fingerprint(der)) == Standing::Revoked)
         };
         write_frame_max(s, &reply_of(result), MAX_PEER_FRAME)?;
@@ -354,7 +370,7 @@ impl PeerClient {
     /// Answer the requests that come down this connection (the other end holds the channel), until it closes.
     pub fn serve(mut self, net: &Net, ip: IpAddr) -> Result<Ended> {
         let der = self.der.clone();
-        serve_requests(net, &mut self.link, &der, ip, false)
+        serve_requests(net, &mut self.link, &der, ip, false, None)
     }
 
     /// Send one request; a refusal comes back as the matching error.

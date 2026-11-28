@@ -136,6 +136,10 @@ def route(request) -> bool:
         request.send(501, {"error": "project registry unavailable"})
         return True
     suffix = path.removeprefix("/ui/projects").strip("/").split("/")
+    shares = (method == "POST" and path == "/ui/projects") or (method == "PATCH" and len(suffix) == 1)
+    if shares and not ui.credentialed(request.cookie):
+        request.send(403, {"error": "Sharing a project needs a signed-in Poolhouse window."})
+        return True
     try:
         if path == "/ui/projects" and method == "GET":
             request.send(200, available(ui))

@@ -6,6 +6,7 @@ from studio_commands import studio_command
 from test_studio_canvas_browser import add, studio_browser  # noqa: F401
 
 studio_page = test_studio_canvas_browser.studio_page
+saving_studio_page = test_studio_canvas_browser.saving_studio_page
 pytestmark = pytest.mark.slow
 
 
@@ -17,8 +18,8 @@ def undo(page, redo=False):
     studio_command(page, 'Redo' if redo else 'Undo').click()
 
 
-def test_settings_limit_persists_and_trims_both_stacks_to_nearest_states(studio_page):
-    page, _state, errors = studio_page
+def test_settings_limit_persists_and_trims_both_stacks_to_nearest_states(saving_studio_page):
+    page, _state, errors = saving_studio_page
     add(page, 'Prompt template')
     page.locator('studio-view').evaluate('''e => {
       for(let i=0;i<140;i++) { e.checkpoint(); e.graph.nodes[0].parameters.template=String(i); e.changed(false); }

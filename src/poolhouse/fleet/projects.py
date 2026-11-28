@@ -10,6 +10,7 @@ import re
 import subprocess
 import threading
 import urllib.parse
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -111,6 +112,66 @@ def git_identity(root: Path) -> str:
     return hashlib.sha256(origin.encode()).hexdigest()[:32]
 
 
+MOVED = "This project folder moved or changed. Choose it again in Projects."
+TERMINAL_ONLY = ("The app cannot join a submodule, a separate git directory or a worktree of a bare repository: "
+                 "start work from a terminal agent in this folder.")
+
+
+def _git_line(path: Path) -> str:
+    """The text of one of git's pointer files as git reads it: only the line ending is not part of it."""
+    return path.read_text(encoding="utf-8").rstrip("\r\n")
+
+
+def own_worktree(root: Path) -> Path:
+    """``root`` while it is still the very folder recorded and the top of a working tree of its own; the main working tree.
+
+    Read from the files alone, for the two layouts they show the folder owns: its own ``.git`` directory (the main working
+    tree is ``root``), and a linked worktree whose record in a repository's ``.git`` names this folder's ``.git`` back, as
+    written and with no link followed (the main working tree is the folder around that ``.git``). A link, a folder that lost
+    its ``.git`` (git would then answer for a repository around it) and a ``.git`` file leading anywhere else that is no such
+    record are `MOVED`; a git directory kept elsewhere that is no folder's ``.git`` is `TERMINAL_ONLY`.
+    """
+    refused = source.ProjectError(MOVED)
+    try:
+        if root.resolve(strict=True) != root:
+            raise refused
+        dot = root / ".git"
+        if dot.is_symlink():
+            raise refused
+        if dot.is_dir():
+            if os.path.lexists(dot / "commondir"):
+                raise refused
+            return root
+        pointer = _git_line(dot)
+        if not pointer.startswith("gitdir: "):
+            raise refused
+        own = (root / pointer.removeprefix("gitdir: ")).resolve(strict=True)
+        if not os.path.lexists(own / "commondir"):
+            if own.name == ".git" or not own.is_dir():
+                raise refused
+            raise source.ProjectError(TERMINAL_ONLY)
+        common = (own / _git_line(own / "commondir")).resolve(strict=True)
+        back = os.path.normpath(own / _git_line(own / "gitdir"))
+        if (own.parent != common / "worktrees" or os.path.normcase(back) != os.path.normcase(dot)
+                or os.path.lexists(common / "commondir")):
+            raise refused
+        if common.name != ".git":
+            raise source.ProjectError(TERMINAL_ONLY)
+        return common.parent
+    except (OSError, UnicodeError) as exc:
+        raise refused from exc
+
+
+@dataclass(frozen=True)
+class AppFolder:
+    """A project of the app as one request found it: its recorded ``root``, the main working tree its files give
+    (`own_worktree`), and ``joinable()``, the folder the node may take if the person joins it, else why not."""
+
+    root: Path
+    tree: Path
+    joinable: Callable[[], tuple[Path | None, str]]
+
+
 @dataclass
 class Project:
     id: str
@@ -123,10 +184,15 @@ class Project:
     size_bytes: int = 0
     files: int = 0
     excluded_files: int = 0
+    chosen: bool = False
+    """The person picked this folder; a row the app only found is not chosen."""
+    git_id: str = ""
+    """Git's own identity of the folder when it was chosen or shared, whatever a metadata file in it claims."""
 
     def public(self) -> dict:
         result = asdict(self)
-        result.pop("root")
+        for private in ("root", "chosen", "git_id"):
+            result.pop(private)
         return result
 
 
@@ -174,6 +240,8 @@ class ProjectRegistry:
             if project is None:
                 project = Project(id=identifier, name=top.name, root=str(top), source_machine=self.machine)
                 self._projects[identifier] = project
+            if Path(project.root) == top:
+                project.chosen, project.git_id = True, git_identity(top)
             self._candidates[identifier] = top
             self._save()
             return self._board(project)
@@ -188,6 +256,27 @@ class ProjectRegistry:
             if project is None:
                 raise source.ProjectError("Project is not registered here")
             return project
+
+    def joinable(self, identifier: str) -> Path:
+        """The folder of a project the person chose or shared, checked as the node may take it now: still its own worktree
+        (`own_worktree`), with git's identity from when it was chosen, in storage only this account writes."""
+        with self.lock:
+            project = self.get(identifier)
+            if not (project.chosen or project.shared):
+                raise source.ProjectError("Share this project in Projects before joining its workspace.")
+            root = Path(project.root)
+            main = own_worktree(root)
+            try:
+                top = git.run(["rev-parse", "--show-toplevel"], cwd=root, protocols="").stdout.rstrip("\r\n")
+                if Path(top) != root or git_identity(root) != (project.git_id or project.id):
+                    raise source.ProjectError(MOVED)
+                protected = source_snapshot.protected_roots(dict(os.environ))
+                for folder in {root, main}:
+                    source_snapshot.validate_storage(folder, protected)
+            except (OSError, RuntimeError, git.GitFailed) as exc:
+                raise source.ProjectError("This project folder cannot be shared with a workspace: "
+                                          "other accounts or Poolhouse's own storage reach it.") from exc
+            return root
 
     def list(self) -> list[dict]:
         with self.lock:
@@ -292,7 +381,8 @@ class ProjectRegistry:
             manifest, packed = source.build(root, identifier)
             source.verify(packed, identifier, manifest["source_hash"])
             project = Project(id=identifier, name=name.strip() or root.name, root=str(root),
-                              source_machine=self.machine, shared=True, source_hash=manifest["source_hash"],
+                              source_machine=self.machine, shared=True, chosen=True, git_id=git_identity(root),
+                              source_hash=manifest["source_hash"],
                               archive_sha256=hashlib.sha256(packed).hexdigest(), size_bytes=manifest["size_bytes"],
                               files=len(manifest["files"]), excluded_files=manifest["excluded_files"])
             target = self._bundle(project)
@@ -307,7 +397,7 @@ class ProjectRegistry:
             project = self.get(identifier)
             if not project.shared:
                 raise source.ProjectError("Project is not shared here")
-            project.shared = False
+            project.shared = project.chosen = False
             self._save()
 
     def _bundle(self, project: Project) -> Path:
