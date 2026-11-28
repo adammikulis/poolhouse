@@ -235,6 +235,54 @@
     }
   },
   {
+    "model": "Qwen3.8-Flash-Next-UD-IQ2_XS-00001-of-00003.gguf",
+    "workload": "ask",
+    "serve": {
+      "build": "",
+      "draft": "mtp-Qwen3.8-Flash-Next-Q4_K_M.gguf",
+      "spec_type": "draft-mtp",
+      "cache_type": "q8_0",
+      "draft_cache_type": "",
+      "reasoning_budget": null,
+      "mmproj": "",
+      "extra_args": [
+        "-ub",
+        "2048"
+      ],
+      "spec_p_min": null,
+      "slot_context": 262144,
+      "parallel": 1
+    },
+    "request": {
+      "spec_draft_max": 4,
+      "sampling": {}
+    },
+    "ask": {
+      "tight": true,
+      "batch": false,
+      "single": false,
+      "few": false,
+      "kinds": false,
+      "summary": false,
+      "rich": false,
+      "terse": false,
+      "constrain_ids": false,
+      "reach": null,
+      "rounds": null
+    },
+    "measured": {
+      "measured_at": "2026-11-28",
+      "label": "main-iq2",
+      "questions": 0,
+      "right": 0.0,
+      "recall": 0.0,
+      "precision": 0.0,
+      "seconds_per_question": 0.0,
+      "host": "Mac",
+      "note": "a serving speed run, no questions asked, so no F1 and no asking or sampling measured: campaign `qwen3.8-flash-next-engines`, arm `main-iq2` (docs/experiments/engines-qwen3.8-flash.json on branch backup/bench-engines), llama.cpp b12825 (6d8a8886f), head blob 8087dbb39fc7, one slot of 262,144 tokens. Draft depth 4 chosen of 0, 2, 3, 4 and 6: 75.9 tok/s writing at 72% draft acceptance; 28k-token reads at a median 531.5 tok/s"
+    }
+  },
+  {
     "model": "Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf",
     "workload": "ask",
     "serve": {
