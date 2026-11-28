@@ -139,8 +139,8 @@ Talk to a model from the interface, whichever machine is running it.
 - **Replies arrive as they are written**, not in one piece at the end.
 - **Conversations are kept** between runs and searched by anything said in them.
 - **Running a model here** is a button beside it in the Models list. The llama.cpp
-  server is downloaded the first time and checked against the digest GitHub publishes
-  for it.
+  server is downloaded the first time, at the release Poolhouse was verified with, and
+  checked against the digest Poolhouse records for it.
 
 - **A machine with no speech model sends audio to one that has it.** `Member.transcribe`
   posts a recording to another machine's daemon and gets back the text with the time of

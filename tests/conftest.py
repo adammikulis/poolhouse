@@ -52,6 +52,8 @@ os.environ.setdefault("POOLHOUSE_GUARD_JUDGE", "off")
 sys.path.insert(0, str(REPO / "src"))
 os.environ["HF_HUB_OFFLINE"] = "1"
 os.environ["POOLHOUSE_RUNTIME_ENSURE"] = "off"
+# no test, and no command a test starts, installs a package or downloads a tool at first use (`poolhouse.provision`)
+os.environ["POOLHOUSE_INSTALL_AT_NEED"] = "off"
 sys.path.insert(0, str(REPO / "scripts"))
 
 

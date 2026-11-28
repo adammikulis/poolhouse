@@ -23,10 +23,14 @@ from poolhouse.log import warn
 from poolhouse.redact.secrets import env_secrets, redact
 from poolhouse.serve.build_paths import BuildFailed, patch_files, patch_stamp, patches_dir, root
 
-__all__ = ["MANIFEST", "check_patches", "manifest_path", "rebase_help", "verified_upstream"]
+__all__ = ["MANIFEST", "check_patches", "manifest_path", "pinned_commit", "pinned_release", "rebase_help",
+           "verified_upstream"]
 
 MANIFEST = "verified.json"
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
+TAG = re.compile(r"b[0-9]+")
+DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
+RELEASES = "https://github.com/ggml-org/llama.cpp/releases/download"
 
 
 def manifest_path() -> Path:
@@ -44,18 +48,46 @@ def verified_upstream() -> str:
     path = manifest_path()
     if not patch_files() or not path.is_file():
         return ""
-    try:
-        data = json.loads(path.read_text())
-        commit = str(data["commit"])
-    except (ValueError, KeyError, TypeError) as exc:
-        raise BuildFailed(f"{path} is not a verified-commit manifest ({exc}); it needs "
-                          '{"commit": "<40 hex>", "patches": "<stamp>"}') from None
-    if not FULL_SHA.fullmatch(commit):
-        raise BuildFailed(f"{path} names {commit!r}, which is not a full upstream commit SHA")
+    data, commit = _manifest(path)
     if data.get("patches") != patch_stamp():
         warn(f"the patches changed since {commit[:9]} was verified: after checking them against "
              f"it, set \"patches\" to \"{patch_stamp()}\" in {path}")
     return commit
+
+
+def _manifest(path: Path) -> tuple[dict, str]:
+    """The manifest at ``path`` and the full commit it names."""
+    try:
+        data = json.loads(path.read_text())
+        commit = str(data["commit"])
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise BuildFailed(f"{path} is not a verified-commit manifest ({exc}); it needs "
+                          '{"commit": "<40 hex>", "patches": "<stamp>"}') from None
+    if not FULL_SHA.fullmatch(commit):
+        raise BuildFailed(f"{path} names {commit!r}, which is not a full upstream commit SHA")
+    return data, commit
+
+
+def pinned_commit() -> str:
+    """The upstream commit anything fetched from llama.cpp's source is held to, with or without patches to apply.
+    Raises `BuildFailed` when nothing is pinned, so nothing is fetched."""
+    return _manifest(manifest_path())[1]
+
+
+def pinned_release() -> dict:
+    """The one llama.cpp release that is downloaded, in the shape GitHub reports a release in, each asset with the
+    sha256 the manifest records for it. Raises `BuildFailed` when none is pinned, so none is downloaded."""
+    path = manifest_path()
+    try:
+        release = _manifest(path)[0]["release"]
+        tag = str(release["tag"])
+        assets = [{"name": name, "size": int(one["size"]), "digest": f"sha256:{one['sha256']}",
+                   "browser_download_url": f"{RELEASES}/{tag}/{name}"} for name, one in sorted(release["assets"].items())]
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise BuildFailed(f"{path} pins no llama.cpp release ({exc}), so none is downloaded") from None
+    if not TAG.fullmatch(tag) or not assets or not all(DIGEST.fullmatch(one["digest"]) for one in assets):
+        raise BuildFailed(f"{path} pins a llama.cpp release without a build tag and a sha256 for each asset")
+    return {"tag_name": tag, "assets": assets}
 
 
 def rebase_help(source: Path, rev: str, failed: Path, detail: str) -> str:

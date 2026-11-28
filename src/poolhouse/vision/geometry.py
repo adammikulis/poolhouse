@@ -5,12 +5,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-try:
-    import numpy as np
-except ModuleNotFoundError as exc:  # pragma: no cover - depends on the install
-    raise ModuleNotFoundError(
-        "poolhouse.vision.geometry needs numpy: "
-        "pip install 'poolhouse[vision]'") from exc
+from poolhouse import provision
+
+np = provision.module("numpy", "vision")
 
 __all__ = ["Bearing", "column_to_deg", "find_color_blob", "floor_boundary",
            "hfov_from_known_width", "nearest_obstacle", "to_gray"]

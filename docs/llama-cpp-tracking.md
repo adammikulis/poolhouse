@@ -118,7 +118,7 @@ that something vouches for is re-pinned and used: the digest in the `BUILD.json`
 verifies and chains to Apple, or a Homebrew Cellar file owned by the user. One nothing vouches for (a `BUILD.json` recording another
 digest, a patched file, a pin that was lost and a file that is not what the build recorded) is not run: the newest earlier mainline
 build that still hashes to its own record replaces it, and with none kept a good build is made the way `poolhouse-serve build` makes
-one (from source with a compiler, else the newest release, the other if that fails), made `current` and pinned. `BinaryTampered` is raised only when that fails as well, and names it. Each step is a
+one (the verified commit from source with a compiler, else the verified release, the other if that fails), made `current` and pinned. `BinaryTampered` is raised only when that fails as well, and names it. Each step is a
 warning in the log (`NOT TRUSTED`, `FELL BACK`, `RECOVERED`, `RE-PINNED`). A binary no pin or `BUILD.json` knows is pinned on first
 use. `llama-cpp rollback` still switches `current` to the previous build when you want that. An environment override is the owner's
 explicit choice and is not checked.
