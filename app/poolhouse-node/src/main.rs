@@ -154,8 +154,9 @@ fn no_core_dumps() -> std::io::Result<()> {
     Ok(())
 }
 
-/// Protect Linux node memory before reading any key or authority state. This does not protect mutable installation files.
-#[cfg(target_os = "linux")]
+/// Protect node memory on Linux and Android before reading any key or authority state. This does not protect mutable
+/// installation files.
+#[cfg(any(target_os = "linux", target_os = "android"))]
 fn protect_process() -> std::io::Result<()> {
     let zero: libc::c_ulong = 0;
     // SAFETY: these prctl operations take only integer arguments and no pointers.
@@ -206,7 +207,7 @@ fn probe(args: &[String]) -> Result<String, String> {
 }
 
 fn main() -> ExitCode {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "android"))]
     if let Err(error) = protect_process() {
         eprintln!("poolhouse-node: cannot protect process memory: {error}");
         return ExitCode::FAILURE;

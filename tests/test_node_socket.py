@@ -1,4 +1,5 @@
-"""The node's local socket: who may connect, and how soon the node takes a client."""
+"""The node's platform side: who may connect to its local socket, how soon it takes a client, and that a published
+file gets its name once (without a hard link on Android, which lets no app make one)."""
 
 import pytest
 import testunits

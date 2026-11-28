@@ -1,5 +1,6 @@
 //! The Unix side: modes, `flock`, `SO_PEERCRED` and the socket.
 
+use std::ffi::CStr;
 use std::fs::{self, File, OpenOptions};
 use std::net::{Shutdown, TcpStream};
 use std::os::fd::AsRawFd;
@@ -62,6 +63,27 @@ pub fn hang_up(stream: &TcpStream) -> std::io::Result<()> {
 /// Move ``from`` over ``to`` in one step.
 pub fn replace_file(from: &Path, to: &Path) -> Result<()> {
     fs::rename(from, to)?;
+    Ok(())
+}
+
+/// Give the finished file ``from`` of the directory ``dir`` the name ``to``, never replacing what already has it.
+/// A hard link does this everywhere but on Android, which lets no app make one; there the rename itself refuses.
+pub fn publish_new(dir: &File, from: &CStr, to: &CStr) -> std::io::Result<()> {
+    let fd = dir.as_raw_fd();
+    #[cfg(target_os = "android")]
+    // SAFETY: the directory descriptor and both NUL-terminated names stay valid for the call.
+    let done = unsafe { libc::syscall(libc::SYS_renameat2, fd, from.as_ptr(), fd, to.as_ptr(), libc::RENAME_NOREPLACE) };
+    #[cfg(not(target_os = "android"))]
+    // SAFETY: the directory descriptor and both NUL-terminated names stay valid for the call.
+    let done = unsafe { libc::linkat(fd, from.as_ptr(), fd, to.as_ptr(), 0) };
+    if done != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: as above.
+    #[cfg(not(target_os = "android"))]
+    if unsafe { libc::unlinkat(fd, from.as_ptr(), 0) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
     Ok(())
 }
 
@@ -284,5 +306,20 @@ mod tests {
         assert!(began.elapsed() >= std::time::Duration::from_millis(15), "an idle accept returned at once");
         let _client = connect(directory.path()).unwrap();
         assert!(listener.accept().is_ok(), "a client that was already connected was not taken");
+    }
+
+    #[test]
+    fn a_published_file_gets_its_name_once_and_never_replaces_what_has_it() {
+        let directory = tempfile::tempdir().unwrap();
+        let folder = File::open(directory.path()).unwrap();
+        for (name, text) in [("first", "one"), ("second", "two")] {
+            std::fs::write(directory.path().join(name), text).unwrap();
+        }
+        publish_new(&folder, c"first", c"kept").unwrap();
+        let refused = publish_new(&folder, c"second", c"kept").unwrap_err();
+        assert_eq!(refused.kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read_to_string(directory.path().join("kept")).unwrap(), "one");
+        assert!(!directory.path().join("first").exists(), "the finished file has one name");
+        assert!(directory.path().join("second").exists(), "a refused file stays where it was");
     }
 }

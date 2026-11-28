@@ -166,13 +166,7 @@ pub fn ensure(dir: &Path) -> Result<()> {
                 let mut file = file_at(&folder, &format!("{name}.pending"), true)?;
                 file.write_all(random_hex(32)?.as_bytes())?;
                 file.sync_all()?;
-                // SAFETY: both names and the directory descriptor are valid; linkat refuses an existing target.
-                let linked = unsafe { libc::linkat(folder.as_raw_fd(), pending.as_ptr(), folder.as_raw_fd(), target.as_ptr(), 0) };
-                if linked != 0 { return Err(std::io::Error::last_os_error().into()); }
-                // SAFETY: the pending name is fixed and remains inside the opened directory.
-                if unsafe { libc::unlinkat(folder.as_raw_fd(), pending.as_ptr(), 0) } != 0 {
-                    return Err(std::io::Error::last_os_error().into());
-                }
+                crate::sys::publish_new(&folder, &pending, &target)?;
                 folder.sync_all()?;
             }
             Err(error) => return Err(error),

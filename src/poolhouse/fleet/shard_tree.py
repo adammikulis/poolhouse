@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import io
 import re
 import subprocess
 import tarfile
 import zlib
+from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 MOST_PACKED = 24 << 20
@@ -22,6 +25,14 @@ class TreeError(ValueError):
     """A tree that cannot be packed, or that a receiving device refuses to unpack."""
 
 
+@dataclass(frozen=True)
+class Commit:
+    """One commit of the checkout at ``root``, to pack as it was committed."""
+
+    root: Path
+    id: str
+
+
 def tracked_paths(root: Path) -> list[str]:
     """Tracked and untracked-but-not-ignored files under ``root`` that exist now, sorted."""
     out = subprocess.run(["git", "ls-files", "-co", "--exclude-standard", "-z"], cwd=root,
@@ -31,18 +42,56 @@ def tracked_paths(root: Path) -> list[str]:
             and SHIPPED.match(name) and not name.startswith(".")]
 
 
-def pack(root: Path) -> tuple[bytes, str]:
-    """The gzip tar of the tree at ``root`` and the sha256 of those bytes."""
+def commit_id(root: Path, commit: str) -> str:
+    """The full id of the commit ``commit`` names in the checkout at ``root``, or TreeError."""
+    found = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "--end-of-options", f"{commit}^{{commit}}"], cwd=root,
+                           capture_output=True, check=False)
+    if found.returncode:
+        raise TreeError(f"no commit {commit[:80]!r} in this checkout")
+    return found.stdout.decode().strip()
+
+
+def working_files(root: Path) -> Iterator[tuple[str, bool, bytes]]:
+    """``(name, executable, content)`` of each file of the working tree that travels."""
+    for name in tracked_paths(root):
+        path = root / name
+        yield name, bool(path.stat().st_mode & EXECUTABLE), path.read_bytes()
+
+
+def committed_files(root: Path, commit: str) -> Iterator[tuple[str, bool, bytes]]:
+    """The same for the commit ``commit``, read from git's objects: nothing of the working tree is read."""
+    listed = subprocess.run(["git", "ls-tree", "-r", "-z", "--full-tree", commit_id(root, commit)], cwd=root,
+                            capture_output=True, check=True).stdout
+    wanted = []
+    for row in filter(None, listed.split(b"\0")):
+        about, _, raw = row.partition(b"\t")
+        mode, kind, blob = about.split()
+        name = raw.decode()
+        if kind == b"blob" and mode in (b"100644", b"100755") and SHIPPED.match(name) and not name.startswith("."):
+            wanted.append((name, mode == b"100755", blob))
+    wanted.sort()
+    contents = io.BytesIO(subprocess.run(["git", "cat-file", "--batch"], cwd=root, check=True, capture_output=True,
+                                         input=b"".join(blob + b"\n" for _, _, blob in wanted)).stdout)
+    for name, executable, _ in wanted:
+        size = int(contents.readline().split()[2])
+        yield name, executable, contents.read(size)
+        contents.read(1)
+
+
+def pack(source: Path | Commit) -> tuple[bytes, str]:
+    """The gzip tar of a working tree (a path) or of one commit, and the sha256 of those bytes.
+
+    The archive holds no time and no owner, so the same files are the same bytes: whoever holds a commit can
+    check the tree digest a result names."""
+    files = committed_files(source.root, source.id) if isinstance(source, Commit) else working_files(source)
     buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz", compresslevel=6) as archive:
-        for name in tracked_paths(root):
-            info = archive.gettarinfo(str(root / name), arcname=name)
-            info.uid = info.gid = 0
-            info.uname = info.gname = ""
-            info.mtime = 0
-            info.mode = 0o755 if info.mode & EXECUTABLE else 0o644
-            with (root / name).open("rb") as handle:
-                archive.addfile(info, handle)
+    with gzip.GzipFile(filename="", mode="wb", compresslevel=6, fileobj=buffer, mtime=0) as squeezed, \
+            tarfile.open(fileobj=squeezed, mode="w") as archive:
+        for name, executable, content in files:
+            info = tarfile.TarInfo(name)
+            info.size = len(content)
+            info.mode = 0o755 if executable else 0o644
+            archive.addfile(info, io.BytesIO(content))
     data = buffer.getvalue()
     if len(data) > MOST_PACKED:
         raise TreeError(f"the packed tree is {len(data)} bytes; at most {MOST_PACKED} travel in one request")

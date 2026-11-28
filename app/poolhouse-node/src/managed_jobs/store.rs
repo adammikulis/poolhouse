@@ -99,20 +99,14 @@ impl Store {
             // SAFETY: only our successfully exclusively created fixed-parent temporary leaf.
             unsafe { libc::unlinkat(dir.as_raw_fd(),leaf.as_ptr(),0); } return Err(e);
         }
-        // Initialization publishes without replacing any existing entry. A crash before
-        // removing its temporary hardlink leaves a detectable invalid link count.
-        // SAFETY: all names use the retained private directory; no caller path is used.
-        let published=unsafe {
-            if initialize { libc::linkat(dir.as_raw_fd(),leaf.as_ptr(),dir.as_raw_fd(),target.as_ptr(),0) }
-            else { libc::renameat(dir.as_raw_fd(),leaf.as_ptr(),dir.as_raw_fd(),target.as_ptr()) }
-        };
-        if published!=0 {
+        // Initialization publishes without replacing any existing entry. Where that takes a
+        // hard link, a crash before removing the temporary name leaves a detectable link count.
+        let published=if initialize { crate::sys::publish_new(dir,&leaf,target).is_ok() }
+            // SAFETY: all names use the retained private directory; no caller path is used.
+            else { unsafe { libc::renameat(dir.as_raw_fd(),leaf.as_ptr(),dir.as_raw_fd(),target.as_ptr())==0 } };
+        if !published {
             // Publication outcome is conservatively unknown; preserve both alternatives.
             return Err(Failure::PersistenceUnknown);
-        }
-        if initialize {
-            // SAFETY: remove only this invocation's exclusive temporary entry.
-            if unsafe {libc::unlinkat(dir.as_raw_fd(),leaf.as_ptr(),0)}!=0 { return Err(Failure::PersistenceUnknown); }
         }
         #[cfg(test)] if self.fail_at==Some("after_rename") { return Err(Failure::PersistenceUnknown); }
         dir.sync_all().map_err(|_|Failure::PersistenceUnknown)

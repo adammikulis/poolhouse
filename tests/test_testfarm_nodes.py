@@ -11,9 +11,11 @@ import argparse
 import hashlib
 import io
 import json
+import subprocess
 import sys
 import tarfile
 import time
+from pathlib import Path
 
 import pytest
 from testfarm_kit import (
@@ -156,6 +158,52 @@ def test_files_run_on_the_device_in_the_shape_of_a_local_run_and_the_pass_is_reu
     assert len(posted) >= 3 and all(f"fp={fp[:16]}" in line and f"platform={sys.platform}" in line for line in posted)
 
 
+def commit_all(tree) -> str:
+    """Commit every file of ``tree``; the commit's full id."""
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@localhost", "-C", str(tree)]
+    subprocess.run([*git, "add", "--all"], check=True, capture_output=True)
+    subprocess.run([*git, "commit", "-q", "-m", "one"], check=True, capture_output=True)
+    return subprocess.run([*git, "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def go_commit(fp: str, tree, commit: str) -> int:
+    """`scripts/test all tests/test_a.py --on DEVICE --commit COMMIT`, in this process."""
+    args = argparse.Namespace(tier="all", on=fp, split=False, base="main", timeout=300.0, commit=commit)
+    return on_device.main(args, ["tests/test_a.py"], tree, lambda t, f: [sys.executable, "-m", "pytest", "-n", "1", f], True)
+
+
+def test_a_commit_runs_as_committed_every_time_and_the_result_is_tied_to_it(pool, capsys):
+    a, b, _shards, tree = pool
+    enable(b)
+    fp = member(a)["fingerprint"]
+    commit = commit_all(tree)
+    (tree / "scripts" / "test").write_text("raise SystemExit('the working tree travelled')\n", encoding="utf-8")
+    digest = shard_tree.pack(shard_tree.Commit(tree, commit))[1]
+    for run in (1, 2):
+        assert go_commit(fp, tree, commit[:12]) == 0
+        out = capsys.readouterr().out
+        assert f"commit {commit} (tree {digest[:12]})" in out and "1 passed in" in out
+        assert jobs_on(b) == run, "a commit is run again each time: a stored pass verifies nothing"
+        (named,) = [line.removeprefix("result file: ") for line in out.splitlines() if line.startswith("result file: ")]
+        kept = json.loads(Path(named).read_text(encoding="utf-8"))
+        assert (kept["commit"], kept["tree_sha256"], kept["exit"], kept["device"]) == (commit, digest, 0, fp), "a report attaches this file"
+        assert kept["files"]["tests/test_a.py"]["passed"] == 1
+    page = a.call("read", BOARD, a.token, kind="message", limit=200)["entries"]
+    posted = [e["fields"]["body"] for e in page if e["fields"].get("body", "").startswith("test-result device=")]
+    assert posted and all(line.endswith(f"commit={commit}") for line in posted)
+
+
+def test_a_result_for_another_tree_than_the_commit_is_not_a_result(pool, monkeypatch, capsys):
+    a, b, _shards, tree = pool
+    enable(b)
+    fp = member(a)["fingerprint"]
+    commit_all(tree)
+    real = Shards.wait
+    monkeypatch.setattr(Shards, "wait", lambda self, *a, **k: {**real(self, *a, **k), "tree_sha256": "0" * 64})
+    assert go_commit(fp, tree, "HEAD") == on_device.NOT_RUN
+    assert "names another tree" in capsys.readouterr().err
+
+
 def test_a_failing_file_is_reported_with_its_message_and_is_not_kept_as_a_pass(pool, capsys):
     a, b, _shards, tree = pool
     enable(b)
@@ -279,7 +327,7 @@ def test_split_gives_this_machine_and_the_device_a_share_each_and_learns_duratio
     kept = []
     monkeypatch.setattr(on_device, "local", lambda root, tier, files: kept.append(files) or 0)
     history = on_device.history(tree)
-    args = argparse.Namespace(tier="all", on=fp, split=True, base="main", timeout=300.0)
+    args = argparse.Namespace(tier="all", on=fp, split=True, base="main", timeout=300.0, commit="")
     assert on_device.main(args, ["tests/test_a.py", "tests/test_mac.py"], tree, lambda t, f: [], True) == 0
     assert kept == [["tests/test_mac.py"]], "a file that names darwin stays here"
     assert "1 passed" in capsys.readouterr().out and jobs_on(b) == 1

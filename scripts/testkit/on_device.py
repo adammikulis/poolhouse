@@ -4,11 +4,14 @@
     scripts/test quick --on all                            the files a change reaches, on every other device
     scripts/test gate --on wsl-box                         the structural checks there
     scripts/test full --on all --split                     divide the whole list between this machine and the devices
+    scripts/test all tests/test_x.py --on phone --commit SHA   that commit as committed, to verify it elsewhere
 
 The device that receives it (another device of the node's pool) runs `scripts/test` on exactly
 this tree, on its own Python 3.13, and sends the result back, with the output as it is written; the printed lines are a local run's, with the device and its platform named. A file that passed on a
 device with this content, platform and tier is not sent again (`--no-reuse` sends it): a pass on one device
-never satisfies another. Each result is posted to the board, keyed by device. Exit status is the worst of
+never satisfies another. With `--commit` the tree is read from git, never the working tree, every named file
+runs again, and a result is taken only when it names the digest of that commit's tree; the printed lines and
+the board name the commit. Each result is posted to the board, keyed by device. Exit status is the worst of
 the runs; 70 means a device never ran its part (not enrolled, shards off, unreachable, refused).
 """
 
@@ -30,7 +33,7 @@ import testreuse_key as keys
 from poolhouse import features
 from poolhouse.activity import reuse
 from poolhouse.activity.gate import tree_hash
-from poolhouse.fleet import shard_split
+from poolhouse.fleet import shard_split, shard_tree
 from poolhouse.fleet.shard_spec import TEST_FILE
 from poolhouse.testfarm import report
 from poolhouse.testfarm.client import ShardError, Shards, choose, pool_devices
@@ -46,13 +49,16 @@ OPTION = re.compile(r"^-")
 
 @dataclass
 class Run:
-    """What every part of one remote run shares: who asks, the record, the tier, the file keys and the tree."""
+    """What every part of one remote run shares: who asks, the record, the tier, the file keys, the tree, and the
+    commit and its tree digest when the run is of one commit."""
 
     shards: Shards
     ledger: Ledger
     tier: str
     content: dict[str, str]
     tree: str = ""
+    commit: str = ""
+    digest: str = ""
 
 
 class Part:
@@ -118,11 +124,18 @@ def send(run: Run, part: Part, root: Path, timeout: int) -> None:
     """Send the part's files to its device and keep the result, or the reason it never ran."""
     try:
         began = time.monotonic()
-        shard = run.shards.send(part.fingerprint, root, run.tier, part.files, timeout)
+        source = shard_tree.Commit(root, run.commit) if run.commit else root
+        shard = run.shards.send(part.fingerprint, source, run.tier, part.files, timeout)
         print(f"test: {len(part.files) or 'every'} test files sent to {part.name} in {time.monotonic() - began:.1f}s", flush=True)
-        part.result = run.shards.wait(part.fingerprint, shard, timeout_s=timeout + 180)
+        result = run.shards.wait(part.fingerprint, shard, timeout_s=timeout + 180)
     except ShardError as exc:
         part.error = str(exc)
+        return
+    if run.commit and result.get("tree_sha256") != run.digest:
+        part.error = f"its result names another tree than commit {run.commit}"
+    else:
+        # The last three are the sender's word, never the device's.
+        part.result = {**result, "commit": run.commit, "device": part.fingerprint, "shard": shard}
 
 
 def local(root: Path, tier: str, files: list[str]) -> int:
@@ -150,7 +163,7 @@ def record(run: Run, part: Part) -> None:
     result = part.result
     n = report.counts(result)
     summary = {"tier": run.tier, "files": len(part.files), "exit": result["exit"], "passed": n["passed"],
-               "failed": n["failed"] + n["error"], "tree": run.tree}
+               "failed": n["failed"] + n["error"], "tree": run.tree, "commit": run.commit}
     passes = run.ledger.passes_of(part.device, part.caps["platform"], run.tier, result, lambda f: run.content.get(f, ""))
     run.ledger.record(part.device, summary, passes)
     line = report.board_line(part.device, run.tier, len(part.files), result, run.tree)
@@ -183,7 +196,10 @@ def finish(run: Run, part: Part, sent: bool) -> int:
     if not sent:
         print(f"+ {part.name}: every test file passed there with this content ({len(part.reused)} reused)")
         return 0
+    if run.commit:
+        print(f"commit {run.commit} (tree {run.digest[:12]})")
     print("\n".join(report.show(part.result, part.name, part.reused)))
+    print(f"result file: {run.ledger.keep_run(part.result)}")
     record(run, part)
     return int(part.result["exit"])
 
@@ -198,6 +214,12 @@ def main(args: argparse.Namespace, rest: list[str], root: Path, command_for: Cal
         return refuse("a run on another device takes test files tests/NAME.py only: no options, node ids or paths")
     if tier == "gate" and files:
         return refuse("the gate takes no files")
+    if args.commit and (tier == "quick" or args.split):
+        return refuse("a run of one commit takes a tier other than quick, and no --split")
+    try:
+        commit = shard_tree.commit_id(root, args.commit) if args.commit else ""
+    except (shard_tree.TreeError, OSError) as exc:
+        return refuse(str(exc))
     if features.turned_off(FEATURE):
         return refuse(f"running tests on another device was turned off here (`poolhouse features disable {FEATURE}`); `poolhouse features enable {FEATURE}` turns it on")
     if not features.enabled(FEATURE):
@@ -218,8 +240,10 @@ def main(args: argparse.Namespace, rest: list[str], root: Path, command_for: Cal
     status = NOT_RUN if len(parts) < len(chosen) else 0
     if not parts:
         return status
-    content = lookups(root, tier, files, command_for) if files and tier != "gate" else {}
-    run = Run(shards, Ledger(reuse.reuse_base() / testruns.scope(root)), tier, content)
+    # A stored pass is keyed by the working tree's content and verifies nothing about a commit.
+    content = lookups(root, tier, files, command_for) if files and tier != "gate" and not commit else {}
+    run = Run(shards, Ledger(reuse.reuse_base() / testruns.scope(root)), tier, content, commit=commit,
+              digest=shard_tree.pack(shard_tree.Commit(root, commit))[1] if commit else "")
     mine = divide(root, parts, files) if args.split and files else []
     for part in parts:
         if not (args.split and files):
@@ -234,7 +258,7 @@ def main(args: argparse.Namespace, rest: list[str], root: Path, command_for: Cal
         status = max(status, local(root, tier, mine))
     for thread in threads:
         thread.join()
-    run.tree = tree_hash(root)
+    run.tree = run.digest or tree_hash(root)
     for part in parts:
         status = max(status, finish(run, part, part in sending))
         if part.result:

@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ACCOUNT = testnode.account()
 RUN_S = 600
 """Seconds one call may run its processes."""
-CASES = {"attestation": ("phone::attest", 10), "socket": ("sys::unix::tests", 2), "replacement": ("log::replacement_tests", 2)}
+CASES = {"attestation": ("phone::attest", 10), "socket": ("sys::unix::tests", 3), "replacement": ("log::replacement_tests", 2)}
 
 
 def communicate(process, deadline):

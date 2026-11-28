@@ -697,9 +697,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--explain", action="store_true", help="quick: say what selected what")
     parser.add_argument("--on", default="", help="run the tier on this pool device (a name or fingerprint), or `all` of them")
     parser.add_argument("--split", action="store_true", help="--on: divide the test files between this machine and the devices")
+    parser.add_argument("--commit", default="", help="--on: run this commit as committed, not the working tree; the result is tied to it")
     parser.add_argument("--artifact-output", action="store_true", help="macOS with --confine: keep test output in private inert artifacts")
     parser.add_argument("--confine", action="store_true", help="macOS: run pytest under the Seatbelt confinement kernel")
     args, rest = parser.parse_known_args(argv)
+    if args.commit and not args.on:
+        print("test: --commit is for a run on another device (--on DEVICE); a run here tests the working tree", file=sys.stderr)
+        return 4
     rest = testselectors.relative(rest, ROOT)           # one spelling of a test file for the store, the node build and the junit file
     REUSE["on"] = not args.no_reuse and "--collect-only" not in rest
     if args.no_reuse and not os.environ.get("DEV_TEST_JOB"):
