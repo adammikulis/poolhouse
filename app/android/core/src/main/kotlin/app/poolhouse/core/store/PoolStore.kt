@@ -123,6 +123,7 @@ class PoolStore(
             try {
                 val said = hello()
                 change { it.copy(canned = said.canned, computer = said.computer.ifEmpty { it.computer }) }
+                val started = clock()
                 calls.stream().collect { item ->
                     when (item) {
                         StreamItem.Opened -> {
@@ -133,8 +134,9 @@ class PoolStore(
                         is StreamItem.Message -> take(item)
                     }
                 }
-                // The computer closes a stream after ten minutes: connect again at once.
-                delay(250)
+                // The computer closes a stream after ten minutes: connect again at once. One closed at once is not asked in a loop,
+                // since every connection reads all the lists again.
+                delay(if (clock() - started < 10_000) 3_000 else 250)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: PhoneError.Unlinked) {

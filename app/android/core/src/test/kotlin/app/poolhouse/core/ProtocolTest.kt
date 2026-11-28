@@ -101,6 +101,10 @@ class ProtocolTest {
         assertEquals(Address("fd7a:115c::2", 7450), Address.parse("fd7a:115c::2"))
         assertEquals(Address("fd7a:115c::2", 12), Address.parse("[fd7a:115c::2]:12"))
         for (bad in listOf("", "a b", "host:0", "host:70000", "host:x", "user@host", "host/path", "[::1]x")) assertNull(bad, Address.parse(bad))
+        assertEquals(
+            listOf(true, true, true, false, false, false),
+            listOf("127.0.0.1", "[::1]:7450", "localhost", "192.168.1.4", "127.example.net", "100.101.2.3").map { Address.parse(it)!!.loopback },
+        )
         val offer = LinkOffer.typed("192.168.1.4", "abcde-fghjk").getOrThrow()
         assertNull(offer.pin)
         assertEquals("ABCDEFGHJK", offer.code)

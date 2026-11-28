@@ -8,6 +8,9 @@ data class Address(val host: String, val port: Int) {
     /** The authority part of a URL: an IPv6 address in brackets. */
     val authority: String get() = if (':' in host) "[$host]:$port" else "$host:$port"
 
+    /** This device itself (a forwarded port): the one address that is no network the phone has to be allowed to use. */
+    val loopback: Boolean get() = host == "localhost" || host == "::1" || Regex("127(\\.\\d{1,3}){3}").matches(host)
+
     override fun toString(): String = authority
 
     companion object {

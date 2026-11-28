@@ -1,6 +1,8 @@
 package app.poolhouse.phone
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -12,6 +14,7 @@ import app.poolhouse.core.device.PLUGIN_CLASS
 import app.poolhouse.core.device.PhonePlugin
 import app.poolhouse.core.device.PhoneWorker
 import app.poolhouse.core.device.PluginEntry
+import app.poolhouse.core.link.Address
 import app.poolhouse.core.link.LinkOffer
 import app.poolhouse.core.link.cleanName
 import app.poolhouse.core.link.linkPhone
@@ -50,6 +53,9 @@ sealed interface Linking {
     data object Scanning : Linking
 
     data class Working(val computer: String) : Linking
+
+    /** Android must be allowed to use the home network before the computer can be reached. */
+    data class Permission(val offer: LinkOffer, val name: String) : Linking
 
     /** Linked: the key's words, to compare with the computer's Phones screen. */
     data class Confirm(val link: Link) : Linking
@@ -132,9 +138,9 @@ class PhoneViewModel(application: Application) : AndroidViewModel(application) {
         linking = Linking.Scanning
     }
 
-    fun cancelLinking() {
+    fun cancelLinking(why: String = "") {
         attempt?.cancel()
-        linking = Linking.Idle()
+        linking = Linking.Idle(why)
     }
 
     /** A code from the camera or from a link the person opened. */
@@ -155,8 +161,17 @@ class PhoneViewModel(application: Application) : AndroidViewModel(application) {
 
     fun defaultName(): String = cleanName(Build.MODEL ?: "")
 
+    /** Whether Android (17 and later) still blocks an address of these: every one but the phone's own loopback needs the permission. */
+    fun blocked(addresses: List<Address>): Boolean =
+        Build.VERSION.SDK_INT >= 37 && addresses.any { !it.loopback } &&
+            getApplication<Application>().checkSelfPermission(Manifest.permission.ACCESS_LOCAL_NETWORK) != PackageManager.PERMISSION_GRANTED
+
     fun link(offer: LinkOffer, name: String) {
         attempt?.cancel()
+        if (blocked(offer.addresses)) {
+            linking = Linking.Permission(offer, name)
+            return
+        }
         linking = Linking.Working(offer.computer.ifEmpty { offer.addresses.first().toString() })
         attempt = viewModelScope.launch {
             linking = try {

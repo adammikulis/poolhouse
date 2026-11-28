@@ -1,7 +1,6 @@
 package app.poolhouse.phone.ui
 
 import android.Manifest
-import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -33,12 +32,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.poolhouse.core.store.Connection
@@ -78,15 +77,23 @@ fun AppRoot(model: PhoneViewModel) {
     }
     PoolhouseTheme(dark) {
         Surface(Modifier.fillMaxSize(), color = Pool.colors.bg, contentColor = Pool.colors.text) {
-            val network = localNetwork(needed = pool != null || model.linking !is Linking.Idle)
+            val waiting = model.linking as? Linking.Permission
+            val network = localNetwork(waiting, linked = pool?.link?.addresses?.let(model::blocked) == true) { granted ->
+                if (waiting != null) {
+                    if (granted) model.link(waiting.offer, waiting.name)
+                    else model.cancelLinking("Android blocks the home network. Allow it to link, or allow it later in the app's permissions.")
+                }
+            }
             Column(Modifier.fillMaxSize().background(Pool.colors.surface).statusBarsPadding().background(Pool.colors.bg)) {
-                if (network != null) {
+                if (network != null && pool != null) {
                     Banner("Android blocks the home network until you allow it.", Pool.colors.accentDim, Pool.colors.text, "Allow", network)
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     val linking = model.linking
                     when {
                         linking is Linking.Scanning -> ScanScreen(onCode = model::opened, onClose = model::cancelLinking)
+                        linking is Linking.Permission -> EmptyState("Allow the home network", "The phone reaches your computer over your home network or Tailscale, and Android asks first.",
+                            action = "Allow", onAction = { network?.invoke() })
                         linking is Linking.Working -> LinkingScreen(linking.computer, model::cancelLinking)
                         linking is Linking.Confirm -> ConfirmScreen(linking.link, model::confirmed)
                         pool == null -> LinkScreen(model, (linking as? Linking.Idle)?.error ?: "")
@@ -108,17 +115,24 @@ fun AppRoot(model: PhoneViewModel) {
     }
 }
 
-/** Asks for the local network once it is needed (Android 17 and later). Null when nothing is missing, else the way to ask again. */
+/**
+ * Asks for the local network once it is needed (Android 17 and later): for a code waiting to link, and for a linked computer the
+ * phone may not reach. Null when nothing is missing, else the way to ask again; [answered] hears each answer.
+ */
 @Composable
-private fun localNetwork(needed: Boolean): (() -> Unit)? {
+private fun localNetwork(waiting: Linking.Permission?, linked: Boolean, answered: (Boolean) -> Unit): (() -> Unit)? {
     if (Build.VERSION.SDK_INT < 37) return null
-    val context = LocalContext.current
-    var granted by remember { mutableStateOf(context.checkSelfPermission(Manifest.permission.ACCESS_LOCAL_NETWORK) == PackageManager.PERMISSION_GRANTED) }
-    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
-    LaunchedEffect(needed, granted) {
-        if (needed && !granted) ask.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+    var granted by remember { mutableStateOf(false) }
+    val heard by rememberUpdatedState(answered)
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        granted = it
+        heard(it)
     }
-    return if (needed && !granted) ({ ask.launch(Manifest.permission.ACCESS_LOCAL_NETWORK) }) else null
+    val needed = waiting != null || (linked && !granted)
+    LaunchedEffect(waiting, linked) {
+        if (needed) ask.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+    }
+    return if (needed) ({ ask.launch(Manifest.permission.ACCESS_LOCAL_NETWORK) }) else null
 }
 
 fun Tab.section(): Section = when (this) {
