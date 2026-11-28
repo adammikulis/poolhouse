@@ -225,6 +225,16 @@ words = ["peer"]
 reason = "the source-evidence inventory preserves literal existing source/protocol identifiers (Peer, PeerFacts, peer, peer_pid and peer.lineage); these observations define no new public vocabulary or authority"
 
 [[allow]]
+path = ["src/poolhouse/fleet/tailnet.py", "tests/test_onboard_tailnet.py", "app/poolhouse-tail/*"]
+words = ["peer"]
+reason = "Tailscale's own names: `tailscale status --json` lists the other devices under the key Peer (ipnstate.Status), and the library's method is StatusWithoutPeers; a renamed key reads no device at all"
+
+[[allow]]
+path = "docs/tailscale.md"
+words = ["mesh"]
+reason = "the address of Tailscale's own documentation page about client logs holds the word"
+
+[[allow]]
 path = ["src/poolhouse/scrape/browserguard.py", "tests/test_net_browser.py"]
 words = ["peer"]
 reason = "the browser's own constructor names (RTCPeerConnection), which the guard removes from pages by name; nothing to do with membership"

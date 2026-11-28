@@ -239,6 +239,8 @@ def watch_onboarding(bus, sentinel, Event, Severity):
 
 ## Devices on other networks (Tailscale)
 
+[tailscale.md](tailscale.md) gives the design of Poolhouse's own Tailscale node and which parts of it are built.
+
 If this machine already runs Tailscale, a member that is not on the local network is
 reached over the tailnet. The tailnet is a route and nothing else: the node's pool membership, the pinned
 certificate, the signed manifest and the signed requests decide who is trusted, exactly as on a
