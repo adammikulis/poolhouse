@@ -18,7 +18,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from poolhouse import activity
-from poolhouse.board import client
+from poolhouse.board import client, person
 from poolhouse.board.session import Session
 from poolhouse.fleet.onboard.web import Call, Listener, Reply as WebReply
 from poolhouse.fleet.same_page import MAX_BODY, SAFE, Reply, checked, reply
@@ -77,6 +77,8 @@ def respond(session: Callable[[], Session], req: Request) -> Reply:
         if route == "file":
             return _file(s, (query.get("id") or [""])[0])
         return reply(200, _answer(s, route, query))
+    except person.Unjoined:
+        return reply(403, {"error": person.UNJOINED, "person_setup_required": True})
     except client.Denied as err:
         return reply(403, {"error": plain.line(err, 200)})
     except (ValueError, client.Invalid) as err:

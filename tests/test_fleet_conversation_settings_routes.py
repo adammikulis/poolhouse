@@ -53,6 +53,19 @@ def test_a_device_in_no_founded_pool_starts_a_conversation_and_opens_studio(tmp_
         assert (status, workflows) == (200, {"workflows": []})
 
 
+@pytest.mark.parametrize(("path", "options"), [
+    ("/ui/studio/nodes", {}),
+    ("/ui/studio/validate", {"method": "POST", "body": {"graph": {"schema_version": 1, "nodes": [], "edges": [], "groups": {}}}}),
+    ("/ui/studio/validate", {"method": "POST", "body": {"graph": {"nodes": "not a list"}}}),
+])
+def test_studio_answers_no_node_list_or_check_to_a_request_it_does_not_authorize(tmp_path, alone, path, options):  # noqa: F811
+    with signed_daemon(tmp_path) as served:
+        status, body, _ = served.call(path, cookie="", **options)
+        assert status == 403 and set(body) == {"error"}, body
+        status, body, _ = served.call(path, **options)
+        assert status == 200 and ("nodes" in body or "valid" in body), body
+
+
 def test_settings_update_preserves_title_and_messages(conversation_api):
     served = conversation_api
     status, made, _ = served.call("/ui/conversations", method="POST", body={"operation_id": "a" * 32, "title": "Code review", "model": "small",

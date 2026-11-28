@@ -9,7 +9,8 @@ from poolhouse.workspace import boardroute
 
 
 def _connect(request, session, audit):
-    """Register the person's session on the project's board; it is the only thing a page can ask for here."""
+    """The person joining: their session on the project's board, which takes an app project the node does not hold yet.
+    It is the only thing a page can ask for here."""
     length = request.header('Content-Length', '0')
     if not length.isascii() or not length.isdigit() or len(length) > 8 or int(length) > 1024:
         raise ValueError('joining requires a bounded JSON object')
@@ -19,19 +20,20 @@ def _connect(request, session, audit):
     body = json.loads(request.handler.rfile.read(int(length)))
     if not isinstance(body, dict) or body:
         raise ValueError('joining accepts an empty JSON object')
-    name = session().name
+    name = session(join=True).name
     if audit:
         audit(name)
     request.send(200, {'connected': True, 'name': name})
 
 
-def route(request, *, root=None, prefix="/ui/board/", audit=None) -> bool:
-    """Answer one request of the Board page for the board of the project at ``root`` (the working directory when none);
-    ``audit(name)`` is told when the person's session is registered."""
+def route(request, *, root=None, prefix="/ui/board/", audit=None, joinable=None) -> bool:
+    """Answer one request of the Board page for the board of the app's project at ``root`` (the working directory's when
+    none); only ``connect`` registers such a project, and ``audit(name)`` is told when the person's session is registered."""
     if not request.path.startswith(prefix):
         return False
-    def theirs():
-        return person.session(Path(root) if root else Path.cwd(), chosen=bool(root))
+
+    def theirs(join=False):
+        return person.app_project(root, joinable, join=join) if root else person.session(Path.cwd())
 
     headers = {key.lower(): value for key, value in request.handler.headers.items()}
     if request.path == prefix + "connect":

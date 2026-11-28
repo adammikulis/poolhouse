@@ -111,6 +111,36 @@ def git_identity(root: Path) -> str:
     return hashlib.sha256(origin.encode()).hexdigest()[:32]
 
 
+def own_worktree(root: Path) -> Path:
+    """``root`` while it is still the very folder recorded and the top of a worktree its repository owns; the repository's
+    main working tree. Read from the files alone: a link, a folder that lost its ``.git`` (git would then answer for a
+    repository around it) and a ``.git`` that leads into a repository which does not name this folder back are refused."""
+    refused = source.ProjectError("This project folder moved or changed. Choose it again in Projects.")
+    try:
+        if root.resolve(strict=True) != root:
+            raise refused
+        dot = root / ".git"
+        if dot.is_symlink():
+            raise refused
+        if dot.is_dir():
+            if os.path.lexists(dot / "commondir"):
+                raise refused
+            return root
+        pointer = dot.read_text(encoding="utf-8")
+        if not pointer.startswith("gitdir: "):
+            raise refused
+        own = (root / pointer.removeprefix("gitdir: ").strip()).resolve(strict=True)
+        common = (own / (own / "commondir").read_text(encoding="utf-8").strip()).resolve(strict=True)
+        back = (own / "gitdir").read_text(encoding="utf-8").strip()
+        main = common.parent
+        if (own.parent != common / "worktrees" or common != main / ".git" or Path(back) != dot
+                or common.is_symlink() or os.path.lexists(common / "commondir")):
+            raise refused
+        return main
+    except (OSError, UnicodeError) as exc:
+        raise refused from exc
+
+
 @dataclass
 class Project:
     id: str
@@ -123,10 +153,15 @@ class Project:
     size_bytes: int = 0
     files: int = 0
     excluded_files: int = 0
+    chosen: bool = False
+    """The person picked this folder; a row the app only found is not chosen."""
+    git_id: str = ""
+    """Git's own identity of the folder when it was chosen or shared, whatever a metadata file in it claims."""
 
     def public(self) -> dict:
         result = asdict(self)
-        result.pop("root")
+        for private in ("root", "chosen", "git_id"):
+            result.pop(private)
         return result
 
 
@@ -174,6 +209,8 @@ class ProjectRegistry:
             if project is None:
                 project = Project(id=identifier, name=top.name, root=str(top), source_machine=self.machine)
                 self._projects[identifier] = project
+            if Path(project.root) == top:
+                project.chosen, project.git_id = True, git_identity(top)
             self._candidates[identifier] = top
             self._save()
             return self._board(project)
@@ -188,6 +225,27 @@ class ProjectRegistry:
             if project is None:
                 raise source.ProjectError("Project is not registered here")
             return project
+
+    def joinable(self, identifier: str) -> Path:
+        """The folder of a project the person chose or shared, checked as the node may take it now: still its own worktree
+        (`own_worktree`), with git's identity from when it was chosen, in storage only this account writes."""
+        with self.lock:
+            project = self.get(identifier)
+            if not (project.chosen or project.shared):
+                raise source.ProjectError("Share this project in Projects before joining its workspace.")
+            root = Path(project.root)
+            main = own_worktree(root)
+            try:
+                top = git.run(["rev-parse", "--show-toplevel"], cwd=root, protocols="").stdout.strip()
+                if Path(top) != root or git_identity(root) != (project.git_id or project.id):
+                    raise source.ProjectError("This project folder moved or changed. Choose it again in Projects.")
+                protected = source_snapshot.protected_roots(dict(os.environ))
+                for folder in {root, main}:
+                    source_snapshot.validate_storage(folder, protected)
+            except (OSError, RuntimeError, git.GitFailed) as exc:
+                raise source.ProjectError("This project folder cannot be shared with a workspace: "
+                                          "other accounts or Poolhouse's own storage reach it.") from exc
+            return root
 
     def list(self) -> list[dict]:
         with self.lock:
@@ -292,7 +350,8 @@ class ProjectRegistry:
             manifest, packed = source.build(root, identifier)
             source.verify(packed, identifier, manifest["source_hash"])
             project = Project(id=identifier, name=name.strip() or root.name, root=str(root),
-                              source_machine=self.machine, shared=True, source_hash=manifest["source_hash"],
+                              source_machine=self.machine, shared=True, chosen=True, git_id=git_identity(root),
+                              source_hash=manifest["source_hash"],
                               archive_sha256=hashlib.sha256(packed).hexdigest(), size_bytes=manifest["size_bytes"],
                               files=len(manifest["files"]), excluded_files=manifest["excluded_files"])
             target = self._bundle(project)
