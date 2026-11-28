@@ -18,6 +18,7 @@ def test_every_arm_names_files_the_campaign_holds_and_drafts_except_the_diagnosi
             named = [arm.model, arm.head, *(load.get("head", "") for load in (arm.tune or {}).get("loads", []))]
             assert all(key in CAMPAIGN["files"] for key in named if key), arm.name
             assert arm.head or arm.name == "diag-nodraft"
+            assert arm.spec_type != "draft-dflash" or arm.head == "dflash2"
             assert arm.engine in engines.ENGINES
 
 
@@ -139,6 +140,14 @@ def test_a_clock_time_already_past_means_tomorrow():
     assert engines.moment("", now) is None
     assert engines.moment("06:30", now) == datetime(2030, 1, 2, 6, 30).timestamp()
     assert engines.moment("23:30", now) == datetime(2030, 1, 1, 23, 30).timestamp()
+
+
+def test_a_file_converted_here_is_never_fetched_and_says_how_it_is_made(tmp_path):
+    config = {"files": {"d": {"local": str(tmp_path / "d.gguf"), "made_by": "convert it"}}}
+    with pytest.raises(ValueError, match="convert it"):
+        plan_files.required(config, ["d"])
+    (tmp_path / "d.gguf").write_text("x")
+    assert plan_files.required(config, ["d"]) == {"d": tmp_path / "d.gguf"}
 
 
 def test_a_shard_held_under_another_name_costs_no_download(tmp_path):

@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from poolhouse import hub
+from poolhouse import home, hub
 from poolhouse.log import say, warn
 
 __all__ = ["commit", "digest_of", "found", "identity", "needed", "required", "show"]
@@ -32,6 +32,10 @@ def needed(config: Mapping[str, Any], key: str, cache: Path | None = None) -> li
     """Every shard of the campaign file ``key``: its repository, path, bytes, blob and whether it is here. A shard
     whose blob its repository already holds under another name counts as held, since fetching it moves no bytes."""
     entry = config["files"][key]
+    if made := entry.get("local"):
+        path = home.expand(made)
+        return [{"repo": "converted here", "path": made, "bytes": path.stat().st_size if path.is_file() else 0,
+                 "sha256": "", "here": path if path.is_file() else None, "download": 0}]
     home_ = cache or _cache()
     out = []
     for shard in entry["shards"]:
@@ -48,6 +52,11 @@ def required(config: Mapping[str, Any], keys: Sequence[str]) -> dict[str, Path]:
     out = {}
     for key in dict.fromkeys(keys):
         shards = needed(config, key)
+        if made := config["files"][key].get("local"):
+            if shards[0]["here"] is None:
+                raise ValueError(f"{key} is not at {made}; make it first: {config['files'][key]['made_by']}")
+            out[key] = shards[0]["here"]
+            continue
         for shard in shards:
             if shard["here"] is None:
                 say(f"fetching {shard['repo']}/{shard['path']} ({shard['download'] / 1e9:.1f} GB to download)")
