@@ -8,18 +8,23 @@ import pytest
 from browser_expect import expect
 from service_kit import node_binary, studio_node  # noqa: F401  (fixtures)
 from studio_commands import studio_command
-from test_fleet_ui import Serving
-from test_studio_canvas_browser import studio_browser  # noqa: F401
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: a real daemon reads this test's own node)
+    alone,
+    unfounded_node,
+)
+from test_studio_canvas_browser import (
+    studio_browser,  # noqa: F401
+    studio_daemon,
+)
 
+pytest_plugins = ('testfarm_kit',)  # the `node_binary` fixture
 pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def device_page(tmp_path, request):
+def device_page(tmp_path, request, alone):  # noqa: F811
     open_page = request.getfixturevalue('studio_browser')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     devices = [
         {'id': 'local-device', 'name': 'This workstation', 'is_self': True,
          'available': True, 'capabilities': ['cpu', 'inference']},
@@ -115,11 +120,9 @@ def test_preflight_error_marks_affected_node_without_dispatch(device_page):
     assert not errors
 
 
-def test_actual_device_discovery_persists_authenticated_selection(tmp_path, request):
+def test_actual_device_discovery_persists_authenticated_selection(tmp_path, request, alone):  # noqa: F811
     open_page = request.getfixturevalue('studio_browser')
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.root = tmp_path / 'traind'
+    served = studio_daemon(tmp_path)
     try:
         with open_page() as page:
             errors = []

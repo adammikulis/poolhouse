@@ -86,9 +86,11 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
     async task(button, note, action) {
       if (this.busy) return;
       const operation = {}; this.busy = operation; button.disabled = true; note.textContent = 'Saving…';
+      if (this.errorNote) this.errorNote.textContent = '';
       const epoch = this.epoch, session = M.sessionContext();
       try { await action(); }
-      catch (error) { if (this.current(epoch, session)) { if (note.isConnected) note.textContent = error.message; else this.failure(error); } }
+      catch (error) { if (this.current(epoch, session)) {
+        if (note.isConnected) { note.textContent = ''; this.errorNote.textContent = error.message; } else this.failure(error); } }
       finally { if (this.busy === operation) this.busy = null; if (this.current(epoch, session)) button.disabled = false; }
     }
     go(step) { this.epoch++; this.busy = null; this.finishing = null; clearTimeout(this.timer); this.step = step; return this.paint(); }

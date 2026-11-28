@@ -7,10 +7,13 @@ daemon's own settings and theme code where that needs no machine; tests/test_web
 
 import json
 import time
+from dataclasses import asdict
 from urllib.parse import urlsplit
 
+from poolhouse.api.pool import Member, Pool
 from poolhouse.fleet.page import render
 from poolhouse.fleet.page_security import PAGE_HEADERS
+from poolhouse.fleet.roster import describe
 from poolhouse.fleet.routes import asset_bytes, ui_asset
 from poolhouse.fleet.settings import Settings
 from poolhouse.fleet.themes import registry, resolve
@@ -43,6 +46,23 @@ def canned(request, body, status=200):
                     headers={CANNED_HEADER: CANNED_HEADER_VALUE})
 
 
+def fleet_answer(*rows):
+    """/ui/fleet for made-up member rows, completed as the daemon builds a row; this one idle device when none is given."""
+    rows = rows or ({"name": CANNED_NAME, "is_self": True},)
+    members = [{**describe(row["name"], ORIGIN, "CANNED-machine", {"slots": row.get("slots", 1), **row.get("device", {})}),
+                **row} for row in rows]
+    return {"members": members, "models": sorted({model for row in members for model in row["models"]}), "self": CANNED_NAME,
+            "group": CANNED_GROUP, "bench": {"available": True, "text": "CANNED: nothing measured", "measuring": None}}
+
+
+def pool_answer(governance="unfounded"):
+    """/ui/pool for a pool of this one made-up device, ``unfounded`` or ``governed``."""
+    device = Member(CANNED_NAME, "0" * 64, True, True, True, "", 0, 0)
+    named = CANNED_GROUP if governance == "governed" else ""
+    pool = Pool("CANNED-pool-id", "CANNED-project", "secure", "0" * 64, "", False, (device,), governance, named)
+    return {"pool": json.loads(json.dumps(asdict(pool)))}
+
+
 def shell_answers(theme="dark"):
     """What the page reads to draw its shell, by path, for a signed-in person on an idle device that finished setup."""
     appearance = {"active_theme": theme, "saved_themes": []}
@@ -56,6 +76,8 @@ def shell_answers(theme="dark"):
                          "name": CANNED_NAME, "group": CANNED_GROUP, "version": "CANNED", "autostart": {}, "schedule": {},
                          "machine": {}},
         "/ui/features": {"features": []},
+        "/ui/fleet": fleet_answer(),
+        "/ui/pool": pool_answer(),
         "/ui/setup/jobs": {"jobs": []},
         "/ui/room": {"machine": {"supported": False}, "kv_types": [], "contexts": [], "models": []},
         "/ui/workspace/jobs": {"jobs": [], "capacity": capacity},

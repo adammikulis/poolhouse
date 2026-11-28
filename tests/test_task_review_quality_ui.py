@@ -9,6 +9,7 @@ from task_kit import board, proposed
 
 from poolhouse.board.tasks import Tasks
 from poolhouse.memory import vault
+from poolhouse.net import git
 from poolhouse.reputation.sealed import SealedGraph
 from poolhouse.reputation.work import WorkLedger
 from poolhouse.workspace import task_credit, task_outcomes, work_reputation
@@ -43,7 +44,12 @@ def fill_review(viewer):
 def test_advanced_person_quality_review_records_fixed_bonus_and_separate_rating(board, tasks_ui, monkeypatch, tmp_path, playwright):
     proposed(board)
     server, node = tasks_ui
-    server.ui.projects = registry(tmp_path)
+    checkout = tmp_path / 'experiment'
+    checkout.mkdir()
+    git.run(['init', '-q'], cwd=checkout)
+    # the page reads the registered project of the app's folder: register this checkout as the project of the node's board
+    node.client.call('project_add', '', node.member('placer').token, id=node.board, kind='git', path=str(checkout.resolve()))
+    server.ui.projects = registry(checkout.resolve())
     server.ui.settings.setup_done = True
     ledger = WorkLedger(SealedGraph(tmp_path / 'quality.enc', keys=vault.PassphraseKeys(lambda _: 'isolated quality key')))
     verify = task_credit.verify_on_board
@@ -62,7 +68,7 @@ def test_advanced_person_quality_review_records_fixed_bonus_and_separate_rating(
             assert advanced.get_attribute('open') is None
             fill_review(viewer)
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-            page.screenshot(path='/private/tmp/poolhouse-task-quality-form.png', full_page=True)
+            page.screenshot(path=str(tmp_path / 'task-quality-form.png'), full_page=True)
             viewer.get_by_role('button', name='Record independent review', exact=True).click()
             expect(viewer.locator('.status')).to_contain_text('checks you independently verified')
             assert Tasks(person_session(node)).get(board.task['id'])['review'] is None
@@ -70,7 +76,7 @@ def test_advanced_person_quality_review_records_fixed_bonus_and_separate_rating(
             viewer.get_by_role('button', name='Record independent review', exact=True).click()
             expect(viewer.locator('.badge')).to_have_text('completed')
             expect(viewer.locator('.status')).to_contain_text('15 credits')
-            page.screenshot(path='/private/tmp/poolhouse-task-quality-preview.png', full_page=True)
+            page.screenshot(path=str(tmp_path / 'task-quality-preview.png'), full_page=True)
         task = Tasks(person_session(node)).get(board.task['id'])
         assert task['review']['quality'] == [{'kind': 'validated', 'reason': 'Replay independently reproduced',
                                              'checks': ['Replay passes'], 'artifacts': ['replay.json']}]

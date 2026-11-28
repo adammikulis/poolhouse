@@ -6,18 +6,22 @@ from types import SimpleNamespace
 
 import pytest
 from browser_expect import expect
-from test_fleet_ui import Serving
-from test_studio_canvas_browser import studio_browser  # noqa: F401
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: a real daemon reads this test's own node)
+    alone,
+    unfounded_node,
+)
+from test_studio_canvas_browser import studio_browser, studio_daemon  # noqa: F401
 from test_studio_decision_browser import choose_template, focus_node
 
 from poolhouse.fleet import studio_decision_setup as setup
 from poolhouse.studio import decision_inventory
 
+pytest_plugins = ('testfarm_kit',)  # the `node_binary` fixture
 pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def configure_page(tmp_path, request, monkeypatch):
+def configure_page(tmp_path, request, monkeypatch, alone):  # noqa: F811
     open_page = request.getfixturevalue('studio_browser')
     state = {'libraries': False, 'pins': 0, 'installs': 0, 'failure': False, 'posts': []}
     started, release = threading.Event(), threading.Event()
@@ -44,10 +48,8 @@ def configure_page(tmp_path, request, monkeypatch):
     monkeypatch.setattr(setup, 'resource', resource)
     monkeypatch.setattr(decision_inventory, 'resource', resource)
     monkeypatch.setattr(setup, 'locate', locate)
-    served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
+    served = studio_daemon(tmp_path)
     served.ui.settings.download_sources = 'both'
-    served.ui.root = tmp_path / 'traind'
     served.ui.environment = served.runner.environment = environment
     try:
         with open_page() as page:

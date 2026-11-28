@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import pytest
 import test_fleet_page as fleet_page
+from test_fleet_ui_founded import (  # noqa: F401  (fixtures: a real daemon reads this test's own node)
+    alone,
+    unfounded_node,
+)
 
 from poolhouse.testing.canned import CANNED_MARKER, marked
 
@@ -13,6 +17,7 @@ joined = fleet_page.joined
 no_release_lookup = fleet_page.no_release_lookup
 open_page = fleet_page.open_page
 
+pytest_plugins = ('testfarm_kit',)  # the `node_binary` fixture
 pytestmark = pytest.mark.slow
 
 
@@ -64,7 +69,7 @@ def test_phone_navigation_and_chat_do_not_overflow(joined, open_page):
 
 
 @pytest.fixture
-def serving_chat(joined, tmp_path):
+def serving_chat(alone, joined, tmp_path):  # noqa: F811
     from poolhouse.fleet.serving import Serving
     from poolhouse.testing.canned import CANNED_MODEL_ID, Canned, CannedServer
 
@@ -77,7 +82,7 @@ def serving_chat(joined, tmp_path):
         fake.close()
 
 
-def test_chat_sends_history_and_renders_sanitized_markdown(joined, serving_chat, open_page):
+def test_chat_sends_history_and_renders_sanitized_markdown(alone, joined, serving_chat, open_page):  # noqa: F811
     import json
 
     page, errors = open_page(joined, cookie=joined.cookie, path="/ui/#chat")
@@ -106,7 +111,7 @@ def test_chat_sends_history_and_renders_sanitized_markdown(joined, serving_chat,
     assert not errors
 
 
-def test_stop_closes_model_stream_and_releases_chat_controls(joined, serving_chat, open_page):
+def test_stop_closes_model_stream_and_releases_chat_controls(alone, joined, serving_chat, open_page):  # noqa: F811
     from poolhouse.testing.canned import Canned
 
     serving_chat.canned = Canned(pieces=tuple("Still writing " for _ in range(80)), gap=0.1)

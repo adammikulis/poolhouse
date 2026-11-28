@@ -1,10 +1,11 @@
 """An owned native window renews its local session without discarding a draft."""
 import pytest
 from browser_expect import expect
-from test_fleet_bootstrap import browser, device
+from test_fleet_bootstrap import browser, device, founded_node, governed
 from test_fleet_initial_setup import initial
 
-__all__ = ['browser', 'device']
+__all__ = ['browser', 'device', 'founded_node', 'governed']
+pytest_plugins = ['testfarm_kit']   # the `node_binary` fixture
 pytestmark = pytest.mark.slow
 
 
