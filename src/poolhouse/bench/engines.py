@@ -552,6 +552,7 @@ def add_arguments(sub: Any) -> argparse.ArgumentParser:
     one.add_argument("--wait", type=float, default=5.0, metavar="MIN", help="minutes to wait for a quiet machine")
     one.add_argument("--cpu-wait", type=float, default=120.0, metavar="S",
                      help="seconds to wait before each request for the processor to be free (default: %(default)s)")
+    one.add_argument("--start", default="", metavar="HH:MM", help="begin at this, the next time the clock reads it")
     one.add_argument("--until", default="", metavar="HH:MM", help="start no new session after this")
     one.add_argument("--hard-until", default="", metavar="HH:MM", help="end a session at this")
     one.add_argument("--tune-tokens", type=int, default=192, metavar="N", help="tokens a tuning write writes")
@@ -575,6 +576,9 @@ def run(args: Any) -> int:
         if unknown:
             raise ValueError(f"this checkout leases {', '.join(ENGINES)}, not {', '.join(unknown)}; name other arms "
                              "with --only")
+        if start := moment(args.start):
+            say(f"waiting until {args.start}")
+            time.sleep(max(0.0, start - time.time()))
         return tune(args, config, arms) if args.action == "tune" else campaign(args, config, arms)
     except ValueError as why:
         warn(f"error: {why}")
