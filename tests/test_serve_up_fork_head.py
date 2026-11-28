@@ -1,5 +1,5 @@
-"""`poolhouse-serve up` serves a model with the head and build the harness serves it with: a head that
-borrows its target's embeddings is loaded by a fork build alone, so `up` takes that build."""
+"""`poolhouse-serve up` takes a fork build only for a model whose heads all borrow its embeddings, which
+a fork build alone loads; a head the mainline build loads keeps the model on that build."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from poolhouse import hub
 from poolhouse.serve import binary, lifecycle_cli, mtp
 
 MODEL = "Qwen3.8-Flash-Next-UD-IQ2_XS-00001-of-00003.gguf"
@@ -48,6 +49,7 @@ def asked() -> argparse.Namespace:
 
 def test_a_head_only_a_fork_loads_is_served_on_that_fork_build(machine, capsys):
     a_fork()
+    (machine.parent / "MTP" / OWN).unlink()
     args = asked()
     lifecycle_cli.fork_head(args, str(machine))
     assert args.build == "unsloth"
@@ -65,6 +67,16 @@ def test_what_the_person_asked_for_is_left_alone(machine, given):
     before = dict(vars(args))
     lifecycle_cli.fork_head(args, str(machine))
     assert vars(args) == before
+
+
+def test_a_head_mainline_loads_keeps_the_model_off_the_fork(machine):
+    """The borrowing head is the smaller one, and the model still stays on the mainline build."""
+    a_fork()
+    (machine.parent / "MTP" / OWN).write_bytes(b"GGUF" + b"\0" * 128)
+    args = asked()
+    lifecycle_cli.fork_head(args, str(machine))
+    assert (args.build, args.draft, args.spec) == ("", "", "")
+    assert [(one.name, one.build) for one in hub.heads_for(str(machine))] == [(OWN, ""), (SHARED, "unsloth")]
 
 
 def test_a_machine_with_no_fork_build_keeps_the_mainline_choice(machine):

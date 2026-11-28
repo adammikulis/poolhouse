@@ -452,7 +452,7 @@ def _head_for(spec: ServerSpec, manager: ServerManager) -> tuple[str, list[str]]
     notes = [f"draft head: {chosen.path} -- {chosen.why} (serving with {build_said})"
              if chosen.path else f"no draft head served -- {chosen.why}"]
     if chosen.note:
-        hint = "" if chosen.borrows else " Serve with --build NAME to use one."
+        hint = "" if chosen.borrows or chosen.path else " Serve with --build NAME to use one."
         notes.append(f"  {chosen.note}{hint}")
     return chosen.path, notes
 

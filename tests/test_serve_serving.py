@@ -287,8 +287,10 @@ def test_one_run_leases_one_serving_for_the_bench_the_page_and_a_slot(shipped, l
 
     assert lease_of(asked[0][1]) == shipped.lease(), "the bench's"
     assert lease_of(asked[1][1]) == shipped.lease(), "the page's"
-    assert [k["manager"].backend._build for _m, k in asked] == ["unsloth", "unsloth"], \
-        "the build the record names loads it in both places, or the head does not load"
+    assert shipped.serving.build == "", "the shipped record serves the current llama.cpp"
+    assert shipped.serving.draft.endswith("mtp-Qwen3.8-Flash-Next-Q4_K_M.gguf")
+    assert [k.get("manager") for _m, k in asked] == [None, None], \
+        "a record naming no build leaves both places on the current one"
     # and `slot` asked for nothing more: the page's server is the one it took a slot on,
     # which is what one serving per port means
     assert len(asked) == 2 and answering.base_url == elsewhere.base_url

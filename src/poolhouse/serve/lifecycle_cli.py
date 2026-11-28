@@ -328,23 +328,22 @@ OPTIONS_UP = [
 def fork_head(args: argparse.Namespace, model: str) -> None:
     """Serve ``model`` with the head and build the harness serves it with, when only a fork loads it.
 
-    A head that borrows its target's embeddings is loaded by a fork build alone; the mainline
-    ``current`` has no multi-token-prediction graph for such a model and aborts or serves without. So an
-    ``up`` that named no binary, build, head or speculation takes the same `Head` a harness session
-    does (`hub.heads_for`, the head's build included), and says which. A head mainline loads is left to
-    `serve.mtp.plan`.
+    A head that borrows its target's embeddings is loaded by a fork build alone. So an ``up`` that
+    named no binary, build, head or speculation, on a machine whose only heads for ``model`` borrow,
+    takes the same `Head` a harness session does (`hub.heads_for`, the head's build included), and
+    says which. Where the mainline ``current`` loads a head, that is left to `serve.mtp.plan`.
     """
     asked = ("binary", "build", "draft", "spec", "spec_tree", "embedding", "reranking")
     if any(getattr(args, name, None) for name in asked) or not getattr(args, "mtp", True) or not mtp.enabled():
         return
-    heads = [one for one in hub.heads_for(model) if one.build and one.spec_type == mtp.KIND]
+    heads = [one for one in hub.heads_for(model) if one.spec_type == mtp.KIND]
     head = hub.head_choice(model, "auto", heads=heads)
-    if head is None:
+    if head is None or not head.build:
         return
     args.draft, args.spec, args.build = head.path, head.spec_type, head.build
     if getattr(args, "spec_n_max", None) is None:
         args.spec_n_max = head.depth
-    warn(f"MTP on: {head.serving()} (a fork build loads this head; the mainline build does not)")
+    warn(f"MTP on: {head.serving()} (the only head here borrows the model's embeddings, which a fork build loads)")
 
 
 def cmd_up(args: argparse.Namespace) -> int:

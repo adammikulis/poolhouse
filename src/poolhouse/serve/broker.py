@@ -71,6 +71,8 @@ def _shape_of(settings: Mapping[str, Any]) -> dict[str, Any]:
     """The settings of a server that decide whether it can be shared, from an ask's spec, a
     `ServerSpec` as a dict or a lease record."""
     out: dict[str, Any] = {"device": admission.device_of(settings)}
+    if settings.get("asked"):
+        out["asked"] = settings["asked"]
     for key in ("engine", "context", "parallel", "cache_type_k", "cache_type_v", "spec_type", "mtp",
                 "embedding", "reranking", "draft", "chat_template_file", "spec_draft_max", "spec_p_min"):
         if key in settings and settings[key] is not None:
@@ -187,10 +189,14 @@ class Held:
         """Why this server cannot serve ``asked`` (an ask's spec), or "" when it can: it must
         hold at least the context and slots asked for and run the cache type, MTP head and
         speculation kind asked for, on the device asked for. Sharing by model alone served a 256K request from a
-        32K server."""
-        have = self.shape
-        if other := admission.engine_difference(str(asked.get("engine") or ""), have):
+        32K server. A server started with another head than asked is taken by any of its `admission.servings`."""
+        if other := admission.engine_difference(str(asked.get("engine") or ""), self.shape):
             return f"port {self.port}: {other}"
+        found = [self._short(have, asked) for have in admission.servings(self.shape)]
+        return "" if "" in found else found[0]
+
+    def _short(self, have: Mapping[str, Any], asked: Mapping[str, Any]) -> str:
+        """`short_of` for one way ``have`` of reading what this server serves."""
         if (device := admission.device_of(asked)) != have.get("device", device):
             return f"port {self.port} computes on {have['device']}, {device} asked"
         for key, what in (("context", "tokens of context"), ("parallel", "slot(s)")):
@@ -375,11 +381,14 @@ class Broker(BrokerStops, BrokerHolds):
                             info=info, shape=_shape_of(
                                 {f.name: getattr(spec, f.name)
                                  for f in dataclasses.fields(spec)}))
+                if entry.get("asked"):
+                    held.shape["also"] = (admission.as_served(entry), entry["asked"])
                 self.servers[info.port] = held
             elif not info.adopted:
                 held.info = info
             held.holders[lease] = (pid, label)
-            held.records[lease] = dict(record)
+            named = {"draft": Path(str(entry.get("draft") or "")).name} if entry.get("asked") else {}
+            held.records[lease] = {**record, **named}
             self._write_held()
             self._cond.notify_all()
         self._hand_to(pid, info.pid)

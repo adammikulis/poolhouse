@@ -21,12 +21,13 @@ from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.chat import forget_server
 from poolhouse.client.health import refuses_key, serving_params
 from poolhouse.files import write_json
-from poolhouse.hub import free_memory, room as machine_room
+from poolhouse.hub import free_memory, room as machine_room, uploads
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
 from poolhouse.ownership import lease_file, recorded_servers, same_process
 from poolhouse.serve import (
     admission,
+    draftstart,
     engines,
     exit_guard,
     guarded,
@@ -48,7 +49,6 @@ from poolhouse.serve.backend import (
     ServerFailed,
     ServerInfo,
     ServerSpec,
-    UnknownFlag,
 )
 from poolhouse.serve.binary import BinaryNotFound
 from poolhouse.serve.children import Children, Exit
@@ -67,6 +67,7 @@ from poolhouse.serve.matching import model_matches, serving_mismatch
 from poolhouse.serve.mlx_tree import MlxTreeBackend
 from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.ports import DEFAULT_HOST, free_port, port_is_free, reclaim_port
+from poolhouse.serve.preflight import PreflightFailed
 from poolhouse.serve.process import (
     kill_process_tree,
     measuring,
@@ -318,9 +319,9 @@ class ServerManager(Admitting):
             if roam and (reused := self._reusable(spec, on_event=on_event)):
                 return reused
             try:
-                info = self._launch(spec, timeout=resolved_timeout, on_event=on_event,
-                                    anyway=anyway, reuse=roam, **how.checks())
-            except (Measuring, admission.AdmissionRefused, guarded.SentinelRefused):
+                info, served = self._launch(spec, timeout=resolved_timeout, on_event=on_event,
+                                            anyway=anyway, reuse=roam, **how.checks())
+            except (Measuring, PreflightFailed, admission.AdmissionRefused, guarded.SentinelRefused):
                 self._forget(spec.port)
                 raise
             except ServerFailed:
@@ -332,7 +333,7 @@ class ServerManager(Admitting):
             if not info.mtp_note:
                 info = replace(info, mtp_note=drafting.note)
             if not info.adopted:
-                self._record(spec, info, iq=iq)
+                self._record(served, info, iq=iq, asked=spec)
             return info
 
     def _quant_guard(self, spec: ServerSpec, how: Starting) -> quant_guard.IqQuant | None:
@@ -399,8 +400,9 @@ class ServerManager(Admitting):
         return mtp.applied(spec, chosen), chosen
 
     def _launch(self, spec: ServerSpec, *, timeout: float, on_event: Event | None = None,
-                anyway: bool = False, reuse: bool = False, **starting: Any) -> ServerInfo:
-        """Start ``spec``, telling ``on_event`` when the load begins and ends.
+                anyway: bool = False, reuse: bool = False, **starting: Any) -> tuple[ServerInfo, ServerSpec]:
+        """Start ``spec``, telling ``on_event`` when the load begins and ends. Answers the server and the spec it
+        started with, which names another draft head, or none, where the one asked for would not do (`draftstart`).
 
         The one place a fresh process is asked for, so ``up``, an adopt that falls
         through to a real start, and :meth:`escalate`'s relaunch all say the same thing
@@ -414,32 +416,23 @@ class ServerManager(Admitting):
                 f"{measurement_said(held)}. Loading a second model onto it would spoil "
                 f"that measurement and this one. Wait for it to finish, stop it with "
                 f"'python -m poolhouse.bench stop', or pass --anyway to load beside it.")
+
+        def verify(part: object) -> None:
+            guarded.verify(part, state_file=self.state_file, stop=self.reclaim)
+
         for part in guarded.parts_of(spec):
             if part:
-                guarded.verify(part, state_file=self.state_file, stop=self.reclaim)
+                verify(part)
         emit(on_event, "loading", port=spec.port, model=Path(str(spec.model)).name,
               slots=max(1, int(spec.parallel or 1)))
-        admitted = self._admitted(spec, on_event=on_event, reuse=reuse, load_s=timeout)
+        start = draftstart.Start(spec, self.backend_for(spec), verify=verify, say=self.say or logger.warning)
+        admitted = self._admitted(start.first.spec, on_event=on_event, reuse=reuse, load_s=timeout, asked=spec)
         if isinstance(admitted, ServerInfo):
-            return admitted
-        try:
-            info = self.backend_for(spec).start(spec, lease=admitted, timeout=timeout, **starting)
-        except (ServerFailed, UnknownFlag) as why:
-            if spec.mtp is not True:
-                raise
-            mtp.failed(spec.model, spec.draft, getattr(self.backend_for(spec), "binary", None))
-            spec = replace(spec, draft=None, spec_type="", mtp=False)
-            note = f"MTP off: the server would not start with it ({str(why).splitlines()[0]})"
-            note += "; docs/serving.md, 'Multi-token prediction', has the one-command check"
-            (self.say or logger.warning)(f"port {spec.port}: {note}; starting without")
-            info = replace(self.backend_for(spec).start(spec, lease=admitted, timeout=timeout,
-                                                        **starting), mtp_note=note)
-        else:
-            if spec.mtp is True:
-                info = replace(info, mtp=Path(str(spec.draft)).name if spec.draft else "embedded",
-                               mtp_note=f"MTP on: {spec.spec_type}")
-        emit(on_event, "ready", port=spec.port, load_s=info.load_s, warmup_s=info.warmup_s)
-        return info
+            return admitted, spec
+        info, served = start.run(lease=admitted, timeout=timeout, **starting)
+        emit(on_event, "ready", port=served.port, load_s=info.load_s, warmup_s=info.warmup_s)
+        uploads.serving(served.model, served.draft or "", say=self.say or logger.warning)
+        return info, served
 
     def _slots_shortfall(self, spec: ServerSpec) -> ServerSpec | None:
         """The settings actually running on ``spec.port``, if the only way they disagree with
@@ -515,16 +508,16 @@ class ServerManager(Admitting):
         moved = replace(spec, port=free_port())
         with self._port_lock(moved.port):
             try:
-                info = self._launch(moved, timeout=timeout, on_event=on_event,
-                                    anyway=anyway, reuse=True, **starting)
-            except (Measuring, admission.AdmissionRefused, guarded.SentinelRefused):
+                info, served = self._launch(moved, timeout=timeout, on_event=on_event,
+                                            anyway=anyway, reuse=True, **starting)
+            except (Measuring, PreflightFailed, admission.AdmissionRefused, guarded.SentinelRefused):
                 self._forget(moved.port)
                 raise
             except ServerFailed:
                 self._forget(moved.port)
                 return None
             if not info.adopted:
-                self._record(moved, info)
+                self._record(served, info, asked=moved)
             return info
 
     def adopt(self, spec: ServerSpec) -> ServerInfo | None:
@@ -617,11 +610,11 @@ class ServerManager(Admitting):
                            kv_unified=True)
         resolved_timeout = (
             timeout if timeout is not None else scaled_timeout(weight_of(spec.model)))
-        info = self._launch(new_spec, timeout=resolved_timeout, on_event=on_event,
-                            anyway=anyway)
+        info, served = self._launch(new_spec, timeout=resolved_timeout, on_event=on_event,
+                                    anyway=anyway)
         # recorded now, not after every restore: a restore failure below must not leave a
         # live, healthy process this manager has forgotten it started
-        self._record(new_spec, info)
+        self._record(served, info, asked=new_spec)
 
         restore(replace(run, base_url=info.base_url), live, summaries=summaries,
                 saved=saved)
@@ -711,7 +704,10 @@ class ServerManager(Admitting):
                      stop_on_exit=self.stop_on_exit)
 
     def _record(self, spec: ServerSpec, info: ServerInfo,
-                iq: quant_guard.IqQuant | None = None) -> None:
+                iq: quant_guard.IqQuant | None = None, asked: ServerSpec | None = None) -> None:
+        """Write down the server started with ``spec``. Where the lease ``asked`` for another draft head, that is
+        kept beside it, so the same lease still finds this server."""
+        swapped = asked is not None and (str(asked.draft or ""), asked.spec_type) != (str(spec.draft or ""), spec.spec_type)
         kept = kvcache.effective(spec)
         pending = self._mine.get(str(spec.port)) or {}
         drafting = not (spec.mtp is True and not info.mtp)  # a head the server refused is not one it runs with
@@ -721,7 +717,10 @@ class ServerManager(Admitting):
                    "kv_notes": list(kept.notes), "draft": str(spec.draft or "") if drafting else "",
                    "spec_type": spec.spec_type if drafting else "",
                    "chat_template_file": str(spec.chat_template_file or ""), "mtp_note": info.mtp_note,
-                   **({"iq_warning": iq.name} if iq is not None else {})})
+                   **({"iq_warning": iq.name} if iq is not None else {}),
+                   **({"asked": {"draft": str(asked.draft or ""), "spec_type": asked.spec_type,
+                                 **({"mtp": Path(str(asked.draft or "embedded")).name} if asked.mtp else {})}}
+                      if swapped else {})})
         forget_server(info.base_url)
         if info.process is not None:
             self.children.hold(info.port, info.process)
