@@ -10,6 +10,7 @@ one every card's delegate answers to, and a release records each card as it stan
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import time
 from collections.abc import Callable
@@ -207,7 +208,8 @@ def command(args: argparse.Namespace, start: Callable[[list[str]], int]) -> int:
     if args.detach:
         words = ["cards", "run", "--project", str(root), "--idle-minutes", str(args.idle_minutes), *(["--once"] if args.once else [])]
         log = cards_ledger.folder() / "runner.log"
-        job = jobs.detach("poolhouse.delegate", words, log=log, kind=JOB, home=cards_ledger.folder(), same_interpreter=True)
+        with contextlib.chdir(root):   # it outlives the command and the folder that ran it, which may be a worktree removed later
+            job = jobs.detach("poolhouse.delegate", words, log=log, kind=JOB, home=cards_ledger.folder(), same_interpreter=True)
         say(f"the card runner runs as pid {job.pid}; its output is in {log}")
         return 0
     return cards_run.run(root, cards_run.Host(start, idle_s=args.idle_minutes * 60), say, once=args.once)

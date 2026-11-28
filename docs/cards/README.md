@@ -51,7 +51,11 @@ The runner is held until a lead releases it, and again when `docs/cards/hold.txt
 added or changed since is `unreleased` and waits for the next release. The runner works only on a computer that can sandbox its delegate, and only
 for a lead that is live. It starts a card only when the model is already served with room for it, nothing else holds, claims or waits for it or the
 device and it has been unused for ten minutes. A card's delegate takes a server already up and never starts one, and the runner stops it when someone
-else comes for the model.
+else comes for the model. Where no model broker answers, as after one was replaced, the runner starts one, which loads no model.
+
+The runner starts each delegate from the project's own folder and names none, which is the default reach: it asks for no widening, so `--detach`
+works from an agent's session, although the node places the detached process in no session. What admits the start is what admits an attached one: the
+release, the lead being live, the sandbox and a registered project.
 
 When a run ends, whoever looks first (the runner, `cards wait` or the grade) settles it: the commit has to change only the files the card writes or
 creates and the edits that land it, and the runner runs the card's check again, itself, on that commit in a sandbox of its own. Nothing the
