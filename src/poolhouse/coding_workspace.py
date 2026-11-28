@@ -14,6 +14,9 @@ from poolhouse import coding_workspace_state as state, files, lock, private_path
 from poolhouse.activity import source_snapshot
 from poolhouse.activity.source_snapshot import Capture, SourceSnapshot
 
+INDEXED_AT_ONCE = 500
+"""The files one `git add` of a stage is given. No recorded reason beyond keeping each call far inside `source_snapshot.STALL_S`."""
+
 
 def _free_bytes(directory: Path) -> int:
     return shutil.disk_usage(directory).free
@@ -174,10 +177,12 @@ class Workspace:
             source_snapshot.git_output(["init", "--quiet", str(root)], cwd=self.directory)
         names = self.directory / f"paths-{uuid.uuid4().hex}"
         try:
-            names.write_bytes(b"\0".join(entry.path for entry in capture.entries) + b"\0")
-            if capture.entries:
+            # git says nothing while it adds, so a project is added a batch at a time, each with a stall's time: a large one is no stall
+            for at in range(0, len(capture.entries), INDEXED_AT_ONCE):
+                names.write_bytes(b"\0".join(entry.path for entry in capture.entries[at:at + INDEXED_AT_ONCE]) + b"\0")
                 source_snapshot.git_output(["--literal-pathspecs", "add", "--force", *(["--intent-to-add"] if intent else []),
-                                            "--pathspec-from-file=" + str(names), "--pathspec-file-nul"], cwd=root)
+                                            "--pathspec-from-file=" + str(names), "--pathspec-file-nul"], cwd=root,
+                                           seconds=source_snapshot.STALL_S)
         finally:
             names.unlink(missing_ok=True)
 

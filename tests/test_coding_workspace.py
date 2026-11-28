@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import pi_tools
+from poolhouse.activity import source_snapshot
 from poolhouse.activity.source_snapshot import git_output
 from poolhouse.coding_workspace import Workspace
 from poolhouse.fleet import conversation_graph
@@ -333,6 +334,28 @@ def test_absent_lineage_survives_reopen_and_recreation(workspace, coding_owner, 
         assert result.missing == (() if recreate else (b"code.txt",))
         if recreate:
             assert (result.directory / "code.txt").read_text() == "new bytes"
+
+
+def test_a_large_stage_is_indexed_a_batch_at_a_time_each_with_the_time_of_a_stall(workspace, monkeypatch):
+    """Git says nothing while it adds, so one call for a whole project of thousands of files passed its silent time on a busy machine."""
+    asked: list[tuple[int, float]] = []
+    real = source_snapshot.git_output
+
+    def watched(args, *, cwd, seconds=15):
+        if "add" in args:
+            named = next(each for each in args if each.startswith("--pathspec-from-file="))
+            asked.append((Path(named.partition("=")[2]).read_bytes().count(b"\0"), seconds))
+        return real(args, cwd=cwd, seconds=seconds)
+
+    stage = workspace.begin()
+    for number in range(1100):
+        (stage.physical / f"many-{number}.txt").write_text(f"{number}\n")
+    monkeypatch.setattr(source_snapshot, "git_output", watched)
+    workspace.finish(stage, permitted, writable=True)
+    assert max(count for count, _ in asked) <= 500 and sum(count for count, _ in asked) == len(workspace.last.entries) > 1100, asked
+    assert {seconds for _, seconds in asked} == {source_snapshot.STALL_S}
+    indexed = real(["ls-files", "-z"], cwd=workspace.master).split(b"\0")
+    assert sorted(name for name in indexed if name) == sorted(entry.path for entry in workspace.last.entries)
 
 
 def test_verified_manifest_index_uses_literal_names_and_leaves_source_git_unchanged(workspace):
