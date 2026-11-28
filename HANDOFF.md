@@ -64,7 +64,6 @@ The aim is one phone app, and Mac and Windows apps, ready to pair; the owner is 
 | Comparison of agent-to-agent protocols (the tried protocol did not pass; its code stays unmerged) | Land only the comparison document | branch `backup/acp-trial` |
 | Failing on development | Red-team coverage floor, `cargo-audit`, `npm-audit`, the macOS affected-tests job's Swift toolchain error | CI |
 | The commit hooks' name list and the guard's handling of `llama-server --help` | Fix both | `scripts/hooks` |
-| `docs/access-widening-person-files.patch` targets files that do not exist | Delete it | `docs/` |
 
 ## 6. Later
 
