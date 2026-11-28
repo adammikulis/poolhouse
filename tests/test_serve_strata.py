@@ -20,7 +20,7 @@ from poolhouse.serve import admission, engines, ops, python_runtime
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.fitted import fitted
 from poolhouse.serve.manager import ServerManager
-from poolhouse.serve.strata import backend, config, fetch, install, pins, prepare
+from poolhouse.serve.strata import backend, config, fetch, install, pins, prepare, proof
 
 pytest_plugins = ["serve_node"]
 
@@ -245,6 +245,19 @@ class TestEngine:
         assert got.loaded and got.own == "mtp" and "why" in got.note
         none = ops._drafting("http://127.0.0.1:9", {"backend": "strata", "mtp": "", "mtp_note": "no drafting: why"}, None, None)
         assert not none.loaded and "no drafting" in none.note
+
+
+class TestProof:
+    def test_the_filler_is_the_same_for_the_same_seed_and_sized_in_tokens(self):
+        assert proof.filler(500, seed=3) == proof.filler(500, seed=3) != proof.filler(500, seed=4)
+        assert 500 * proof.CHARS_PER_TOKEN <= len("\n".join(proof.filler(500, seed=3))) <= 500 * proof.CHARS_PER_TOKEN + 200
+
+    def test_a_server_that_runs_no_model_fails_the_proof(self, canned):
+        manager, files = canned
+        info = manager.lease(ServerSpec(model=files[0], engine="strata", port=18433), timeout=60)
+        held = proof.Proof(info.base_url, serverkeys.for_url(info.base_url))
+        assert proof.run(held) is False
+        assert held.rows and not all(row["passed"] for row in held.rows)
 
 
 @pytest.fixture
