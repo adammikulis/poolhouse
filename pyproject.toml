@@ -29,7 +29,7 @@ license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md"]
 # poolhouse.installed reads the pins with Requirement, SpecifierSet and Version.
 dependencies = [
     "cryptography>=50",
-    "ladybug>=0.20.4,<0.21",
+    "ladybug>=0.20.4,<0.24",
     "packaging>=24.2",
     "psutil>=7.2.2",
     "pywin32; sys_platform == 'win32'",
@@ -99,7 +99,7 @@ decide-pointer = ["poolhouse[decide]", "torch>=2.14", "transformers>=5.17", "pef
                   "huggingface_hub>=1.32"]
 # an embedded property graph: one file on disk, native Cypher, no server.
 # tests/test_graph_engine_contract.py is what a bump is measured against
-store = ["ladybug>=0.20.4,<0.21"]
+store = ["ladybug>=0.20.4,<0.24"]
 # a browser that remembers who you are; needs `playwright install chromium` too
 scrape = ["playwright>=1.48"]
 # searching the web beside the graph: ddgs is keyless and rate-limited, SearXNG is not
