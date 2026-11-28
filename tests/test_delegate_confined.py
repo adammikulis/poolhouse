@@ -29,6 +29,7 @@ from harness_kit import checkouts
 from poolhouse import (
     delegate,
     delegate_confined,
+    delegate_record,
     delegate_run,
     delegate_store as store,
     harness,
@@ -321,6 +322,7 @@ if "mode:patient" in task:
 if "linger" in task:
     step(CANNED + " changing a file, then lingering")
     finish()
+    event("text", part={{"text": CANNED + " waiting to be stopped"}})
     open("src/pending.py", "w").write("x = 1\\n")
     open("home", "w").write(os.environ["HOME"])
     open("pid", "w").write(str(os.getpid()))
@@ -510,7 +512,8 @@ def test_a_stopped_edit_delegate_ends_its_confined_processes_publishes_nothing_m
         deadline = time.time() + 120
         while time.time() < deadline:
             found = [each for each in confinable.glob("**/pid") if (each.parent / "src" / "pending.py").exists()]
-            if found and found[0].read_text().isdigit() and (found[0].parent / "home").exists() and store.status(name).get("turns"):
+            read = any("waiting to be stopped" in str(row.get("text")) for row in delegate_record.read(name)[0])   # the step is taken in
+            if read and found and found[0].read_text().isdigit() and (found[0].parent / "home").exists():
                 pid_of.append(int(found[0].read_text()))
                 home_of.append(Path((found[0].parent / "home").read_text()))
                 os.kill(os.getpid(), signal.SIGTERM)
