@@ -4,7 +4,7 @@
 serves. A launch is the agent as the person has it: on the project folder itself, interactive or in print mode, with
 their own settings, MCP servers, programs and network, on macOS, Linux and Windows, in any folder. The launcher serves
 the model, points that one run at it and gives it a workspace session. `--sandbox` runs it instead on a copy of the
-project inside an operating-system sandbox with no network but the model. Codex is the default coding harness (a
+project inside an operating-system sandbox that reaches no network beyond this computer. Codex is the default coding harness (a
 lighter system prompt and tool list).
 
 ```
@@ -229,22 +229,30 @@ run inside the same Seatbelt profile as the harness, in the stage (a copy of the
   are read without those names (`git replace`), so status, diffs, the log, the index and `git write-tree` work and show neither the file nor a
   change or deletion of it; the commits keep their own ids. A session that reads and runs nothing finds `status.txt`, `changes.diff` and
   `log.txt` in `.git/poolhouse-review` (`isolation.history`).
-- **Programs.** The system's, Homebrew's and `/usr/local`'s `bin` and Apple's command-line tools are on `PATH`. Apple's `/usr/bin/git` and
-  `/usr/bin/python3` run the command-line tools' own, so a program that names one, or starts `git` with no environment, finds it
-  (`isolation.toolchain.developer_selection`). Of Homebrew's and `/usr/local`'s `etc` the box reads only OpenSSL's `openssl.cnf` and public
-  `cert.pem`, without which node and `openssl` do not start (`toolchain.system_settings`). git does not read the system configuration. A program file the session wrote
-  into the stage cannot be run (`sh script.sh` and `python file.py` can).
+- **Programs.** What a shell here has: the system's, Homebrew's and `/usr/local`'s `bin` and the programs your package managers installed
+  are on `PATH`, and the version managers' interpreters, the installed browsers (Playwright) and downloaded models are read at the same
+  place under the box's home (`isolation.toolchain.HOME_TOOLS`; none is written, and a registry token among them is not read). Apple's
+  `/usr/bin/git`, `cc` and `python3` run the developer tools the machine has selected. Of Homebrew's and `/usr/local`'s `etc` the box
+  reads only OpenSSL's `openssl.cnf` and public `cert.pem` (`toolchain.system_settings`). git does not read the system configuration.
+- **GPU and browsers** (macOS). A command computes on the GPU (Metal, MLX) and runs a headless Chromium, with the browser's inner
+  sandbox off inside the box.
 - **git.** `.git` is read-only: `git status` and `git diff` work; `git add` and `git commit` fail.
 - **Time and output.** A command ends at its timeout (180 s unless it asks for another, at most 600 s) with everything it left running: the
   plugin runs each one under `delegate_confined.BOUNDED`, since OpenCode itself would move a command that overruns to the background. The model
   is given at most as many bytes of a tool's output as the served window has tokens (OpenCode's `tool_output`, docs/limits.md). The delegate's
   no-progress limit does not count the time a command is within its timeout.
-- **Loopback** (macOS, an editing delegate). Python serves and connects over TCP on `127.0.0.1` and `::1` within the box's own window of
-  ports: a bind of port 0 gets the next one. The box binds nothing itself; the launcher binds each socket and hands it over, so nothing the box
-  runs listens on another address. A program that is not Python, a Python started with `-I`, a Unix or UDP server and a fixed port outside
-  the window are refused.
-- **Not there.** No network, no other port of this computer to reach but the model bridge's, no Poolhouse node, no nested sandbox and no real
-  model. A test that needs one cannot run, and the brief tells the agent to name every test it could not run.
+- **Loopback** (macOS). A command connects to any service of this computer over loopback, except the model server's port. An editing
+  delegate's Python serves over TCP on `127.0.0.1` and `::1` within the box's own window of ports: a bind of port 0 gets the next one. The
+  box binds no IP address itself; the launcher binds each socket and hands it over, so nothing the box runs listens on another address. A
+  server of a program that is not Python, of a Python started with `-I`, over UDP or on a fixed port outside the window is refused; unix
+  sockets in the box's own folders work. The launcher hands a port only to a process of that launch's own tree (`serving.admitted`).
+- **Temporary files** (macOS). `TMPDIR` is a short folder of the launch's own in `/tmp`. The rest of `/tmp` and `/var/tmp` is not listed,
+  read, written or reached, so a program that names `/tmp` itself instead of `TMPDIR` is refused.
+- **Refused** (macOS; `sandbox/seatbelt_open.py`, held by `tests/test_redteam_open_box.py`). Writing outside the copy, the box's home and
+  its own temporary folder; reading the person's folders, other programs' temporary files, keys, the keychain and credential services; a network
+  beyond this computer; other processes' signals, memory, arguments and terminals; opening apps, scheduling jobs, Apple events, the
+  clipboard, screen, camera and microphone; a sandbox of its own (`sandbox-exec`). The brief tells the agent to name every test it could
+  not run.
 - **Processes.** A command signals the processes of its own box (grandchildren and ones that left their group among them) and no other, and
   every one of them ends with the session.
 

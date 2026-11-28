@@ -13,7 +13,7 @@ from launch_support import signed
 from test_fleet_ui import Serving
 
 from poolhouse.board import person, place
-from poolhouse.board.client import Client, Denied
+from poolhouse.board.client import Client
 from poolhouse.board.tasks import Tasks
 from poolhouse.fleet import extension_routes, project_client
 from poolhouse.fleet.project_source import ProjectError
@@ -189,14 +189,47 @@ def test_a_chosen_folder_that_changed_is_neither_registered_nor_read_as_another_
     assert app.held() == before
 
 
-def test_a_linked_worktree_joins_the_repository_it_belongs_to(app):
+def relative_pointers(main, tree):
+    """The two pointer files as `worktree add --relative-paths` writes them."""
+    own = Path((tree / '.git').read_text(encoding='utf-8').removeprefix('gitdir: ').rstrip('\n'))
+    assert own.parent == main / '.git' / 'worktrees', own
+    (tree / '.git').write_text(f'gitdir: {os.path.relpath(own, tree)}\n')
+    (own / 'gitdir').write_text(f'{os.path.relpath(tree / ".git", own)}\n')
+
+
+@pytest.mark.parametrize('name', ['linked', 'a spaced caf\u00e9 Tree'])
+@pytest.mark.parametrize('relative', [False, True])
+def test_a_linked_worktree_joins_the_repository_it_belongs_to(app, name, relative):
     main = repository(app.tmp / 'main', 'main')
-    tree = app.tmp / 'linked'
-    git(main, 'worktree', 'add', '-q', str(tree))
+    tree = app.tmp / name
+    git(main, 'worktree', 'add', '-q', '--detach', str(tree))
+    if relative:
+        relative_pointers(main, tree)
     ident = app.choose(tree)
     assert app.join(ident)[0] == 200
     assert [str(main)] in app.held().values()
     assert app.ask(ident)[0] == 200
+
+
+def test_a_stale_worktree_record_reached_through_a_link_joins_nothing(app):
+    """Another clone of the same origin once had a worktree at a path that is gone; a link there now leads to the chosen folder."""
+    origin = 'https://example.invalid/team/shared.git'
+    root = repository(app.tmp / 'chosen', 'chosen')
+    victim = repository(app.tmp / 'private-clone', 'never chosen')
+    for each in (root, victim):
+        git(each, 'remote', 'add', 'origin', origin)
+    stale = app.tmp / 'writable' / 'stale'
+    stale.parent.mkdir()
+    git(victim, 'worktree', 'add', '-q', str(stale))
+    shutil.rmtree(stale)
+    ident = app.choose(root)
+    shutil.rmtree(root / '.git')
+    (root / '.git').write_text(f'gitdir: {victim / ".git" / "worktrees" / "stale"}\n')
+    stale.symlink_to(root)
+    before = app.held()
+    for status, body in (app.ask(ident), app.join(ident)):
+        assert status == 403 and 'person_setup_required' not in body, body
+    assert app.held() == before
 
 
 def during(monkeypatch, method, before, after=lambda: None):
@@ -298,7 +331,8 @@ def test_a_folder_inside_a_joined_project_neither_shows_nor_writes_its_board(app
     before = app.held()
     for status, body in (app.ask(ident), app.join(ident), app.ask(ident, method='POST', body={
             'spec': {'title': 'Written from inside', 'acceptance': ['x']}})):
-        assert status == 403 and str(outer) in body['error'] and 'person_setup_required' not in body, body
+        said = 'terminal agent' if place_of == 'submodule' else str(outer)
+        assert status == 403 and said in body['error'] and 'person_setup_required' not in body, body
         assert 'tasks' not in body
     assert app.held() == before
     assert [task['title'] for task in app.ask(outer_ident)[1]['tasks']] == ['Outer secret']
@@ -367,46 +401,26 @@ def separate_git_directory(app):
     return root
 
 
-def relative_worktree(app):
-    main = repository(app.tmp / 'relative-main', 'relative')
-    tree = app.tmp / 'relative-tree'
-    git(main, 'worktree', 'add', '-q', str(tree))
-    own = main / '.git' / 'worktrees' / 'relative-tree'
-    (tree / '.git').write_text(f'gitdir: {os.path.relpath(own, tree)}\n')   # what `worktree add --relative-paths` writes
-    (own / 'gitdir').write_text(f'{os.path.relpath(tree / ".git", own)}\n')
+def worktree_of_a_bare_repository(app, kept='bare/repo.git', tree='bare-tree'):
+    seed = repository(app.tmp / 'seed', 'seed')
+    subprocess.run(['git', 'clone', '-q', '--bare', str(seed), str(app.tmp / kept)], check=True)
+    git(app.tmp / kept, 'worktree', 'add', '-q', '--detach', str(app.tmp / tree))
+    return app.tmp / tree
+
+
+def worktree_in_a_container_folder(app):
+    """`<container>/.bare` beside `<container>/.git` naming it, with the worktrees inside the container."""
+    tree = worktree_of_a_bare_repository(app, 'container/.bare', 'container/one')
+    (app.tmp / 'container' / '.git').write_text('gitdir: ./.bare\n')
     return tree
 
 
-@pytest.mark.parametrize(('layout', 'registered'), [(submodule_of, 'parent/one'), (separate_git_directory, 'separate'),
-                                                    (relative_worktree, 'relative-main')])
-def test_a_layout_git_keeps_elsewhere_joins_its_own_folder(app, layout, registered):
-    root = layout(app)
-    ident = app.choose(root)
-    status, body = app.join(ident)
-    assert status == 200, body
-    assert [str(app.tmp / registered)] in app.held().values()
-    assert app.ask(ident)[0] == 200
-
-
-def test_a_second_submodule_is_not_the_first_ones_project(app):
-    first = submodule_of(app)
-    library = app.tmp / 'library'
-    git(first.parent, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', str(library), 'two')
-    assert app.join(app.choose(first))[0] == 200
-    assert app.node.client.call('project_resolve', path=str(first))
-    with pytest.raises(Denied):
-        app.node.client.call('project_resolve', path=str(first.parent / 'two'))
-
-
-def test_a_git_directory_changed_after_the_choice_is_not_registered(app):
-    root = separate_git_directory(app)
-    ident = app.choose(root)
-    other = app.tmp / 'kept' / 'other.git'
-    shutil.copytree(app.tmp / 'kept' / 'separate.git', other)
-    (root / '.git').write_text(f'gitdir: {other}\n')
+@pytest.mark.parametrize('layout', [submodule_of, separate_git_directory, worktree_of_a_bare_repository, worktree_in_a_container_folder])
+def test_a_layout_the_app_cannot_verify_is_refused_and_sent_to_a_terminal_agent(app, layout):
+    ident = app.choose(layout(app))
     before = app.held()
-    status, body = app.join(ident)
-    assert status == 403, body
+    for status, body in (app.ask(ident), app.join(ident)):
+        assert status == 403 and 'terminal agent' in body['error'] and 'person_setup_required' not in body, body
     assert app.held() == before
 
 

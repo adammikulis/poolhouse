@@ -19,6 +19,7 @@ use crate::beacon::{self, Advert, Beacon, BeaconConfig, BeaconStats, Hooks};
 use crate::cert::{board_fingerprint, Identity};
 use crate::error::{Error, Result};
 use crate::fsutil::{sha256_hex, unhex};
+use crate::gate::Gate;
 use crate::lineage::Peer;
 use crate::membership::{Device, Standing};
 use crate::netsync::sync_all_admitted;
@@ -32,6 +33,15 @@ use crate::tls::{server_config, StandingFn};
 
 /// How long a device does not ask again a pool that refused it a join.
 const REFUSED_FOR: Duration = Duration::from_secs(10);
+/// The connections the peer listener holds together: half of the 256 descriptors macOS gives a process by default, so that peers
+/// leave the node the rest.
+const MOST_PEER_CONNECTIONS: usize = 128;
+/// The connections one address holds: the devices behind one router each keep one open here and dial a few more.
+const MOST_PEER_PER_ADDRESS: usize = 48;
+/// The last places, kept for addresses a member has connected from.
+const PEER_RESERVED: usize = 32;
+/// The refused connections drained at once (`tls::close_after_alert`); past that a refused connection is closed straight away.
+const MOST_LINGERING: usize = 32;
 
 /// How this node reaches other machines.
 #[derive(Clone, Debug)]
@@ -71,6 +81,10 @@ pub struct Net {
     reverse: Mutex<BTreeMap<String, Arc<Mutex<PeerClient>>>>,
     /// Members this device is keeping such a connection to, so each is attached once, with a handle that closes the connection.
     attaching: Mutex<BTreeMap<String, Option<TcpStream>>>,
+    /// Who holds a connection to the listener.
+    places: Arc<Gate>,
+    /// The refused connections being drained.
+    pub(crate) lingering: Arc<Gate>,
     this: OnceLock<Weak<Net>>,
 }
 
@@ -164,12 +178,14 @@ impl Net {
         let net = Arc::new(Net {
             node, activity, server_config: server_config(&me, standing)?, me, port, stop, shards,
             window: Mutex::new(None), joining: Mutex::new(BTreeSet::new()), refused: Mutex::new(BTreeMap::new()), beacon_stats: OnceLock::new(), last_join: Mutex::new(Value::Null),
-            reverse: Mutex::new(BTreeMap::new()), attaching: Mutex::new(BTreeMap::new()), this: OnceLock::new(),
+            reverse: Mutex::new(BTreeMap::new()), attaching: Mutex::new(BTreeMap::new()),
+            places: Gate::new(MOST_PEER_CONNECTIONS, MOST_PEER_PER_ADDRESS, PEER_RESERVED),
+            lingering: Gate::new(MOST_LINGERING, MOST_LINGERING, 0), this: OnceLock::new(),
         });
         let _ = net.this.set(Arc::downgrade(&net));
         tracked_node(&net.node, Source::Network)?.facts.listen = Some(listener.local_addr()?.to_string());
         let n = net.clone();
-        std::thread::spawn(move || n.accept_loop(listener));
+        std::thread::Builder::new().name("peer-listener".into()).spawn(move || n.accept_loop(listener))?;
         if let Some(project) = cfg.project.as_deref().filter(|_| cfg.beacon.is_some()) {
             tracked_node(&net.node, Source::Network)?.members.claim_project(project);
         }
@@ -178,7 +194,7 @@ impl Net {
         }
         if let Some(every) = cfg.sync_every {
             let n = net.clone();
-            std::thread::spawn(move || n.sync_loop(every));
+            std::thread::Builder::new().name("peer-sync".into()).spawn(move || n.sync_loop(every))?;
         }
         Ok(net)
     }
@@ -190,11 +206,13 @@ impl Net {
     fn accept_loop(self: Arc<Net>, listener: TcpListener) {
         while !self.stop.load(Ordering::SeqCst) {
             match listener.accept() {
-                Ok((tcp, _)) => {
+                Ok((tcp, from)) => {
+                    let Some(place) = self.places.enter(from.ip()) else { continue };
                     let _ = tcp.set_nonblocking(false);
                     let n = self.clone();
-                    std::thread::spawn(move || {
-                        let _ = peer::serve(&n, tcp);
+                    // A connection no thread can be started for is closed.
+                    let _ = std::thread::Builder::new().name("peer".into()).spawn(move || {
+                        let _ = peer::serve(&n, tcp, place);
                     });
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(10)),
@@ -289,7 +307,7 @@ impl Net {
                 if eligible && !waiting && admitted.is_ok() && self.joining.lock().is_ok_and(|mut j| j.insert(b.fingerprint.clone())) {
                     let admitted = admitted.expect("checked admission");
                     let (net, fp) = (self.clone(), b.fingerprint.clone());
-                    std::thread::spawn(move || {
+                    let started = std::thread::Builder::new().name("peer-join".into()).spawn(move || {
                         let admitted = admitted; // Owned before spawn; retained through result and cleanup.
                         let result = net.join_open_admitted(addr, &fp, &admitted);
                         net.record_join(&fp, addr, &result);
@@ -302,6 +320,12 @@ impl Net {
                             j.remove(&fp);
                         }
                     });
+                    // A device with no thread to join on tries at a later beacon.
+                    if started.is_err() {
+                        if let Ok(mut j) = self.joining.lock() {
+                            j.remove(&b.fingerprint);
+                        }
+                    }
                 }
             }
         }
@@ -532,10 +556,14 @@ impl Net {
         }
         kept.insert(fp.to_string(), None);
         drop(kept);
-        let fp = fp.to_string();
-        Some(std::thread::spawn(move || {
-            let _ = net.attach_run(&fp, addr, admitted);
-        }))
+        let owned = fp.to_string();
+        let started = std::thread::Builder::new().name("peer-attach".into()).spawn(move || {
+            let _ = net.attach_run(&owned, addr, admitted);
+        });
+        if started.is_err() {
+            locked(&self.attaching).ok()?.remove(fp);
+        }
+        started.ok()
     }
 
     fn attach_run(&self, fp: &str, addr: SocketAddr, admitted: AdmittedEffect) -> Result<()> {
@@ -557,7 +585,7 @@ impl Net {
         ended.map(|_| ())
     }
 
-    fn is_member(&self, fp: &str) -> bool {
+    pub(crate) fn is_member(&self, fp: &str) -> bool {
         tracked_node(&self.node, Source::Network).is_ok_and(|n| n.members.is_active(fp))
     }
 
@@ -875,6 +903,30 @@ mod activity_tests {
         while net.activity.active_writer_count_for_test()!=0 && std::time::Instant::now()<deadline { std::thread::yield_now(); }
         assert_eq!(net.activity.active_writer_count_for_test(),0,"idle peer is not active work");
         assert!(!net.stop.load(Ordering::SeqCst));
+    }
+    #[test]
+    fn a_refused_connection_that_lingers_is_not_counted_as_work() {
+        use std::io::{Read, Write};
+        let owned=running(); let net=&owned.net;
+        let mut stranger=TcpStream::connect(("127.0.0.1",net.port)).unwrap();
+        stranger.write_all(b"GET / HTTP/1.1\r\n\r\n").unwrap();
+        // The end of the stream says the refusal is sent and the connection is being drained.
+        stranger.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        stranger.read_to_end(&mut Vec::new()).unwrap();
+        let deadline=std::time::Instant::now()+Duration::from_secs(1);
+        while net.activity.active_writer_count_for_test()!=0 && std::time::Instant::now()<deadline { std::thread::yield_now(); }
+        assert_eq!(net.activity.active_writer_count_for_test(),0,"a refused connection being drained is not active work");
+        drop(stranger);
+    }
+    #[test]
+    fn the_peer_listener_holds_128_connections_and_keeps_the_last_32_for_known_addresses() {
+        let owned=running(); let places=&owned.net.places;
+        let at=|last: u8| std::net::IpAddr::from([192,0,2,last]);
+        let known=places.enter(at(200)).unwrap(); known.vouch();
+        let strangers: Vec<_>=(0..200u8).filter_map(|n| places.enter(at(n%4))).collect();
+        assert_eq!(1+strangers.len(),96,"addresses no member connected from share all but the last 32 places");
+        let more: Vec<_>=(0..200).filter_map(|_| places.enter(at(200))).collect();
+        assert_eq!(1+strangers.len()+more.len(),128,"and a known address takes the rest");
     }
     #[test]
     fn existing_sync_continues_after_drain_without_readmitting_a_new_operation() {

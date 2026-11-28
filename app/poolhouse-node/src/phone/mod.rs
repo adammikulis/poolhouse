@@ -6,7 +6,6 @@
 //! | `enrol` | the one-time code a person's command leaves, and a phone's addition |
 //! | `calls` | the phone methods of the local API |
 //! | `http` | the HTTPS endpoint a phone talks to |
-//! | `gate` | who may hold a connection to it: a share each, and places kept for phones |
 //! | `cert` | the P-256 certificate of that endpoint, which the code pins |
 //! | `push` | the sealed notification and its delivery |
 
@@ -15,7 +14,6 @@ pub mod attest;
 pub mod calls;
 pub mod cert;
 pub mod enrol;
-pub mod gate;
 pub mod http;
 pub mod push;
 

@@ -37,6 +37,9 @@ A person runs nothing to connect a coding agent: nobody mints, copies or pastes 
    app is registered when they press **Join workspace as person** on its Tasks or Board page, and by nothing else there: reading
    a page registers nothing. The folder must still be the one recorded (no link), the top of its own git worktree with the git
    identity it had when chosen, in storage only the account writes. A folder the app only found is shared first, in Projects.
+   The app joins a repository with its own `.git` directory and a linked worktree of one whose record names the folder
+   back as written; for a submodule, a separate git directory or a worktree of a bare repository it says to start work from
+   a terminal agent there. How a launch registers any of them is the same with or without the app.
 
 The token is a bearer secret kept in `<state>/client/<board>/<name>.token` (mode 0600 in a 0700 directory; the node
 state is `~/.poolhouse/node`, moved by `POOLHOUSE_HOME`). The node knows a process by the lineage that registered
